@@ -10,6 +10,7 @@ main = Blueprint("main", __name__)
 
 # Load schema once when starting the app
 SCHEMA_PATH = "text2sql/schema_schema.json"
+EMBEDDING_MODEL = "gemini/text-embedding-004"
 
 try:
     with open(SCHEMA_PATH, 'r', encoding='utf-8') as f:
@@ -42,12 +43,22 @@ def load(graph_id: str):
         return jsonify({"error": str(exc)}), 400
 
     graph = db.select_graph(graph_id)
+    
+    graph.query("""
+                CREATE VECTOR INDEX FOR (t:Table) ON (t.embedding) 
+                OPTIONS {dimension:768, similarityFunction:'euclidean'}
+                """)
+    
+    graph.query("""
+            CREATE VECTOR INDEX FOR (c:Column) ON (c.embedding) 
+            OPTIONS {dimension:768, similarityFunction:'euclidean'}
+            """)
 
     # Create Table nodes and their relationships
     for table_name, table_info in data['tables'].items():
         # Create table node and connect to database
         
-        embedding_result = embedding(model='gemini/text-embedding-004', input=[table_info['description']])
+        embedding_result = embedding(model=EMBEDDING_MODEL, input=[table_info['description']])
         
         graph.query(
             """
@@ -63,7 +74,7 @@ def load(graph_id: str):
         # Create Column nodes
         for col_name, col_info in table_info['columns'].items():
             
-            embedding_result = embedding(model='gemini/text-embedding-004', input=[col_info['description']])
+            embedding_result = embedding(model=EMBEDDING_MODEL, input=[col_info['description']])
 
             graph.query(
                 """
