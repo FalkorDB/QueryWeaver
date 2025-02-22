@@ -1,161 +1,345 @@
 {
-  "database": "erp_system",
-  "tables": {
-    "purchase_order_lines": {
-      "description": "Individual line items for purchase orders",
-      "columns": {
-        "id": {
-          "description": "Unique identifier for each purchase order line",
-          "type": "int(11)",
-          "null": "NO",
-          "key": "PRI",
-          "default": null,
-          "extra": "auto_increment"
+    "database": "erp_db",
+    "tables": {
+      "customers": {
+        "description": "Stores customer information and relationship data",
+        "columns": {
+          "id": {
+            "description": "Unique identifier for each customer",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "PRI",
+            "default": null,
+            "extra": "auto_increment"
+          },
+          "company_name": {
+            "description": "Official registered company name",
+            "type": "varchar(100)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "contact_name": {
+            "description": "Primary contact person name",
+            "type": "varchar(50)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "email": {
+            "description": "Primary contact email address",
+            "type": "varchar(100)",
+            "null": "NO",
+            "key": "UNI",
+            "default": null,
+            "extra": ""
+          },
+          "phone": {
+            "description": "Primary contact phone number",
+            "type": "varchar(20)",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "credit_limit": {
+            "description": "Maximum credit amount allowed",
+            "type": "decimal(10,2)",
+            "null": "NO",
+            "key": "",
+            "default": "0.00",
+            "extra": ""
+          },
+          "created_at": {
+            "description": "Record creation timestamp",
+            "type": "timestamp",
+            "null": "NO",
+            "key": "",
+            "default": "CURRENT_TIMESTAMP",
+            "extra": ""
+          }
         },
-        "purchase_order_id": {
-          "description": "Reference to purchase_orders table",
-          "type": "int(11)",
-          "null": "NO",
-          "key": "MUL",
-          "default": null,
-          "extra": ""
+        "indexes": {
+          "PRIMARY": {
+            "columns": [
+              {
+                "name": "id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "email_UNIQUE": {
+            "columns": [
+              {
+                "name": "email",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          }
         },
-        "inventory_item_id": {
-          "description": "Reference to inventory_items table",
-          "type": "int(11)",
-          "null": "NO",
-          "key": "MUL",
-          "default": null,
-          "extra": ""
+        "foreign_keys": {}
+      },
+      "products": {
+        "description": "Catalog of all products and their specifications",
+        "columns": {
+          "id": {
+            "description": "Unique identifier for each product",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "PRI",
+            "default": null,
+            "extra": "auto_increment"
+          },
+          "sku": {
+            "description": "Stock Keeping Unit - unique product code",
+            "type": "varchar(50)",
+            "null": "NO",
+            "key": "UNI",
+            "default": null,
+            "extra": ""
+          },
+          "name": {
+            "description": "Product name",
+            "type": "varchar(100)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "description": {
+            "description": "Detailed product description",
+            "type": "text",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "unit_price": {
+            "description": "Standard selling price per unit",
+            "type": "decimal(10,2)",
+            "null": "NO",
+            "key": "",
+            "default": "0.00",
+            "extra": ""
+          },
+          "stock_quantity": {
+            "description": "Current available quantity",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "",
+            "default": "0",
+            "extra": ""
+          },
+          "reorder_point": {
+            "description": "Quantity threshold for reordering",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "",
+            "default": "0",
+            "extra": ""
+          }
         },
-        "quantity": {
-          "description": "Quantity ordered",
-          "type": "int(11)",
-          "null": "NO",
-          "key": "",
-          "default": "0",
-          "extra": ""
+        "indexes": {
+          "PRIMARY": {
+            "columns": [
+              {
+                "name": "id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "sku_UNIQUE": {
+            "columns": [
+              {
+                "name": "sku",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          }
         },
-        "unit_price": {
-          "description": "Price per unit",
-          "type": "decimal(10,2)",
-          "null": "NO",
-          "key": "",
-          "default": "0.00",
-          "extra": ""
+        "foreign_keys": {}
+      },
+      "sales_orders": {
+        "description": "Customer orders and their details",
+        "columns": {
+          "id": {
+            "description": "Unique identifier for each order",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "PRI",
+            "default": null,
+            "extra": "auto_increment"
+          },
+          "customer_id": {
+            "description": "Reference to customer placing the order",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "order_date": {
+            "description": "Date when order was placed",
+            "type": "date",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "status": {
+            "description": "Current order status",
+            "type": "enum('pending','confirmed','shipped','delivered','cancelled')",
+            "null": "NO",
+            "key": "",
+            "default": "pending",
+            "extra": ""
+          },
+          "total_amount": {
+            "description": "Total order value including tax",
+            "type": "decimal(10,2)",
+            "null": "NO",
+            "key": "",
+            "default": "0.00",
+            "extra": ""
+          }
         },
-        "line_total": {
-          "description": "Total amount for this line",
-          "type": "decimal(12,2)",
-          "null": "NO",
-          "key": "",
-          "default": "0.00",
-          "extra": ""
+        "indexes": {
+          "PRIMARY": {
+            "columns": [
+              {
+                "name": "id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "fk_sales_orders_customers": {
+            "columns": [
+              {
+                "name": "customer_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          }
+        },
+        "foreign_keys": {
+          "fk_sales_orders_customers": {
+            "column": "customer_id",
+            "referenced_table": "customers",
+            "referenced_column": "id"
+          }
         }
       },
-      "indexes": {
-        "PRIMARY": {
-          "columns": [
-            {
-              "name": "id",
-              "sub_part": null,
-              "seq_in_index": 1
-            }
-          ],
-          "unique": true,
-          "type": "BTREE"
-        }
-      },
-      "foreign_keys": {
-        "fk_pol_purchase_order": {
-          "column": "purchase_order_id",
-          "referenced_table": "purchase_orders",
-          "referenced_column": "id"
+      "order_items": {
+        "description": "Individual line items in sales orders",
+        "columns": {
+          "id": {
+            "description": "Unique identifier for each order item",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "PRI",
+            "default": null,
+            "extra": "auto_increment"
+          },
+          "order_id": {
+            "description": "Reference to parent sales order",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "product_id": {
+            "description": "Reference to ordered product",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "quantity": {
+            "description": "Quantity ordered",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "",
+            "default": "1",
+            "extra": ""
+          },
+          "unit_price": {
+            "description": "Price per unit at time of order",
+            "type": "decimal(10,2)",
+            "null": "NO",
+            "key": "",
+            "default": "0.00",
+            "extra": ""
+          }
         },
-        "fk_pol_inventory_item": {
-          "column": "inventory_item_id",
-          "referenced_table": "inventory_items",
-          "referenced_column": "id"
-        }
-      }
-    },
-    "sales_order_lines": {
-      "description": "Individual line items for sales orders",
-      "columns": {
-        "id": {
-          "description": "Unique identifier for each sales order line",
-          "type": "int(11)",
-          "null": "NO",
-          "key": "PRI",
-          "default": null,
-          "extra": "auto_increment"
+        "indexes": {
+          "PRIMARY": {
+            "columns": [
+              {
+                "name": "id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "fk_order_items_orders": {
+            "columns": [
+              {
+                "name": "order_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          },
+          "fk_order_items_products": {
+            "columns": [
+              {
+                "name": "product_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          }
         },
-        "sales_order_id": {
-          "description": "Reference to sales_orders table",
-          "type": "int(11)",
-          "null": "NO",
-          "key": "MUL",
-          "default": null,
-          "extra": ""
-        },
-        "inventory_item_id": {
-          "description": "Reference to inventory_items table",
-          "type": "int(11)",
-          "null": "NO",
-          "key": "MUL",
-          "default": null,
-          "extra": ""
-        },
-        "quantity": {
-          "description": "Quantity sold",
-          "type": "int(11)",
-          "null": "NO",
-          "key": "",
-          "default": "0",
-          "extra": ""
-        },
-        "unit_price": {
-          "description": "Selling price per unit",
-          "type": "decimal(10,2)",
-          "null": "NO",
-          "key": "",
-          "default": "0.00",
-          "extra": ""
-        },
-        "line_total": {
-          "description": "Total amount for this line",
-          "type": "decimal(12,2)",
-          "null": "NO",
-          "key": "",
-          "default": "0.00",
-          "extra": ""
-        }
-      },
-      "indexes": {
-        "PRIMARY": {
-          "columns": [
-            {
-              "name": "id",
-              "sub_part": null,
-              "seq_in_index": 1
-            }
-          ],
-          "unique": true,
-          "type": "BTREE"
-        }
-      },
-      "foreign_keys": {
-        "fk_sol_sales_order": {
-          "column": "sales_order_id",
-          "referenced_table": "sales_orders",
-          "referenced_column": "id"
-        },
-        "fk_sol_inventory_item": {
-          "column": "inventory_item_id",
-          "referenced_table": "inventory_items",
-          "referenced_column": "id"
+        "foreign_keys": {
+          "fk_order_items_orders": {
+            "column": "order_id",
+            "referenced_table": "sales_orders",
+            "referenced_column": "id"
+          },
+          "fk_order_items_products": {
+            "column": "product_id",
+            "referenced_table": "products",
+            "referenced_column": "id"   
+          }
         }
       }
     }
   }
-}

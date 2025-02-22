@@ -43,12 +43,12 @@ def load(graph_id: str):
         return jsonify({"error": str(exc)}), 400
 
     graph = db.select_graph(graph_id)
-    
+
     graph.query("""
                 CREATE VECTOR INDEX FOR (t:Table) ON (t.embedding) 
                 OPTIONS {dimension:768, similarityFunction:'euclidean'}
                 """)
-    
+
     graph.query("""
             CREATE VECTOR INDEX FOR (c:Column) ON (c.embedding) 
             OPTIONS {dimension:768, similarityFunction:'euclidean'}
@@ -57,9 +57,9 @@ def load(graph_id: str):
     # Create Table nodes and their relationships
     for table_name, table_info in data['tables'].items():
         # Create table node and connect to database
-        
+
         embedding_result = embedding(model=EMBEDDING_MODEL, input=[table_info['description']])
-        
+
         graph.query(
             """
             CREATE (t:Table {name: $table_name, description: $description, embedding: vecf32($embedding)})
@@ -147,15 +147,15 @@ def load(graph_id: str):
         for fk_name, fk_info in table_info['foreign_keys'].items():
             graph.query(
                 """
-                MATCH (src:Column {name: $src_col})-[:BELONGS_TO]->(src_table:Table {name: $src_table})
-                MATCH (tgt:Column {name: $tgt_col})-[:BELONGS_TO]->(tgt_table:Table {name: $tgt_table})
+                MATCH (src:Column {name: $source_col})-[:BELONGS_TO]->(source:Table {name: $source_table})
+                MATCH (tgt:Column {name: $target_col})-[:BELONGS_TO]->(target:Table {name: $target_table})
                 CREATE (src)-[:REFERENCES {constraint_name: $fk_name}]->(tgt)
                 """,
                 {
-                    'src_col': fk_info['column'],
-                    'src_table': table_name,
-                    'tgt_col': fk_info['referenced_column'],
-                    'tgt_table': fk_info['referenced_table'],
+                    'source_col': fk_info['column'],
+                    'source_table': table_name,
+                    'target_col': fk_info['referenced_column'],
+                    'target_table': fk_info['referenced_table'],
                     'fk_name': fk_name
                 }
             )
