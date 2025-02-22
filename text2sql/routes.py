@@ -13,13 +13,17 @@ SCHEMA_PATH = "text2sql/schema_schema.json"
 EMBEDDING_MODEL = "gemini/text-embedding-004"
 COMPLETION_MODEL = "gemini/gemini-2.0-flash"
 SYSTEM_PROMPT = """
-You are an expert in translating natural language queries into Cypher queries for 
-a graph database representing a relational database schema.
+You are an expert in translating natural language queries into SQL queries for 
+using a property graph database (that supports Cypher) representing a relational database schema.
 
 **Input:**
 
-* **Relational Database Schema (Graph Representation):** You will be provided with a description of a graph representing a relational database schema. Nodes represent tables and columns, and relationships represent foreign key constraints and table/column memberships.
-* **User Query (Natural Language):** You will be given a user's question or request in natural language.
+* **Relational Database Schema (Graph Representation):** 
+You will be provided with a description of a graph representing a relational database schema. 
+Nodes represent tables, columns and indexes, and relationships represent foreign key constraints and table/column memberships.
+
+* **User Query (Natural Language):** 
+You will be given a user's question or request in natural language.
 
 **Task:**
 
@@ -63,12 +67,6 @@ WITH t,c
 OPTIONAL MATCH (c)-[:REFERENCES]->(ref:Column)
 RETURN t, c, ref
 ```
-
-Schema:
-[Insert your graph schema here in the format above.]
-
-User Query:
-[Insert your user's natural language query here.]
 """
 
 try:
