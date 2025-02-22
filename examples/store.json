@@ -1,0 +1,48 @@
+{
+    "database": "store",
+    "tables": {
+      "products": {
+        "description": "Stores basic product information for the store inventory system. Contains essential details like product name and pricing.",
+        "columns": {
+          "id": {
+            "description": "Unique identifier for each product. Used as the primary key across the system.",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "PRI",
+            "default": null,
+            "extra": "auto_increment"
+          },
+          "name": {
+            "description": "Product display name shown to customers in the store interface and receipts.",
+            "type": "varchar(100)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "price": {
+            "description": "Current selling price in the store's currency. Used for pricing calculations and reports.",
+            "type": "decimal(10,2)",
+            "null": "NO",
+            "key": "",
+            "default": "0.00",
+            "extra": ""
+          }
+        },
+        "indexes": {
+          "PRIMARY": {
+            "columns": [
+              {
+                "name": "id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          }
+        },
+        "foreign_keys": {}
+      }
+    }
+  }

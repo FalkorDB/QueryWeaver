@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "text2sql"
+version = "0.1.0"
+description = ""
+authors = ["Guy Korland <gkorland@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+litellm = "^1.61.13"
+FalkorDB = "^1.0.10"
+Flask = "^3.1.0"
+jsonschema = "^4.23.0"
+
+[tool.poetry.group.test.dependencies]
+pytest = "^8.2.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

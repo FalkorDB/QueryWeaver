@@ -1,0 +1,152 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "MySQL Database Schema with Descriptions",
+    "description": "JSON Schema for MySQL database structure including table and column descriptions",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["database", "tables"],
+    "properties": {
+      "database": {
+        "type": "string",
+        "description": "Name of the database",
+        "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+      },
+      "tables": {
+        "type": "object",
+        "description": "Collection of database tables",
+        "patternProperties": {
+          "^[a-zA-Z_][a-zA-Z0-9_]*$": {
+            "type": "object",
+            "description": "Table definition",
+            "required": ["description", "columns", "indexes", "foreign_keys"],
+            "additionalProperties": false,
+            "properties": {
+              "description": {
+                "type": "string",
+                "description": "Detailed description of the table's purpose and usage"
+              },
+              "columns": {
+                "type": "object",
+                "description": "Collection of table columns",
+                "patternProperties": {
+                  "^[a-zA-Z_][a-zA-Z0-9_]*$": {
+                    "type": "object",
+                    "required": ["description", "type", "null", "key", "default", "extra"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "description": {
+                        "type": "string",
+                        "description": "Detailed description of the column's purpose and usage"
+                      },
+                      "type": {
+                        "type": "string",
+                        "description": "SQL data type",
+                        "examples": ["int(11)", "varchar(255)", "text", "timestamp"]
+                      },
+                      "null": {
+                        "type": "string",
+                        "enum": ["YES", "NO"],
+                        "description": "Whether the column can be NULL"
+                      },
+                      "key": {
+                        "type": "string",
+                        "enum": ["", "PRI", "UNI", "MUL"],
+                        "description": "Key type (PRI=primary, UNI=unique, MUL=index)"
+                      },
+                      "default": {
+                        "type": ["string", "null"],
+                        "description": "Default value for the column"
+                      },
+                      "extra": {
+                        "type": "string",
+                        "description": "Additional column attributes",
+                        "examples": ["auto_increment", "on update CURRENT_TIMESTAMP"]
+                      }
+                    }
+                  }
+                },
+                "additionalProperties": false,
+                "minProperties": 1
+              },
+              "indexes": {
+                "type": "object",
+                "description": "Collection of table indexes",
+                "patternProperties": {
+                  "^[a-zA-Z_][a-zA-Z0-9_]*$": {
+                    "type": "object",
+                    "required": ["columns", "unique", "type"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "columns": {
+                        "type": "array",
+                        "description": "Columns included in the index",
+                        "minItems": 1,
+                        "items": {
+                          "type": "object",
+                          "required": ["name", "sub_part", "seq_in_index"],
+                          "additionalProperties": false,
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "description": "Name of the indexed column"
+                            },
+                            "sub_part": {
+                              "type": ["integer", "null"],
+                              "description": "Length of indexed prefix if partial index"
+                            },
+                            "seq_in_index": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "description": "Position of column in multi-column index"
+                            }
+                          }
+                        }
+                      },
+                      "unique": {
+                        "type": "boolean",
+                        "description": "Whether this is a unique index"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": ["BTREE", "HASH"],
+                        "description": "Type of index"
+                      }
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "foreign_keys": {
+                "type": "object",
+                "description": "Collection of foreign key constraints",
+                "patternProperties": {
+                  "^[a-zA-Z_][a-zA-Z0-9_]*$": {
+                    "type": "object",
+                    "required": ["column", "referenced_table", "referenced_column"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "column": {
+                        "type": "string",
+                        "description": "Local column name"
+                      },
+                      "referenced_table": {
+                        "type": "string",
+                        "description": "Referenced table name"
+                      },
+                      "referenced_column": {
+                        "type": "string",
+                        "description": "Referenced column name"
+                      }
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "minProperties": 1
+      }
+    }
+}

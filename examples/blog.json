@@ -1,0 +1,186 @@
+{
+  "database": "blog_db",
+  "tables": {
+    "users": {
+      "description": "Stores user account information for blog authors and administrators. Manages authentication and user profiles.",
+      "columns": {
+        "id": {
+          "description": "Unique identifier for each user. Used across the system for user references.",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "username": {
+          "description": "Unique username for login and display. Must be URL-safe and used in profile URLs.",
+          "type": "varchar(50)",
+          "null": "NO",
+          "key": "UNI",
+          "default": null,
+          "extra": ""
+        },
+        "email": {
+          "description": "User's email address. Used for notifications and password recovery.",
+          "type": "varchar(100)",
+          "null": "NO",
+          "key": "UNI",
+          "default": null,
+          "extra": ""
+        },
+        "password_hash": {
+          "description": "Securely hashed password using bcrypt. Never stored in plain text.",
+          "type": "varchar(255)",
+          "null": "NO",
+          "key": "",
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "description": "Timestamp of account creation. Used for user analytics and account age calculations.",
+          "type": "timestamp",
+          "null": "NO",
+          "key": "",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": ""
+        },
+        "updated_at": {
+          "description": "Timestamp of last profile update. Automatically updated when user details change.",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "",
+          "default": null,
+          "extra": "ON UPDATE CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "PRIMARY": {
+          "columns": [
+            {
+              "name": "id",
+              "sub_part": null,
+              "seq_in_index": 1
+            }
+          ],
+          "unique": true,
+          "type": "BTREE"
+        },
+        "username_UNIQUE": {
+          "columns": [
+            {
+              "name": "username",
+              "sub_part": null,
+              "seq_in_index": 1
+            }
+          ],
+          "unique": true,
+          "type": "BTREE"
+        },
+        "email_UNIQUE": {
+          "columns": [
+            {
+              "name": "email",
+              "sub_part": null,
+              "seq_in_index": 1
+            }
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "foreign_keys": {}
+    },
+    "posts": {
+      "description": "Stores blog post content and metadata. Core table for the blogging system.",
+      "columns": {
+        "id": {
+          "description": "Unique identifier for each blog post. Used in URLs and references.",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "user_id": {
+          "description": "References the author of the post in the users table. Used for author attribution.",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": ""
+        },
+        "title": {
+          "description": "Post title displayed as heading and in meta tags. Important for SEO.",
+          "type": "varchar(200)",
+          "null": "NO",
+          "key": "",
+          "default": null,
+          "extra": ""
+        },
+        "content": {
+          "description": "Main content of the blog post in Markdown format. Supports rich text and code blocks.",
+          "type": "text",
+          "null": "NO",
+          "key": "",
+          "default": null,
+          "extra": ""
+        },
+        "status": {
+          "description": "Publication status of the post. Controls visibility in the blog interface.",
+          "type": "enum('draft','published','archived')",
+          "null": "NO",
+          "key": "",
+          "default": "draft",
+          "extra": ""
+        },
+        "created_at": {
+          "description": "Timestamp when the post was first created. Used for post dating and sorting.",
+          "type": "timestamp",
+          "null": "NO",
+          "key": "",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": ""
+        },
+        "updated_at": {
+          "description": "Timestamp of last post update. Shows readers when content was modified.",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "",
+          "default": null,
+          "extra": "ON UPDATE CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "PRIMARY": {
+          "columns": [
+            {
+              "name": "id",
+              "sub_part": null,
+              "seq_in_index": 1
+            }
+          ],
+          "unique": true,
+          "type": "BTREE"
+        },
+        "fk_posts_users": {
+          "columns": [
+            {
+              "name": "user_id",
+              "sub_part": null,
+              "seq_in_index": 1
+            }
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "foreign_keys": {
+        "fk_posts_users": {
+          "column": "user_id",
+          "referenced_table": "users",
+          "referenced_column": "id"
+        }
+      }
+    }
+  }
+}

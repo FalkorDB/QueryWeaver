@@ -1,0 +1,75 @@
+{
+    "database": "ecommerce",
+    "tables": {
+      "products": {
+        "description": "Stores product information including name, price, and inventory levels. Used by inventory management and shop frontend.",
+        "columns": {
+          "id": {
+            "description": "Unique identifier for each product. Auto-incrementing primary key.",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "PRI",
+            "default": null,
+            "extra": "auto_increment"
+          },
+          "sku": {
+            "description": "Stock Keeping Unit - unique product identifier used in inventory management.",
+            "type": "varchar(50)",
+            "null": "NO",
+            "key": "UNI",
+            "default": null,
+            "extra": ""
+          },
+          "name": {
+            "description": "Product display name shown to customers on the website and in catalogs.",
+            "type": "varchar(255)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "price": {
+            "description": "Current selling price in USD. Updated by pricing team through admin interface.",
+            "type": "decimal(10,2)",
+            "null": "NO",
+            "key": "",
+            "default": "0.00",
+            "extra": ""
+          },
+          "stock_level": {
+            "description": "Current inventory level. Updated automatically by warehouse management system.",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "",
+            "default": "0",
+            "extra": ""
+          }
+        },
+        "indexes": {
+          "PRIMARY": {
+            "columns": [
+              {
+                "name": "id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "sku_idx": {
+            "columns": [
+              {
+                "name": "sku",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          }
+        },
+        "foreign_keys": {}
+      }
+    }
+  }

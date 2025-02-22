@@ -1,0 +1,161 @@
+{
+  "database": "erp_system",
+  "tables": {
+    "purchase_order_lines": {
+      "description": "Individual line items for purchase orders",
+      "columns": {
+        "id": {
+          "description": "Unique identifier for each purchase order line",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "purchase_order_id": {
+          "description": "Reference to purchase_orders table",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": ""
+        },
+        "inventory_item_id": {
+          "description": "Reference to inventory_items table",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": ""
+        },
+        "quantity": {
+          "description": "Quantity ordered",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "",
+          "default": "0",
+          "extra": ""
+        },
+        "unit_price": {
+          "description": "Price per unit",
+          "type": "decimal(10,2)",
+          "null": "NO",
+          "key": "",
+          "default": "0.00",
+          "extra": ""
+        },
+        "line_total": {
+          "description": "Total amount for this line",
+          "type": "decimal(12,2)",
+          "null": "NO",
+          "key": "",
+          "default": "0.00",
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "PRIMARY": {
+          "columns": [
+            {
+              "name": "id",
+              "sub_part": null,
+              "seq_in_index": 1
+            }
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "foreign_keys": {
+        "fk_pol_purchase_order": {
+          "column": "purchase_order_id",
+          "referenced_table": "purchase_orders",
+          "referenced_column": "id"
+        },
+        "fk_pol_inventory_item": {
+          "column": "inventory_item_id",
+          "referenced_table": "inventory_items",
+          "referenced_column": "id"
+        }
+      }
+    },
+    "sales_order_lines": {
+      "description": "Individual line items for sales orders",
+      "columns": {
+        "id": {
+          "description": "Unique identifier for each sales order line",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "sales_order_id": {
+          "description": "Reference to sales_orders table",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": ""
+        },
+        "inventory_item_id": {
+          "description": "Reference to inventory_items table",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": ""
+        },
+        "quantity": {
+          "description": "Quantity sold",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "",
+          "default": "0",
+          "extra": ""
+        },
+        "unit_price": {
+          "description": "Selling price per unit",
+          "type": "decimal(10,2)",
+          "null": "NO",
+          "key": "",
+          "default": "0.00",
+          "extra": ""
+        },
+        "line_total": {
+          "description": "Total amount for this line",
+          "type": "decimal(12,2)",
+          "null": "NO",
+          "key": "",
+          "default": "0.00",
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "PRIMARY": {
+          "columns": [
+            {
+              "name": "id",
+              "sub_part": null,
+              "seq_in_index": 1
+            }
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "foreign_keys": {
+        "fk_sol_sales_order": {
+          "column": "sales_order_id",
+          "referenced_table": "sales_orders",
+          "referenced_column": "id"
+        },
+        "fk_sol_inventory_item": {
+          "column": "inventory_item_id",
+          "referenced_table": "inventory_items",
+          "referenced_column": "id"
+        }
+      }
+    }
+  }
+}
