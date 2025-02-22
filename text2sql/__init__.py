@@ -3,7 +3,6 @@ from text2sql.config import Config
 from text2sql.extensions import db  # Import extensions
 from text2sql.routes import init_routes  # Import routes
 
-
 def create_app(config_class=Config):
     """Application factory function"""
     app = Flask(__name__)
