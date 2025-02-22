@@ -1,8 +1,12 @@
 import json
+import os 
 from flask import Blueprint, jsonify, request
 from jsonschema import validate, ValidationError
+from litellm import embedding
 
 from text2sql.extensions import db
+
+os.environ['GEMINI_API_KEY'] = 'AIzaSyB23NqqMWzEcojAqgLmEhc2xxkuSPBBwys'
 
 main = Blueprint("main", __name__)
 
@@ -44,17 +48,25 @@ def load(graph_id: str):
     # Create Table nodes and their relationships
     for table_name, table_info in data['tables'].items():
         # Create table node and connect to database
+        
+        embedding_result = embedding(model='gemini/text-embedding-004', input=[table_info['description']])
+        
         graph.query(
             """
-            CREATE (t:Table {name: $table_name})
+            CREATE (t:Table {name: $table_name, description: $description, embedding: vecf32($embedding)})
             """,
             {
-                'table_name': table_name
+                'table_name': table_name,
+                'description': table_info['description'],
+                'embedding': embedding_result.data[0].embedding
             }
         )
 
         # Create Column nodes
         for col_name, col_info in table_info['columns'].items():
+            
+            embedding_result = embedding(model='gemini/text-embedding-004', input=[col_info['description']])
+
             graph.query(
                 """
                 MATCH (t:Table {name: $table_name})
@@ -64,7 +76,9 @@ def load(graph_id: str):
                     nullable: $nullable,
                     key_type: $key,
                     default_value: $default,
-                    extra: $extra
+                    extra: $extra,
+                    description: $description,
+                    embedding: vecf32($embedding)
                 })-[:BELONGS_TO]->(t)
                 """,
                 {
@@ -74,7 +88,9 @@ def load(graph_id: str):
                     'nullable': col_info['null'],
                     'key': col_info['key'],
                     'default': str(col_info['default']) if col_info['default'] is not None else '',
-                    'extra': col_info['extra']
+                    'extra': col_info['extra'],
+                    'description': col_info['description'],
+                    'embedding': embedding_result.data[0].embedding
                 }
             )
 
