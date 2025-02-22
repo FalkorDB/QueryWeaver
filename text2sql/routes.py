@@ -1,5 +1,5 @@
+""" This module contains the routes for the text2sql API. """
 import json
-import os 
 from flask import Blueprint, jsonify, request
 from jsonschema import validate, ValidationError
 from litellm import embedding
@@ -73,7 +73,7 @@ def load(graph_id: str):
 
         # Create Column nodes
         for col_name, col_info in table_info['columns'].items():
-            
+
             embedding_result = embedding(model=EMBEDDING_MODEL, input=[col_info['description']])
 
             graph.query(
@@ -161,6 +161,48 @@ def load(graph_id: str):
             )
 
     return jsonify({"message": "Graph data loaded successfully", "graph_id": graph_id})
+
+@main.route("/graph/<string:graph_id>", methods=["GET"])
+def query(graph_id: str):
+    """
+    text2sql
+    """
+
+    q = request.args.get('q', type=str)
+    if not q:
+        return jsonify({"error": "Missing query parameter 'q'"}), 400
+
+    graph = db.select_graph(graph_id)
+
+    embedding_result = embedding(model=EMBEDDING_MODEL, input=[q])
+    nodes = graph.query("""
+                CALL db.idx.vector.queryNodes(
+                    'Table',
+                    'embedding',
+                    10,
+                    vecf32($embedding)
+                ) YIELD node, score
+                MATCH (node)-[r]-(connectedNode) // Match any relationship from the indexed node
+                RETURN node, r, connectedNode
+                """,
+                {
+                    'embedding': embedding_result.data[0].embedding
+                })
+
+    # convert the nodes to a JSON
+    result = []
+    for node in nodes.result_set:
+        properties1 = node[0].properties
+        # delete the embedding property before sending the response
+        properties1['embedding'] = None
+        result.append(properties1)
+
+        properties2 = node[2].properties
+        # delete the embedding property before sending the response
+        properties2['embedding'] = None
+        result.append(properties2)
+
+    return jsonify(result)
 
 def init_routes(app):
     """
