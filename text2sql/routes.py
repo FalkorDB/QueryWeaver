@@ -6,8 +6,6 @@ from litellm import embedding
 
 from text2sql.extensions import db
 
-os.environ['GEMINI_API_KEY'] = 'AIzaSyB23NqqMWzEcojAqgLmEhc2xxkuSPBBwys'
-
 main = Blueprint("main", __name__)
 
 # Load schema once when starting the app
