@@ -1,0 +1,122 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f0f2f5;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-container {
+    width: 90%;
+    max-width: 800px;
+    margin: 20px auto;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.chat-header {
+    background: #2c3e50;
+    color: white;
+    padding: 20px;
+    text-align: center;
+}
+
+.chat-messages {
+    flex-grow: 1;
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.message {
+    max-width: 70%;
+    padding: 10px 15px;
+    border-radius: 15px;
+    margin: 5px 0;
+}
+
+.user-message {
+    background: #007bff;
+    color: white;
+    align-self: flex-end;
+    border-bottom-right-radius: 5px;
+}
+
+.bot-message {
+    background: #e9ecef;
+    color: black;
+    align-self: flex-start;
+    border-bottom-left-radius: 5px;
+}
+
+.chat-input {
+    display: flex;
+    padding: 20px;
+    background: white;
+    border-top: 1px solid #dee2e6;
+}
+
+#message-input {
+    flex-grow: 1;
+    padding: 10px;
+    border: 1px solid #dee2e6;
+    border-radius: 20px;
+    margin-right: 10px;
+    font-size: 16px;
+}
+
+#send-button {
+    padding: 10px 20px;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s;
+}
+
+#send-button:hover {
+    background: #0056b3;
+}
+
+.typing-indicator {
+    display: none;
+    align-self: flex-start;
+    background: #e9ecef;
+    padding: 10px 15px;
+    border-radius: 15px;
+    color: #666;
+    font-style: italic;
+}
+
+.dropdown-container {
+    margin-top: 10px;
+    text-align: center;
+}
+
+.dropdown-container label {
+    color: white;
+    font-weight: bold;
+    margin-right: 10px;
+}
+
+#graph-select {
+    padding: 8px;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+    font-size: 16px;
+}

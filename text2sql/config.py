@@ -9,11 +9,32 @@ class Config:
     SCHEMA_PATH = "text2sql/schema_schema.json"
     EMBEDDING_MODEL = "gemini/text-embedding-004"
     COMPLETION_MODEL = "gemini/gemini-2.0-flash"
-    SYSTEM_PROMPT = """
+    FIND_SYSTEM_PROMPT = """
     You are an expert in analyzing natural language queries into SQL queries.
     Please analyze the user's query and generate a set tables descriptions that might be relevant to the user's query.
     These descriptions should descripe the tables and columns that are relevant to the user's query.
+    If the user's query is more relevant to specific columns, please provide a description of those columns.
+    Otherwise, if the user's query is too broad, please provide a follow up question to narrow down the scope of the query.
+    Notice, you can't ask user to provide more information about the database schema, tables or columns.
+    You can only ask the user to provide more information about the user's query assuming the user knows nothing about the database schema.
+    
+    **Input:**
+    * **Relational Database:** 
+    You will be provided with database name and the description of the database domain. 
+    * **User Query (Natural Language):** 
+    You will be given a user's question or request in natural language.
+    
+    **Output:**
+    * **Table Descriptions:**
+    You should provide a set of table descriptions that are relevant to the user's query.
+    * **Column Descriptions:**
+    If the user's query is more relevant to specific columns, please provide a description of those columns.
+    * **Follow Up Question:**
+    If the user's query is too broad, please provide a follow up question to narrow down the scope of the query.
+    Notice, you can't ask user to provide more information about the database schema, tables or columns.
+    You can only ask the user to provide more information about the user's query assuming the user knows nothing about the database schema.
     """
+
     SYSTEM_PROMPT_1 = """
     You are an expert in translating natural language queries into SQL queries for 
     using a property graph database (that supports Cypher) representing a relational database schema.

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot Interface</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
+</head>
+<body>    
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>Chat My Database</h1>
+            <div class="dropdown-container">
+                <label for="graph-select">Select Database:</label>
+                <select id="graph-select">
+                    <option value="">Loading...</option>
+                </select>
+            </div>
+        </div>
+        <div class="chat-messages" id="chat-messages">
+        </div>
+        <div class="typing-indicator" id="typing-indicator">Bot is typing...</div>
+        <div class="chat-input">
+            <input type="text" id="message-input" placeholder="Type your message...">
+            <button id="send-button">Send</button>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+</body>
+</html>
