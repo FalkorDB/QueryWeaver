@@ -8,10 +8,14 @@ main = Blueprint("main", __name__)
 
 @main.route('/')
 def home():
+    """ Home route """
     return render_template('chat.html')
 
 @main.route('/graphs')
 def graphs():
+    """
+    This route is used to list all the graphs that are available in the database.
+    """
     return db.list_graphs()
 
 @main.route("/graphs/<string:graph_id>", methods=["POST"])
@@ -25,8 +29,8 @@ def load(graph_id: str):
     success, result = load_graph(graph_id, data)
     if success:
         return jsonify({"message": result, "graph_id": graph_id})
-    else:
-        return jsonify({"error": result}), 400
+
+    return jsonify({"error": result}), 400
 
 @main.route("/graph/<string:graph_id>", methods=["GET"])
 def query(graph_id: str):
@@ -40,8 +44,8 @@ def query(graph_id: str):
     success, result = find(graph_id, q)
     if success:
         return jsonify(result)
-    else:
-        return jsonify({"error": result}), 400
+
+    return jsonify({"error": result}), 400
 
 def init_routes(app):
     """

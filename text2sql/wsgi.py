@@ -6,7 +6,7 @@ If the script is executed directly (i.e., not imported as a module),
 the application runs in debug mode. 
 This allows for easier debugging during development.
 """
-from text2sql import create_app
+from app import create_app
 
 app = create_app()
 

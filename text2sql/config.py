@@ -2,6 +2,9 @@
 This module contains the configuration for the text2sql module.
 """
 
+import dataclasses
+
+@dataclasses.dataclass
 class Config:
     """
     Configuration class for the text2sql module.    

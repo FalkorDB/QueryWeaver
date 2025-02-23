@@ -179,7 +179,12 @@ def load_graph(graph_id: str, data) -> Tuple[Boolean, str]:
 
     return True, "Graph loaded successfully"
 
-def find(graph_id: str, query: str, history: Optional[List[str]] = None) -> Tuple[Boolean, List[dict]]:
+def find(
+    graph_id: str,
+    query: str,
+    _history: Optional[List[str]] = None
+) -> Tuple[Boolean, List[dict]]:
+    """ Find the tables and columns relevant to the user's query. """
 
     graph = db.select_graph(graph_id)
 
@@ -327,4 +332,3 @@ def _find_tables_by_columns(graph, descriptions: List[ColumnDescription]) -> Lis
                 result.append(properties)
 
     return result
-
