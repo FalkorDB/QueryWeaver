@@ -56,11 +56,18 @@ def load(graph_id: str):
     for table_name, table_info in data['tables'].items():
         # Create table node and connect to database
 
-        embedding_result = embedding(model=Config.EMBEDDING_MODEL, input=[table_info['description']])
+        embedding_result = embedding(
+            model=Config.EMBEDDING_MODEL,
+            input=[table_info['description']]
+        )
 
         graph.query(
             """
-            CREATE (t:Table {name: $table_name, description: $description, embedding: vecf32($embedding)})
+            CREATE (t:Table {
+                name: $table_name, 
+                description: $description, 
+                embedding: vecf32($embedding)
+            })
             """,
             {
                 'table_name': table_name,
@@ -72,7 +79,10 @@ def load(graph_id: str):
         # Create Column nodes
         for col_name, col_info in table_info['columns'].items():
 
-            embedding_result = embedding(model=Config.EMBEDDING_MODEL, input=[col_info['description']])
+            embedding_result = embedding(
+                model=Config.EMBEDDING_MODEL, 
+                input=[col_info['description']]
+            )
 
             graph.query(
                 """
@@ -145,8 +155,12 @@ def load(graph_id: str):
         for fk_name, fk_info in table_info['foreign_keys'].items():
             graph.query(
                 """
-                MATCH (src:Column {name: $source_col})-[:BELONGS_TO]->(source:Table {name: $source_table})
-                MATCH (tgt:Column {name: $target_col})-[:BELONGS_TO]->(target:Table {name: $target_table})
+                MATCH (src:Column {name: $source_col})
+                    -[:BELONGS_TO]->(source:Table {name: $source_table}
+                )
+                MATCH (tgt:Column {name: $target_col})
+                    -[:BELONGS_TO]->(target:Table {name: $target_table}
+                )
                 CREATE (src)-[:REFERENCES {constraint_name: $fk_name}]->(tgt)
                 """,
                 {
@@ -198,9 +212,8 @@ def query(graph_id: str):
                                     ]
                                    )
 
-
     json_str = completion_result.choices[0].message.content
-        
+
     # Parse JSON string and convert to Pydantic model
     json_data = json.loads(json_str)
     tables = TablesList(**json_data).tables

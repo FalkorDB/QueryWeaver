@@ -3,6 +3,9 @@ This module contains the configuration for the text2sql module.
 """
 
 class Config:
+    """
+    Configuration class for the text2sql module.    
+    """
     SCHEMA_PATH = "text2sql/schema_schema.json"
     EMBEDDING_MODEL = "gemini/text-embedding-004"
     COMPLETION_MODEL = "gemini/gemini-2.0-flash"
@@ -11,7 +14,6 @@ class Config:
     Please analyze the user's query and generate a set tables descriptions that might be relevant to the user's query.
     These descriptions should descripe the tables and columns that are relevant to the user's query.
     """
-
     SYSTEM_PROMPT_1 = """
     You are an expert in translating natural language queries into SQL queries for 
     using a property graph database (that supports Cypher) representing a relational database schema.

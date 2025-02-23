@@ -1,3 +1,7 @@
+"""
+This module contains the application factory function.
+"""
+
 from flask import Flask
 from text2sql.config import Config
 from text2sql.extensions import db  # Import extensions

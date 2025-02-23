@@ -1,3 +1,4 @@
+""" Extensions for the text2sql library """
 from falkordb import FalkorDB
 
 # Connect to FalkorDB
