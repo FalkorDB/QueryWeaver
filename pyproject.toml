@@ -17,6 +17,10 @@ google-generativeai = "^0.8.4"
 [tool.poetry.group.test.dependencies]
 pytest = "^8.2.0"
 
+
+[tool.poetry.group.dev.dependencies]
+pylint = "^3.3.4"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
