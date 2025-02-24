@@ -37,7 +37,8 @@ except json.JSONDecodeError as exc:
 
 
 def load_xml_graph(graph_id: str, data) -> Tuple[Boolean, str]:
-    
+    """ Load XML ODATA schema into a Graph. """
+
     try:
         # Parse the OData schema
         entities, relationships = _parse_odata_schema(data)
@@ -58,7 +59,7 @@ def load_xml_graph(graph_id: str, data) -> Tuple[Boolean, str]:
         graph.query(query)
 
     return True, "Graph loaded successfully"
-    
+
 def _parse_odata_schema(data) -> Tuple[dict, dict]:
     """
     This function parses the OData schema and returns entities and relationships.
@@ -101,14 +102,19 @@ def _generate_cypher_queries(entities, relationships):
     relationships_queries = []
 
     for entity_name, props in tqdm.tqdm(entities.items(), "Generating create entity Cypher queries"):
-        query = f"CREATE (n:{entity_name} {{"
+        query = "CREATE (n:Table {{"
+        query += f"name: '{entity_name}', "
         query += ", ".join([f"{key}: '{value}'" for key, value in props.items()])
         query += "})"
         entities_queries.append(query)
 
     for relationship_name, relationships in tqdm.tqdm(relationships.items(), "Generating create relationship Cypher queries"):
         for relationship in relationships:
-            query = f"MATCH (a:{relationship["from"]}), (b:{relationship["to"]}) CREATE (a)-[:{relationship_name}]->(b)"
+            query = f"""MATCH (a:Table {{ name:{relationship["from"] }}}),
+            (b:Table {{ name: {relationship["to"]} }})
+            CREATE (a)-[r:REFERENCES]->(b)
+            SET r.name = '{relationship_name}'
+            """
             relationships_queries.append(query)
 
     return entities_queries, relationships_queries
