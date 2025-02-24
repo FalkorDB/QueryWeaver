@@ -1,7 +1,10 @@
 """ Module to handle the graph data loading into the database. """
 import json
+import re
 from typing import List, Optional, Tuple
+import xml.etree.ElementTree as ET
 from xmlrpc.client import Boolean
+import tqdm
 from jsonschema import ValidationError, validate
 from litellm import completion, embedding
 from pydantic import BaseModel
@@ -22,7 +25,7 @@ class Descriptions(BaseModel):
     """ List of tables """
     tables_descriptions: list[TableDescription]
     columns_descriptions: list[ColumnDescription]
-    followup_questions: list[str]
+    # followup_questions: list[str]
 
 try:
     with open(Config.SCHEMA_PATH, 'r', encoding='utf-8') as f:
@@ -32,7 +35,85 @@ except FileNotFoundError as exc:
 except json.JSONDecodeError as exc:
     raise ValueError(f"Invalid schema JSON: {str(exc)}") from exc
 
-def load_graph(graph_id: str, data) -> Tuple[Boolean, str]:
+
+def load_xml_graph(graph_id: str, data) -> Tuple[Boolean, str]:
+    
+    try:
+        # Parse the OData schema
+        entities, relationships = _parse_odata_schema(data)
+    except ET.ParseError:
+        return False, "Invalid XML content"
+
+    # Generate Cypher queries
+    entities_queries, relationships_queries = _generate_cypher_queries(entities, relationships)
+
+    graph = db.select_graph(graph_id)
+
+    # Run the Create entities Cypher queries
+    for query in tqdm.tqdm(entities_queries, "Creating entities"):
+        graph.query(query)
+
+    # Run the Create relationships Cypher queries
+    for query in tqdm.tqdm(relationships_queries, "Creating relationships"):
+        graph.query(query)
+
+    return True, "Graph loaded successfully"
+    
+def _parse_odata_schema(data) -> Tuple[dict, dict]:
+    """
+    This function parses the OData schema and returns entities and relationships.
+    """
+    entities = {}
+    relationships = {}
+
+    root = ET.fromstring(data)
+
+    # Define namespaces
+    namespaces = {
+        'edmx': "http://docs.oasis-open.org/odata/ns/edmx",
+        'edm': "http://docs.oasis-open.org/odata/ns/edm"
+    }
+
+    schema_element = root.find(".//edmx:DataServices/edm:Schema", namespaces)
+    entity_types = schema_element.findall("edm:EntityType", namespaces)
+    for entity_type in tqdm.tqdm(entity_types, "Parsing OData schema"):
+        entity_name = entity_type.get("Name")
+        entities[entity_name] = {prop.get("Name"): prop.get("Type") for prop in entity_type.findall("edm:Property", namespaces)}
+        description = entity_type.findall("edm:Annotation", namespaces)
+        if len(description) == 1:
+            entities[entity_name]["description"] = description[0].get("String").replace("'", "\\'")
+
+        for rel in entity_type.findall("edm:NavigationProperty", namespaces):
+            if rel.get("Name") not in relationships:
+                relationships[rel.get("Name")] = []    
+            relationships[rel.get("Name")].append({
+                "from": entity_name,
+                "to": re.findall("Priority.OData.(\\w+)\\b", rel.get("Type"))[0]
+            })
+
+    return entities, relationships
+
+def _generate_cypher_queries(entities, relationships):
+    """
+    This function generates Cypher queries for entities and relationships.
+    """
+    entities_queries = []
+    relationships_queries = []
+
+    for entity_name, props in tqdm.tqdm(entities.items(), "Generating create entity Cypher queries"):
+        query = f"CREATE (n:{entity_name} {{"
+        query += ", ".join([f"{key}: '{value}'" for key, value in props.items()])
+        query += "})"
+        entities_queries.append(query)
+
+    for relationship_name, relationships in tqdm.tqdm(relationships.items(), "Generating create relationship Cypher queries"):
+        for relationship in relationships:
+            query = f"MATCH (a:{relationship["from"]}), (b:{relationship["to"]}) CREATE (a)-[:{relationship_name}]->(b)"
+            relationships_queries.append(query)
+
+    return entities_queries, relationships_queries
+
+def load_json_graph(graph_id: str, data) -> Tuple[Boolean, str]:
     """
     Load the graph data into the database.
     It gets the Graph name as an argument and expects
@@ -211,13 +292,13 @@ def find(
     json_data = json.loads(json_str)
     descriptions = Descriptions(**json_data)
 
-    if len(descriptions.followup_questions) > 0:
-        return True, [{"followup_questions": descriptions.followup_questions}]
+    # if len(descriptions.followup_questions) > 0:
+    #     return True, [{"followup_questions": descriptions.followup_questions}]
 
-    result = _find_tables(graph, descriptions.tables_descriptions)
-    result = _find_tables_by_columns(graph, descriptions.columns_descriptions)
+    tables_results = _find_tables(graph, descriptions.tables_descriptions)
+    columns_results = _find_tables_by_columns(graph, descriptions.columns_descriptions)
 
-    return True, result
+    return True, (tables_results + columns_results)
 
 def _find_tables(graph, descriptions: List[TableDescription]) -> List[dict]:
 
@@ -233,9 +314,8 @@ def _find_tables(graph, descriptions: List[TableDescription]) -> List[dict]:
                         3,
                         vecf32($embedding)
                     ) YIELD node, score
-                    MATCH (node)<-[r:BELONGS_TO]-(columns)
-                    WITH node.name as tableName,  
-                    collect({
+                    MATCH (node)-[:BELONGS_TO]-(columns)
+                    RETURN node.name, node.description, collect({
                         columnName: columns.name,
                         description: columns.description,
                         type: columns.type,
@@ -243,36 +323,14 @@ def _find_tables(graph, descriptions: List[TableDescription]) -> List[dict]:
                         key: columns.key,
                         default: columns.default,
                         extra: columns.extra
-                    }) as columnsList
-                    RETURN {
-                        [tableName]: {
-                            description: node.description,
-                            columns: reduce(acc = {}, col in columnsList | 
-                                acc + {
-                                    [col.columnName]: {
-                                        description: col.description,
-                                        type: col.type,
-                                        null: col.null,
-                                        key: col.key,
-                                        default: col.default,
-                                        extra: col.extra
-                                    }
-                                }
-                            )
-                        }
-                    } as result
+                    })
                     """,
                     {
                         'embedding': embedding_result.data[0].embedding
                     })
 
-        # convert the nodes to a JSON
-        for nodes in query_result.result_set:
-            for node in nodes:
-                properties = node.properties
-                # delete the embedding property before sending the response
-                properties.pop('embedding', None)
-                result.append(properties)
+        for node in query_result.result_set:
+            result.append(node)
 
     return result
 
@@ -289,10 +347,9 @@ def _find_tables_by_columns(graph, descriptions: List[ColumnDescription]) -> Lis
                         'embedding',
                         3,
                         vecf32($embedding)
-                    ) YIELD column, score
-                    MATCH (node)<-[r:BELONGS_TO]-(columns)
-                    WITH node.name as tableName,  
-                    collect({
+                    ) YIELD node, score
+                    MATCH (node)-[:BELONGS_TO]-(table)-[:BELONGS_TO]-(columns)
+                    RETURN table.name, table.description, collect({
                         columnName: columns.name,
                         description: columns.description,
                         type: columns.type,
@@ -300,35 +357,13 @@ def _find_tables_by_columns(graph, descriptions: List[ColumnDescription]) -> Lis
                         key: columns.key,
                         default: columns.default,
                         extra: columns.extra
-                    }) as columnsList
-                    RETURN {
-                        [tableName]: {
-                            description: node.description,
-                            columns: reduce(acc = {}, col in columnsList | 
-                                acc + {
-                                    [col.columnName]: {
-                                        description: col.description,
-                                        type: col.type,
-                                        null: col.null,
-                                        key: col.key,
-                                        default: col.default,
-                                        extra: col.extra
-                                    }
-                                }
-                            )
-                        }
-                    } as result
+                    })
                     """,
                     {
                         'embedding': embedding_result.data[0].embedding
                     })
 
-        # convert the nodes to a JSON
-        for nodes in query_result.result_set:
-            for node in nodes:
-                properties = node.properties
-                # delete the embedding property before sending the response
-                properties.pop('embedding', None)
-                result.append(properties)
+        for node in query_result.result_set:
+            result.append(node)
 
     return result

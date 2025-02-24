@@ -39,12 +39,19 @@ async function sendMessage() {
         const response = await fetch('/graph/' + selectedValue + '?q='+ message);
 
         const data = await response.json();
-        
+
         // Hide typing indicator
         typingIndicator.style.display = 'none';
 
-        // Add bot response to chat
-        addMessage(JSON.stringify(data));
+        followup_questions = data[0].followup_questions
+        if( followup_questions) {
+            followup_questions.forEach( (element) => {
+                addMessage(element);
+            });
+        } else {
+            // Add bot response to chat
+            addMessage(JSON.stringify(data));
+        }
     } catch (error) {
         console.error('Error:', error);
         typingIndicator.style.display = 'none';
