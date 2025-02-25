@@ -76,6 +76,9 @@ def _parse_odata_schema(data) -> Tuple[dict, dict]:
     }
 
     schema_element = root.find(".//edmx:DataServices/edm:Schema", namespaces)
+    if schema_element is None:
+        raise ET.ParseError("Schema element not found")
+        
     entity_types = schema_element.findall("edm:EntityType", namespaces)
     for entity_type in tqdm.tqdm(entity_types, "Parsing OData schema"):
         entity_name = entity_type.get("Name")
