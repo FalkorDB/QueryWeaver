@@ -148,9 +148,8 @@ def load_json_graph(graph_id: str, data) -> Tuple[Boolean, str]:
             """)
 
     # Create Table nodes and their relationships
-    for table_name, table_info in data['tables'].items():
+    for table_name, table_info in tqdm.tqdm(data['tables'].items(), "Create Table nodes and their relationships"):
         # Create table node and connect to database
-
         embedding_result = embedding(
             model=Config.EMBEDDING_MODEL,
             input=[table_info['description']]
@@ -172,7 +171,7 @@ def load_json_graph(graph_id: str, data) -> Tuple[Boolean, str]:
         )
 
         # Create Column nodes
-        for col_name, col_info in table_info['columns'].items():
+        for col_name, col_info in tqdm.tqdm(table_info['columns'].items(), "Create Column nodes"):
 
             embedding_result = embedding(
                 model=Config.EMBEDDING_MODEL,
@@ -207,7 +206,7 @@ def load_json_graph(graph_id: str, data) -> Tuple[Boolean, str]:
             )
 
         # Create Index nodes
-        for idx_name, idx_info in table_info['indexes'].items():
+        for idx_name, idx_info in tqdm.tqdm(table_info['indexes'].items(), "Create Index nodes"):
             # Create index node
             graph.query(
                 """
@@ -227,7 +226,7 @@ def load_json_graph(graph_id: str, data) -> Tuple[Boolean, str]:
             )
 
             # Connect index to its columns
-            for col in idx_info['columns']:
+            for col in tqdm.tqdm(idx_info['columns'], "Connect index to its columns"):
                 graph.query(
                     """
                     MATCH (i:Index {name: $idx_name})-[:BELONGS_TO]->(t:Table {name: $table_name})
@@ -247,7 +246,7 @@ def load_json_graph(graph_id: str, data) -> Tuple[Boolean, str]:
                 )
 
         # Create Foreign Key relationships
-        for fk_name, fk_info in table_info['foreign_keys'].items():
+        for fk_name, fk_info in tqdm.tqdm(table_info['foreign_keys'].items(), "Create Foreign Key relationships"):
             graph.query(
                 """
                 MATCH (src:Column {name: $source_col})
@@ -307,7 +306,7 @@ def find(
     tables_results = _find_tables(graph, descriptions.tables_descriptions)
     columns_results = _find_tables_by_columns(graph, descriptions.columns_descriptions)
 
-    return True, (tables_results + columns_results)
+    return True, _get_unique_tables(tables_results + columns_results)
 
 def _find_tables(graph, descriptions: List[TableDescription]) -> List[dict]:
 
@@ -376,3 +375,17 @@ def _find_tables_by_columns(graph, descriptions: List[ColumnDescription]) -> Lis
             result.append(node)
 
     return result
+
+def _get_unique_tables(tables_list):
+    # Dictionary to store unique tables with the table name as the key
+    unique_tables = {}
+    
+    for table_info in tables_list:
+        table_name = table_info[0]  # The first element is the table name
+        
+        # Only add if this table name hasn't been seen before
+        if table_name not in unique_tables:
+            unique_tables[table_name] = table_info
+    
+    # Return the values (the unique table info lists)
+    return list(unique_tables.values())

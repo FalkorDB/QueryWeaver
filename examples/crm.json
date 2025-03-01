@@ -1,0 +1,1721 @@
+{
+    "database": "crm_system",
+    "tables": {
+      "contacts": {
+        "description": "Stores information about individual contacts within the CRM system, including personal details and relationship to companies.",
+        "columns": {
+          "contact_id": {
+            "description": "Unique identifier for each contact",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "PRI",
+            "default": null,
+            "extra": "auto_increment"
+          },
+          "first_name": {
+            "description": "Contact's first name",
+            "type": "varchar(50)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "last_name": {
+            "description": "Contact's last name",
+            "type": "varchar(50)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "email": {
+            "description": "Contact's primary email address",
+            "type": "varchar(100)",
+            "null": "NO",
+            "key": "UNI",
+            "default": null,
+            "extra": ""
+          },
+          "phone": {
+            "description": "Contact's primary phone number",
+            "type": "varchar(20)",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "title": {
+            "description": "Contact's job title",
+            "type": "varchar(100)",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "company_id": {
+            "description": "Foreign key to the companies table",
+            "type": "int(11)",
+            "null": "YES",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "created_date": {
+            "description": "Date and time when the contact was created",
+            "type": "timestamp",
+            "null": "NO",
+            "key": "",
+            "default": "CURRENT_TIMESTAMP",
+            "extra": ""
+          },
+          "updated_date": {
+            "description": "Date and time when the contact was last updated",
+            "type": "timestamp",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": "on update CURRENT_TIMESTAMP"
+          },
+          "owner_id": {
+            "description": "User ID of the CRM user who owns or manages this contact",
+            "type": "int(11)",
+            "null": "YES",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "status": {
+            "description": "Current status of the contact (active, inactive, lead, etc.)",
+            "type": "varchar(20)",
+            "null": "NO",
+            "key": "",
+            "default": "active",
+            "extra": ""
+          }
+        },
+        "indexes": {
+          "PRIMARY": {
+            "columns": [
+              {
+                "name": "contact_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "email_unique": {
+            "columns": [
+              {
+                "name": "email",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "company_id_index": {
+            "columns": [
+              {
+                "name": "company_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          },
+          "owner_id_index": {
+            "columns": [
+              {
+                "name": "owner_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          }
+        },
+        "foreign_keys": {
+          "fk_contacts_company": {
+            "column": "company_id",
+            "referenced_table": "companies",
+            "referenced_column": "company_id"
+          },
+          "fk_contacts_owner": {
+            "column": "owner_id",
+            "referenced_table": "users",
+            "referenced_column": "user_id"
+          }
+        }
+      },
+      "companies": {
+        "description": "Stores information about organizations that are customers, prospects, or partners within the CRM system.",
+        "columns": {
+          "company_id": {
+            "description": "Unique identifier for each company",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "PRI",
+            "default": null,
+            "extra": "auto_increment"
+          },
+          "name": {
+            "description": "Company name",
+            "type": "varchar(100)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "industry": {
+            "description": "Industry or sector the company operates in",
+            "type": "varchar(50)",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "website": {
+            "description": "Company's website URL",
+            "type": "varchar(255)",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "address": {
+            "description": "Street address of the company",
+            "type": "varchar(255)",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "city": {
+            "description": "City where the company is located",
+            "type": "varchar(50)",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "state_province": {
+            "description": "State or province where the company is located",
+            "type": "varchar(50)",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "postal_code": {
+            "description": "Postal code where the company is located",
+            "type": "varchar(20)",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "country": {
+            "description": "Country where the company is located",
+            "type": "varchar(50)",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "phone": {
+            "description": "Main phone number for the company",
+            "type": "varchar(20)",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "annual_revenue": {
+            "description": "Annual revenue of the company",
+            "type": "decimal(15,2)",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "employee_count": {
+            "description": "Number of employees at the company",
+            "type": "int(11)",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "created_date": {
+            "description": "Date and time when the company record was created",
+            "type": "timestamp",
+            "null": "NO",
+            "key": "",
+            "default": "CURRENT_TIMESTAMP",
+            "extra": ""
+          },
+          "updated_date": {
+            "description": "Date and time when the company record was last updated",
+            "type": "timestamp",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": "on update CURRENT_TIMESTAMP"
+          },
+          "owner_id": {
+            "description": "User ID of the CRM user who owns or manages this company account",
+            "type": "int(11)",
+            "null": "YES",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          }
+        },
+        "indexes": {
+          "PRIMARY": {
+            "columns": [
+              {
+                "name": "company_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "owner_id_index": {
+            "columns": [
+              {
+                "name": "owner_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          },
+          "name_index": {
+            "columns": [
+              {
+                "name": "name",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          }
+        },
+        "foreign_keys": {
+          "fk_companies_owner": {
+            "column": "owner_id",
+            "referenced_table": "users",
+            "referenced_column": "user_id"
+          }
+        }
+      },
+      "deals": {
+        "description": "Stores information about sales opportunities or deals being tracked in the CRM system.",
+        "columns": {
+          "deal_id": {
+            "description": "Unique identifier for each deal",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "PRI",
+            "default": null,
+            "extra": "auto_increment"
+          },
+          "name": {
+            "description": "Name or title of the deal",
+            "type": "varchar(100)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "amount": {
+            "description": "Monetary value of the deal",
+            "type": "decimal(15,2)",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "company_id": {
+            "description": "Foreign key to the companies table",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "primary_contact_id": {
+            "description": "Foreign key to the primary contact for this deal",
+            "type": "int(11)",
+            "null": "YES",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "stage_id": {
+            "description": "Foreign key to the pipeline stages table",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "owner_id": {
+            "description": "User ID of the CRM user who owns or manages this deal",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "probability": {
+            "description": "Likelihood of winning the deal as a percentage",
+            "type": "decimal(5,2)",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "expected_close_date": {
+            "description": "Expected date when the deal will close",
+            "type": "date",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "created_date": {
+            "description": "Date and time when the deal was created",
+            "type": "timestamp",
+            "null": "NO",
+            "key": "",
+            "default": "CURRENT_TIMESTAMP",
+            "extra": ""
+          },
+          "updated_date": {
+            "description": "Date and time when the deal was last updated",
+            "type": "timestamp",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": "on update CURRENT_TIMESTAMP"
+          },
+          "source": {
+            "description": "Source of the deal (referral, website, cold call, etc.)",
+            "type": "varchar(50)",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "description": {
+            "description": "Detailed description of the deal",
+            "type": "text",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          }
+        },
+        "indexes": {
+          "PRIMARY": {
+            "columns": [
+              {
+                "name": "deal_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "company_id_index": {
+            "columns": [
+              {
+                "name": "company_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          },
+          "primary_contact_id_index": {
+            "columns": [
+              {
+                "name": "primary_contact_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          },
+          "stage_id_index": {
+            "columns": [
+              {
+                "name": "stage_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          },
+          "owner_id_index": {
+            "columns": [
+              {
+                "name": "owner_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          }
+        },
+        "foreign_keys": {
+          "fk_deals_company": {
+            "column": "company_id",
+            "referenced_table": "companies",
+            "referenced_column": "company_id"
+          },
+          "fk_deals_contact": {
+            "column": "primary_contact_id",
+            "referenced_table": "contacts",
+            "referenced_column": "contact_id"
+          },
+          "fk_deals_stage": {
+            "column": "stage_id",
+            "referenced_table": "pipeline_stages",
+            "referenced_column": "stage_id"
+          },
+          "fk_deals_owner": {
+            "column": "owner_id",
+            "referenced_table": "users",
+            "referenced_column": "user_id"
+          }
+        }
+      },
+      "activities": {
+        "description": "Stores information about different types of activities (calls, emails, meetings, tasks) related to contacts, companies, or deals.",
+        "columns": {
+          "activity_id": {
+            "description": "Unique identifier for each activity",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "PRI",
+            "default": null,
+            "extra": "auto_increment"
+          },
+          "type": {
+            "description": "Type of activity (call, email, meeting, task)",
+            "type": "varchar(20)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "subject": {
+            "description": "Subject or title of the activity",
+            "type": "varchar(100)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "description": {
+            "description": "Detailed description of the activity",
+            "type": "text",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "scheduled_date": {
+            "description": "Date and time when the activity is scheduled",
+            "type": "datetime",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "duration": {
+            "description": "Duration of the activity in minutes",
+            "type": "int(11)",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "status": {
+            "description": "Status of the activity (planned, completed)",
+            "type": "varchar(20)",
+            "null": "NO",
+            "key": "",
+            "default": "planned",
+            "extra": ""
+          },
+          "contact_id": {
+            "description": "Foreign key to the contacts table",
+            "type": "int(11)",
+            "null": "YES",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "company_id": {
+            "description": "Foreign key to the companies table",
+            "type": "int(11)",
+            "null": "YES",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "deal_id": {
+            "description": "Foreign key to the deals table",
+            "type": "int(11)",
+            "null": "YES",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "owner_id": {
+            "description": "User ID of the CRM user who owns or manages this activity",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "created_date": {
+            "description": "Date and time when the activity was created",
+            "type": "timestamp",
+            "null": "NO",
+            "key": "",
+            "default": "CURRENT_TIMESTAMP",
+            "extra": ""
+          },
+          "completed_date": {
+            "description": "Date and time when the activity was completed",
+            "type": "datetime",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          }
+        },
+        "indexes": {
+          "PRIMARY": {
+            "columns": [
+              {
+                "name": "activity_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "contact_id_index": {
+            "columns": [
+              {
+                "name": "contact_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          },
+          "company_id_index": {
+            "columns": [
+              {
+                "name": "company_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          },
+          "deal_id_index": {
+            "columns": [
+              {
+                "name": "deal_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          },
+          "owner_id_index": {
+            "columns": [
+              {
+                "name": "owner_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          },
+          "scheduled_date_index": {
+            "columns": [
+              {
+                "name": "scheduled_date",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          }
+        },
+        "foreign_keys": {
+          "fk_activities_contact": {
+            "column": "contact_id",
+            "referenced_table": "contacts",
+            "referenced_column": "contact_id"
+          },
+          "fk_activities_company": {
+            "column": "company_id",
+            "referenced_table": "companies",
+            "referenced_column": "company_id"
+          },
+          "fk_activities_deal": {
+            "column": "deal_id",
+            "referenced_table": "deals",
+            "referenced_column": "deal_id"
+          },
+          "fk_activities_owner": {
+            "column": "owner_id",
+            "referenced_table": "users",
+            "referenced_column": "user_id"
+          }
+        }
+      },
+      "roles": {
+        "description": "Stores information about user roles and their permissions within the CRM system.",
+        "columns": {
+          "role_id": {
+            "description": "Unique identifier for each role",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "PRI",
+            "default": null,
+            "extra": "auto_increment"
+          },
+          "name": {
+            "description": "Name of the role",
+            "type": "varchar(50)",
+            "null": "NO",
+            "key": "UNI",
+            "default": null,
+            "extra": ""
+          },
+          "description": {
+            "description": "Detailed description of the role",
+            "type": "text",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "created_date": {
+            "description": "Date and time when the role was created",
+            "type": "timestamp",
+            "null": "NO",
+            "key": "",
+            "default": "CURRENT_TIMESTAMP",
+            "extra": ""
+          }
+        },
+        "indexes": {
+          "PRIMARY": {
+            "columns": [
+              {
+                "name": "role_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "name_unique": {
+            "columns": [
+              {
+                "name": "name",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          }
+        },
+        "foreign_keys": {}
+      },
+      "users": {
+        "description": "Stores information about CRM users who can log in and use the system.",
+        "columns": {
+          "user_id": {
+            "description": "Unique identifier for each user",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "PRI",
+            "default": null,
+            "extra": "auto_increment"
+          },
+          "first_name": {
+            "description": "User's first name",
+            "type": "varchar(50)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "last_name": {
+            "description": "User's last name",
+            "type": "varchar(50)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "email": {
+            "description": "User's email address, used for login",
+            "type": "varchar(100)",
+            "null": "NO",
+            "key": "UNI",
+            "default": null,
+            "extra": ""
+          },
+          "password_hash": {
+            "description": "Hashed password for user authentication",
+            "type": "varchar(255)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "role_id": {
+            "description": "Foreign key to the roles table",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "department": {
+            "description": "Department the user belongs to",
+            "type": "varchar(50)",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "phone": {
+            "description": "User's phone number",
+            "type": "varchar(20)",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "last_login_date": {
+            "description": "Date and time of the user's last login",
+            "type": "datetime",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "created_date": {
+            "description": "Date and time when the user account was created",
+            "type": "timestamp",
+            "null": "NO",
+            "key": "",
+            "default": "CURRENT_TIMESTAMP",
+            "extra": ""
+          },
+          "status": {
+            "description": "Status of the user account (active, inactive)",
+            "type": "varchar(20)",
+            "null": "NO",
+            "key": "",
+            "default": "active",
+            "extra": ""
+          }
+        },
+        "indexes": {
+          "PRIMARY": {
+            "columns": [
+              {
+                "name": "user_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "email_unique": {
+            "columns": [
+              {
+                "name": "email",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "role_id_index": {
+            "columns": [
+              {
+                "name": "role_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          }
+        },
+        "foreign_keys": {
+          "fk_users_role": {
+            "column": "role_id",
+            "referenced_table": "roles",
+            "referenced_column": "role_id"
+          }
+        }
+      },
+      "pipelines": {
+        "description": "Stores information about sales pipelines used to track deals through different stages.",
+        "columns": {
+          "pipeline_id": {
+            "description": "Unique identifier for each pipeline",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "PRI",
+            "default": null,
+            "extra": "auto_increment"
+          },
+          "name": {
+            "description": "Name of the pipeline",
+            "type": "varchar(50)",
+            "null": "NO",
+            "key": "UNI",
+            "default": null,
+            "extra": ""
+          },
+          "description": {
+            "description": "Detailed description of the pipeline",
+            "type": "text",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "is_active": {
+            "description": "Whether the pipeline is active",
+            "type": "tinyint(1)",
+            "null": "NO",
+            "key": "",
+            "default": "1",
+            "extra": ""
+          },
+          "created_date": {
+            "description": "Date and time when the pipeline was created",
+            "type": "timestamp",
+            "null": "NO",
+            "key": "",
+            "default": "CURRENT_TIMESTAMP",
+            "extra": ""
+          },
+          "updated_date": {
+            "description": "Date and time when the pipeline was last updated",
+            "type": "timestamp",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": "on update CURRENT_TIMESTAMP"
+          }
+        },
+        "indexes": {
+          "PRIMARY": {
+            "columns": [
+              {
+                "name": "pipeline_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "name_unique": {
+            "columns": [
+              {
+                "name": "name",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          }
+        },
+        "foreign_keys": {}
+      },
+      "pipeline_stages": {
+        "description": "Stores information about the stages in a sales pipeline.",
+        "columns": {
+          "stage_id": {
+            "description": "Unique identifier for each pipeline stage",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "PRI",
+            "default": null,
+            "extra": "auto_increment"
+          },
+          "name": {
+            "description": "Name of the pipeline stage",
+            "type": "varchar(50)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "description": {
+            "description": "Detailed description of the pipeline stage",
+            "type": "text",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "display_order": {
+            "description": "Order in which the stage appears in the pipeline",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "probability": {
+            "description": "Default probability percentage for deals in this stage",
+            "type": "decimal(5,2)",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "pipeline_id": {
+            "description": "Foreign key to the pipelines table",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          }
+        },
+        "indexes": {
+          "PRIMARY": {
+            "columns": [
+              {
+                "name": "stage_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "pipeline_id_index": {
+            "columns": [
+              {
+                "name": "pipeline_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          },
+          "display_order_index": {
+            "columns": [
+              {
+                "name": "pipeline_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              },
+              {
+                "name": "display_order",
+                "sub_part": null,
+                "seq_in_index": 2
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          }
+        },
+        "foreign_keys": {
+          "fk_stages_pipeline": {
+            "column": "pipeline_id",
+            "referenced_table": "pipelines",
+            "referenced_column": "pipeline_id"
+          }
+        }
+      },
+      "products": {
+        "description": "Stores information about products and services that can be sold to customers through deals.",
+        "columns": {
+          "product_id": {
+            "description": "Unique identifier for each product",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "PRI",
+            "default": null,
+            "extra": "auto_increment"
+          },
+          "name": {
+            "description": "Name of the product",
+            "type": "varchar(100)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "description": {
+            "description": "Detailed description of the product",
+            "type": "text",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "price": {
+            "description": "Standard price of the product",
+            "type": "decimal(15,2)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "category": {
+            "description": "Category or type of product",
+            "type": "varchar(50)",
+            "null": "YES",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "is_active": {
+            "description": "Whether the product is active and available for sale",
+            "type": "tinyint(1)",
+            "null": "NO",
+            "key": "",
+            "default": "1",
+            "extra": ""
+          },
+          "created_date": {
+            "description": "Date and time when the product was created",
+            "type": "timestamp",
+            "null": "NO",
+            "key": "",
+            "default": "CURRENT_TIMESTAMP",
+            "extra": ""
+          },
+          "updated_date": {
+            "description": "Date and time when the product was last updated",
+            "type": "timestamp",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": "on update CURRENT_TIMESTAMP"
+          }
+        },
+        "indexes": {
+          "PRIMARY": {
+            "columns": [
+              {
+                "name": "product_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "category_index": {
+            "columns": [
+              {
+                "name": "category",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          },
+          "name_index": {
+            "columns": [
+              {
+                "name": "name",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          }
+        },
+        "foreign_keys": {}
+      },
+      "deal_products": {
+        "description": "Junction table that associates products with deals, allowing multiple products to be added to a single deal with specific quantities and prices.",
+        "columns": {
+          "deal_product_id": {
+            "description": "Unique identifier for each deal-product association",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "PRI",
+            "default": null,
+            "extra": "auto_increment"
+          },
+          "deal_id": {
+            "description": "Foreign key to the deals table",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "product_id": {
+            "description": "Foreign key to the products table",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "quantity": {
+            "description": "Quantity of the product in the deal",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "",
+            "default": "1",
+            "extra": ""
+          },
+          "price": {
+            "description": "Price of the product for this specific deal (may differ from standard price)",
+            "type": "decimal(15,2)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "discount": {
+            "description": "Discount applied to the product in this deal (percentage)",
+            "type": "decimal(5,2)",
+            "null": "YES",
+            "key": "",
+            "default": "0.00",
+            "extra": ""
+          }
+        },
+        "indexes": {
+          "PRIMARY": {
+            "columns": [
+              {
+                "name": "deal_product_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "deal_id_index": {
+            "columns": [
+              {
+                "name": "deal_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          },
+          "product_id_index": {
+            "columns": [
+              {
+                "name": "product_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          },
+          "deal_product_unique": {
+            "columns": [
+              {
+                "name": "deal_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              },
+              {
+                "name": "product_id",
+                "sub_part": null,
+                "seq_in_index": 2
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          }
+        },
+        "foreign_keys": {
+          "fk_dealproducts_deal": {
+            "column": "deal_id",
+            "referenced_table": "deals",
+            "referenced_column": "deal_id"
+          },
+          "fk_dealproducts_product": {
+            "column": "product_id",
+            "referenced_table": "products",
+            "referenced_column": "product_id"
+          }
+        }
+      },
+      "notes": {
+        "description": "Stores text notes that users can add to contacts, companies, or deals to track important information and interactions.",
+        "columns": {
+          "note_id": {
+            "description": "Unique identifier for each note",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "PRI",
+            "default": null,
+            "extra": "auto_increment"
+          },
+          "content": {
+            "description": "The text content of the note",
+            "type": "text",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "contact_id": {
+            "description": "Foreign key to the contacts table if the note is related to a contact",
+            "type": "int(11)",
+            "null": "YES",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "company_id": {
+            "description": "Foreign key to the companies table if the note is related to a company",
+            "type": "int(11)",
+            "null": "YES",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "deal_id": {
+            "description": "Foreign key to the deals table if the note is related to a deal",
+            "type": "int(11)",
+            "null": "YES",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "created_by": {
+            "description": "Foreign key to the users table indicating who created the note",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "created_date": {
+            "description": "Date and time when the note was created",
+            "type": "timestamp",
+            "null": "NO",
+            "key": "",
+            "default": "CURRENT_TIMESTAMP",
+            "extra": ""
+          }
+        },
+        "indexes": {
+          "PRIMARY": {
+            "columns": [
+              {
+                "name": "note_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "contact_id_index": {
+            "columns": [
+              {
+                "name": "contact_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          },
+          "company_id_index": {
+            "columns": [
+              {
+                "name": "company_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          },
+          "deal_id_index": {
+            "columns": [
+              {
+                "name": "deal_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          },
+          "created_by_index": {
+            "columns": [
+              {
+                "name": "created_by",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          }
+        },
+        "foreign_keys": {
+          "fk_notes_contact": {
+            "column": "contact_id",
+            "referenced_table": "contacts",
+            "referenced_column": "contact_id"
+          },
+          "fk_notes_company": {
+            "column": "company_id",
+            "referenced_table": "companies",
+            "referenced_column": "company_id"
+          },
+          "fk_notes_deal": {
+            "column": "deal_id",
+            "referenced_table": "deals",
+            "referenced_column": "deal_id"
+          },
+          "fk_notes_user": {
+            "column": "created_by",
+            "referenced_table": "users",
+            "referenced_column": "user_id"
+          }
+        }
+      },
+      "documents": {
+        "description": "Stores information about files and documents that can be attached to contacts, companies, or deals.",
+        "columns": {
+          "document_id": {
+            "description": "Unique identifier for each document",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "PRI",
+            "default": null,
+            "extra": "auto_increment"
+          },
+          "name": {
+            "description": "Name or title of the document",
+            "type": "varchar(100)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "file_path": {
+            "description": "Path to the file on the server or storage system",
+            "type": "varchar(255)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "file_type": {
+            "description": "MIME type or extension of the file",
+            "type": "varchar(50)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "file_size": {
+            "description": "Size of the file in bytes",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "uploaded_by": {
+            "description": "Foreign key to the users table indicating who uploaded the document",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "upload_date": {
+            "description": "Date and time when the document was uploaded",
+            "type": "timestamp",
+            "null": "NO",
+            "key": "",
+            "default": "CURRENT_TIMESTAMP",
+            "extra": ""
+          },
+          "contact_id": {
+            "description": "Foreign key to the contacts table if the document is related to a contact",
+            "type": "int(11)",
+            "null": "YES",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "company_id": {
+            "description": "Foreign key to the companies table if the document is related to a company",
+            "type": "int(11)",
+            "null": "YES",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "deal_id": {
+            "description": "Foreign key to the deals table if the document is related to a deal",
+            "type": "int(11)",
+            "null": "YES",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          }
+        },
+        "indexes": {
+          "PRIMARY": {
+            "columns": [
+              {
+                "name": "document_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "uploaded_by_index": {
+            "columns": [
+              {
+                "name": "uploaded_by",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          },
+          "contact_id_index": {
+            "columns": [
+              {
+                "name": "contact_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          },
+          "company_id_index": {
+            "columns": [
+              {
+                "name": "company_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          },
+          "deal_id_index": {
+            "columns": [
+              {
+                "name": "deal_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          }
+        },
+        "foreign_keys": {
+          "fk_documents_user": {
+            "column": "uploaded_by",
+            "referenced_table": "users",
+            "referenced_column": "user_id"
+          },
+          "fk_documents_contact": {
+            "column": "contact_id",
+            "referenced_table": "contacts",
+            "referenced_column": "contact_id"
+          },
+          "fk_documents_company": {
+            "column": "company_id",
+            "referenced_table": "companies",
+            "referenced_column": "company_id"
+          },
+          "fk_documents_deal": {
+            "column": "deal_id",
+            "referenced_table": "deals",
+            "referenced_column": "deal_id"
+          }
+        }
+      },
+      "email_templates": {
+        "description": "Stores reusable email templates that users can use to send standardized communications to contacts.",
+        "columns": {
+          "template_id": {
+            "description": "Unique identifier for each email template",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "PRI",
+            "default": null,
+            "extra": "auto_increment"
+          },
+          "name": {
+            "description": "Name or title of the email template",
+            "type": "varchar(100)",
+            "null": "NO",
+            "key": "UNI",
+            "default": null,
+            "extra": ""
+          },
+          "subject": {
+            "description": "Subject line of the email template",
+            "type": "varchar(255)",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "body": {
+            "description": "HTML or text content of the email template",
+            "type": "text",
+            "null": "NO",
+            "key": "",
+            "default": null,
+            "extra": ""
+          },
+          "created_by": {
+            "description": "Foreign key to the users table indicating who created the template",
+            "type": "int(11)",
+            "null": "NO",
+            "key": "MUL",
+            "default": null,
+            "extra": ""
+          },
+          "created_date": {
+            "description": "Date and time when the template was created",
+            "type": "timestamp",
+            "null": "NO",
+            "key": "",
+            "default": "CURRENT_TIMESTAMP",
+            "extra": ""
+          },
+          "last_modified_date": {
+            "description": "Date and time when the template was last modified",
+            "type": "timestamp",
+            "null": "YES",
+            "key": "",
+            "default": null,
+            "extra": "on update CURRENT_TIMESTAMP"
+          },
+          "is_active": {
+            "description": "Whether the template is active and available for use",
+            "type": "tinyint(1)",
+            "null": "NO",
+            "key": "",
+            "default": "1",
+            "extra": ""
+          }
+        },
+        "indexes": {
+          "PRIMARY": {
+            "columns": [
+              {
+                "name": "template_id",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "name_unique": {
+            "columns": [
+              {
+                "name": "name",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": true,
+            "type": "BTREE"
+          },
+          "created_by_index": {
+            "columns": [
+              {
+                "name": "created_by",
+                "sub_part": null,
+                "seq_in_index": 1
+              }
+            ],
+            "unique": false,
+            "type": "BTREE"
+          }
+        },
+        "foreign_keys": {
+          "fk_templates_user": {
+            "column": "created_by",
+            "referenced_table": "users",
+            "referenced_column": "user_id"
+          }
+        }
+      }
+    }
+}

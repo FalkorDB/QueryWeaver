@@ -113,7 +113,7 @@ def query(graph_id: str):
         yield json.dumps(step) + MESSAGE_DELIMITER
 
         # SQL generation
-        step = {"type": "reasoning_step", 
+        step = {"type": "reasoning_step",
                 "message": "Generating SQL query from the user query and extracted schema"}
         yield json.dumps(step) + MESSAGE_DELIMITER
 
