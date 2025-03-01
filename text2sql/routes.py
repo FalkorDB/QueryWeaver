@@ -1,10 +1,13 @@
 """ This module contains the routes for the text2sql API. """
-from flask import Blueprint, jsonify, render_template, request
+import json
+from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context
 from litellm import completion
 from text2sql.config import Config
 from text2sql.graph import find, load_json_graph, load_xml_graph
 from text2sql.extensions import db
 
+# Use the same delimiter as in the JavaScript
+MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||'
 
 main = Blueprint("main", __name__)
 
@@ -40,9 +43,9 @@ def load(graph_id: str):
     if success:
         return jsonify({"message": result, "graph_id": graph_id})
 
-    return jsonify({"error": result}), 400
+    yield jsonify({"error": result}).get_data(as_text=True)
 
-@main.route("/graph/<string:graph_id>", methods=["GET"])
+@main.route("/graphs/<string:graph_id>", methods=["GET"])
 def query(graph_id: str):
     """
     text2sql
@@ -51,25 +54,45 @@ def query(graph_id: str):
     if not q:
         return jsonify({"error": "Missing query parameter 'q'"}), 400
 
-    success, result = find(graph_id, q)
-    if not success:
-        return jsonify({"error": result}), 400
+    # Create a generator function for streaming
+    def generate():
 
-    completion_result = completion(model=Config.COMPLETION_MODEL,
-                            messages=[
-                                {
-                                    "content": Config.Text_To_SQL_PROMPT,
-                                    "role": "system"
-                                },
-                                {
-                                    "content": q,
-                                    "role": "user"
-                                }
-                            ]
-                        )
-    
-    return jsonify(completion_result.choices[0].message.content)
+        step = {"type": "reasoning_step", "message": "Extracting relevant tables from schema..."}
+        yield json.dumps(step) + MESSAGE_DELIMITER
 
+        success, result = find(graph_id, q)
+        if not success:
+            return jsonify({"error": result}), 400
+
+        # Extract table names and descriptions
+        table_info = json.dumps([(table[0], table[1]) for table in result])
+
+        step = {"type": "reasoning_step",
+                "message": f"This is the list of tables extracted: {table_info}"}
+
+        yield json.dumps(step) + MESSAGE_DELIMITER
+
+        # SQL generation
+        step = {"type": "reasoning_step", 
+                "message": "Generating SQL query from the user query and extracted schema"}
+        yield json.dumps(step) + MESSAGE_DELIMITER
+
+        completion_result = completion(model=Config.COMPLETION_MODEL,
+                                messages=[
+                                    {
+                                        "content": Config.Text_To_SQL_PROMPT,
+                                        "role": "system"
+                                    },
+                                    {
+                                        "content": q,
+                                        "role": "user"
+                                    }
+                                ]
+                            )
+
+        yield json.dumps({"type": "final_result", "data": completion_result.choices[0].message.content}) + MESSAGE_DELIMITER
+
+    return Response(stream_with_context(generate()), content_type='application/json')
 
 def init_routes(app):
     """
