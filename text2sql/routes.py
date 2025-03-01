@@ -23,27 +23,67 @@ def graphs():
     """
     return db.list_graphs()
 
-@main.route("/graphs/<string:graph_id>", methods=["POST"])
-def load(graph_id: str):
+@main.route("/graphs", methods=["POST"])
+def load():
     """
     This route is used to load the graph data into the database.
-    It gets the Graph name as an argument and expects
-    a JSON payload with the following structure: txt2sql/schema_schema.json
+    It expects either:
+    - A JSON payload (application/json)
+    - A File upload (multipart/form-data)
+    - An XML payload (application/xml or text/xml)
     """
-    success, result = False, "Invalid content type"
-    content_type = request.content_type
 
-    if 'application/json' in content_type:
+    content_type = request.content_type
+    success, result = False, "Invalid content type"
+    graph_id = ""
+
+    # ✅ Handle JSON Payload
+    if content_type.startswith("application/json"):
         data = request.get_json()
+        if not data or "database" not in data:
+            return jsonify({"error": "Invalid JSON data"}), 400
+
+        graph_id = data["database"]
         success, result = load_json_graph(graph_id, data)
-    elif 'application/xml' in content_type or 'text/xml' in content_type:
+
+    # ✅ Handle XML Payload
+    elif content_type.startswith("application/xml") or content_type.startswith("text/xml"):
         xml_data = request.data
+        graph_id = ""
         success, result = load_xml_graph(graph_id, xml_data)
 
+    # ✅ Handle File Upload (FormData with JSON/XML)
+    elif content_type.startswith("multipart/form-data"):
+        if "file" not in request.files:
+            return jsonify({"error": "No file uploaded"}), 400
+
+        file = request.files["file"]
+        if file.filename == "":
+            return jsonify({"error": "Empty file"}), 400
+
+        # ✅ Check if file is JSON
+        if file.filename.endswith(".json"):
+            try:
+                data = json.load(file)
+                graph_id = data.get("database", "")
+                success, result = load_json_graph(graph_id, data)
+            except json.JSONDecodeError:
+                return jsonify({"error": "Invalid JSON file"}), 400
+
+        # ✅ Check if file is XML
+        elif file.filename.endswith(".xml"):
+            xml_data = file.read().decode("utf-8")  # Convert bytes to string
+            graph_id = ""
+            success, result = load_xml_graph(graph_id, xml_data)
+
+    else:
+        return jsonify({"error": "Unsupported Content-Type"}), 415
+
+    # ✅ Return the final response
     if success:
         return jsonify({"message": result, "graph_id": graph_id})
 
-    yield jsonify({"error": result}).get_data(as_text=True)
+    return jsonify({"error": result}), 400
 
 @main.route("/graphs/<string:graph_id>", methods=["GET"])
 def query(graph_id: str):

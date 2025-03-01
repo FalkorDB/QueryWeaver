@@ -29,48 +29,48 @@ initChat();
 async function sendMessage() {
     const message = messageInput.value.trim();
     if (!message) return;
-    
+
     // Cancel any ongoing request
     if (currentRequestController) {
         currentRequestController.abort();
     }
-    
+
     // Add user message to chat
     addMessage(message, true);
     messageInput.value = '';
-    
+
     // Show typing indicator
     typingIndicator.style.display = 'block';
-    
+
     try {
         const selectedValue = document.getElementById("graph-select").value;
-        
+
         // Create an AbortController for this request
         currentRequestController = new AbortController();
-        
+
         // Use fetch with streaming response (GET method)
         const response = await fetch('/graphs/' + selectedValue + '?q=' + encodeURIComponent(message), {
             method: 'GET',
             signal: currentRequestController.signal
         });
-        
+
         // Check if the response is ok
         if (!response.ok) {
             throw new Error(`Server responded with ${response.status}`);
         }
-        
+
         // Get the reader from the response body stream
         const reader = response.body.getReader();
         let decoder = new TextDecoder();
         let buffer = '';
-        
+
         // Hide typing indicator once we start receiving data
         typingIndicator.style.display = 'none';
-        
+
         // Process the stream
         while (true) {
             const { done, value } = await reader.read();
-            
+
             if (done) {
                 // Process any remaining data in the buffer
                 if (buffer.trim()) {
@@ -84,23 +84,23 @@ async function sendMessage() {
                 }
                 break;
             }
-            
+
             // Decode the chunk and add it to our buffer
             const chunk = decoder.decode(value, { stream: true });
             buffer += chunk;
-            
+
             // Process complete message objects from the buffer using custom delimiter
             let delimiterIndex;
             while ((delimiterIndex = buffer.indexOf(MESSAGE_DELIMITER)) !== -1) {
                 const message = buffer.slice(0, delimiterIndex).trim();
                 buffer = buffer.slice(delimiterIndex + MESSAGE_DELIMITER.length);
-                
+
                 if (!message) continue; // Skip empty messages
-                
+
                 try {
                     // Try to parse as JSON
                     const step = JSON.parse(message);
-                    
+
                     // Handle different types of messages from server
                     if (step.type === 'reasoning_step') {
                         addMessage(step.message, false);
@@ -121,9 +121,9 @@ async function sendMessage() {
                 }
             }
         }
-        
+
         currentRequestController = null;
-        
+
     } catch (error) {
         if (error.name === 'AbortError') {
             console.log('Request was aborted');
@@ -147,7 +147,7 @@ messageInput.addEventListener('keypress', (e) => {
 document.addEventListener("DOMContentLoaded", function () {
     const chatMessages = document.getElementById("chat-messages");
     const graphSelect = document.getElementById("graph-select");
-    
+
     fetch("/graphs")
         .then(response => response.json())
         .then(data => {
@@ -159,9 +159,39 @@ document.addEventListener("DOMContentLoaded", function () {
                 graphSelect.appendChild(option);
             });
         })
-        .catch(error => console.error("Error fetching graphs:", error));
-    
+        .catch(error => {
+            console.error("Error fetching graphs:", error);
+            addMessage("Sorry, there was an error fetching the available graphs: " + error.message, false);
+        });
+
     graphSelect.addEventListener("change", function () {
         initChat();
+    });
+});
+
+// Add file upload functionality
+document.getElementById('upload-button').addEventListener('click', function () {
+    document.getElementById('file-upload').click();
+});
+
+document.getElementById('file-upload').addEventListener('change', function (e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // document.getElementById('file-name').textContent = file.name;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    fetch('/graphs', {
+        method: 'POST',
+        body: formData, // ✅ Correct, no need to set Content-Type manually
+    }).then(response => {
+        response.json()
+    }).then(data => {
+        console.log('File uploaded successfully', data);
+    }).catch(error => {
+        console.error('Error uploading file:', error);
+        addMessage('Sorry, there was an error uploading your file: ' + error.message, false);
     });
 });

@@ -173,8 +173,8 @@ body {
 }
 
 .dropdown-container {
-  margin-top: 10px;
   text-align: center;
+  margin-top: 10px;
 }
 
 .dropdown-container label {
@@ -204,4 +204,27 @@ body {
 #graph-select:focus {
   outline: none;
   border-color: var(--falkor-primary);
+}
+
+.file-upload {
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  margin-top: 10px;
+}
+
+.file-upload-btn {
+  padding: 8px 12px;
+  background: var(--falkor-primary);
+  color: #102030;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.file-upload-btn:hover {
+  background: var(--falkor-accent);
 }

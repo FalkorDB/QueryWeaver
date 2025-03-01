@@ -1,21 +1,31 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chatbot Interface</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
 </head>
-<body>    
+
+<body>
     <div class="chat-container">
         <div class="chat-header">
             <h1>Chat My Database</h1>
-            <div class="dropdown-container">
-                <label for="graph-select">Select Database:</label>
-                <select id="graph-select">
-                    <option value="">Loading...</option>
-                </select>
-            </div>
+            <!-- <div class="header-controls"> -->
+                <div class="dropdown-container">
+                    <label for="graph-select">Select Database:</label>
+                    <select id="graph-select">
+                        <option value="">Loading...</option>
+                    </select>
+                </div>
+
+                <div class="file-upload">
+                    <input type="file" id="file-upload" style="display: none;">
+                    <button class="file-upload-btn" id="upload-button">Upload Schema</button>
+                    <!-- <span class="file-name" id="file-name"></span> -->
+                </div>
+            <!-- </div> -->
         </div>
         <div class="chat-messages" id="chat-messages">
         </div>
@@ -28,4 +38,5 @@
 
     <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
 </body>
+
 </html>
