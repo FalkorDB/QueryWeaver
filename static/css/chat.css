@@ -27,6 +27,12 @@ body {
   color: var(--text-primary);
 }
 
+
+.logo {
+  height: 40px;
+  width: auto;
+}
+
 .chat-container {
   width: 90%;
   max-width: 800px;
