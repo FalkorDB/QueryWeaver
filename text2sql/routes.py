@@ -3,8 +3,11 @@ import json
 from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context
 from litellm import completion
 from text2sql.config import Config
-from text2sql.graph import find, load_json_graph, load_xml_graph
+from text2sql.graph import find
 from text2sql.extensions import db
+from text2sql.loaders.csv_loader import CSVLoader
+from text2sql.loaders.json_loader import JSONLoader
+from text2sql.loaders.odata_loader import ODataLoader
 
 # Use the same delimiter as in the JavaScript
 MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||'
@@ -44,13 +47,19 @@ def load():
             return jsonify({"error": "Invalid JSON data"}), 400
 
         graph_id = data["database"]
-        success, result = load_json_graph(graph_id, data)
+        success, result = JSONLoader.load(graph_id, data)
 
     # ✅ Handle XML Payload
     elif content_type.startswith("application/xml") or content_type.startswith("text/xml"):
         xml_data = request.data
         graph_id = ""
-        success, result = load_xml_graph(graph_id, xml_data)
+        success, result = ODataLoader.load(graph_id, xml_data)
+
+    # ✅ Handle CSV Payload
+    elif content_type.startswith("text/csv"):
+        csv_data = request.data
+        graph_id = ""
+        success, result = CSVLoader.load(graph_id, csv_data)
 
     # ✅ Handle File Upload (FormData with JSON/XML)
     elif content_type.startswith("multipart/form-data"):
@@ -66,16 +75,24 @@ def load():
             try:
                 data = json.load(file)
                 graph_id = data.get("database", "")
-                success, result = load_json_graph(graph_id, data)
+                success, result = JSONLoader.load(graph_id, data)
             except json.JSONDecodeError:
                 return jsonify({"error": "Invalid JSON file"}), 400
 
         # ✅ Check if file is XML
         elif file.filename.endswith(".xml"):
             xml_data = file.read().decode("utf-8")  # Convert bytes to string
-            graph_id = ""
-            success, result = load_xml_graph(graph_id, xml_data)
-
+            graph_id = file.filename.replace(".xml", "")
+            success, result = ODataLoader.load(graph_id, xml_data)
+            
+        # ✅ Check if file is csv
+        elif file.filename.endswith(".csv"):
+            csv_data = file.read().decode("utf-8")  # Convert bytes to string
+            graph_id = file.filename.replace(".csv", "")
+            success, result = CSVLoader.load(graph_id, csv_data)
+            
+        else:
+            return jsonify({"error": "Unsupported file type"}), 415
     else:
         return jsonify({"error": "Unsupported Content-Type"}), 415
 

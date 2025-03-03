@@ -1,0 +1,166 @@
+from typing import Tuple
+import json
+import tqdm
+from jsonschema import ValidationError, validate
+from litellm import embedding
+from text2sql.config import Config
+from text2sql.loaders.base_loadr import BaseLoader
+from text2sql.extensions import db
+
+
+try:
+    with open(Config.SCHEMA_PATH, 'r', encoding='utf-8') as f:
+        schema = json.load(f)
+except FileNotFoundError as exc:
+    raise FileNotFoundError(f"Schema file not found: {Config.SCHEMA_PATH}") from exc
+except json.JSONDecodeError as exc:
+    raise ValueError(f"Invalid schema JSON: {str(exc)}") from exc
+
+class JSONLoader(BaseLoader):
+
+    @staticmethod
+    def load(graph_id: str, data) -> Tuple[bool, str]:
+        """
+        Load the graph data into the database.
+        It gets the Graph name as an argument and expects
+        a JSON payload with the following structure: txt2sql/schema_schema.json
+        """
+
+        # Validate the JSON with the schema should return a bad request if the payload is not valid
+        try:
+            validate(data, schema)
+        except ValidationError as exc:
+            return False, str(exc)
+
+        graph = db.select_graph(graph_id)
+
+        graph.query("""
+                    CREATE VECTOR INDEX FOR (t:Table) ON (t.embedding) 
+                    OPTIONS {dimension:768, similarityFunction:'euclidean'}
+                    """)
+
+        graph.query("""
+                CREATE VECTOR INDEX FOR (c:Column) ON (c.embedding) 
+                OPTIONS {dimension:768, similarityFunction:'euclidean'}
+                """)
+
+        # Create Table nodes and their relationships
+        for table_name, table_info in tqdm.tqdm(data['tables'].items(), "Create Table nodes and their relationships"):
+            # Create table node and connect to database
+            embedding_result = embedding(
+                model=Config.EMBEDDING_MODEL,
+                input=[table_info['description']]
+            )
+
+            graph.query(
+                """
+                CREATE (t:Table {
+                    name: $table_name, 
+                    description: $description, 
+                    embedding: vecf32($embedding)
+                })
+                """,
+                {
+                    'table_name': table_name,
+                    'description': table_info['description'],
+                    'embedding': embedding_result.data[0].embedding
+                }
+            )
+
+            # Create Column nodes
+            for col_name, col_info in tqdm.tqdm(table_info['columns'].items(), "Create Column nodes"):
+
+                embedding_result = embedding(
+                    model=Config.EMBEDDING_MODEL,
+                    input=[col_info['description']]
+                )
+
+                graph.query(
+                    """
+                    MATCH (t:Table {name: $table_name})
+                    CREATE (c:Column {
+                        name: $col_name,
+                        type: $type,
+                        nullable: $nullable,
+                        key_type: $key,
+                        default_value: $default,
+                        extra: $extra,
+                        description: $description,
+                        embedding: vecf32($embedding)
+                    })-[:BELONGS_TO]->(t)
+                    """,
+                    {
+                        'table_name': table_name,
+                        'col_name': col_name,
+                        'type': col_info['type'],
+                        'nullable': col_info['null'],
+                        'key': col_info['key'],
+                        'default': str(col_info['default']) if col_info['default'] is not None else '',
+                        'extra': col_info['extra'],
+                        'description': col_info['description'],
+                        'embedding': embedding_result.data[0].embedding
+                    }
+                )
+
+            # Create Index nodes
+            for idx_name, idx_info in tqdm.tqdm(table_info['indexes'].items(), "Create Index nodes"):
+                # Create index node
+                graph.query(
+                    """
+                    MATCH (t:Table {name: $table_name})
+                    CREATE (i:Index {
+                        name: $idx_name,
+                        unique: $unique,
+                        type: $idx_type
+                    })-[:BELONGS_TO]->(t)
+                    """,
+                    {
+                        'table_name': table_name,
+                        'idx_name': idx_name,
+                        'unique': idx_info['unique'],
+                        'idx_type': idx_info['type']
+                    }
+                )
+
+                # Connect index to its columns
+                for col in tqdm.tqdm(idx_info['columns'], "Connect index to its columns"):
+                    graph.query(
+                        """
+                        MATCH (i:Index {name: $idx_name})-[:BELONGS_TO]->(t:Table {name: $table_name})
+                        MATCH (c:Column {name: $col_name})-[:BELONGS_TO]->(t)
+                        CREATE (i)-[:INCLUDES {
+                            sequence: $seq,
+                            sub_part: $sub_part
+                        }]->(c)
+                        """,
+                        {
+                            'idx_name': idx_name,
+                            'table_name': table_name,
+                            'col_name': col['name'],
+                            'seq': col['seq_in_index'],
+                            'sub_part': col['sub_part'] if col['sub_part'] is not None else ''
+                        }
+                    )
+
+            # Create Foreign Key relationships
+            for fk_name, fk_info in tqdm.tqdm(table_info['foreign_keys'].items(), "Create Foreign Key relationships"):
+                graph.query(
+                    """
+                    MATCH (src:Column {name: $source_col})
+                        -[:BELONGS_TO]->(source:Table {name: $source_table}
+                    )
+                    MATCH (tgt:Column {name: $target_col})
+                        -[:BELONGS_TO]->(target:Table {name: $target_table}
+                    )
+                    CREATE (src)-[:REFERENCES {constraint_name: $fk_name}]->(tgt)
+                    """,
+                    {
+                        'source_col': fk_info['column'],
+                        'source_table': table_name,
+                        'target_col': fk_info['referenced_column'],
+                        'target_table': fk_info['referenced_table'],
+                        'fk_name': fk_name
+                    }
+                )
+
+        return True, "Graph loaded successfully"
