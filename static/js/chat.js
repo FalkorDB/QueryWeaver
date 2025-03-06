@@ -10,7 +10,13 @@ const MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||';
 
 function addMessage(message, isUser = false) {
     const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
+    if(isUser) {
+        messageDiv.className = `message 'user-message'`
+        history.push(message);
+    } else {
+        messageDiv.className = `message 'bot-message'`;
+    }
+    ;
 
     const block = formatBlock(message)
     if (block) {
@@ -21,7 +27,7 @@ function addMessage(message, isUser = false) {
     else {
         messageDiv.textContent = message;
     }
-    history.push(message);
+
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
     return messageDiv;

@@ -141,7 +141,10 @@ def query(graph_id: str):
                                         "role": "system"
                                     },
                                     {
-                                        "content": q,
+                                        "content": json.dumps( {
+                                            "schema": table_info,
+                                            "user_query": q
+                                        }),
                                         "role": "user"
                                     }
                                 ]
