@@ -74,35 +74,16 @@ def _find_tables(graph, descriptions: List[TableDescription]) -> List[dict]:
                         3,
                         vecf32($embedding)
                     ) YIELD node, score
-                    MATCH (node)-[:BELONGS_TO]-(column)-[:REFERENCES]-(column_ref)-[:BELONGS_TO]-(table_ref)
-                    RETURN [
-                        {
-                            name: node.name,
-                            description: node.description,
-                            columns: collect({
-                            columnName: column.name,
-                            description: column.description,
-                            type: column.type,
-                            null: column.null,
-                            key: column.key,
-                            default: column.default,
-                            extra: column.extra
-                            })
-                        },
-                        {
-                            name: table_ref.name,
-                            description: table_ref.description,
-                            columns: collect({
-                            columnName: column_ref.name,
-                            description: column_ref.description,
-                            type: column_ref.type,
-                            null: column_ref.null,
-                            key: column_ref.key,
-                            default: column_ref.default,
-                            extra: column_ref.extra
-                            })
-                        }
-                    ] AS tables
+                    MATCH (node)-[:BELONGS_TO]-(columns)
+                    RETURN node.name, node.description, collect({
+                        columnName: columns.name,
+                        description: columns.description,
+                        type: columns.type,
+                        null: columns.null,
+                        key: columns.key,
+                        default: columns.default,
+                        extra: columns.extra
+                    })
                     """,
                     {
                         'embedding': embedding_result.data[0].embedding
@@ -128,7 +109,10 @@ def _find_tables_by_columns(graph, descriptions: List[ColumnDescription]) -> Lis
                         vecf32($embedding)
                     ) YIELD node, score
                     MATCH (node)-[:BELONGS_TO]-(table)-[:BELONGS_TO]-(columns)
-                    RETURN table.name, table.description, collect({
+                    RETURN 
+                    table.name, 
+                    table.description, 
+                    collect({
                         columnName: columns.name,
                         description: columns.description,
                         type: columns.type,

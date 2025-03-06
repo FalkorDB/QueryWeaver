@@ -108,38 +108,36 @@ class CSVLoader(BaseLoader):
                 
                 # Generate embedding for table description
                 table_desc = table_info['description']
-                # embedding_result = embedding(
-                #     model=Config.EMBEDDING_MODEL,
-                #     input=[table_desc if table_desc else table_name]
-                # )
-                
-                                        # embedding: vecf32($embedding)
+                embedding_result = embedding(
+                    model=Config.EMBEDDING_MODEL,
+                    input=[table_desc if table_desc else table_name]
+                )
 
                 # Create table node
                 graph.query(
                     """
                     CREATE (t:Table {
                         name: $table_name, 
-                        description: $description
+                        description: $description,
+                        embedding: vecf32($embedding)
                     })
                     """,
                     {
                         'table_name': table_name,
                         'description': table_desc,
-                        # 'embedding': embedding_result.data[0].embedding
+                        'embedding': embedding_result.data[0].embedding
                     }
                 )
                 
                 # Create column nodes
                 for col_name, col_info in tqdm.tqdm(table_info['columns'].items(), desc=f"Creating columns for {table_name}"):
-                    # embedding_result = embedding(
-                    #     model=Config.EMBEDDING_MODEL,
-                    #     input=[col_info['description'] if col_info['description'] else col_name]
-                    # )
+                    embedding_result = embedding(
+                        model=Config.EMBEDDING_MODEL,
+                        input=[col_info['description'] if col_info['description'] else col_name]
+                    )
                     
                     
-                    #                              # embedding: vecf32($embedding)
-
+                    #                              # 
                     graph.query(
                         """
                         MATCH (t:Table {name: $table_name})
@@ -150,7 +148,8 @@ class CSVLoader(BaseLoader):
                             key_type: $key,
                             default_value: $default,
                             extra: $extra,
-                            description: $description
+                            description: $description,
+                            embedding: vecf32($embedding)
                         })-[:BELONGS_TO]->(t)
                         """,
                         {
@@ -162,7 +161,7 @@ class CSVLoader(BaseLoader):
                             'default': col_info['default'],
                             'extra': col_info['extra'],
                             'description': col_info['description'],
-                            # 'embedding': embedding_result.data[0].embedding
+                            'embedding': embedding_result.data[0].embedding
                         }
                     )
             
