@@ -11,11 +11,33 @@ const MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||';
 function addMessage(message, isUser = false) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
-    messageDiv.textContent = message;
+
+    const block = formatBlock(message)
+    if (block) {
+        block.forEach(lineDiv => {
+            messageDiv.appendChild(lineDiv);
+        });
+    }
+    else {
+        messageDiv.textContent = message;
+    }
     history.push(message);
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
     return messageDiv;
+}
+
+function formatBlock(text) {
+    
+    if (text.startsWith('"```sql') && text.endsWith('```"')) {
+        const sql = text.slice(7, -4).trim();
+        return sql.split('\\n').map((line, i) => {
+            const lineDiv = document.createElement('div');
+            lineDiv.className = 'sql-line';
+            lineDiv.textContent = line;
+            return lineDiv;
+        });
+    }
 }
 
 function initChat() {
