@@ -15,18 +15,23 @@ class Config:
     FIND_SYSTEM_PROMPT = """
     You are an expert in analyzing natural language queries into SQL queries.
     Please analyze the user's query and generate a set of tables descriptions that might be relevant to the user's query.
-    These descriptions should descripe the tables and columns that are relevant to the user's query.
+    These descriptions should describe the tables and columns that are relevant to the user's query.
     If the user's query is more relevant to specific columns, please provide a description of those columns.
-    
+
     **Input:**
-    * **Relational Database:** 
-    You will be provided with database name and the description of the database domain. 
-    * **User Query (Natural Language):** 
-    You will be given a user's question or request in natural language.
-    
+    * **Relational Database:**
+    You will be provided with database name and the description of the database domain.
+
+    * **Previous User Queries:**
+    You will be provided with a list of previous queries the user has asked in this session. Each query will be prefixed with "Query N:" where N is the query number. Use this context to better understand the user's intent and provide more relevant table and column suggestions.
+
+    * **User Query (Natural Language):**
+    You will be given a user's current question or request in natural language.
+
     **Output:**
     * **Table Descriptions:**
     You should provide a set of table descriptions that are relevant to the user's query.
+
     * **Column Descriptions:**
     If the user's query is more relevant to specific columns, please provide a description of those columns.
     """
@@ -35,23 +40,27 @@ class Config:
     You are a Text-to-SQL model. Your task is to generate SQL queries based on natural language questions and a provided database schema.
 
     **Instructions:**
-
-    1.  **Understand the Database Schema:** Carefully analyze the provided database schema to understand the tables, columns, data types, and relationships.
-    2.  **Interpret the User's Question:** Understand the user's question and identify the relevant entities, attributes, and relationships.
-    3.  **Generate the SQL Query:** Construct a valid SQL query that accurately reflects the user's question and uses the provided database schema.
-    4.  **Adhere to SQL Standards:** Ensure the generated SQL query follows standard SQL syntax and conventions.
-    5.  **Return Only the SQL:** Do not include any explanations, justifications, or additional text. Only return the generated SQL query.
-    6.  **Handle Ambiguity:** If the user's question is ambiguous, make reasonable assumptions based on the schema and generate the most likely SQL query.
-    7.  **Handle Unknown Information:** If the user's question refers to information not present in the schema, return an appropriate error message or a query that retrieves as much relevant information as possible.
-    8.  **Prioritize Accuracy:** Accuracy is paramount. Ensure the generated SQL query returns the correct results.
-    9.  **Assume standard SQL dialect.**
-    10. **Do not add any comments to the generated SQL.**
+    1. **Understand the Database Schema:** Carefully analyze the provided database schema to understand the tables, columns, data types, and relationships.
+    2. **Consider Previous Queries:** Review the user's previous queries to understand the context of their current question and maintain consistency in your approach.
+    3. **Interpret the User's Question:** Understand the user's question and identify the relevant entities, attributes, and relationships.
+    4. **Generate the SQL Query:** Construct a valid SQL query that accurately reflects the user's question and uses the provided database schema.
+    5. **Adhere to SQL Standards:** Ensure the generated SQL query follows standard SQL syntax and conventions.
+    6. **Return Only the SQL:** Do not include any explanations, justifications, or additional text. Only return the generated SQL query.
+    7. **Handle Ambiguity:** If the user's question is ambiguous, make reasonable assumptions based on the schema and previous queries to generate the most likely SQL query.
+    8. **Handle Unknown Information:** If the user's question refers to information not present in the schema, return an appropriate error message or a query that retrieves as much relevant information as possible.
+    9. **Prioritize Accuracy:** Accuracy is paramount. Ensure the generated SQL query returns the correct results.
+    10. **Assume standard SQL dialect.**
+    11. **Do not add any comments to the generated SQL.**
 
     **Input:**
-    * **Database Schema:** 
+    * **Database Schema:**
     You will be provided with part of the database schema that might be relevant to the user's question.
-    * **User Query (Natural Language):** 
-    You will be given a user's question or request in natural language.
+
+    * **Previous Queries:**
+    You will be provided with a list of the user's previous queries in this session. Each query will be prefixed with "Query N:" where N is the query number, followed by both the natural language question and the SQL query that was generated. Use these to maintain consistency and understand the user's evolving information needs.
+
+    * **User Query (Natural Language):**
+    You will be given a user's current question or request in natural language.
     """
 
     FIND_SYSTEM_PROMPT2 = """

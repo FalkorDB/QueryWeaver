@@ -22,12 +22,14 @@ class Descriptions(BaseModel):
     columns_descriptions: list[ColumnDescription]
     # followup_questions: list[str] 
 
-def find(
+def  find(
     graph_id: str,
-    query: str,
-    _history: Optional[List[str]] = None
+    queries_history: List[str]
 ) -> Tuple[bool, List[dict]]:
     """ Find the tables and columns relevant to the user's query. """
+    
+    user_query = queries_history[-1]
+    previous_queries = queries_history[:-1]
 
     # Call the completion model to get the relevant Cypher queries to retrieve
     # from the Graph that represent the Database schema.
@@ -40,7 +42,10 @@ def find(
                                             "role": "system"
                                         },
                                         {
-                                            "content": query,
+                                            "content": json.dumps({
+                                                "previous_user_queries:": previous_queries,
+                                                "user_query": user_query
+                                            }),
                                             "role": "user"
                                         }
                                     ]

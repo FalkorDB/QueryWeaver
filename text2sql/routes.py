@@ -102,14 +102,18 @@ def load():
 
     return jsonify({"error": result}), 400
 
-@main.route("/graphs/<string:graph_id>", methods=["GET"])
+@main.route("/graphs/<string:graph_id>", methods=["POST"])
 def query(graph_id: str):
     """
     text2sql
     """
-    q = request.args.get('q', type=str)
-    if not q:
-        return jsonify({"error": "Missing query parameter 'q'"}), 400
+    # q = request.args.get('q', type=str)
+    # if not q:
+    #     return jsonify({"error": "Missing query parameter 'q'"}), 400
+
+    queries_history = request.get_json()
+    if not queries_history:
+        return jsonify({"error": "Invalid or missing JSON data"}), 400
 
     # Create a generator function for streaming
     def generate():
@@ -117,7 +121,7 @@ def query(graph_id: str):
         step = {"type": "reasoning_step", "message": "Extracting relevant tables from schema..."}
         yield json.dumps(step) + MESSAGE_DELIMITER
 
-        success, result = find(graph_id, q)
+        success, result = find(graph_id, queries_history)
         if not success:
             return jsonify({"error": result}), 400
 
@@ -134,6 +138,12 @@ def query(graph_id: str):
                 "message": "Generating SQL query from the user query and extracted schema"}
         yield json.dumps(step) + MESSAGE_DELIMITER
 
+
+        user_content = json.dumps({
+                                    "schema": result,
+                                    "previous_queries": queries_history[:-1],
+                                    "user_query": queries_history[-1]
+                                })
         completion_result = completion(model=Config.COMPLETION_MODEL,
                                 messages=[
                                     {
@@ -141,10 +151,7 @@ def query(graph_id: str):
                                         "role": "system"
                                     },
                                     {
-                                        "content": json.dumps( {
-                                            "schema": table_info,
-                                            "user_query": q
-                                        }),
+                                        "content": user_content,
                                         "role": "user"
                                     }
                                 ]

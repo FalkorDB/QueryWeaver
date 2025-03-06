@@ -2,7 +2,7 @@ const messageInput = document.getElementById('message-input');
 const sendButton = document.getElementById('send-button');
 const chatMessages = document.getElementById('chat-messages');
 const typingIndicator = document.getElementById('typing-indicator');
-let history = [];
+let questions_history = [];
 let currentRequestController = null;
 
 // Custom delimiter that's unlikely to appear in your data
@@ -11,10 +11,10 @@ const MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||';
 function addMessage(message, isUser = false) {
     const messageDiv = document.createElement('div');
     if(isUser) {
-        messageDiv.className = `message 'user-message'`
-        history.push(message);
+        messageDiv.className = "message user-message";
+        questions_history.push(message);
     } else {
-        messageDiv.className = `message 'bot-message'`;
+        messageDiv.className = "message bot-message";
     }
     ;
 
@@ -43,13 +43,28 @@ function formatBlock(text) {
             lineDiv.textContent = line;
             return lineDiv;
         });
+    } 
+
+    if (text.includes('[') && text.includes(']')) {
+        const parts = text.split('[');
+        const formattedParts = parts.map((part, i) => {
+            const lineDiv = document.createElement('div');
+            lineDiv.className = 'array-line';
+
+            // remove all closing if exists in the text
+            part = part.replaceAll(']', '');
+            
+            lineDiv.textContent = part;
+            return lineDiv;
+        });
+        return formattedParts;
     }
 }
 
 function initChat() {
     chatMessages.innerHTML = '';
     addMessage('Hello! How can I help you today?', false);
-    history = [];
+    questions_history = [];
 }
 
 initChat();
@@ -78,7 +93,11 @@ async function sendMessage() {
 
         // Use fetch with streaming response (GET method)
         const response = await fetch('/graphs/' + selectedValue + '?q=' + encodeURIComponent(message), {
-            method: 'GET',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(questions_history), 
             signal: currentRequestController.signal
         });
 
