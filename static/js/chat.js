@@ -1,5 +1,6 @@
 const messageInput = document.getElementById('message-input');
 const sendButton = document.getElementById('send-button');
+const newChatButton = document.getElementById('new-chat-button');
 const chatMessages = document.getElementById('chat-messages');
 const typingIndicator = document.getElementById('typing-indicator');
 let questions_history = [];
@@ -190,6 +191,9 @@ messageInput.addEventListener('keypress', (e) => {
         sendMessage();
     }
 });
+
+newChatButton.addEventListener('click', initChat);
+
 
 document.addEventListener("DOMContentLoaded", function () {
     const chatMessages = document.getElementById("chat-messages");

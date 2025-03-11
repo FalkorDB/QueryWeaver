@@ -6,7 +6,7 @@ from litellm import embedding
 from text2sql.config import Config
 from text2sql.loaders.base_loadr import BaseLoader
 from text2sql.extensions import db
-
+from text2sql.utils import generate_db_description
 
 try:
     with open(Config.SCHEMA_PATH, 'r', encoding='utf-8') as f:
@@ -33,6 +33,24 @@ class JSONLoader(BaseLoader):
             return False, str(exc)
 
         graph = db.select_graph(graph_id)
+
+        db_des = generate_db_description(
+            db_name=data['database'],
+            table_names=list(data['tables'].keys())
+        )
+
+        graph.query(
+            """
+            CREATE (d:Database {
+                name: $db_name,
+                description: $description
+            })
+            """,
+            {
+                'db_name': data['database'],
+                'description': db_des
+            }
+        )
 
         graph.query("""
                     CREATE VECTOR INDEX FOR (t:Table) ON (t.embedding) 

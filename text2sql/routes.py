@@ -8,6 +8,7 @@ from text2sql.extensions import db
 from text2sql.loaders.csv_loader import CSVLoader
 from text2sql.loaders.json_loader import JSONLoader
 from text2sql.loaders.odata_loader import ODataLoader
+from text2sql.utils import llm_answer_validator
 
 # Use the same delimiter as in the JavaScript
 MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||'
@@ -156,7 +157,7 @@ def query(graph_id: str):
                                     }
                                 ]
                             )
-
+        llm_answer_validator(queries_history[-1], completion_result.choices[0].message.content, user_content)
         yield json.dumps({"type": "final_result", "data": completion_result.choices[0].message.content}) + MESSAGE_DELIMITER
 
     return Response(stream_with_context(generate()), content_type='application/json')

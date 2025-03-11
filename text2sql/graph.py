@@ -22,14 +22,24 @@ class Descriptions(BaseModel):
     columns_descriptions: list[ColumnDescription]
     # followup_questions: list[str] 
 
-def  find(
+def find(
     graph_id: str,
     queries_history: List[str]
 ) -> Tuple[bool, List[dict]]:
     """ Find the tables and columns relevant to the user's query. """
     
+    graph = db.select_graph(graph_id)
     user_query = queries_history[-1]
     previous_queries = queries_history[:-1]
+
+    db_description = graph.query("""
+        MATCH (d:Database {name: $db_name})
+        RETURN d.description
+        """,
+        {
+            'db_name': graph_id
+        }
+    ).result_set[0][0]
 
     # Call the completion model to get the relevant Cypher queries to retrieve
     # from the Graph that represent the Database schema.
@@ -38,7 +48,7 @@ def  find(
                                     response_format=Descriptions,
                                     messages=[
                                         {
-                                            "content": Config.FIND_SYSTEM_PROMPT,
+                                            "content": Config.FIND_SYSTEM_PROMPT.format(db_description=db_description),
                                             "role": "system"
                                         },
                                         {
@@ -59,7 +69,6 @@ def  find(
 
     # if len(descriptions.followup_questions) > 0:
     #     return True, [{"followup_questions": descriptions.followup_questions}]
-    graph = db.select_graph(graph_id)
     tables_results = _find_tables(graph, descriptions.tables_descriptions)
     columns_results = _find_tables_by_columns(graph, descriptions.columns_descriptions)
 
