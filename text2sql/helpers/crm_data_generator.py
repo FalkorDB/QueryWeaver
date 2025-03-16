@@ -2,46 +2,105 @@ import json
 import os
 import time
 import requests
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Set, Tuple
 from litellm import completion, validate_environment, utils as litellm_utils
 
 OUTPUT_FILE = "complete_crm_schema.json"
 MAX_RETRIES = 3
 RETRY_DELAY = 5  # seconds
 
-# Initialize the schema with the base structure
-schema = {
-    "database": "crm_system",
-    "tables": {}
+# Global registry to track primary and foreign keys across tables
+key_registry = {
+    "primary_keys": {},  # table_name -> primary_key_column
+    "foreign_keys": {},  # table_name -> {column_name -> (referenced_table, referenced_column)}
+    "processed_tables": set(),  # Set of tables that have been processed
+    "table_relationships": {}  # table_name -> set of related tables
 }
 
 def load_initial_schema(file_path: str) -> Dict[str, Any]:
     """Load the initial schema file with table names"""
     try:
         with open(file_path, 'r') as file:
-            return json.load(file)
+            schema = json.load(file)
+            print(f"Loaded initial schema with {len(schema.get('tables', {}))} tables")
+            return schema
     except Exception as e:
         print(f"Error loading schema file: {e}")
         return {"database": "crm_system", "tables": {}}
 
 def save_schema(schema: Dict[str, Any], output_file: str = OUTPUT_FILE) -> None:
-    """Save the current schema to a file"""
+    """Save the current schema to a file with metadata"""
+    # Add metadata
+    if "metadata" not in schema:
+        schema["metadata"] = {}
+    
+    schema["metadata"]["last_updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    schema["metadata"]["completed_tables"] = len(key_registry["processed_tables"])
+    schema["metadata"]["total_tables"] = len(schema.get("tables", {}))
+    schema["metadata"]["key_registry"] = {
+        "primary_keys": key_registry["primary_keys"],
+        "foreign_keys": key_registry["foreign_keys"],
+        "table_relationships": {k: list(v) for k, v in key_registry["table_relationships"].items()}
+    }
+    
     with open(output_file, 'w') as file:
         json.dump(schema, file, indent=2)
     print(f"Schema saved to {output_file}")
 
+def update_key_registry(table_name: str, table_data: Dict[str, Any]) -> None:
+    """Update the key registry with information from a processed table"""
+    # Mark table as processed
+    key_registry["processed_tables"].add(table_name)
+    
+    # Track primary keys
+    if "columns" in table_data:
+        for col_name, col_data in table_data["columns"].items():
+            if col_data.get("key") == "PRI":
+                key_registry["primary_keys"][table_name] = col_name
+                break
+    
+    # Track foreign keys and relationships
+    if "foreign_keys" in table_data:
+        if table_name not in key_registry["foreign_keys"]:
+            key_registry["foreign_keys"][table_name] = {}
+        
+        if table_name not in key_registry["table_relationships"]:
+            key_registry["table_relationships"][table_name] = set()
+            
+        for fk_name, fk_data in table_data["foreign_keys"].items():
+            column = fk_data.get("column")
+            ref_table = fk_data.get("referenced_table")
+            ref_column = fk_data.get("referenced_column")
+            
+            if column and ref_table and ref_column:
+                key_registry["foreign_keys"][table_name][column] = (ref_table, ref_column)
+                
+                # Update relationships
+                key_registry["table_relationships"][table_name].add(ref_table)
+                
+                # Ensure the referenced table has an entry
+                if ref_table not in key_registry["table_relationships"]:
+                    key_registry["table_relationships"][ref_table] = set()
+                
+                # Add the reverse relationship
+                key_registry["table_relationships"][ref_table].add(table_name)
+
 def find_related_tables(table_name: str, all_tables: List[str]) -> List[str]:
-    """Find tables that might be related to the current table based on naming patterns"""
+    """Find tables that might be related to the current table"""
     related = []
     
-    # Extract base name by removing common prefixes/suffixes
+    # Check registry first for already established relationships
+    if table_name in key_registry["table_relationships"]:
+        related.extend(key_registry["table_relationships"][table_name])
+    
+    # Extract base name
     base_parts = table_name.split('_')
     
     for other_table in all_tables:
-        if other_table == table_name:
+        if other_table == table_name or other_table in related:
             continue
             
-        # Direct naming relationship (e.g., contacts and contact_addresses)
+        # Direct naming relationship
         if table_name in other_table or other_table in table_name:
             related.append(other_table)
             continue
@@ -53,16 +112,57 @@ def find_related_tables(table_name: str, all_tables: List[str]) -> List[str]:
                 related.append(other_table)
                 break
     
-    return related
+    return list(set(related))  # Remove duplicates
 
-def get_table_prompt(table_name: str, existing_tables: Dict[str, Any], all_table_names: List[str]) -> str:
-    """Generate a detailed prompt for the LLM to create a table schema matching the example"""
+def get_table_prompt(table_name: str, schema: Dict[str, Any], all_table_names: List[str], topology) -> str:
+    """Generate a prompt for the LLM to create a table schema with proper relationships"""
+    existing_tables = schema.get("tables", {})
     
-    # Identify potentially related tables
+    # Find related tables
     related_tables = find_related_tables(table_name, all_table_names)
     related_tables_str = ", ".join(related_tables) if related_tables else "None identified yet"
     
-    # Include the contacts table as an example format
+    # Suggest primary key pattern
+    table_base = table_name.split('_')[0] if '_' in table_name else table_name
+    suggested_pk = f"{table_name}_id"  # Default pattern
+    
+    # Check if related tables have primary keys to follow same pattern
+    for related in related_tables:
+        if related in key_registry["primary_keys"]:
+            related_pk = key_registry["primary_keys"][related]
+            if related_pk.endswith('_id') and related in related_pk:
+                # Follow the same pattern
+                suggested_pk = f"{table_name}_id"
+                break
+    
+    # Prepare foreign key suggestions
+    fk_suggestions = []
+    for related in related_tables:
+        if related in key_registry["primary_keys"]:
+            fk_suggestions.append({
+                "column": f"{related}_id",
+                "referenced_table": related,
+                "referenced_column": key_registry["primary_keys"][related]
+            })
+    
+    fk_suggestions_str = ""
+    if fk_suggestions:
+        fk_suggestions_str = "Consider these foreign key relationships:\n"
+        for i, fk in enumerate(fk_suggestions[:5]):  # Limit to 5 suggestions
+            fk_suggestions_str += f"{i+1}. {fk['column']} -> {fk['referenced_table']}.{fk['referenced_column']}\n"
+    
+    # Include examples of related tables that have been processed
+    related_examples = ""
+    example_count = 0
+    for related in related_tables:
+        if (related in existing_tables and 
+            isinstance(existing_tables[related], dict) and 
+            'columns' in existing_tables[related] and 
+            example_count < 2):
+            related_examples += f"\nRelated table example:\n```json\n{json.dumps({related: existing_tables[related]}, indent=2)}\n```\n"
+            example_count += 1
+    
+    # Use contacts table as primary example if no related examples found
     contacts_example = """
 {
   "contacts": {
@@ -162,20 +262,9 @@ def get_table_prompt(table_name: str, existing_tables: Dict[str, Any], all_table
   }
 }
 """
-    
-    # Include examples of other completed tables if available
-    additional_examples = ""
-    example_count = 0
-    for table, details in existing_tables.items():
-        if (isinstance(details, dict) and 'columns' in details and 
-            'indexes' in details and 'foreign_keys' in details and 
-            table != "contacts" and example_count < 1):
-            additional_examples += f"\nAnother example table:\n```json\n{json.dumps({table: details}, indent=2)}\n```\n"
-            example_count += 1
-    
-    # Create a context-specific description based on the table name
+    # Create context about the table's purpose
     table_context = get_table_context(table_name, related_tables)
-    
+    keys = json.dumps(topology['tables'][table_name])
     prompt = f"""
 You are an expert database architect specializing in CRM systems. Create a detailed JSON schema for the '{table_name}' table in our CRM database.
 
@@ -184,6 +273,11 @@ CONTEXT ABOUT THIS TABLE:
 
 POTENTIALLY RELATED TABLES:
 {related_tables_str}
+
+The primary Key and the foreign keys (topology) for this table should include the following:
+{keys}
+
+{fk_suggestions_str}
 
 Your response must include:
 1. A comprehensive description of the table's purpose
@@ -202,21 +296,23 @@ Your response must include:
 4. All foreign key relationships with:
    - Constraint names
    - Referenced tables and columns
+5. Ensure that you using the exact keys from the topology, PK is for primary key and FK is for foreign key.
 
 EXACTLY FOLLOW THIS FORMAT from our contacts table:
 ```json
 {contacts_example}
 ```
-{additional_examples}
+{related_examples}
 
 IMPORTANT GUIDELINES:
 - Always include standard timestamps (created_date, updated_date) for all tables
 - All tables should have a primary key with auto_increment
 - Follow proper MySQL data type conventions
 - Include appropriate indexes for performance
-- Define foreign keys wherever relations exist
 - Every column needs a description, type, null status
 - All names should follow snake_case convention
+- For many-to-many relationships, create appropriate junction tables
+- Ensure referential integrity with foreign key constraints
 
 Return ONLY valid JSON for the '{table_name}' table structure without any explanation or additional text:
 {{
@@ -389,7 +485,7 @@ def parse_llm_response(response: str, table_name: str) -> Optional[Dict[str, Any
         print(f"Raw response: {response[:500]}...")  # Show first 500 chars
         return None
 
-def process_table(table_name: str, schema: Dict[str, Any], all_table_names: List[str]) -> Dict[str, Any]:
+def process_table(table_name: str, schema: Dict[str, Any], all_table_names: List[str], topology) -> Dict[str, Any]:
     """Process a single table and update the schema"""
     print(f"Processing table: {table_name}")
     
@@ -403,7 +499,7 @@ def process_table(table_name: str, schema: Dict[str, Any], all_table_names: List
         return schema
     
     # Generate prompt for this table
-    prompt = get_table_prompt(table_name, schema["tables"], all_table_names)
+    prompt = get_table_prompt(table_name, schema["tables"], all_table_names, topology)
     
     # Call LLM API
     response = call_llm_api(prompt)
@@ -435,6 +531,9 @@ def main():
     tables = list(initial_schema.get("tables", {}).keys())
     all_table_names = tables.copy()  # Keep a full list for reference
     
+    topology = generate_keys(tables)
+
+
     # Initialize our working schema
     schema = {
         "database": initial_schema.get("database", "crm_system"),
@@ -467,7 +566,7 @@ def main():
     # Process tables
     for i, table_name in enumerate(tables):
         print(f"\nProcessing table {i+1}/{len(tables)}: {table_name} (Priority: {table_priority(table_name)})")
-        schema = process_table(table_name, schema, all_table_names)
+        schema = process_table(table_name, schema, all_table_names, topology)
         
         # Save progress after each table
         save_schema(schema)
@@ -483,6 +582,51 @@ def main():
     
     # Validate the final schema
     validate_schema(schema)
+
+def generate_keys(tables) -> Dict[str, Any]:
+    path = "examples/crm_topology.json"
+    # If we have existing work, load it
+    if os.path.exists(path):
+        try:
+            with open(path, 'r') as file:
+                schema = json.load(file)
+            last_key = tables.index(list(schema['tables'].keys())[-1])
+            print(f"Loaded existing schema from {path}")
+        except Exception as e:
+            print(f"Error loading existing schema: {e}")
+            last_key = 0
+
+    prompt = """
+    You are an expert database architect specializing in CRM systems. Create a detailed JSON schema for the '{table_name}' table in our CRM database.
+    The all tables are:
+    {tables}
+
+    Please genereate the primary key and foreign key for the table in the following json format:
+    "contacts": {{
+        "contact_id": "PK",
+        "company_id": "FK",
+        "user_id": "FK",
+        "lead_id": "FK"
+      }},
+    
+
+    Only generate the primery key and the foreign keys based on you knowledge on crm databases in the above schema.
+    Your output for the table '{table_name}':
+    """
+    for table in tables[last_key:]:
+
+        p = prompt.format(table_name=table, tables=tables)
+        response = call_llm_api(p)
+        new_table = json.loads(response)
+        schema['tables'].update(new_table)
+
+    with open(path, 'w') as file:
+        json.dump(schema, file, indent=2)
+    print(f"Schema saved to {path}")
+    print(f"Final schema saved to {path}")
+
+    return schema
+
 
 def validate_schema(schema: Dict[str, Any]) -> None:
     """Perform final validation on the complete schema"""

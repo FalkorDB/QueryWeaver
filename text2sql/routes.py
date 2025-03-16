@@ -8,7 +8,7 @@ from text2sql.extensions import db
 from text2sql.loaders.csv_loader import CSVLoader
 from text2sql.loaders.json_loader import JSONLoader
 from text2sql.loaders.odata_loader import ODataLoader
-from text2sql.utils import llm_answer_validator
+from text2sql.utils import llm_answer_validator, llm_table_validator
 
 # Use the same delimiter as in the JavaScript
 MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||'
@@ -122,7 +122,7 @@ def query(graph_id: str):
         step = {"type": "reasoning_step", "message": "Extracting relevant tables from schema..."}
         yield json.dumps(step) + MESSAGE_DELIMITER
 
-        success, result = find(graph_id, queries_history)
+        success, result, db_description = find(graph_id, queries_history)
         if not success:
             return jsonify({"error": result}), 400
 
@@ -148,7 +148,7 @@ def query(graph_id: str):
         completion_result = completion(model=Config.COMPLETION_MODEL,
                                 messages=[
                                     {
-                                        "content": Config.Text_To_SQL_PROMPT,
+                                        "content": Config.Text_To_SQL_PROMPT.format(db_description=db_description),
                                         "role": "system"
                                     },
                                     {
@@ -157,8 +157,11 @@ def query(graph_id: str):
                                     }
                                 ]
                             )
-        llm_answer_validator(queries_history[-1], completion_result.choices[0].message.content, user_content)
-        yield json.dumps({"type": "final_result", "data": completion_result.choices[0].message.content}) + MESSAGE_DELIMITER
+        answer = completion_result.choices[0].message.content
+        question = queries_history[-1]
+        score, exp = llm_table_validator(question, answer, table_info)
+        print(f"Score: {score}")
+        yield json.dumps({"type": "final_result", "data": answer}) + MESSAGE_DELIMITER
 
     return Response(stream_with_context(generate()), content_type='application/json')
 

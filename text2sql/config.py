@@ -55,11 +55,14 @@ class Config:
     10. **Assume standard SQL dialect.**
     11. **Do not add any comments to the generated SQL.**
 
+    Keep in mind that the database that you work with has the following description: {db_description}.
+
+
     **Input:**
     * **Database Schema:**
     You will be provided with part of the database schema that might be relevant to the user's question.
     With the following structure:
-    {"schema": [["table_name", description, [{"column_name": "column_description", "data_type": "data_type",...},...]],...]}
+    {{"schema": [["table_name", description, [{{"column_name": "column_description", "data_type": "data_type",...}},...]],...]}}
 
     * **Previous Queries:**
     You will be provided with a list of the user's previous queries in this session. Each query will be prefixed with "Query N:" where N is the query number, followed by both the natural language question and the SQL query that was generated. Use these to maintain consistency and understand the user's evolving information needs.

@@ -1,0 +1,915 @@
+{
+  "database": "crm_system",
+  "tables": {
+    "contacts": {
+      "contact_id": "PK",
+      "company_id": "FK",
+      "user_id": "FK",
+      "lead_id": "FK"
+    },
+    "contact_addresses": {
+      "contact_address_id": "PK",
+      "contact_id": "FK"
+    },
+    "contact_tags": {
+      "contact_tag_id": "PK",
+      "contact_id": "FK",
+      "tag_id": "FK"
+    },
+    "contact_notes": {
+      "contact_note_id": "PK",
+      "contact_id": "FK",
+      "note_id": "FK",
+      "user_id": "FK"
+    },
+    "contact_preferences": {
+      "contact_preference_id": "PK",
+      "contact_id": "FK"
+    },
+    "contact_relationships": {
+      "contact_relationship_id": "PK",
+      "primary_contact_id": "FK",
+      "related_contact_id": "FK"
+    },
+    "contact_social_links": {
+      "contact_social_link_id": "PK",
+      "contact_id": "FK"
+    },
+    "contact_emails": {
+      "contact_email_id": "PK",
+      "contact_id": "FK"
+    },
+    "companies": {
+      "company_id": "PK",
+      "user_id": "FK",
+      "lead_id": "FK"
+    },
+    "company_addresses": {
+      "company_address_id": "PK",
+      "company_id": "FK"
+    },
+    "company_tags": {
+      "company_tag_id": "PK",
+      "company_id": "FK",
+      "tag_id": "FK"
+    },
+    "company_notes": {
+      "company_note_id": "PK",
+      "company_id": "FK",
+      "note_id": "FK",
+      "user_id": "FK"
+    },
+    "company_contacts": {
+      "company_contact_id": "PK",
+      "company_id": "FK",
+      "contact_id": "FK",
+      "role_id": "FK"
+    },
+    "leads": {
+      "lead_id": "PK",
+      "user_id": "FK",
+      "lead_source_id": "FK",
+      "lead_status_id": "FK",
+      "lead_score_id": "FK",
+      "company_id": "FK"
+    },
+    "lead_sources": {
+      "lead_source_id": "PK"
+    },
+    "lead_statuses": {
+      "lead_status_id": "PK"
+    },
+    "lead_scores": {
+      "lead_score_id": "PK",
+      "lead_id": "FK"
+    },
+    "lead_conversions": {
+      "lead_conversion_id": "PK",
+      "lead_id": "FK",
+      "contact_id": "FK",
+      "opportunity_id": "FK",
+      "user_id": "FK"
+    },
+    "lead_assignments": {
+      "lead_assignment_id": "PK",
+      "lead_id": "FK",
+      "user_id": "FK"
+    },
+    "opportunities": {
+      "opportunity_id": "PK",
+      "contact_id": "FK",
+      "company_id": "FK",
+      "user_id": "FK",
+      "opportunity_source_id": "FK",
+      "opportunity_stage_id": "FK",
+      "opportunity_status_id": "FK"
+    },
+    "opportunity_sources": {
+      "opportunity_source_id": "PK"
+    },
+    "opportunity_stages": {
+      "opportunity_stage_id": "PK"
+    },
+    "opportunity_statuses": {
+      "opportunity_status_id": "PK"
+    },
+    "opportunity_notes": {
+      "opportunity_note_id": "PK",
+      "opportunity_id": "FK",
+      "note_id": "FK",
+      "user_id": "FK"
+    },
+    "deals": {
+      "deal_id": "PK",
+      "opportunity_id": "FK",
+      "contact_id": "FK",
+      "company_id": "FK",
+      "user_id": "FK",
+      "deal_stage_id": "FK",
+      "deal_pipeline_id": "FK",
+      "deal_source_id": "FK"
+    },
+    "deal_stages": {
+      "deal_stage_id": "PK",
+      "deal_pipeline_id": "FK"
+    },
+    "deal_pipelines": {
+      "deal_pipeline_id": "PK"
+    },
+    "deal_sources": {
+      "deal_source_id": "PK"
+    },
+    "deal_notes": {
+      "deal_note_id": "PK",
+      "deal_id": "FK",
+      "note_id": "FK",
+      "user_id": "FK"
+    },
+    "tasks": {
+      "task_id": "PK",
+      "contact_id": "FK",
+      "company_id": "FK",
+      "deal_id": "FK",
+      "opportunity_id": "FK",
+      "lead_id": "FK",
+      "task_type_id": "FK",
+      "task_status_id": "FK",
+      "creator_user_id": "FK"
+    },
+    "task_types": {
+      "task_type_id": "PK"
+    },
+    "task_statuses": {
+      "task_status_id": "PK"
+    },
+    "task_assignments": {
+      "task_assignment_id": "PK",
+      "task_id": "FK",
+      "user_id": "FK"
+    },
+    "task_comments": {
+      "task_comment_id": "PK",
+      "task_id": "FK",
+      "user_id": "FK"
+    },
+    "meetings": {
+      "meeting_id": "PK",
+      "organizer_user_id": "FK",
+      "meeting_type_id": "FK",
+      "deal_id": "FK",
+      "opportunity_id": "FK",
+      "lead_id": "FK"
+    },
+    "meeting_attendees": {
+      "meeting_attendee_id": "PK",
+      "meeting_id": "FK",
+      "contact_id": "FK",
+      "user_id": "FK"
+    },
+    "meeting_notes": {
+      "meeting_note_id": "PK",
+      "meeting_id": "FK",
+      "note_id": "FK",
+      "user_id": "FK"
+    },
+    "meeting_types": {
+      "meeting_type_id": "PK"
+    },
+    "calls": {
+      "call_id": "PK",
+      "user_id": "FK",
+      "contact_id": "FK",
+      "call_outcome_id": "FK",
+      "deal_id": "FK",
+      "opportunity_id": "FK",
+      "lead_id": "FK"
+    },
+    "call_logs": {
+      "call_log_id": "PK",
+      "call_id": "FK",
+      "user_id": "FK"
+    },
+    "call_recordings": {
+      "call_recording_id": "PK",
+      "call_id": "FK"
+    },
+    "call_outcomes": {
+      "call_outcome_id": "PK"
+    },
+    "emails": {
+      "email_id": "PK",
+      "user_id": "FK",
+      "contact_id": "FK",
+      "email_template_id": "FK",
+      "email_campaign_id": "FK"
+    },
+    "email_templates": {
+      "email_template_id": "PK",
+      "user_id": "FK"
+    },
+    "email_campaigns": {
+      "email_campaign_id": "PK",
+      "campaign_id": "FK",
+      "email_template_id": "FK",
+      "user_id": "FK"
+    },
+    "email_attachments": {
+      "email_attachment_id": "PK",
+      "email_id": "FK",
+      "document_id": "FK"
+    },
+    "email_logs": {
+      "email_log_id": "PK",
+      "email_id": "FK"
+    },
+    "notes": {
+      "note_id": "PK",
+      "user_id": "FK"
+    },
+    "users": {
+      "user_id": "PK",
+      "user_role_id": "FK"
+    },
+    "user_roles": {
+      "user_role_id": "PK"
+    },
+    "user_permissions": {
+      "user_permission_id": "PK",
+      "user_id": "FK",
+      "user_role_id": "FK"
+    },
+    "user_settings": {
+      "user_setting_id": "PK",
+      "user_id": "FK"
+    },
+    "user_login_logs": {
+      "user_login_log_id": "PK",
+      "user_id": "FK"
+    },
+    "pipelines": {
+      "pipeline_id": "PK"
+    },
+    "pipeline_stages": {
+      "pipeline_stage_id": "PK",
+      "pipeline_id": "FK"
+    },
+    "campaigns": {
+      "campaign_id": "PK",
+      "campaign_type_id": "FK",
+      "campaign_status_id": "FK",
+      "user_id": "FK"
+    },
+    "campaign_types": {
+      "campaign_type_id": "PK"
+    },
+    "campaign_statuses": {
+      "campaign_status_id": "PK"
+    },
+    "campaign_performance": {
+      "campaign_performance_id": "PK",
+      "campaign_id": "FK"
+    },
+    "activities": {
+      "activity_id": "PK",
+      "activity_type_id": "FK",
+      "user_id": "FK",
+      "contact_id": "FK",
+      "company_id": "FK",
+      "deal_id": "FK",
+      "lead_id": "FK"
+    },
+    "activity_types": {
+      "activity_type_id": "PK"
+    },
+    "products": {
+      "product_id": "PK",
+      "product_category_id": "FK"
+    },
+    "product_categories": {
+      "product_category_id": "PK"
+    },
+    "product_prices": {
+      "product_price_id": "PK",
+      "product_id": "FK"
+    },
+    "product_inventory": {
+      "product_inventory_id": "PK",
+      "product_id": "FK"
+    },
+    "quotes": {
+      "quote_id": "PK",
+      "deal_id": "FK",
+      "contact_id": "FK",
+      "company_id": "FK",
+      "user_id": "FK",
+      "quote_status_id": "FK"
+    },
+    "quote_items": {
+      "quote_item_id": "PK",
+      "quote_id": "FK",
+      "product_id": "FK"
+    },
+    "quote_statuses": {
+      "quote_status_id": "PK"
+    },
+    "invoices": {
+      "invoice_id": "PK",
+      "quote_id": "FK",
+      "contact_id": "FK",
+      "company_id": "FK",
+      "user_id": "FK",
+      "invoice_status_id": "FK"
+    },
+    "invoice_items": {
+      "invoice_item_id": "PK",
+      "invoice_id": "FK",
+      "product_id": "FK"
+    },
+    "invoice_statuses": {
+      "invoice_status_id": "PK"
+    },
+    "orders": {
+      "order_id": "PK",
+      "invoice_id": "FK",
+      "contact_id": "FK",
+      "company_id": "FK",
+      "user_id": "FK",
+      "order_status_id": "FK"
+    },
+    "order_items": {
+      "order_item_id": "PK",
+      "order_id": "FK",
+      "product_id": "FK"
+    },
+    "order_statuses": {
+      "order_status_id": "PK"
+    },
+    "subscriptions": {
+      "subscription_id": "PK",
+      "contact_id": "FK",
+      "company_id": "FK",
+      "subscription_plan_id": "FK",
+      "subscription_status_id": "FK"
+    },
+    "subscription_plans": {
+      "subscription_plan_id": "PK"
+    },
+    "subscription_statuses": {
+      "subscription_status_id": "PK"
+    },
+    "subscription_payments": {
+      "subscription_payment_id": "PK",
+      "subscription_id": "FK",
+      "invoice_id": "FK"
+    },
+    "support_tickets": {
+      "support_ticket_id": "PK",
+      "contact_id": "FK",
+      "user_id": "FK",
+      "ticket_status_id": "FK",
+      "ticket_priority_id": "FK",
+      "product_id": "FK"
+    },
+    "ticket_statuses": {
+      "ticket_status_id": "PK"
+    },
+    "ticket_priorities": {
+      "ticket_priority_id": "PK"
+    },
+    "ticket_assignments": {
+      "ticket_assignment_id": "PK",
+      "support_ticket_id": "FK",
+      "user_id": "FK"
+    },
+    "ticket_notes": {
+      "ticket_note_id": "PK",
+      "support_ticket_id": "FK",
+      "note_id": "FK",
+      "user_id": "FK"
+    },
+    "cases": {
+      "case_id": "PK",
+      "contact_id": "FK",
+      "company_id": "FK",
+      "case_status_id": "FK",
+      "case_type_id": "FK",
+      "case_resolution_id": "FK",
+      "product_id": "FK"
+    },
+    "case_statuses": {
+      "case_status_id": "PK"
+    },
+    "case_types": {
+      "case_type_id": "PK"
+    },
+    "case_resolutions": {
+      "case_resolution_id": "PK"
+    },
+    "case_assignments": {
+      "case_assignment_id": "PK",
+      "case_id": "FK",
+      "user_id": "FK"
+    },
+    "events": {
+      "event_id": "PK",
+      "event_type_id": "FK",
+      "user_id": "FK",
+      "campaign_id": "FK"
+    },
+    "event_attendees": {
+      "event_attendee_id": "PK",
+      "event_id": "FK",
+      "contact_id": "FK",
+      "user_id": "FK"
+    },
+    "event_types": {
+      "event_type_id": "PK"
+    },
+    "event_notes": {
+      "event_note_id": "PK",
+      "event_id": "FK",
+      "note_id": "FK",
+      "user_id": "FK"
+    },
+    "documents": {
+      "document_id": "PK",
+      "document_category_id": "FK",
+      "user_id": "FK"
+    },
+    "document_categories": {
+      "document_category_id": "PK"
+    },
+    "document_permissions": {
+      "document_permission_id": "PK",
+      "document_id": "FK",
+      "user_id": "FK",
+      "user_role_id": "FK"
+    },
+    "document_versions": {
+      "document_version_id": "PK",
+      "document_id": "FK"
+    },
+    "tags": {
+      "tag_id": "PK"
+    },
+    "notifications": {
+      "notification_id": "PK",
+      "user_id": "FK",
+      "related_object_id": "FK"
+    },
+    "notification_preferences": {
+      "notification_preference_id": "PK",
+      "user_id": "FK"
+    },
+    "audit_logs": {
+      "audit_log_id": "PK",
+      "user_id": "FK",
+      "table_name": "FK"
+    },
+    "system_settings": {
+      "setting_id": "PK",
+      "user_id": "FK"
+    },
+    "integrations": {
+      "integration_id": "PK",
+      "user_id": "FK"
+    },
+    "integration_logs": {
+      "integration_log_id": "PK",
+      "integration_id": "FK",
+      "user_id": "FK"
+    },
+    "webhooks": {
+      "webhook_id": "PK",
+      "user_id": "FK"
+    },
+    "webhook_events": {
+      "webhook_event_id": "PK",
+      "webhook_id": "FK"
+    },
+    "api_keys": {
+      "api_key_id": "PK",
+      "user_id": "FK"
+    },
+    "email_blacklist": {
+      "email_address": "PK"
+    },
+    "sms_templates": {
+      "template_id": "PK",
+      "user_id": "FK"
+    },
+    "phone_calls": {
+      "call_id": "PK",
+      "contact_id": "FK",
+      "lead_id": "FK",
+      "user_id": "FK",
+      "account_id": "FK"
+    },
+    "call_transcriptions": {
+      "transcription_id": "PK",
+      "call_id": "FK",
+      "contact_id": "FK",
+      "user_id": "FK"
+    },
+    "chat_conversations": {
+      "conversation_id": "PK",
+      "contact_id": "FK",
+      "user_id": "FK",
+      "lead_id": "FK",
+      "opportunity_id": "FK"
+    },
+    "chat_messages": {
+      "message_id": "PK",
+      "conversation_id": "FK",
+      "sender_id": "FK",
+      "recipient_id": "FK",
+      "contact_id": "FK",
+      "user_id": "FK"
+    },
+    "chat_attachments": {
+      "attachment_id": "PK",
+      "message_id": "FK",
+      "user_id": "FK"
+    },
+    "surveys": {
+      "survey_id": "PK",
+      "campaign_id": "FK",
+      "user_id": "FK"
+    },
+    "survey_responses": {
+      "response_id": "PK",
+      "survey_id": "FK",
+      "contact_id": "FK",
+      "user_id": "FK"
+    },
+    "customer_feedback": {
+      "feedback_id": "PK",
+      "contact_id": "FK",
+      "company_id": "FK",
+      "product_id": "FK",
+      "ticket_id": "FK",
+      "survey_id": "FK"
+    },
+    "customer_reviews": {
+      "review_id": "PK",
+      "customer_id": "FK",
+      "product_id": "FK",
+      "order_id": "FK"
+    },
+    "seo_data": {
+      "seo_data_id": "PK",
+      "page_url": "FK",
+      "contact_id": "FK",
+      "company_id": "FK",
+      "lead_id": "FK",
+      "opportunity_id": "FK",
+      "deal_id": "FK",
+      "campaign_id": "FK"
+    },
+    "marketing_analytics": {
+      "analytic_id": "PK",
+      "campaign_id": "FK",
+      "lead_id": "FK",
+      "opportunity_id": "FK",
+      "deal_id": "FK",
+      "email_campaign_id": "FK",
+      "ad_campaign_id": "FK",
+      "user_id": "FK"
+    },
+    "customer_journey": {
+      "journey_id": "PK",
+      "contact_id": "FK",
+      "lead_id": "FK",
+      "opportunity_id": "FK",
+      "deal_id": "FK",
+      "campaign_id": "FK",
+      "activity_id": "FK"
+    },
+    "sales_forecasting": {
+      "forecast_id": "PK",
+      "user_id": "FK",
+      "opportunity_id": "FK",
+      "product_id": "FK",
+      "pipeline_stage_id": "FK",
+      "deal_id": "FK"
+    },
+    "competitor_analysis": {
+      "analysis_id": "PK",
+      "company_id": "FK",
+      "opportunity_id": "FK",
+      "deal_id": "FK"
+    },
+    "discounts": {
+      "discount_id": "PK",
+      "product_id": "FK",
+      "customer_id": "FK",
+      "campaign_id": "FK",
+      "quote_id": "FK",
+      "deal_id": "FK"
+    },
+    "loyalty_programs": {
+      "program_id": "PK",
+      "contact_id": "FK",
+      "company_id": "FK"
+    },
+    "referral_programs": {
+      "referral_program_id": "PK",
+      "referrer_contact_id": "FK",
+      "referee_contact_id": "FK",
+      "campaign_id": "FK",
+      "discount_id": "FK"
+    },
+    "billing_cycles": {
+      "billing_cycle_id": "PK",
+      "subscription_id": "FK",
+      "customer_id": "FK"
+    },
+    "refunds": {
+      "refund_id": "PK",
+      "order_id": "FK",
+      "customer_id": "FK",
+      "invoice_id": "FK",
+      "user_id": "FK"
+    },
+    "chargebacks": {
+      "chargeback_id": "PK",
+      "invoice_id": "FK",
+      "customer_id": "FK",
+      "order_id": "FK",
+      "payment_id": "FK",
+      "case_id": "FK",
+      "user_id": "FK"
+    },
+    "customer_segments": {
+      "segment_id": "PK"
+    },
+    "customer_lifetime_value": {
+      "customer_id": "PK",
+      "contact_id": "FK",
+      "company_id": "FK"
+    },
+    "social_media_profiles": {
+      "social_media_profile_id": "PK",
+      "contact_id": "FK",
+      "company_id": "FK"
+    },
+    "ad_campaigns": {
+      "ad_campaign_id": "PK",
+      "campaign_id": "FK",
+      "user_id": "FK"
+    },
+    "ad_performance": {
+      "ad_performance_id": "PK",
+      "ad_campaign_id": "FK"
+    },
+    "sms_logs": {
+      "sms_log_id": "PK",
+      "contact_id": "FK",
+      "user_id": "FK",
+      "campaign_id": "FK"
+    },
+    "push_notifications": {
+      "notification_id": "PK",
+      "user_id": "FK",
+      "contact_id": "FK",
+      "lead_id": "FK",
+      "campaign_id": "FK"
+    },
+    "crm_usage_metrics": {
+      "metric_id": "PK",
+      "user_id": "FK"
+    },
+    "data_exports": {
+      "export_id": "PK",
+      "user_id": "FK"
+    },
+    "data_imports": {
+      "import_id": "PK",
+      "user_id": "FK"
+    },
+    "data_migrations": {
+      "migration_id": "PK",
+      "user_id": "FK"
+    },
+    "system_errors": {
+      "error_id": "PK",
+      "user_id": "FK"
+    },
+    "third_party_integrations": {
+      "integration_id": "PK",
+      "user_id": "FK",
+      "account_id": "FK"
+    },
+    "crm_versions": {
+      "version_id": "PK",
+      "user_id": "FK"
+    },
+    "legal_agreements": {
+      "agreement_id": "PK",
+      "contact_id": "FK",
+      "company_id": "FK",
+      "user_id": "FK"
+    },
+    "privacy_settings": {
+      "setting_id": "PK",
+      "user_id": "FK"
+    },
+    "user_feedback": {
+      "feedback_id": "PK",
+      "user_id": "FK",
+      "contact_id": "FK",
+      "company_id": "FK"
+    },
+    "feature_requests": {
+      "request_id": "PK",
+      "user_id": "FK"
+    },
+    "product_roadmaps": {
+      "roadmap_id": "PK",
+      "product_id": "FK",
+      "user_id": "FK"
+    },
+    "beta_testers": {
+      "user_id": "FK"
+    },
+    "release_notes": {
+      "release_note_id": "PK",
+      "user_id": "FK"
+    },
+    "compliance_reports": {
+      "report_id": "PK",
+      "user_id": "FK",
+      "document_id": "FK",
+      "case_id": "FK",
+      "contact_id": "FK",
+      "company_id": "FK"
+    },
+    "audit_compliance": {
+      "audit_id": "PK",
+      "user_id": "FK",
+      "object_type": "FK",
+      "object_id": "FK"
+    },
+    "security_policies": {
+      "policy_id": "PK",
+      "user_role_id": "FK"
+    },
+    "incident_reports": {
+      "incident_id": "PK",
+      "user_id": "FK",
+      "contact_id": "FK",
+      "company_id": "FK",
+      "ticket_id": "FK",
+      "case_id": "FK"
+    },
+    "access_controls": {
+      "access_control_id": "PK",
+      "user_id": "FK",
+      "role_id": "FK",
+      "object_type": "FK",
+      "object_id": "FK"
+    },
+    "device_tracking": {
+      "device_id": "PK",
+      "user_id": "FK"
+    },
+    "multi_factor_auth": {
+      "mfa_id": "PK",
+      "user_id": "FK"
+    },
+    "data_encryption": {
+      "encryption_id": "PK"
+    },
+    "backup_recovery": {
+      "backup_id": "PK"
+    },
+    "user_behavior_logs": {
+      "log_id": "PK",
+      "user_id": "FK"
+    },
+    "custom_fields": {
+      "custom_field_id": "PK",
+      "field_type": "FK",
+      "related_table": "FK"
+    },
+    "custom_reports": {
+      "report_id": "PK",
+      "user_id": "FK"
+    },
+    "custom_dashboards": {
+      "dashboard_id": "PK",
+      "user_id": "FK"
+    },
+    "workflow_automations": {
+      "automation_id": "PK",
+      "created_by_user_id": "FK",
+      "last_modified_by_user_id": "FK"
+    },
+    "approval_processes": {
+      "approval_process_id": "PK",
+      "record_id": "FK",
+      "record_type": "FK",
+      "user_id": "FK"
+    },
+    "sla_agreements": {
+      "sla_id": "PK",
+      "account_id": "FK",
+      "contact_id": "FK",
+      "case_id": "FK",
+      "opportunity_id": "FK",
+      "user_id": "FK"
+    },
+    "knowledge_base": {
+      "article_id": "PK",
+      "category_id": "FK",
+      "author_id": "FK",
+      "product_id": "FK"
+    },
+    "internal_wiki": {
+      "wiki_id": "PK",
+      "author_id": "FK",
+      "category_id": "FK"
+    },
+    "content_management": {
+      "content_id": "PK",
+      "author_id": "FK",
+      "category_id": "FK"
+    },
+    "team_collaboration": {
+      "collaboration_id": "PK",
+      "user_id": "FK",
+      "task_id": "FK",
+      "meeting_id": "FK",
+      "document_id": "FK",
+      "opportunity_id": "FK",
+      "deal_id": "FK",
+      "project_id": "FK"
+    },
+    "internal_messages": {
+      "message_id": "PK",
+      "sender_id": "FK",
+      "recipient_id": "FK"
+    },
+    "goal_tracking": {
+      "goal_id": "PK",
+      "user_id": "FK",
+      "team_id": "FK",
+      "objective_id": "FK"
+    },
+    "okr_management": {
+      "okr_id": "PK",
+      "user_id": "FK",
+      "department_id": "FK",
+      "company_id": "FK"
+    },
+    "sales_incentives": {
+      "incentive_id": "PK",
+      "user_id": "FK",
+      "deal_id": "FK",
+      "product_id": "FK",
+      "campaign_id": "FK"
+    },
+    "training_modules": {
+      "module_id": "PK",
+      "course_id": "FK",
+      "user_id": "FK"
+    },
+    "elearning_courses": {
+      "course_id": "PK",
+      "product_id": "FK",
+      "user_id": "FK",
+      "category_id": "FK"
+    },
+    "competency_assessments": {
+      "assessment_id": "PK",
+      "user_id": "FK",
+      "task_id": "FK",
+      "training_module_id": "FK"
+    },
+    "team_productivity_metrics": {
+      "metric_id": "PK",
+      "team_id": "FK",
+      "user_id": "FK"
+    }
+  }
+}

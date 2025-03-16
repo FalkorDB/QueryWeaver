@@ -72,7 +72,7 @@ def find(
     tables_results = _find_tables(graph, descriptions.tables_descriptions)
     columns_results = _find_tables_by_columns(graph, descriptions.columns_descriptions)
 
-    return True, _get_unique_tables(tables_results + columns_results)
+    return True, _get_unique_tables(tables_results + columns_results), db_description
 
 def _find_tables(graph, descriptions: List[TableDescription]) -> List[dict]:
 
