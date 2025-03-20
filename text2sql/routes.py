@@ -3,7 +3,7 @@ import json
 from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context
 from litellm import completion
 from text2sql.config import Config
-from text2sql.graph import find
+from text2sql.graph import find, find_connecting_tables
 from text2sql.extensions import db
 from text2sql.loaders.csv_loader import CSVLoader
 from text2sql.loaders.json_loader import JSONLoader
@@ -122,7 +122,7 @@ def query(graph_id: str):
         step = {"type": "reasoning_step", "message": "Extracting relevant tables from schema..."}
         yield json.dumps(step) + MESSAGE_DELIMITER
 
-        success, result, db_description = find(graph_id, queries_history)
+        success, result, db_description, graph = find(graph_id, queries_history)
         if not success:
             return jsonify({"error": result}), 400
 
@@ -139,7 +139,34 @@ def query(graph_id: str):
                 "message": "Generating SQL query from the user query and extracted schema"}
         yield json.dumps(step) + MESSAGE_DELIMITER
 
-
+        step = {"type": "connections_step", "message": "Try to find connected tables..."}
+        yield json.dumps(step) + MESSAGE_DELIMITER
+        user_content = json.dumps({
+                                    "schema": result,
+                                    "previous_queries": queries_history[:-1],
+                                    "user_query": queries_history[-1]
+                                })
+        completion_result = completion(model=Config.COMPLETION_MODEL,
+                                messages=[
+                                    {
+                                        "content": Config.Text_To_tables_PROMPT.format(db_description=db_description),
+                                        "role": "system"
+                                    },
+                                    {
+                                        "content": user_content,
+                                        "role": "user"
+                                    }
+                                ],
+                                response_format={"type": "json_object"},
+                                temperature=0
+                            )
+        focus_tables = completion_result.choices[0].message.content
+        table_list = json.loads(focus_tables)
+        result, connection_tables = find_connecting_tables(graph, table_list, result)
+        print(f"Focus Tables: {focus_tables}")
+        step = {"type": "Connections Retrival",
+                "message": f"Focus Tables: {focus_tables}\nConnection Tables: {connection_tables}"}
+        yield json.dumps(step) + MESSAGE_DELIMITER
         user_content = json.dumps({
                                     "schema": result,
                                     "previous_queries": queries_history[:-1],

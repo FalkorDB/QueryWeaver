@@ -9,10 +9,11 @@ class Config:
     """
     Configuration class for the text2sql module.    
     """
-    SCHEMA_PATH = "text2sql/schema_schema.json"
+    SCHEMA_PATH = "text2sql/schema_aba.json"
     EMBEDDING_MODEL = "gemini/text-embedding-004"
     COMPLETION_MODEL = "gemini/gemini-2.0-flash"
     VALIDTOR_MODEL = "openai/gpt-4o"
+    TEMPERATURE = 0
     FIND_SYSTEM_PROMPT = """
     You are an expert in analyzing natural language queries into SQL queries.
     Please analyze the user's query and generate a set of tables descriptions that might be relevant to the user's query.
@@ -41,6 +42,43 @@ class Config:
 
     Text_To_SQL_PROMPT = """
     You are a Text-to-SQL model. Your task is to generate SQL queries based on natural language questions and a provided database schema.
+
+    **Instructions:**
+    1. **Understand the Database Schema:** Carefully analyze the provided database schema to understand the tables, columns, data types, and relationships.
+    2. **Consider Previous Queries:** Review the user's previous queries to understand the context of their current question and maintain consistency in your approach.
+    3. **Interpret the User's Question:** Understand the user's question and identify the relevant entities, attributes, and relationships.
+    4. **Generate the SQL Query:** Construct a valid SQL query that accurately reflects the user's question and uses the provided database schema.
+    5. **Adhere to SQL Standards:** Ensure the generated SQL query follows standard SQL syntax and conventions.
+    6. **Return Only the SQL:** Do not include any explanations, justifications, or additional text. Only return the generated SQL query.
+    7. **Handle Ambiguity:** If the user's question is ambiguous, make reasonable assumptions based on the schema and previous queries to generate the most likely SQL query.
+    8. **Handle Unknown Information:** If the user's question refers to information not present in the schema, return an appropriate error message or a query that retrieves as much relevant information as possible.
+    9. **Prioritize Accuracy:** Accuracy is paramount. Ensure the generated SQL query returns the correct results.
+    10. **Assume standard SQL dialect.**
+    11. **Do not add any comments to the generated SQL.**
+
+    Keep in mind that the database that you work with has the following description: {db_description}.
+
+
+    **Input:**
+    * **Database Schema:**
+    You will be provided with part of the database schema that might be relevant to the user's question.
+    With the following structure:
+    {{"schema": [["table_name", description, [{{"column_name": "column_description", "data_type": "data_type",...}},...]],...]}}
+
+    * **Previous Queries:**
+    You will be provided with a list of the user's previous queries in this session. Each query will be prefixed with "Query N:" where N is the query number, followed by both the natural language question and the SQL query that was generated. Use these to maintain consistency and understand the user's evolving information needs.
+
+    * **User Query (Natural Language):**
+    You will be given a user's current question or request in natural language.
+    """
+
+    Text_To_tables_PROMPT = """
+    You are a Text-to-SQL model. Your task is to define the tables that you will need to use for a SQL query that answer to the user question.
+    You will get list of tables and columns that are relevant to the user's question and the user's question.
+    You should provide a set of table descriptions that are relevant to the user's query.
+    If you think that none of the tables are relevant to the user's query, please provide a follow up question to narrow down the scope of the query.
+    Your answer will be in a json list of tables names or a follow up question.
+    - ##Importent## Please extract more tables than less tables if you dont sure about a table.
 
     **Instructions:**
     1. **Understand the Database Schema:** Carefully analyze the provided database schema to understand the tables, columns, data types, and relationships.

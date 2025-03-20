@@ -51,19 +51,21 @@ class JSONLoader(BaseLoader):
                 'description': db_des
             }
         )
+        try:
+            graph.query("""
+                        CREATE VECTOR INDEX FOR (t:Table) ON (t.embedding) 
+                        OPTIONS {dimension:768, similarityFunction:'euclidean'}
+                        """)
 
-        graph.query("""
-                    CREATE VECTOR INDEX FOR (t:Table) ON (t.embedding) 
+            graph.query("""
+                    CREATE VECTOR INDEX FOR (c:Column) ON (c.embedding) 
                     OPTIONS {dimension:768, similarityFunction:'euclidean'}
                     """)
-
-        graph.query("""
-                CREATE VECTOR INDEX FOR (c:Column) ON (c.embedding) 
-                OPTIONS {dimension:768, similarityFunction:'euclidean'}
-                """)
+        except Exception as e:
+                print(f"Error creating vector indices: {str(e)}")
 
         # Create Table nodes and their relationships
-        for table_name, table_info in tqdm.tqdm(data['tables'].items(), "Create Table nodes and their relationships"):
+        for table_name, table_info in tqdm.tqdm(data['tables'].items(), "Create Table nodes"):
             # Create table node and connect to database
             embedding_result = embedding(
                 model=Config.EMBEDDING_MODEL,
@@ -98,11 +100,6 @@ class JSONLoader(BaseLoader):
                     MATCH (t:Table {name: $table_name})
                     CREATE (c:Column {
                         name: $col_name,
-                        type: $type,
-                        nullable: $nullable,
-                        key_type: $key,
-                        default_value: $default,
-                        extra: $extra,
                         description: $description,
                         embedding: vecf32($embedding)
                     })-[:BELONGS_TO]->(t)
@@ -110,56 +107,12 @@ class JSONLoader(BaseLoader):
                     {
                         'table_name': table_name,
                         'col_name': col_name,
-                        'type': col_info['type'],
-                        'nullable': col_info['null'],
-                        'key': col_info['key'],
-                        'default': str(col_info['default']) if col_info['default'] is not None else '',
-                        'extra': col_info['extra'],
                         'description': col_info['description'],
                         'embedding': embedding_result.data[0].embedding
                     }
                 )
 
-            # Create Index nodes
-            for idx_name, idx_info in tqdm.tqdm(table_info['indexes'].items(), "Create Index nodes"):
-                # Create index node
-                graph.query(
-                    """
-                    MATCH (t:Table {name: $table_name})
-                    CREATE (i:Index {
-                        name: $idx_name,
-                        unique: $unique,
-                        type: $idx_type
-                    })-[:BELONGS_TO]->(t)
-                    """,
-                    {
-                        'table_name': table_name,
-                        'idx_name': idx_name,
-                        'unique': idx_info['unique'],
-                        'idx_type': idx_info['type']
-                    }
-                )
-
-                # Connect index to its columns
-                for col in tqdm.tqdm(idx_info['columns'], "Connect index to its columns"):
-                    graph.query(
-                        """
-                        MATCH (i:Index {name: $idx_name})-[:BELONGS_TO]->(t:Table {name: $table_name})
-                        MATCH (c:Column {name: $col_name})-[:BELONGS_TO]->(t)
-                        CREATE (i)-[:INCLUDES {
-                            sequence: $seq,
-                            sub_part: $sub_part
-                        }]->(c)
-                        """,
-                        {
-                            'idx_name': idx_name,
-                            'table_name': table_name,
-                            'col_name': col['name'],
-                            'seq': col['seq_in_index'],
-                            'sub_part': col['sub_part'] if col['sub_part'] is not None else ''
-                        }
-                    )
-
+        for table_name, table_info in tqdm.tqdm(data['tables'].items(), "Create Table relationships"):
             # Create Foreign Key relationships
             for fk_name, fk_info in tqdm.tqdm(table_info['foreign_keys'].items(), "Create Foreign Key relationships"):
                 graph.query(

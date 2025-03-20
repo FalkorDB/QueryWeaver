@@ -36,17 +36,19 @@ class CSVLoader(BaseLoader):
             
             # Get the graph
             graph = db.select_graph(graph_id)
-            
-            # Create vector indices
-            graph.query("""
-                CREATE VECTOR INDEX FOR (t:Table) ON (t.embedding) 
-                OPTIONS {dimension:768, similarityFunction:'euclidean'}
-            """)
-            
-            graph.query("""
-                CREATE VECTOR INDEX FOR (c:Column) ON (c.embedding) 
-                OPTIONS {dimension:768, similarityFunction:'euclidean'}
-            """)
+            try: 
+                # Create vector indices
+                graph.query("""
+                    CREATE VECTOR INDEX FOR (t:Table) ON (t.embedding) 
+                    OPTIONS {dimension:768, similarityFunction:'euclidean'}
+                """)
+                
+                graph.query("""
+                    CREATE VECTOR INDEX FOR (c:Column) ON (c.embedding) 
+                    OPTIONS {dimension:768, similarityFunction:'euclidean'}
+                """)
+            except Exception as e:
+                print(f"Error creating vector indices: {str(e)}")
             
             # Process data by grouping by Schema and Domain to identify tables
             # Group by Schema and Domain to get tables
@@ -55,11 +57,16 @@ class CSVLoader(BaseLoader):
                 'columns': {},
                 'relationships': []
             })
-            
+            con_tables = defaultdict(lambda: {
+                'description': '',
+                'columns': {},
+                'relationships': []
+            })
             # First pass: Organize data into tables
             for _, row in tqdm.tqdm(df.iterrows(), total=len(df), desc="Organizing data"):
                 schema = row['Schema']
                 domain = row['Domain']
+
                 table_name = f"{schema}.{domain}"
                 
                 # Set table description (use Domain Description if available)
@@ -68,10 +75,10 @@ class CSVLoader(BaseLoader):
                 
                 # Add column information
                 field = row['Field']
+                field_type = row['Type'] if not pd.isna(row['Type']) else 'STRING'
+                field_desc = row['Description'] if not pd.isna(row['Description']) else ''
+                nullable = True  # Default to nullable since we don't have explicit null info
                 if not pd.isna(field):
-                    field_type = row['Type'] if not pd.isna(row['Type']) else 'STRING'
-                    field_desc = row['Description'] if not pd.isna(row['Description']) else ''
-                    nullable = True  # Default to nullable since we don't have explicit null info
                     
                     tables[table_name]['columns'][field] = {
                         'type': field_type,
@@ -82,24 +89,37 @@ class CSVLoader(BaseLoader):
                         'extra': ''
                     }
                 
-                # Add relationship information if available
-                if not pd.isna(row['Related']) and not pd.isna(row['Cardinality']):
-                    source_field = field
-                    target_table = row['Related']
-                    cardinality = row['Cardinality']
-                    
-                    # Assuming the related field is the first part of the related table name
-                    if '.' in target_table:
-                        schema_domain = target_table.split('.')
-                        if len(schema_domain) == 2:
-                            target_schema, target_domain = schema_domain
-                            tables[table_name]['relationships'].append({
-                                'source_field': source_field,
-                                'target_table': target_table,
-                                'target_field': f"{target_domain}_id",  # Assumption: target field is domain_id
-                                'cardinality': cardinality
-                            })
-            
+                    # Add relationship information if available
+                    if not pd.isna(row['Related']) and not pd.isna(row['Cardinality']):
+                        source_field = field
+                        target_table = row['Related']
+                        cardinality = row['Cardinality']
+                        tables[table_name]['relationships'].append({
+                            'source_field': source_field,
+                            'target_table': target_table,
+                            'cardinality': cardinality
+                        })
+                        tables[target_table]["description"] = field_desc
+                    #     con_tables[target_table]['columns'][field] = {
+                    #     'type': field_type,
+                    #     'description': field_desc,
+                    #     'null': nullable,
+                    #     'key': 'PRI' if field.lower().endswith('_id') else '',  # Assumption: *_id fields are primary keys
+                    #     'default': '',
+                    #     'extra': ''
+                    # }
+                else:
+                    field = row['Array Field']
+                    tables[target_table]['columns'][field] = {
+                        'type': field_type,
+                        'description': field_desc,
+                        'null': nullable,
+                        'key': 'PRI' if field.lower().endswith('_id') else '',  # Assumption: *_id fields are primary keys
+                        'default': '',
+                        'extra': ''
+                    }
+
+        
             # Second pass: Create table nodes
             for table_name, table_info in tqdm.tqdm(tables.items(), desc="Creating Table nodes"):
                 # Skip if no columns (probably just a reference)
@@ -170,7 +190,6 @@ class CSVLoader(BaseLoader):
                 for rel in table_info['relationships']:
                     source_field = rel['source_field']
                     target_table = rel['target_table']
-                    target_field = rel['target_field']
                     cardinality = rel['cardinality']
                     
                     # Create constraint name
@@ -182,17 +201,15 @@ class CSVLoader(BaseLoader):
                             """
                             MATCH (src:Column {name: $source_col})
                                 -[:BELONGS_TO]->(source:Table {name: $source_table})
-                            MATCH (tgt:Column {name: $target_col})
-                                -[:BELONGS_TO]->(target:Table {name: $target_table})
+                            MATCH (target:Table {name: $target_table})
                             CREATE (src)-[:REFERENCES {
                                 constraint_name: $fk_name,
                                 cardinality: $cardinality
-                            }]->(tgt)
+                            }]->(target)
                             """,
                             {
                                 'source_col': source_field,
                                 'source_table': table_name,
-                                'target_col': target_field,
                                 'target_table': target_table,
                                 'fk_name': constraint_name,
                                 'cardinality': cardinality

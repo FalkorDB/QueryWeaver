@@ -1,0 +1,80 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "MySQL Database Schema with Descriptions",
+    "description": "JSON Schema for MySQL database structure including table and column descriptions",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["database", "tables"],
+    "properties": {
+      "database": {
+        "type": "string",
+        "description": "Name of the database",
+        "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+      },
+      "tables": {
+        "type": "object",
+        "description": "Collection of database tables",
+        "patternProperties": {
+          "^[a-zA-Z_][a-zA-Z0-9_]*$": {
+            "type": "object",
+            "description": "Table definition",
+            "required": ["description", "columns", "foreign_keys"],
+            "additionalProperties": false,
+            "properties": {
+              "description": {
+                "type": "string",
+                "description": "Detailed description of the table's purpose and usage"
+              },
+              "columns": {
+                "type": "object",
+                "description": "Collection of table columns",
+                "patternProperties": {
+                  "^[a-zA-Z_][a-zA-Z0-9_]*$": {
+                    "type": "object",
+                    "required": ["description"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "description": {
+                        "type": "string",
+                        "description": "Detailed description of the column's purpose and usage"
+                      }
+                    }
+                  }
+                },
+                "additionalProperties": false,
+                "minProperties": 1
+              },
+              "foreign_keys": {
+                "type": "object",
+                "description": "Collection of foreign key constraints",
+                "patternProperties": {
+                  "^[a-zA-Z_][a-zA-Z0-9_]*$": {
+                    "type": "object",
+                    "required": ["column", "referenced_table", "referenced_column"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "column": {
+                        "type": "string",
+                        "description": "Local column name"
+                      },
+                      "referenced_table": {
+                        "type": "string",
+                        "description": "Referenced table name"
+                      },
+                      "referenced_column": {
+                        "type": "string",
+                        "description": "Referenced column name"
+                      }
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "minProperties": 1
+      }
+    }
+}
