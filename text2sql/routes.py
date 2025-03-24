@@ -3,7 +3,7 @@ import json
 from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context
 from litellm import completion
 from text2sql.config import Config
-from text2sql.graph import find, find_connecting_tables
+from text2sql.graph import find
 from text2sql.extensions import db
 from text2sql.loaders.csv_loader import CSVLoader
 from text2sql.loaders.json_loader import JSONLoader
