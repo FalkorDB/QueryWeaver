@@ -122,7 +122,7 @@ def query(graph_id: str):
         step = {"type": "reasoning_step", "message": "Extracting relevant tables from schema..."}
         yield json.dumps(step) + MESSAGE_DELIMITER
 
-        success, result, db_description, graph = find(graph_id, queries_history)
+        success, result, db_description, tables_by_method = find(graph_id, queries_history)
         if not success:
             return jsonify({"error": result}), 400
 
@@ -133,40 +133,20 @@ def query(graph_id: str):
                 "message": f"This is the list of tables extracted: {table_info}"}
 
         yield json.dumps(step) + MESSAGE_DELIMITER
+        table_name_by_method = []
+        methods = ["by_table_name", "by_column_name", "by_table_sphere", "by_tables_connection"]
+        for tables in tables_by_method:
+            table_name_by_method.append(json.dumps([(table[0]) for table in tables]))
+        for i, method in enumerate(methods):
+            step = {"type": "reasoning_step",
+                    "message": f"Tables extracted by {method}: {table_name_by_method[i]}"}
+            yield json.dumps(step) + MESSAGE_DELIMITER
 
         # SQL generation
         step = {"type": "reasoning_step",
                 "message": "Generating SQL query from the user query and extracted schema"}
         yield json.dumps(step) + MESSAGE_DELIMITER
 
-        step = {"type": "connections_step", "message": "Try to find connected tables..."}
-        yield json.dumps(step) + MESSAGE_DELIMITER
-        user_content = json.dumps({
-                                    "schema": result,
-                                    "previous_queries": queries_history[:-1],
-                                    "user_query": queries_history[-1]
-                                })
-        completion_result = completion(model=Config.COMPLETION_MODEL,
-                                messages=[
-                                    {
-                                        "content": Config.Text_To_tables_PROMPT.format(db_description=db_description),
-                                        "role": "system"
-                                    },
-                                    {
-                                        "content": user_content,
-                                        "role": "user"
-                                    }
-                                ],
-                                response_format={"type": "json_object"},
-                                temperature=0
-                            )
-        focus_tables = completion_result.choices[0].message.content
-        table_list = json.loads(focus_tables)
-        result, connection_tables = find_connecting_tables(graph, table_list, result)
-        print(f"Focus Tables: {focus_tables}")
-        step = {"type": "Connections Retrival",
-                "message": f"Focus Tables: {focus_tables}\nConnection Tables: {connection_tables}"}
-        yield json.dumps(step) + MESSAGE_DELIMITER
         user_content = json.dumps({
                                     "schema": result,
                                     "previous_queries": queries_history[:-1],
@@ -185,8 +165,7 @@ def query(graph_id: str):
                                 ]
                             )
         answer = completion_result.choices[0].message.content
-        question = queries_history[-1]
-        score, exp = llm_table_validator(question, answer, table_info)
+        score, _ = llm_table_validator(queries_history[-1], answer, table_info)
         print(f"Score: {score}")
         yield json.dumps({"type": "final_result", "data": answer}) + MESSAGE_DELIMITER
 

@@ -70,14 +70,17 @@ def find(
     # if len(descriptions.followup_questions) > 0:
     #     return True, [{"followup_questions": descriptions.followup_questions}]
     tables_results = _find_tables(graph, descriptions.tables_descriptions)
-    columns_results = _find_tables_by_columns(graph, descriptions.columns_descriptions)
 
-    return True, _get_unique_tables(tables_results + columns_results), db_description, graph
+    base_tables_names = [table[0] for table in tables_results]
+    tables_by_columns_results = _find_tables_by_columns(graph, descriptions.columns_descriptions)
+    tables_by_sphere = _find_tables_sphere(graph, base_tables_names)
+    tables_by_route, _ = find_connecting_tables(graph, base_tables_names)
+
+    return True, _get_unique_tables(tables_results + tables_by_columns_results + tables_by_route + tables_by_sphere), db_description, [tables_results, tables_by_columns_results, tables_by_route, tables_by_sphere] 
 
 def _find_tables(graph, descriptions: List[TableDescription]) -> List[dict]:
 
     result = []
-    res_sphere = []
     for table in descriptions:
 
         # Get the table node from the graph
@@ -108,8 +111,11 @@ def _find_tables(graph, descriptions: List[TableDescription]) -> List[dict]:
             if node not in result:
                 result.append(node)
     
-    for table in result:
-        table_name = table[0]
+    return result
+
+def _find_tables_sphere(graph, tables: List[str]) -> List[dict]:
+    result = []
+    for table_name in tables:
         query_result = graph.query("""
                     MATCH (node:Table {name: $name})
                     MATCH (node)-[:BELONGS_TO]-(column)-[:REFERENCES]-()-[:BELONGS_TO]-(table_ref)
@@ -129,10 +135,11 @@ def _find_tables(graph, descriptions: List[TableDescription]) -> List[dict]:
                         'name': table_name
                     })
         for node in query_result.result_set:
-            if node not in res_sphere:
-                res_sphere.append(node)
+            if node not in result:
+                result.append(node)
 
     return result
+
 
 def _find_tables_by_columns(graph, descriptions: List[ColumnDescription]) -> List[dict]:
 
@@ -187,7 +194,7 @@ def _get_unique_tables(tables_list):
     return list(unique_tables.values())
 
 
-def find_connecting_tables(graph, table_names, result_tables):
+def find_connecting_tables(graph, table_names: List[str]) -> Tuple[List[dict], List[str]]:
     """
     Find all tables that form connections between any pair of tables in the input list.
     Handles both Table nodes and Column nodes with primary keys.
@@ -201,7 +208,7 @@ def find_connecting_tables(graph, table_names, result_tables):
     """
     all_connecting_tables = set()
     all_connecting_tables_id = set()
-    
+    result = []
     # Check all possible pairs of tables
     for i in range(len(table_names)):
         for j in range(i + 1, len(table_names)):  # This ensures i != j
@@ -249,7 +256,8 @@ def find_connecting_tables(graph, table_names, result_tables):
                         extra: columns.extra
                     })""", {'ids': list(all_connecting_tables_id)})
     for node in query_result.result_set:
-            if node not in result_tables:
-                result_tables.append(node)
+            if node not in result:
+                result.append(node)
+
     print(f"Connecting tables: {all_connecting_tables}")
-    return result_tables, list(all_connecting_tables)
+    return result, list(all_connecting_tables)
