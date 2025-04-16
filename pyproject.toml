@@ -14,8 +14,11 @@ Flask = "^3.1.0"
 jsonschema = "^4.23.0"
 google-generativeai = "^0.8.4"
 tqdm = "^4.67.1"
-graphrag-sdk = {extras = ["litellm"], version = "^0.6.1"}
+graphrag-sdk = {extras = ["all"], version = "^0.6.1"}
 pandas = "^2.2.3"
+google-genai = "<1.7.0"
+sentence-transformers = "^4.0.2"
+boto3 = "^1.37.29"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.2.0"

@@ -9,6 +9,7 @@ from text2sql.loaders.csv_loader import CSVLoader
 from text2sql.loaders.json_loader import JSONLoader
 from text2sql.loaders.odata_loader import ODataLoader
 from text2sql.utils import llm_answer_validator, llm_table_validator
+from text2sql.agents import RelevancyAgent, FollowUpAgent, TaxonomyAgent
 
 # Use the same delimiter as in the JavaScript
 MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||'
@@ -118,6 +119,10 @@ def query(graph_id: str):
 
     # Create a generator function for streaming
     def generate():
+        agent_rel = RelevancyAgent()
+        agent_fol = FollowUpAgent()
+        agent_tax = TaxonomyAgent()
+        to_show = False
 
         step = {"type": "reasoning_step", "message": "Extracting relevant tables from schema..."}
         yield json.dumps(step) + MESSAGE_DELIMITER
@@ -125,49 +130,92 @@ def query(graph_id: str):
         success, result, db_description, tables_by_method = find(graph_id, queries_history)
         if not success:
             return jsonify({"error": result}), 400
-
-        # Extract table names and descriptions
+        # # Extract table names and descriptions
         table_info = json.dumps([(table[0], table[1]) for table in result])
 
-        step = {"type": "reasoning_step",
-                "message": f"This is the list of tables extracted: {table_info}"}
+        # step = {"type": "reasoning_step",
+        #         "message": f"This is the list of tables extracted: {table_info}"}
 
-        yield json.dumps(step) + MESSAGE_DELIMITER
+        # yield json.dumps(step) + MESSAGE_DELIMITER
+
         table_name_by_method = []
-        methods = ["by_table_name", "by_column_name", "by_table_sphere", "by_tables_connection"]
+        methods = ["Table des", "Column des", "Connection", "Sphere",]
         for tables in tables_by_method:
             table_name_by_method.append(json.dumps([(table[0]) for table in tables]))
-        for i, method in enumerate(methods):
-            step = {"type": "reasoning_step",
-                    "message": f"Tables extracted by {method}: {table_name_by_method[i]}"}
+        if to_show:
+            for i, method in enumerate(methods):
+                step = {"type": "reasoning_step",
+                        "message": f"Tables extracted by {method}: {table_name_by_method[i]}"}
+                yield json.dumps(step) + MESSAGE_DELIMITER
+
+        # answer_rel = agent_rel.get_answer(queries_history[-1], result)
+        if False:#answer_rel["status"] != "On-topic":
+            step = {"type": "followup_questions", "message": answer_rel["reason"] + " Please ask a question related to the database schema."}
             yield json.dumps(step) + MESSAGE_DELIMITER
 
-        # SQL generation
-        step = {"type": "reasoning_step",
-                "message": "Generating SQL query from the user query and extracted schema"}
-        yield json.dumps(step) + MESSAGE_DELIMITER
+            # step = {"type": "reasoning_step", "data": "You may try the following instead: " + str(answer_rel["suggestions"])}
+            # yield json.dumps(step) + MESSAGE_DELIMITER
+        # else:
+        else:
+            # answer_fol = agent_fol.get_answer(queries_history[-1], queries_history[:-1], result)
+            # if answer_fol["status"] == "Needs more data":
+            #     step = {"type": "followup_questions", "message": answer_fol["followUpQuestion"]}
+            #     yield json.dumps(step) + MESSAGE_DELIMITER
 
-        user_content = json.dumps({
-                                    "schema": result,
-                                    "previous_queries": queries_history[:-1],
-                                    "user_query": queries_history[-1]
-                                })
-        completion_result = completion(model=Config.COMPLETION_MODEL,
-                                messages=[
-                                    {
-                                        "content": Config.Text_To_SQL_PROMPT.format(db_description=db_description),
-                                        "role": "system"
-                                    },
-                                    {
-                                        "content": user_content,
-                                        "role": "user"
-                                    }
-                                ]
-                            )
-        answer = completion_result.choices[0].message.content
-        score, _ = llm_table_validator(queries_history[-1], answer, table_info)
-        print(f"Score: {score}")
-        yield json.dumps({"type": "final_result", "data": answer}) + MESSAGE_DELIMITER
+                # step = {"type": "reasoning_step", "message": "You may try the following instead: " + answer_fol["followUpQuestion"]}
+                # yield json.dumps(step) + MESSAGE_DELIMITER
+                # else:
+                    # SQL generation
+            step = {"type": "reasoning_step",
+                    "message": "Generating SQL query from the user query and extracted schema..."}
+            yield json.dumps(step) + MESSAGE_DELIMITER
+
+            user_content = json.dumps({
+                                        "schema": result,
+                                        "previous_queries": queries_history[:-1],
+                                        "user_query": queries_history[-1]
+                                    })
+            completion_result = completion(model=Config.COMPLETION_MODEL,
+                                    messages=[
+                                        {
+                                            "content": Config.Text_To_SQL_PROMPT.format(db_description=db_description),
+                                            "role": "system"
+                                        },
+                                        {
+                                            "content": user_content,
+                                            "role": "user"
+                                        }
+                                    ],
+                                    temperature=0,
+                                    aws_profile_name=Config.AWS_PROFILE,
+                                    aws_region_name=Config.AWS_REGION,
+                                )
+            
+            answer = completion_result.choices[0].message.content
+            # score, _ = llm_table_validator(queries_history[-1], answer, table_info)
+            # print(f"Score: {score}")
+            # tax = agent_tax.get_answer(queries_history[-1], answer)
+            # step = {"type": "followup_questions",
+            #             "message": tax}
+            # yield json.dumps(step) + MESSAGE_DELIMITER
+            # tables = completion(model=Config.COMPLETION_MODEL,
+            #                         messages=[
+            #                             {
+            #                                 "content": f"""What tables are used in the query and if they exist in the below Similarity tables, in the following query?\n {answer}
+            #                                 Similarity tables: {table_name_by_method[0]}, {table_name_by_method[1]}
+            #                                 Please answer in the following format:
+            #                                 Table name, Similarity / Graph (Similarity if exists, Graph if not)\n
+            #                                 Table name, Similarity / Graph\n
+            #                                 ...""",
+            #                                 "role": "user"
+            #                             }
+            #                         ],
+            #                     )
+            # tables = tables.choices[0].message.content
+            # step = {"type": "reasoning_step",
+            #             "message": tables}
+            # yield json.dumps(step) + MESSAGE_DELIMITER
+            yield json.dumps({"type": "final_result", "data": answer}) + MESSAGE_DELIMITER
 
     return Response(stream_with_context(generate()), content_type='application/json')
 

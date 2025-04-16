@@ -52,7 +52,9 @@ def generate_db_description(db_name: str, table_names: list, temperature: float 
             temperature=temperature,
             max_tokens=max_tokens,
             n=1,
-            stop=None
+            stop=None,
+            aws_profile_name=Config.AWS_PROFILE,
+            aws_region_name=Config.AWS_REGION,
         )
     description = response.choices[0].message['content'].strip()
     return description
@@ -111,6 +113,8 @@ def llm_answer_validator(question: str, answer: str, expected_answer: str=None) 
                                 {"role": "user", "content": prompt.format(question=question, expected_answer=expected_answer, generated_answer=answer)}
                             ],
                             response_format={"type": "json_object"},
+                            aws_profile_name=Config.AWS_PROFILE,
+                            aws_region=Config.AWS_REGION,
 
                         )
     validation_set = response.choices[0].message['content'].strip()
@@ -141,6 +145,8 @@ def llm_table_validator(question: str, answer: str, tables: list[str]) -> float:
                                 {"role": "user", "content": prompt.format(question=question, tables=tables, generated_answer=answer)}
                             ],
                             response_format={"type": "json_object"},
+                            aws_profile_name=Config.AWS_PROFILE,
+                            aws_region=Config.AWS_REGION,
 
                         )
     validation_set = response.choices[0].message['content'].strip()

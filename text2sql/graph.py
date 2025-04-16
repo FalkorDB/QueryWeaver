@@ -1,10 +1,13 @@
 """ Module to handle the graph data loading into the database. """
+import os
 import json
 from typing import List, Optional, Tuple
 from litellm import completion, embedding
 from pydantic import BaseModel
 from text2sql.config import Config
 from text2sql.extensions import db
+# from sentence_transformers import SentenceTransformer
+# model = SentenceTransformer("all-MiniLM-L6-v2")
 
 class TableDescription(BaseModel):
     """ Table Description """
@@ -33,17 +36,15 @@ def find(
     previous_queries = queries_history[:-1]
 
     db_description = graph.query("""
-        MATCH (d:Database {name: $db_name})
+        MATCH (d:Database)
         RETURN d.description
-        """,
-        {
-            'db_name': graph_id
-        }
+        """
     ).result_set[0][0]
 
     # Call the completion model to get the relevant Cypher queries to retrieve
     # from the Graph that represent the Database schema.
     # The completion model will generate a set of Cypher query to retrieve the relevant nodes.
+
     completion_result = completion(model=Config.COMPLETION_MODEL,
                                     response_format=Descriptions,
                                     messages=[
@@ -58,7 +59,10 @@ def find(
                                             }),
                                             "role": "user"
                                         }
-                                    ]
+                                    ],
+                                    temperature=0,
+                                    aws_profile_name=Config.AWS_PROFILE,
+                                    aws_region_name=Config.AWS_REGION,
                                    )
 
     json_str = completion_result.choices[0].message.content
@@ -73,8 +77,12 @@ def find(
 
     base_tables_names = [table[0] for table in tables_results]
     tables_by_columns_results = _find_tables_by_columns(graph, descriptions.columns_descriptions)
+    column_tables_names = [table[0] for table in tables_by_columns_results]
+    # Remove duplicates from base_tables_names
+    # base_tables_names = list(set(base_tables_names) - set(column_tables_names))
+    #
     tables_by_sphere = _find_tables_sphere(graph, base_tables_names)
-    tables_by_route, _ = find_connecting_tables(graph, base_tables_names)
+    tables_by_route, _ = find_connecting_tables(graph, base_tables_names) #list(set(base_tables_names + column_tables_names))
 
     return True, _get_unique_tables(tables_results + tables_by_columns_results + tables_by_route + tables_by_sphere), db_description, [tables_results, tables_by_columns_results, tables_by_route, tables_by_sphere] 
 
@@ -84,7 +92,8 @@ def _find_tables(graph, descriptions: List[TableDescription]) -> List[dict]:
     for table in descriptions:
 
         # Get the table node from the graph
-        embedding_result = embedding(model=Config.EMBEDDING_MODEL, input=[table.description])
+        # embedding_result = embedding(model=Config.EMBEDDING_MODEL_NAME, input=[table.description], aws_profile_name=Config.AWS_PROFILE, aws_region_name=Config.AWS_REGION) # model.encode(table.description) #
+        embedding_result = Config.EMBEDDING_MODEL.embed(table.description)
         query_result = graph.query("""
                     CALL db.idx.vector.queryNodes(
                         'Table',
@@ -93,18 +102,15 @@ def _find_tables(graph, descriptions: List[TableDescription]) -> List[dict]:
                         vecf32($embedding)
                     ) YIELD node, score
                     MATCH (node)-[:BELONGS_TO]-(columns)
-                    RETURN node.name, node.description, collect({
+                    RETURN node.name, node.description, node.foreign_keys, collect({
                         columnName: columns.name,
                         description: columns.description,
-                        type: columns.type,
-                        null: columns.null,
-                        key: columns.key,
-                        default: columns.default,
-                        extra: columns.extra
+                        type: columns.key_type,
+                        key: columns.key
                     })
                     """,
                     {
-                        'embedding': embedding_result.data[0].embedding
+                        'embedding': embedding_result[0] #.data[0].embedding #embedding_result.tolist() #embedding_result.data[0].embedding
                     })
 
         for node in query_result.result_set:
@@ -121,14 +127,11 @@ def _find_tables_sphere(graph, tables: List[str]) -> List[dict]:
                     MATCH (node)-[:BELONGS_TO]-(column)-[:REFERENCES]-()-[:BELONGS_TO]-(table_ref)
                     WITH table_ref
                     MATCH (table_ref)-[:BELONGS_TO]-(columns)
-                    RETURN table_ref.name, table_ref.description, collect({
+                    RETURN table_ref.name, table_ref.description, table_ref.foreign_keys, collect({
                         columnName: columns.name,
                         description: columns.description,
                         type: columns.type,
-                        null: columns.null,
-                        key: columns.key,
-                        default: columns.default,
-                        extra: columns.extra
+                        key: columns.key
                     })
                     """,
                     {
@@ -147,7 +150,8 @@ def _find_tables_by_columns(graph, descriptions: List[ColumnDescription]) -> Lis
     for column in descriptions:
 
         # Get the table node from the graph
-        embedding_result = embedding(model=Config.EMBEDDING_MODEL, input=[column.description])
+        # embedding_result = embedding(model=Config.EMBEDDING_MODEL_NAME, input=[column.description], aws_profile_name=Config.AWS_PROFILE, aws_region_name=Config.AWS_REGION)
+        embedding_result = Config.EMBEDDING_MODEL.embed(column.description)
         query_result = graph.query("""
                     CALL db.idx.vector.queryNodes(
                         'Column',
@@ -158,19 +162,17 @@ def _find_tables_by_columns(graph, descriptions: List[ColumnDescription]) -> Lis
                     MATCH (node)-[:BELONGS_TO]-(table)-[:BELONGS_TO]-(columns)
                     RETURN 
                     table.name, 
-                    table.description, 
+                    table.description,
+                    table.foreign_keys,
                     collect({
                         columnName: columns.name,
                         description: columns.description,
                         type: columns.type,
-                        null: columns.null,
-                        key: columns.key,
-                        default: columns.default,
-                        extra: columns.extra
+                        key: columns.key
                     })
                     """,
                     {
-                        'embedding': embedding_result.data[0].embedding
+                        'embedding': embedding_result[0] #.data[0].embedding #embedding_result.tolist() #embedding_result.data[0].embedding
                     })
 
         for node in query_result.result_set:
@@ -187,8 +189,11 @@ def _get_unique_tables(tables_list):
         table_name = table_info[0]  # The first element is the table name
         
         # Only add if this table name hasn't been seen before
-        if table_name not in unique_tables:
-            unique_tables[table_name] = table_info
+        try:
+            if table_name not in unique_tables:
+                unique_tables[table_name] = table_info
+        except:
+            print(f"Error: {table_info}")
     
     # Return the values (the unique table info lists)
     return list(unique_tables.values())
@@ -212,48 +217,60 @@ def find_connecting_tables(graph, table_names: List[str]) -> Tuple[List[dict], L
     # Check all possible pairs of tables
     for i in range(len(table_names)):
         for j in range(i + 1, len(table_names)):  # This ensures i != j
-            table1 = table_names[i]
-            table2 = table_names[j]
-            
-            # Query to find all tables in the shortest paths between the pair
-            query = """
-            MATCH (a:Table {name: $table1}), (b:Table {name: $table2})  
-            WITH a, b
-            MATCH p=allShortestPaths((a)-[r*]-(b))
-            RETURN nodes(p) as nodes
-            """
-            
-            result = graph.query(query, {'table1': table1, 'table2': table2}).result_set
-            
-            # Extract table names from the paths
-            for path in result:
-                for node in path[0]:  # path[0] contains the nodes array
-                    if 'Table' in node.labels:
-                        all_connecting_tables.add(node.properties["name"])
-                        all_connecting_tables_id.add(node.id)
-                    elif 'Column' in node.labels and node.properties.get('key_type') == 'PRI':
-                        # For primary key columns, get the table they belong to
-                        table_query = """
-                        MATCH (n:Column)-[:BELONGS_TO]->(t:Table) 
-                        WHERE id(n)=$n_id 
-                        RETURN t
-                        """
-                        parent_table = graph.query(table_query, {'n_id': node.id}).result_set
-                        if parent_table and len(parent_table) > 0:
-                            all_connecting_tables.add(parent_table[0][0].properties["name"])
-                            all_connecting_tables_id.add(parent_table[0][0].id)
+            try:
+                table1 = table_names[i]
+                table2 = table_names[j]
+                # Query to find all tables in the shortest paths between the pair
+                query = """
+                MATCH (a:Table {name: $table1}), (b:Table {name: $table2})  
+                WITH a, b
+                MATCH p=allShortestPaths((a)-[r*..9]-(b))
+                RETURN nodes(p) as nodes
+                """
+                # prompt = "match (a:Table {name:$table1}), (b:Table {name:$table2}) WITH a, b MATCH p = (a)-[*1..6]-(b) RETURN nodes(p) LIMIT 1"
+                # try:
+                #     con = graph.query(prompt, {'table1': table1, 'table2': table2}, timeout=5).result_set
+                # except Exception as e:
+                #     print(f"Error querying graph: {e}")
+                #     continue
+                # if not con:
+                #     continue
+                try:
+                    paths = graph.query(query, {'table1': table1, 'table2': table2}, timeout=50).result_set
+                except Exception as e:
+                    print(f"Error querying graph: {e}")
+                    continue
+                if not paths:
+                    continue
+                # Extract table names from the paths
+                for path in paths:
+                    for node in path[0]:  # path[0] contains the nodes array
+                        if 'Table' in node.labels:
+                            all_connecting_tables.add(node.properties["name"])
+                            all_connecting_tables_id.add(node.id)
+                        elif 'Column' in node.labels and node.properties.get('key_type') == 'PRI':
+                            # For primary key columns, get the table they belong to
+                            table_query = """
+                            MATCH (n:Column)-[:BELONGS_TO]->(t:Table) 
+                            WHERE id(n)=$n_id 
+                            RETURN t
+                            """
+                            parent_table = graph.query(table_query, {'n_id': node.id}).result_set
+                            if parent_table and len(parent_table) > 0:
+                                all_connecting_tables.add(parent_table[0][0].properties["name"])
+                                all_connecting_tables_id.add(parent_table[0][0].id)
+            except Exception as e:
+                print(f"Error processing tables {table1} and {table2}: {e}")
+                continue
 
     query_result = graph.query("""UNWIND $ids AS id 
                 MATCH (n:Table)-[:BELONGS_TO]-(columns) 
                 WHERE id(n)=id 
-                RETURN n.name, n.description, collect({
+                RETURN n.name, n.description, n.foreign_keys, collect({
                         columnName: columns.name,
                         description: columns.description,
                         type: columns.type,
-                        null: columns.null,
-                        key: columns.key,
-                        default: columns.default,
-                        extra: columns.extra
+                        key: columns.key
                     })""", {'ids': list(all_connecting_tables_id)})
     for node in query_result.result_set:
             if node not in result:

@@ -3,6 +3,55 @@ This module contains the configuration for the text2sql module.
 """
 
 import dataclasses
+import os
+from litellm import embedding
+from typing import Union
+from sentence_transformers import SentenceTransformer
+
+
+class EmbeddingsModel():
+    
+    def __init__(
+        self,
+        model_name: str,
+        config: dict = None
+    ):
+        self.model_name = model_name
+        self.config = config
+        self.model = SentenceTransformer("all-MiniLM-L6-v2")
+    
+    def embed(self, text: Union[str, list]) -> list:
+        """
+        Get the embeddings of the text
+        
+        Args:
+            text (str|list): The text(s) to embed
+            
+        Returns:
+            list: The embeddings of the text
+        
+        """
+        # embeddings = embedding(model=self.model_name, input=text, **self.config)
+        # embeddings = [embedding["embedding"] for embedding in embeddings.data]
+        embeddings = self.model.encode(text).tolist()
+        if isinstance(text, str):
+            return [embeddings]
+        elif isinstance(text, list):
+            return embeddings
+    
+    def get_vector_size(self) -> int:
+        """
+        Get the size of the vector
+        
+        Returns:
+            int: The size of the vector
+        
+        """
+        # response = embedding(input = ["Hello World"], model=self.model_name, **self.config)
+        # size = len(response.data[0]['embedding'])
+        response = self.model.encode("Hello World")
+        return len(response.tolist())
+
 
 @dataclasses.dataclass
 class Config:
@@ -10,15 +59,33 @@ class Config:
     Configuration class for the text2sql module.    
     """
     SCHEMA_PATH = "text2sql/schema_aba.json"
-    EMBEDDING_MODEL = "gemini/text-embedding-004"
-    COMPLETION_MODEL = "gemini/gemini-2.0-flash"
+    EMBEDDING_MODEL_NAME = "bedrock/amazon.titan-embed-text-v1" #"gemini/text-embedding-004" 
+    COMPLETION_MODEL = "us.meta.llama3-3-70b-instruct-v1:0" #"bedrock/us.anthropic.claude-3-7-sonnet-20250219-v1:0" #"gemini/gemini-2.0-flash" "us.meta.llama3-3-70b-instruct-v1:0"
     VALIDTOR_MODEL = "openai/gpt-4o"
     TEMPERATURE = 0
+    config = {}
+    if "bedrock" in EMBEDDING_MODEL_NAME or "bedrock" in COMPLETION_MODEL:
+        AWS_PROFILE = os.getenv("aws_profile_name")
+        AWS_REGION = os.getenv("aws_region_name")
+        if AWS_PROFILE is None or AWS_REGION is None:
+            raise ValueError("AWS profile name and region name must be set in environment variables.")
+        elif "bedrock" in EMBEDDING_MODEL_NAME:
+            config["aws_profile_name"] = AWS_PROFILE
+            config["aws_region_name"] = AWS_REGION
+
+    EMBEDDING_MODEL = EmbeddingsModel(
+        model_name=EMBEDDING_MODEL_NAME,
+        config=config
+    )
+        
+
     FIND_SYSTEM_PROMPT = """
     You are an expert in analyzing natural language queries into SQL queries.
     Please analyze the user's query and generate a set of tables descriptions that might be relevant to the user's query.
     These descriptions should describe the tables and columns that are relevant to the user's query.
     If the user's query is more relevant to specific columns, please provide a description of those columns.
+    Be accurate and precise in how many tables and columns you provide.
+    try to provide the minimum number of tables and columns that are relevant to the user's query.
 
     Keep in mind that the database that you work with has the following description: {db_description}.
 
@@ -37,7 +104,7 @@ class Config:
     You should provide a set of table descriptions that are relevant to the user's query.
 
     * **Column Descriptions:**
-    If the user's query is more relevant to specific columns, please provide a description of those columns.
+     If the user's query is more relevant to specific columns, you should provide a set of column descriptions that are relevant to the user's query.
     """
 
     Text_To_SQL_PROMPT = """
@@ -55,9 +122,12 @@ class Config:
     9. **Prioritize Accuracy:** Accuracy is paramount. Ensure the generated SQL query returns the correct results.
     10. **Assume standard SQL dialect.**
     11. **Do not add any comments to the generated SQL.**
+    12. **When you use WHERE clause, please use the exact value as the user provided, and dont make up values.**
+    13. **If you dont have the value for the WHERE clause, use "TBD" for string and "1234" for number.**
 
     Keep in mind that the database that you work with has the following description: {db_description}.
 
+    Before you start to answer, analyze the user_query step by step and try to understand the user's intent and the relevant tables and columns.
 
     **Input:**
     * **Database Schema:**
@@ -94,7 +164,6 @@ class Config:
     11. **Do not add any comments to the generated SQL.**
 
     Keep in mind that the database that you work with has the following description: {db_description}.
-
 
     **Input:**
     * **Database Schema:**

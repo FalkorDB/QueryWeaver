@@ -1,5 +1,5 @@
 {
-  "database": "crm_system",
+  "database": "crm_usecase",
   "tables": {
     "contacts": {
       "description": "Stores information about individual contacts within the CRM system, including personal details and their relationship to companies, users, and leads.",
@@ -19178,7 +19178,7 @@
           "description": "Foreign key referencing the reports table (e.g., incident_reports, custom_reports).",
           "type": "int(11)",
           "null": "NO",
-          "key": "FK",
+          "key": "",
           "default": null,
           "extra": ""
         },
@@ -19186,7 +19186,7 @@
           "description": "Foreign key referencing the users table, indicating the user associated with the report.",
           "type": "int(11)",
           "null": "YES",
-          "key": "FK",
+          "key": "",
           "default": null,
           "extra": ""
         },
@@ -19194,7 +19194,7 @@
           "description": "Foreign key referencing the documents table, if the report is related to a specific document.",
           "type": "int(11)",
           "null": "YES",
-          "key": "FK",
+          "key": "",
           "default": null,
           "extra": ""
         },
@@ -19202,7 +19202,7 @@
           "description": "Foreign key referencing the cases table, if the report is related to a specific case.",
           "type": "int(11)",
           "null": "YES",
-          "key": "FK",
+          "key": "",
           "default": null,
           "extra": ""
         },
@@ -19210,7 +19210,7 @@
           "description": "Foreign key referencing the contacts table, if the report is related to a specific contact.",
           "type": "int(11)",
           "null": "YES",
-          "key": "FK",
+          "key": "",
           "default": null,
           "extra": ""
         },
@@ -19218,7 +19218,7 @@
           "description": "Foreign key referencing the companies table, if the report is related to a specific company.",
           "type": "int(11)",
           "null": "YES",
-          "key": "FK",
+          "key": "",
           "default": null,
           "extra": ""
         },
@@ -24032,16 +24032,6 @@
           "referenced_column": "user_id"
         }
       }
-    }
-  },
-  "metadata": {
-    "last_updated": "2025-03-12 15:04:20",
-    "completed_tables": 0,
-    "total_tables": 177,
-    "key_registry": {
-      "primary_keys": {},
-      "foreign_keys": {},
-      "table_relationships": {}
     }
   }
 }

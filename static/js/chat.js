@@ -9,12 +9,21 @@ let currentRequestController = null;
 // Custom delimiter that's unlikely to appear in your data
 const MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||';
 
-function addMessage(message, isUser = false) {
+function addMessage(message, isUser = false, isFollowup = false, isFinalResult = false) {
     const messageDiv = document.createElement('div');
-    if(isUser) {
+    if(isFollowup){
+        messageDiv.className = "message followup-message";
+        messageDiv.textContent = message;
+    }
+    else if(isUser) {
         messageDiv.className = "message user-message";
         questions_history.push(message);
-    } else {
+    }
+    else if(isFinalResult){
+        messageDiv.className = "message final-result-message";
+        // messageDiv.textContent = message;
+    }
+    else {
         messageDiv.className = "message bot-message";
     }
     ;
@@ -154,11 +163,12 @@ async function sendMessage() {
                         addMessage(step.message, false);
                     } else if (step.type === 'final_result') {
                         // Final result could be displayed differently
-                        addMessage(step.message || JSON.stringify(step.data, null, 2), false);
+                        addMessage(step.message || JSON.stringify(step.data, null, 2), false, false, true);
                     } else if (step.type === 'followup_questions') {
-                        step.questions.forEach(question => {
-                            addMessage(question, false);
-                        });
+                        // step.questions.forEach(question => {
+                        //     addMessage(question, false);
+                        // });
+                        addMessage(step.message, false, true);
                     } else {
                         // Default handling
                         addMessage(step.message || JSON.stringify(step), false);

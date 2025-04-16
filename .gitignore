@@ -1,5 +1,5 @@
 .env
 *.pyc
 .vscode/
-*_confidential.csv
-*_confidential.json
+*_conf*
+.*
