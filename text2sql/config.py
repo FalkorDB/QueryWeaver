@@ -18,7 +18,7 @@ class EmbeddingsModel():
     ):
         self.model_name = model_name
         self.config = config
-        self.model = SentenceTransformer("all-MiniLM-L6-v2")
+        self.model = SentenceTransformer("avsolatorio/GIST-large-Embedding-v0")
     
     def embed(self, text: Union[str, list]) -> list:
         """
@@ -80,12 +80,11 @@ class Config:
         
 
     FIND_SYSTEM_PROMPT = """
-    You are an expert in analyzing natural language queries into SQL queries.
-    Please analyze the user's query and generate a set of tables descriptions that might be relevant to the user's query.
+    You are an expert in analyzing natural language queries into SQL tables descriptions.
+    Please analyze the user's query and generate a set of tables and columns descriptions that might be relevant to the user's query.
     These descriptions should describe the tables and columns that are relevant to the user's query.
     If the user's query is more relevant to specific columns, please provide a description of those columns.
-    Be accurate and precise in how many tables and columns you provide.
-    try to provide the minimum number of tables and columns that are relevant to the user's query.
+    Try to generate description for any part of the user query.
 
     Keep in mind that the database that you work with has the following description: {db_description}.
 
@@ -104,7 +103,7 @@ class Config:
     You should provide a set of table descriptions that are relevant to the user's query.
 
     * **Column Descriptions:**
-     If the user's query is more relevant to specific columns, you should provide a set of column descriptions that are relevant to the user's query.
+    If the user's query is more relevant to specific columns, you should provide a set of column descriptions that are relevant to the user's query.
     """
 
     Text_To_SQL_PROMPT = """
@@ -123,7 +122,10 @@ class Config:
     10. **Assume standard SQL dialect.**
     11. **Do not add any comments to the generated SQL.**
     12. **When you use WHERE clause, please use the exact value as the user provided, and dont make up values.**
-    13. **If you dont have the value for the WHERE clause, use "TBD" for string and "1234" for number.**
+    13. **If you dont have the value for the WHERE clause, use "TBD" for string and "1111" for number.**
+    14. **Only create JOIN between tables based on the foreign key that point on referenced table and column.**
+    15. **Do not create JOIN between tables that are not explicitly connected by foreign key in the input schema.**
+    16. **Try to use explict condition column instead of indication wherever possible.**
 
     Keep in mind that the database that you work with has the following description: {db_description}.
 
@@ -133,7 +135,7 @@ class Config:
     * **Database Schema:**
     You will be provided with part of the database schema that might be relevant to the user's question.
     With the following structure:
-    {{"schema": [["table_name", description, [{{"column_name": "column_description", "data_type": "data_type",...}},...]],...]}}
+    {{"schema": [["table_name", description, foreign keys[list], [{{"column_name": "column_description", "data_type": "data_type",...}},...]],...]}}
 
     * **Previous Queries:**
     You will be provided with a list of the user's previous queries in this session. Each query will be prefixed with "Query N:" where N is the query number, followed by both the natural language question and the SQL query that was generated. Use these to maintain consistency and understand the user's evolving information needs.

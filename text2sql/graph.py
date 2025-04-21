@@ -1,13 +1,11 @@
 """ Module to handle the graph data loading into the database. """
 import os
 import json
-from typing import List, Optional, Tuple
-from litellm import completion, embedding
+from typing import List, Tuple, Dict, Any
+from litellm import completion
 from pydantic import BaseModel
 from text2sql.config import Config
 from text2sql.extensions import db
-# from sentence_transformers import SentenceTransformer
-# model = SentenceTransformer("all-MiniLM-L6-v2")
 
 class TableDescription(BaseModel):
     """ Table Description """
@@ -71,20 +69,31 @@ def find(
     json_data = json.loads(json_str)
     descriptions = Descriptions(**json_data)
 
-    # if len(descriptions.followup_questions) > 0:
-    #     return True, [{"followup_questions": descriptions.followup_questions}]
-    tables_results = _find_tables(graph, descriptions.tables_descriptions)
+    tables_des = _find_tables(graph, descriptions.tables_descriptions)
+    tables_by_columns_des = _find_tables_by_columns(graph, descriptions.columns_descriptions)
 
-    base_tables_names = [table[0] for table in tables_results]
-    tables_by_columns_results = _find_tables_by_columns(graph, descriptions.columns_descriptions)
-    column_tables_names = [table[0] for table in tables_by_columns_results]
-    # Remove duplicates from base_tables_names
-    # base_tables_names = list(set(base_tables_names) - set(column_tables_names))
-    #
+    # table names for sphere and route extraction
+    base_tables_names = [table[0] for table in tables_des]
     tables_by_sphere = _find_tables_sphere(graph, base_tables_names)
     tables_by_route, _ = find_connecting_tables(graph, base_tables_names) #list(set(base_tables_names + column_tables_names))
-
-    return True, _get_unique_tables(tables_results + tables_by_columns_results + tables_by_route + tables_by_sphere), db_description, [tables_results, tables_by_columns_results, tables_by_route, tables_by_sphere] 
+    combined_tables = _get_unique_tables(tables_des + tables_by_columns_des + tables_by_route + tables_by_sphere)
+    formatted_schema = _format_schema(combined_tables)
+    prompt = _build_prompt(user_query, formatted_schema, db_description)
+    completion_result = completion(model=Config.COMPLETION_MODEL,
+                                messages=[
+                                    {
+                                        "content": prompt,
+                                        "role": "user"
+                                    }
+                                ],
+                                temperature=0,
+                                aws_profile_name=Config.AWS_PROFILE,
+                                aws_region_name=Config.AWS_REGION,
+                                )
+    
+    response = completion_result.choices[0].message.content
+    analysis = _parse_response(response)
+    return True, combined_tables, db_description, [tables_des, tables_by_columns_des, tables_by_route, tables_by_sphere], formatted_schema
 
 def _find_tables(graph, descriptions: List[TableDescription]) -> List[dict]:
 
@@ -191,6 +200,8 @@ def _get_unique_tables(tables_list):
         # Only add if this table name hasn't been seen before
         try:
             if table_name not in unique_tables:
+                table_info[3] = [dict(od) for od in table_info[3]]
+                table_info[2] = 'Foreign keys: ' + table_info[2]
                 unique_tables[table_name] = table_info
         except:
             print(f"Error: {table_info}")
@@ -278,3 +289,128 @@ def find_connecting_tables(graph, table_names: List[str]) -> Tuple[List[dict], L
 
     print(f"Connecting tables: {all_connecting_tables}")
     return result, list(all_connecting_tables)
+
+
+def _format_schema(schema_data: List) -> str:
+    """
+    Format the schema data into a readable format for the prompt.
+    
+    Args:
+        schema_data: Schema in the structure [...]
+        
+    Returns:
+        Formatted schema as a string
+    """
+    formatted_schema = []
+    
+    for table_info in schema_data:
+        table_name = table_info[0]
+        table_description = table_info[1]
+        foreign_keys = table_info[2]
+        columns = table_info[3]
+        
+        # Format table header
+        table_str = f"Table: {table_name} - {table_description}\n"
+        
+        # Format columns using the updated OrderedDict structure
+        for column in columns:
+            col_name = column.get("columnName", "")
+            col_type = column.get("type", "")
+            col_description = column.get("description", "")
+            col_key = column.get("key", None)
+            
+            key_info = f", PRIMARY KEY" if col_key == "PK" else f", FOREIGN KEY" if col_key == "FK" else ""
+            column_str = f"  - {col_name} ({col_type}{key_info}): {col_description}"
+            table_str += column_str + "\n"
+        
+        # Format foreign keys
+        if isinstance(foreign_keys, dict) and foreign_keys:
+            table_str += "  Foreign Keys:\n"
+            for fk_name, fk_info in foreign_keys.items():
+                column = fk_info.get("column", "")
+                ref_table = fk_info.get("referenced_table", "")
+                ref_column = fk_info.get("referenced_column", "")
+                table_str += f"  - {fk_name}: {column} references {ref_table}.{ref_column}\n"
+        
+        formatted_schema.append(table_str)
+    
+    return "\n".join(formatted_schema)
+
+def _parse_response(response: str) -> Dict[str, Any]:
+    """
+    Parse Claude's response to extract the analysis.
+    
+    Args:
+        response: Claude's response string
+        
+    Returns:
+        Parsed analysis results
+    """
+    try:
+        # Extract JSON from the response
+        json_start = response.find('{')
+        json_end = response.rfind('}') + 1
+        json_str = response[json_start:json_end]
+        
+        # Parse the JSON
+        analysis = json.loads(json_str)
+        return analysis
+    except (json.JSONDecodeError, ValueError) as e:
+        # Fallback if JSON parsing fails
+        return {
+            "is_sql_translatable": False,
+            "confidence": 0,
+            "explanation": f"Failed to parse response: {str(e)}",
+            "error": str(response)
+        }
+
+def _build_prompt(user_input: str, formatted_schema: str, db_description: str) -> str:
+    """
+    Build the prompt for Claude to analyze the query.
+    
+    Args:
+        user_input: The natural language query from the user
+        formatted_schema: Formatted database schema
+        
+    Returns:
+        The formatted prompt for Claude
+    """
+    prompt = f"""
+    <database_description>
+    {db_description}
+    </database_description>
+
+    <database_schema>
+    {formatted_schema}
+    </database_schema>
+
+    <user_query>
+    {user_input}
+    </user_query>
+
+    You are an expert in database systems and natural language processing. Your task is to determine if the user query above can be translated into a valid SQL query given the database schema provided.
+
+    Please analyze the query carefully and respond in the following JSON format:
+
+    ```json
+    {{
+        "is_sql_translatable": true/false,
+        "confidence": 0-100,
+        "explanation": "Your explanation of why the query can or cannot be translated to SQL",
+        "missing_information": ["list", "of", "missing", "information"] (if applicable),
+        "ambiguities": ["list", "of", "ambiguities"] (if applicable),
+        "potential_sql_structure": "High-level SQL structure (if applicable)"
+    }}
+    ```
+
+    Your analysis should consider:
+    1. Whether the query asks for information that exists in the database schema
+    2. Whether the query's intent is clear enough to be expressed in SQL
+    3. Whether there are any ambiguities that make SQL translation difficult
+    4. Whether any required information is missing to form a complete SQL query
+    5. Whether the necessary joins can be established using available foreign keys
+    6. If there are multiple possible interpretations of the query
+
+    Provide your response as valid, parseable JSON only.
+    """
+    return prompt

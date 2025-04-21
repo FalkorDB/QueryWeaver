@@ -109,9 +109,6 @@ def query(graph_id: str):
     """
     text2sql
     """
-    # q = request.args.get('q', type=str)
-    # if not q:
-    #     return jsonify({"error": "Missing query parameter 'q'"}), 400
 
     queries_history = request.get_json()
     if not queries_history:
@@ -127,7 +124,7 @@ def query(graph_id: str):
         step = {"type": "reasoning_step", "message": "Extracting relevant tables from schema..."}
         yield json.dumps(step) + MESSAGE_DELIMITER
 
-        success, result, db_description, tables_by_method = find(graph_id, queries_history)
+        success, result, db_description, tables_by_method, formatted_schema = find(graph_id, queries_history)
         if not success:
             return jsonify({"error": result}), 400
         # # Extract table names and descriptions
