@@ -9,7 +9,7 @@ from text2sql.loaders.csv_loader import CSVLoader
 from text2sql.loaders.json_loader import JSONLoader
 from text2sql.loaders.odata_loader import ODataLoader
 from text2sql.utils import llm_answer_validator, llm_table_validator
-from text2sql.agents import RelevancyAgent, FollowUpAgent, TaxonomyAgent
+from text2sql.agents import RelevancyAgent, AnalysisAgent
 
 # Use the same delimiter as in the JavaScript
 MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||'
@@ -117,37 +117,24 @@ def query(graph_id: str):
     # Create a generator function for streaming
     def generate():
         agent_rel = RelevancyAgent()
-        agent_fol = FollowUpAgent()
-        agent_tax = TaxonomyAgent()
-        to_show = False
+        agent_an = AnalysisAgent()
+
+        to_show = True
 
         step = {"type": "reasoning_step", "message": "Extracting relevant tables from schema..."}
         yield json.dumps(step) + MESSAGE_DELIMITER
 
-        success, result, db_description, tables_by_method, formatted_schema = find(graph_id, queries_history)
+        success, result, db_description, tables_by_method = find(graph_id, queries_history)
         if not success:
             return jsonify({"error": result}), 400
-        # # Extract table names and descriptions
-        table_info = json.dumps([(table[0], table[1]) for table in result])
 
-        # step = {"type": "reasoning_step",
-        #         "message": f"This is the list of tables extracted: {table_info}"}
+        # if to_show:
 
-        # yield json.dumps(step) + MESSAGE_DELIMITER
 
-        table_name_by_method = []
-        methods = ["Table des", "Column des", "Connection", "Sphere",]
-        for tables in tables_by_method:
-            table_name_by_method.append(json.dumps([(table[0]) for table in tables]))
-        if to_show:
-            for i, method in enumerate(methods):
-                step = {"type": "reasoning_step",
-                        "message": f"Tables extracted by {method}: {table_name_by_method[i]}"}
-                yield json.dumps(step) + MESSAGE_DELIMITER
-
-        # answer_rel = agent_rel.get_answer(queries_history[-1], result)
-        if False:#answer_rel["status"] != "On-topic":
-            step = {"type": "followup_questions", "message": answer_rel["reason"] + " Please ask a question related to the database schema."}
+        answer_rel = agent_rel.get_answer(queries_history[-1], result)
+        answer_an = agent_an.get_analysis(queries_history[-1], result, db_description)
+        if answer_rel["status"] != "On-topic":
+            step = {"type": "followup_questions", "message": "Off topic question: " + answer_rel["reason"]}
             yield json.dumps(step) + MESSAGE_DELIMITER
 
             # step = {"type": "reasoning_step", "data": "You may try the following instead: " + str(answer_rel["suggestions"])}
@@ -189,29 +176,7 @@ def query(graph_id: str):
                                 )
             
             answer = completion_result.choices[0].message.content
-            # score, _ = llm_table_validator(queries_history[-1], answer, table_info)
-            # print(f"Score: {score}")
-            # tax = agent_tax.get_answer(queries_history[-1], answer)
-            # step = {"type": "followup_questions",
-            #             "message": tax}
-            # yield json.dumps(step) + MESSAGE_DELIMITER
-            # tables = completion(model=Config.COMPLETION_MODEL,
-            #                         messages=[
-            #                             {
-            #                                 "content": f"""What tables are used in the query and if they exist in the below Similarity tables, in the following query?\n {answer}
-            #                                 Similarity tables: {table_name_by_method[0]}, {table_name_by_method[1]}
-            #                                 Please answer in the following format:
-            #                                 Table name, Similarity / Graph (Similarity if exists, Graph if not)\n
-            #                                 Table name, Similarity / Graph\n
-            #                                 ...""",
-            #                                 "role": "user"
-            #                             }
-            #                         ],
-            #                     )
-            # tables = tables.choices[0].message.content
-            # step = {"type": "reasoning_step",
-            #             "message": tables}
-            # yield json.dumps(step) + MESSAGE_DELIMITER
+
             yield json.dumps({"type": "final_result", "data": answer}) + MESSAGE_DELIMITER
 
     return Response(stream_with_context(generate()), content_type='application/json')

@@ -2,86 +2,132 @@ import json
 from litellm import completion, embedding
 from text2sql.graph import find, find_connecting_tables
 from text2sql.config import Config
+from typing import List, Tuple, Dict, Any
 
-
-def get_completion(message):
-    completion_result = completion(
-            model=Config.COMPLETION_MODEL,
-            messages=[
-                {
-                    "content": message,
-                    "role": "user"
-                }
-            ],
-            response_format={"type": "json_object"},
-            temperature=0,
-            aws_profile_name=Config.AWS_PROFILE,
-            aws_region=Config.AWS_REGION,
-        )
-        
-    answer = completion_result.choices[0].message.content
-    return json.loads(answer)
-
-class base_agent:
-    def __init__(self, args):
-        pass
-
-
-class aiming_agent(base_agent):
-    def __init__(self, args):
-        super().__init__(args)  # Call parent class constructor
-        
-        # Store arguments as instance variables
-        self.args = args
-        self.result = args.get('result')
-        self.queries_history = args.get('queries_history')
-        self.db_description = args.get('db_description')
-        self.graph = args.get('graph')
-        self.Config = args.get('Config')
-        
-        # Initialize class attributes
-        self.connection_tables = None
-        
-    def find_connections(self):
-        """Find connections between tables based on user query."""
-        # Check if we have the necessary data to proceed
-        if not (self.queries_history and self.result):
-            return None, None
-            
-        user_content = json.dumps({
-            "schema": self.result,
-            "previous_queries": self.queries_history[:-1],
-            "user_query": self.queries_history[-1]
-        })
-        
-        # Using the imported completion function
-        completion_result = completion(
-            model=self.Config.COMPLETION_MODEL,
-            messages=[
-                {
-                    "content": self.Config.Text_To_tables_PROMPT.format(db_description=self.db_description),
-                    "role": "system"
-                },
-                {
-                    "content": user_content,
-                    "role": "user"
-                }
-            ],
-            response_format={"type": "json_object"},
-            temperature=0
-        )
-        
-        focus_tables = completion_result.choices[0].message.content
-        table_list = json.loads(focus_tables)
-        
-        # Using the imported find_connecting_tables function
-        self.result, self.connection_tables = find_connecting_tables(self.graph, table_list, self.result)
-        return self.result, self.connection_tables
-    
-
-class RelevancyAgent(base_agent):
+class AnalysisAgent():
     def __init__(self):
         pass
+
+    def get_analysis(self, user_query: str, combined_tables: list, db_description: str) -> dict:
+        formatted_schema = self._format_schema(combined_tables)
+        prompt = self._build_prompt(user_query, formatted_schema, db_description)
+        completion_result = completion(model=Config.COMPLETION_MODEL,
+                                    messages=[
+                                        {
+                                            "content": prompt,
+                                            "role": "user"
+                                        }
+                                    ],
+                                    temperature=0,
+                                    aws_profile_name=Config.AWS_PROFILE,
+                                    aws_region_name=Config.AWS_REGION,
+                                    )
+        
+        response = completion_result.choices[0].message.content
+        analysis = _parse_response(response)
+        return analysis
+    
+    def _format_schema(self, schema_data: List) -> str:
+        """
+        Format the schema data into a readable format for the prompt.
+        
+        Args:
+            schema_data: Schema in the structure [...]
+            
+        Returns:
+            Formatted schema as a string
+        """
+        formatted_schema = []
+        
+        for table_info in schema_data:
+            table_name = table_info[0]
+            table_description = table_info[1]
+            foreign_keys = table_info[2]
+            columns = table_info[3]
+            
+            # Format table header
+            table_str = f"Table: {table_name} - {table_description}\n"
+            
+            # Format columns using the updated OrderedDict structure
+            for column in columns:
+                col_name = column.get("columnName", "")
+                col_type = column.get("type", "")
+                col_description = column.get("description", "")
+                col_key = column.get("key", None)
+                
+                key_info = f", PRIMARY KEY" if col_key == "PK" else f", FOREIGN KEY" if col_key == "FK" else ""
+                column_str = f"  - {col_name} ({col_type}{key_info}): {col_description}"
+                table_str += column_str + "\n"
+            
+            # Format foreign keys
+            if isinstance(foreign_keys, dict) and foreign_keys:
+                table_str += "  Foreign Keys:\n"
+                for fk_name, fk_info in foreign_keys.items():
+                    column = fk_info.get("column", "")
+                    ref_table = fk_info.get("referenced_table", "")
+                    ref_column = fk_info.get("referenced_column", "")
+                    table_str += f"  - {fk_name}: {column} references {ref_table}.{ref_column}\n"
+            
+            formatted_schema.append(table_str)
+        
+        return "\n".join(formatted_schema)
+
+    def _build_prompt(self, user_input: str, formatted_schema: str, db_description: str) -> str:
+        """
+        Build the prompt for Claude to analyze the query.
+        
+        Args:
+            user_input: The natural language query from the user
+            formatted_schema: Formatted database schema
+            
+        Returns:
+            The formatted prompt for Claude
+        """
+        prompt = f"""
+        <database_description>
+        {db_description}
+        </database_description>
+
+        <database_schema>
+        {formatted_schema}
+        </database_schema>
+
+        <user_query>
+        {user_input}
+        </user_query>
+
+        You are an expert in database systems and natural language processing. Your task is to determine if the user query above can be translated into a valid SQL query given the database schema provided.
+
+        Please analyze the query carefully and respond in the following JSON format:
+
+        ```json
+        {{
+            "is_sql_translatable": true/false,
+            "confidence": 0-100,
+            "explanation": "Your explanation of why the query can or cannot be translated to SQL",
+            "missing_information": ["list", "of", "missing", "information"] (if applicable),
+            "ambiguities": ["list", "of", "ambiguities"] (if applicable),
+            "potential_sql_structure": "High-level SQL structure (if applicable)"
+        }}
+        ```
+
+        Your analysis should consider:
+        1. Whether the query asks for information that exists in the database schema
+        2. Whether the query's intent is clear enough to be expressed in SQL
+        3. Whether there are any ambiguities that make SQL translation difficult
+        4. Whether any required information is missing to form a complete SQL query
+        5. Whether the necessary joins can be established using available foreign keys
+        6. If there are multiple possible interpretations of the query
+
+        Provide your response as valid, parseable JSON only.
+        """
+        return prompt
+
+
+class RelevancyAgent():
+    def __init__(self):
+        pass
+
     def get_answer(self, user_question: str, database_schema: dict) -> dict:
         completion_result = completion(
             model=Config.COMPLETION_MODEL,
@@ -91,14 +137,13 @@ class RelevancyAgent(base_agent):
                     "role": "user"
                 }
             ],
-            response_format={"type": "json_object"},
             temperature=0,
             aws_profile_name=Config.AWS_PROFILE,
             aws_region_name=Config.AWS_REGION,
         )
         
         answer = completion_result.choices[0].message.content
-        return json.loads(answer)
+        return _parse_response(answer)
 
 
 RELEVANCY_PROMPT = """
@@ -149,9 +194,10 @@ Ensure your response is concise, polite, and helpful.
 
 
 
-class FollowUpAgent(base_agent):
+class FollowUpAgent():
     def __init__(self):
         pass
+
     def get_answer(self, user_question: str, conversation_hist: list, database_schema: dict) -> dict:
         completion_result = completion(
             model=Config.COMPLETION_MODEL,
@@ -208,9 +254,10 @@ Please follow these steps:
 
 
 
-class TaxonomyAgent(base_agent):
+class TaxonomyAgent():
     def __init__(self):
         pass
+
     def get_answer(self, question: str, sql: str) -> str:
         messages = [
             {
@@ -257,3 +304,31 @@ Your output: "The diabitic desease code is E11? If not, please provide the corre
 
 The question to the user:"
 """
+
+def _parse_response(response: str) -> Dict[str, Any]:
+    """
+    Parse Claude's response to extract the analysis.
+    
+    Args:
+        response: Claude's response string
+        
+    Returns:
+        Parsed analysis results
+    """
+    try:
+        # Extract JSON from the response
+        json_start = response.find('{')
+        json_end = response.rfind('}') + 1
+        json_str = response[json_start:json_end]
+        
+        # Parse the JSON
+        analysis = json.loads(json_str)
+        return analysis
+    except (json.JSONDecodeError, ValueError) as e:
+        # Fallback if JSON parsing fails
+        return {
+            "is_sql_translatable": False,
+            "confidence": 0,
+            "explanation": f"Failed to parse response: {str(e)}",
+            "error": str(response)
+        }
