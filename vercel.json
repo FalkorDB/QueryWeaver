@@ -1,18 +1,5 @@
 {
-    "builds": [
-      {
-        "src": "/api/routes",
-        "use": "@vercel/python",
-        "config": { "maxLambdaSize": "15mb" }
-      }
-    ],
-    "routes": [
-      {
-        "src": "/(.*)",
-        "dest": "/api/routes"
-      }
+    "rewrites": [
+      { "source": "/(.*)", "destination": "/api/index" }
     ]
   }
-  
-
-
