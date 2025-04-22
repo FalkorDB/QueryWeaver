@@ -1,5 +1,6 @@
 """ This module contains the routes for the text2sql API. """
 import json
+import os
 from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context
 from litellm import completion
 from text2sql.config import Config
@@ -14,8 +15,27 @@ MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||'
 
 main = Blueprint("main", __name__)
 
+# Load the token from .env
+SECRET_TOKEN = os.getenv("SECRET_TOKEN")
+
+def verify_token(current_request):
+    if SECRET_TOKEN:
+        # Check if the token is valid
+        token = current_request.args.get("token")
+        if not token:
+            return jsonify({"error": "Missing token"}), 400
+
+        if token != SECRET_TOKEN:
+            return jsonify({"error": "Unauthorized"}), 403
+
+
 @main.route('/')
 def home():
+    
+    verify_result = verify_token(request)
+    if verify_result is not None:
+        return verify_result
+    
     """ Home route """
     return render_template('chat.html')
 
@@ -24,6 +44,10 @@ def graphs():
     """
     This route is used to list all the graphs that are available in the database.
     """
+    verify_result = verify_token(request)
+    if verify_result is not None:
+        return verify_result
+
     return db.list_graphs()
 
 @main.route("/graphs", methods=["POST"])
@@ -35,6 +59,9 @@ def load():
     - A File upload (multipart/form-data)
     - An XML payload (application/xml or text/xml)
     """
+    verify_result = verify_token(request)
+    if verify_result is not None:
+        return verify_result
 
     content_type = request.content_type
     success, result = False, "Invalid content type"
@@ -114,6 +141,10 @@ def query(graph_id: str):
     queries_history = request.get_json()
     if not queries_history:
         return jsonify({"error": "Invalid or missing JSON data"}), 400
+
+    verify_result = verify_token(request)
+    if verify_result is not None:
+        return verify_result
 
     # Create a generator function for streaming
     def generate():
