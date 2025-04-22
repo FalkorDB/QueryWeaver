@@ -4,14 +4,11 @@ import os
 from functools import wraps
 from dotenv import load_dotenv
 from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context, Flask
-from litellm import completion
-from text2sql.config import Config
 from text2sql.graph import find
 from text2sql.extensions import db
 from text2sql.loaders.csv_loader import CSVLoader
 from text2sql.loaders.json_loader import JSONLoader
 from text2sql.loaders.odata_loader import ODataLoader
-from text2sql.utils import llm_answer_validator, llm_table_validator
 from text2sql.agents import RelevancyAgent, AnalysisAgent
 
 # Load environment variables from .env file
@@ -31,7 +28,7 @@ def token_required(f):
     """ Decorator to protect routes with token authentication """
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        token = request.headers.get('Authorization')  # Get token from header
+        token = request.args.get('token')  # Get token from header
         if not verify_token(token):
             return jsonify(message="Unauthorized"), 401
         return f(*args, **kwargs)
@@ -40,13 +37,13 @@ def token_required(f):
 app = Flask(__name__)
 
 
-@main.route('/')
+@app.route('/')
 @token_required  # Apply token authentication decorator
 def home():
     """ Home route """
     return render_template('chat.html')
 
-@main.route('/graphs')
+@app.route('/graphs')
 @token_required  # Apply token authentication decorator
 def graphs():
     """
@@ -54,7 +51,7 @@ def graphs():
     """
     return db.list_graphs()
 
-@main.route("/graphs", methods=["POST"])
+@app.route("/graphs", methods=["POST"])
 @token_required  # Apply token authentication decorator
 def load():
     """
@@ -130,20 +127,21 @@ def load():
 
     return jsonify({"error": result}), 400
 
-@main.route("/graphs/<string:graph_id>", methods=["POST"])
+@app.route("/graphs/<string:graph_id>", methods=["POST"])
 @token_required  # Apply token authentication decorator
 def query(graph_id: str):
     """
     text2sql
     """
-
+    queries_history = request.get_json()
+    if not queries_history:
+        return jsonify({"error": "Invalid or missing JSON data"}), 400
 
     # Create a generator function for streaming
     def generate():
         agent_rel = RelevancyAgent()
         agent_an = AnalysisAgent()
 
-        to_show = True
 
         step = {"type": "reasoning_step", "message": "Extracting relevant tables from schema..."}
         yield json.dumps(step) + MESSAGE_DELIMITER
@@ -152,58 +150,37 @@ def query(graph_id: str):
         if not success:
             return jsonify({"error": result}), 400
 
-        # if to_show:
-
-
         answer_rel = agent_rel.get_answer(queries_history[-1], result)
         answer_an = agent_an.get_analysis(queries_history[-1], result, db_description)
         if answer_rel["status"] != "On-topic":
             step = {"type": "followup_questions", "message": "Off topic question: " + answer_rel["reason"]}
             yield json.dumps(step) + MESSAGE_DELIMITER
-
-            # step = {"type": "reasoning_step", "data": "You may try the following instead: " + str(answer_rel["suggestions"])}
-            # yield json.dumps(step) + MESSAGE_DELIMITER
-        # else:
         else:
-            # answer_fol = agent_fol.get_answer(queries_history[-1], queries_history[:-1], result)
-            # if answer_fol["status"] == "Needs more data":
-            #     step = {"type": "followup_questions", "message": answer_fol["followUpQuestion"]}
-            #     yield json.dumps(step) + MESSAGE_DELIMITER
-
-                # step = {"type": "reasoning_step", "message": "You may try the following instead: " + answer_fol["followUpQuestion"]}
-                # yield json.dumps(step) + MESSAGE_DELIMITER
-                # else:
-                    # SQL generation
             step = {"type": "reasoning_step",
                     "message": "Generating SQL query from the user query and extracted schema..."}
             yield json.dumps(step) + MESSAGE_DELIMITER
-
-            user_content = json.dumps({
-                                        "schema": result,
-                                        "previous_queries": queries_history[:-1],
-                                        "user_query": queries_history[-1]
-                                    })
-            completion_result = completion(model=Config.COMPLETION_MODEL,
-                                    messages=[
-                                        {
-                                            "content": Config.Text_To_SQL_PROMPT.format(db_description=db_description),
-                                            "role": "system"
-                                        },
-                                        {
-                                            "content": user_content,
-                                            "role": "user"
-                                        }
-                                    ],
-                                    temperature=0,
-                                    aws_profile_name=Config.AWS_PROFILE,
-                                    aws_region_name=Config.AWS_REGION,
-                                )
+            step = {"type": "reasoning_step",
+                    "message": answer_an['explanation']}
             
-            answer = completion_result.choices[0].message.content
+            yield json.dumps(step) + MESSAGE_DELIMITER
 
-            yield json.dumps({"type": "final_result", "data": answer}) + MESSAGE_DELIMITER
+            step = {"type": "reasoning_step",
+                    "message": answer_an['confidence']}
+            yield json.dumps(step) + MESSAGE_DELIMITER
+            step = {"type": "reasoning_step",
+                    "message": answer_an['missing_information']}
+            yield json.dumps(step) + MESSAGE_DELIMITER
+            step = {"type": "reasoning_step",
+                    "message": answer_an['ambiguities']}
+            yield json.dumps(step) + MESSAGE_DELIMITER
+
+            yield json.dumps({"type": "final_result", "data": answer_an['potential_sql_structure']}) + MESSAGE_DELIMITER
 
     return Response(stream_with_context(generate()), content_type='application/json')
+
+if __name__ == "__main__":
+    app.register_blueprint(main)
+    app.run(debug=True)
 
 # def init_routes(app):
 #     """

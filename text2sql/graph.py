@@ -21,7 +21,6 @@ class Descriptions(BaseModel):
     """ List of tables """
     tables_descriptions: list[TableDescription]
     columns_descriptions: list[ColumnDescription]
-    # followup_questions: list[str] 
 
 def find(
     graph_id: str,
@@ -75,7 +74,7 @@ def find(
     # table names for sphere and route extraction
     base_tables_names = [table[0] for table in tables_des]
     tables_by_sphere = _find_tables_sphere(graph, base_tables_names)
-    tables_by_route, _ = find_connecting_tables(graph, base_tables_names) #list(set(base_tables_names + column_tables_names))
+    tables_by_route, _ = find_connecting_tables(graph, base_tables_names)
     combined_tables = _get_unique_tables(tables_des + tables_by_columns_des + tables_by_route + tables_by_sphere)
     
     return True, combined_tables, db_description, [tables_des, tables_by_columns_des, tables_by_route, tables_by_sphere]
@@ -86,7 +85,6 @@ def _find_tables(graph, descriptions: List[TableDescription]) -> List[dict]:
     for table in descriptions:
 
         # Get the table node from the graph
-        # embedding_result = embedding(model=Config.EMBEDDING_MODEL_NAME, input=[table.description], aws_profile_name=Config.AWS_PROFILE, aws_region_name=Config.AWS_REGION) # model.encode(table.description) #
         embedding_result = Config.EMBEDDING_MODEL.embed(table.description)
         query_result = graph.query("""
                     CALL db.idx.vector.queryNodes(
@@ -104,7 +102,7 @@ def _find_tables(graph, descriptions: List[TableDescription]) -> List[dict]:
                     })
                     """,
                     {
-                        'embedding': embedding_result[0] #.data[0].embedding #embedding_result.tolist() #embedding_result.data[0].embedding
+                        'embedding': embedding_result[0]
                     })
 
         for node in query_result.result_set:
@@ -144,7 +142,6 @@ def _find_tables_by_columns(graph, descriptions: List[ColumnDescription]) -> Lis
     for column in descriptions:
 
         # Get the table node from the graph
-        # embedding_result = embedding(model=Config.EMBEDDING_MODEL_NAME, input=[column.description], aws_profile_name=Config.AWS_PROFILE, aws_region_name=Config.AWS_REGION)
         embedding_result = Config.EMBEDDING_MODEL.embed(column.description)
         query_result = graph.query("""
                     CALL db.idx.vector.queryNodes(
@@ -166,7 +163,7 @@ def _find_tables_by_columns(graph, descriptions: List[ColumnDescription]) -> Lis
                     })
                     """,
                     {
-                        'embedding': embedding_result[0] #.data[0].embedding #embedding_result.tolist() #embedding_result.data[0].embedding
+                        'embedding': embedding_result[0]
                     })
 
         for node in query_result.result_set:
@@ -223,14 +220,6 @@ def find_connecting_tables(graph, table_names: List[str]) -> Tuple[List[dict], L
                 MATCH p=allShortestPaths((a)-[r*..9]-(b))
                 RETURN nodes(p) as nodes
                 """
-                # prompt = "match (a:Table {name:$table1}), (b:Table {name:$table2}) WITH a, b MATCH p = (a)-[*1..6]-(b) RETURN nodes(p) LIMIT 1"
-                # try:
-                #     con = graph.query(prompt, {'table1': table1, 'table2': table2}, timeout=5).result_set
-                # except Exception as e:
-                #     print(f"Error querying graph: {e}")
-                #     continue
-                # if not con:
-                #     continue
                 try:
                     paths = graph.query(query, {'table1': table1, 'table2': table2}, timeout=50).result_set
                 except Exception as e:

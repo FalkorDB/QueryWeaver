@@ -11,6 +11,10 @@ let currentRequestController = null;
 // Custom delimiter that's unlikely to appear in your data
 const MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||';
 
+const urlParams = new URLSearchParams(window.location.search);
+
+const TOKEN = urlParams.get('token');
+
 function addMessage(message, isUser = false, isFollowup = false, isFinalResult = false) {
     const messageDiv = document.createElement('div');
     if (isFollowup) {
@@ -104,7 +108,7 @@ async function sendMessage() {
         currentRequestController = new AbortController();
 
         // Use fetch with streaming response (GET method)
-        const response = await fetch('/graphs/' + selectedValue + '?q=' + encodeURIComponent(message), {
+        const response = await fetch('/graphs/' + selectedValue + '?q=' + encodeURIComponent(message) + '&token=' + TOKEN, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -221,7 +225,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const chatMessages = document.getElementById("chat-messages");
     const graphSelect = document.getElementById("graph-select");
 
-    fetch("/graphs")
+    fetch("/graphs?token=" + TOKEN)
         .then(response => response.json())
         .then(data => {
             graphSelect.innerHTML = "";
@@ -256,7 +260,7 @@ document.getElementById('file-upload').addEventListener('change', function (e) {
     const formData = new FormData();
     formData.append('file', file);
 
-    fetch('/graphs', {
+    fetch("/graphs&token=" + TOKEN, {
         method: 'POST',
         body: formData, // ✅ Correct, no need to set Content-Type manually
     }).then(response => {
