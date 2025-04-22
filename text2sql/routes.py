@@ -159,20 +159,20 @@ def query(graph_id: str):
             step = {"type": "reasoning_step",
                     "message": "Generating SQL query from the user query and extracted schema..."}
             yield json.dumps(step) + MESSAGE_DELIMITER
-            step = {"type": "reasoning_step",
-                    "message": answer_an['explanation']}
+            # step = {"type": "reasoning_step",
+            #         "message": answer_an['explanation']}
             
-            yield json.dumps(step) + MESSAGE_DELIMITER
+            # yield json.dumps(step) + MESSAGE_DELIMITER
 
-            step = {"type": "reasoning_step",
-                    "message": answer_an['confidence']}
-            yield json.dumps(step) + MESSAGE_DELIMITER
-            step = {"type": "reasoning_step",
-                    "message": answer_an['missing_information']}
-            yield json.dumps(step) + MESSAGE_DELIMITER
-            step = {"type": "reasoning_step",
-                    "message": answer_an['ambiguities']}
-            yield json.dumps(step) + MESSAGE_DELIMITER
+            # step = {"type": "reasoning_step",
+            #         "message": answer_an['confidence']}
+            # yield json.dumps(step) + MESSAGE_DELIMITER
+            # step = {"type": "reasoning_step",
+            #         "message": answer_an['missing_information']}
+            # yield json.dumps(step) + MESSAGE_DELIMITER
+            # step = {"type": "reasoning_step",
+            #         "message": answer_an['ambiguities']}
+            # yield json.dumps(step) + MESSAGE_DELIMITER
 
             yield json.dumps({"type": "final_result", "data": answer_an['potential_sql_structure']}) + MESSAGE_DELIMITER
 
