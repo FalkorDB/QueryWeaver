@@ -1,7 +1,7 @@
 import json
 from litellm import completion, embedding
-from app.graph import find, find_connecting_tables
-from app.config import Config
+from api.graph import find, find_connecting_tables
+from api.config import Config
 from typing import List, Tuple, Dict, Any
 
 class AnalysisAgent():

@@ -1,7 +1,7 @@
 import tqdm
-from app.config import Config
-from app.extensions import db
-from app.utils import generate_db_description
+from api.config import Config
+from api.extensions import db
+from api.utils import generate_db_description
 import json
 
 def load_to_graph(graph_id: str, entities: dict, relationships: dict, batch_size: int=100, db_name: str="TBD") -> None:

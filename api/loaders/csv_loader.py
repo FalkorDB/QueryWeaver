@@ -4,9 +4,9 @@ import pandas as pd
 import tqdm
 from collections import defaultdict
 from litellm import embedding
-from app.loaders.base_loadr import BaseLoader
-from app.extensions import db
-from app.loaders.graph_loader import load_to_graph
+from api.loaders.base_loader import BaseLoader
+from api.extensions import db
+from api.loaders.graph_loader import load_to_graph
 
 
 class CSVLoader(BaseLoader):
