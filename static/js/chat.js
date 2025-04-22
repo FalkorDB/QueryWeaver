@@ -1,6 +1,8 @@
 const messageInput = document.getElementById('message-input');
 const sendButton = document.getElementById('send-button');
 const newChatButton = document.getElementById('new-chat-button');
+const analysisCheckbox = document.getElementById('analysis-checkbox');
+const analysisContainer = document.getElementById('analysis-container');
 const chatMessages = document.getElementById('chat-messages');
 const typingIndicator = document.getElementById('typing-indicator');
 let questions_history = [];
@@ -11,15 +13,15 @@ const MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||';
 
 function addMessage(message, isUser = false, isFollowup = false, isFinalResult = false) {
     const messageDiv = document.createElement('div');
-    if(isFollowup){
+    if (isFollowup) {
         messageDiv.className = "message followup-message";
         messageDiv.textContent = message;
     }
-    else if(isUser) {
+    else if (isUser) {
         messageDiv.className = "message user-message";
         questions_history.push(message);
     }
-    else if(isFinalResult){
+    else if (isFinalResult) {
         messageDiv.className = "message final-result-message";
         // messageDiv.textContent = message;
     }
@@ -44,7 +46,7 @@ function addMessage(message, isUser = false, isFollowup = false, isFinalResult =
 }
 
 function formatBlock(text) {
-    
+
     if (text.startsWith('"```sql') && text.endsWith('```"')) {
         const sql = text.slice(7, -4).trim();
         return sql.split('\\n').map((line, i) => {
@@ -53,7 +55,7 @@ function formatBlock(text) {
             lineDiv.textContent = line;
             return lineDiv;
         });
-    } 
+    }
 
     if (text.includes('[') && text.includes(']')) {
         const parts = text.split('[');
@@ -63,7 +65,7 @@ function formatBlock(text) {
 
             // remove all closing if exists in the text
             part = part.replaceAll(']', '');
-            
+
             lineDiv.textContent = part;
             return lineDiv;
         });
@@ -107,7 +109,7 @@ async function sendMessage() {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(questions_history), 
+            body: JSON.stringify(questions_history),
             signal: currentRequestController.signal
         });
 
@@ -168,7 +170,7 @@ async function sendMessage() {
                         // step.questions.forEach(question => {
                         //     addMessage(question, false);
                         // });
-                        addMessage(step.message, false, true);
+                        graph.Labels.findIndex(l => l.name === cat.name)(step.message, false, true);
                     } else {
                         // Default handling
                         addMessage(step.message || JSON.stringify(step), false);
@@ -194,6 +196,14 @@ async function sendMessage() {
     }
 }
 
+function handleShowAnalysis(e) {
+    if (e.target.checked) {
+        analysisContainer.style.display = 'flex';
+    } else {
+        analysisContainer.style.display = 'none';
+    }
+}
+
 // Event listeners
 sendButton.addEventListener('click', sendMessage);
 messageInput.addEventListener('keypress', (e) => {
@@ -201,6 +211,8 @@ messageInput.addEventListener('keypress', (e) => {
         sendMessage();
     }
 });
+
+analysisCheckbox.addEventListener('change', handleShowAnalysis);
 
 newChatButton.addEventListener('click', initChat);
 

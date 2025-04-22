@@ -15,21 +15,21 @@
             <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="Chat Logo" class="logo">
             <h1>Chat My Database</h1>
             <!-- <div class="header-controls"> -->
-                <div class="dropdown-container">
-                    <label for="graph-select">Select Database:</label>
-                    <select id="graph-select">
-                        <option value="">Loading...</option>
-                    </select>
-                </div>
-                    <div class="dropdown-container">
-                        <p >Analysis:</p>
-                        <input type="checkbox" id="analysis-checkbox">
-                    </div>
-                <!-- <div class="file-upload">
+            <div class="dropdown-container">
+                <label for="graph-select">Select Database:</label>
+                <select id="graph-select">
+                    <option value="">Loading...</option>
+                </select>
+            </div>
+            <div id="analysis-checkbox-container">
+                <p>Analysis:</p>
+                <input type="checkbox" id="analysis-checkbox">
+            </div>
+            <!-- <div class="file-upload">
                     <input type="file" id="file-upload" style="display: none;">
                     <button class="file-upload-btn" id="upload-button">Upload Schema</button> -->
-                    <!-- <span class="file-name" id="file-name"></span> -->
-                <!-- </div> -->
+            <!-- <span class="file-name" id="file-name"></span> -->
+            <!-- </div> -->
             <!-- </div> -->
         </div>
         <div class="chat-messages" id="chat-messages">
@@ -42,7 +42,29 @@
 
         </div>
     </div>
-
+    <div id="analysis-container">
+        <div id="analysis-header">
+            <h2>Analysis</h2>
+        </div>
+        <div id="analysis-content">
+            <div>
+                <h2>Explanation</h2>
+                <p>Explanation</p>
+            </div>
+            <div>
+                <h2>Confidence Value</h2>
+                <p>Confidence Value</p>
+            </div>
+            <div>
+                <h2>Missing Information</h2>
+                <p>Missing Information</p>
+            </div>
+            <div>
+                <h2>Ambiguity</h2>
+                <p>Ambiguity</p>
+            </div>
+        </div>
+    </div>
     <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
 </body>
 
