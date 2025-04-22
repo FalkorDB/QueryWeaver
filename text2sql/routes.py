@@ -1,6 +1,9 @@
 """ This module contains the routes for the text2sql API. """
 import json
-from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context
+import os
+from functools import wraps
+from dotenv import load_dotenv
+from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context, Flask
 from litellm import completion
 from text2sql.config import Config
 from text2sql.graph import find
@@ -11,17 +14,40 @@ from text2sql.loaders.odata_loader import ODataLoader
 from text2sql.utils import llm_answer_validator, llm_table_validator
 from text2sql.agents import RelevancyAgent, AnalysisAgent
 
+# Load environment variables from .env file
+load_dotenv()
+
 # Use the same delimiter as in the JavaScript
 MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||'
 
 main = Blueprint("main", __name__)
 
+SECRET_TOKEN = os.getenv('SECRET_TOKEN')
+def verify_token(token):
+    """ Verify the token provided in the request """
+    return token == SECRET_TOKEN or (token is None and SECRET_TOKEN is None)
+
+def token_required(f):
+    """ Decorator to protect routes with token authentication """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        token = request.headers.get('Authorization')  # Get token from header
+        if not verify_token(token):
+            return jsonify(message="Unauthorized"), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+app = Flask(__name__)
+
+
 @main.route('/')
+@token_required  # Apply token authentication decorator
 def home():
     """ Home route """
     return render_template('chat.html')
 
 @main.route('/graphs')
+@token_required  # Apply token authentication decorator
 def graphs():
     """
     This route is used to list all the graphs that are available in the database.
@@ -29,6 +55,7 @@ def graphs():
     return db.list_graphs()
 
 @main.route("/graphs", methods=["POST"])
+@token_required  # Apply token authentication decorator
 def load():
     """
     This route is used to load the graph data into the database.
@@ -37,7 +64,6 @@ def load():
     - A File upload (multipart/form-data)
     - An XML payload (application/xml or text/xml)
     """
-
     content_type = request.content_type
     success, result = False, "Invalid content type"
     graph_id = ""
@@ -105,14 +131,12 @@ def load():
     return jsonify({"error": result}), 400
 
 @main.route("/graphs/<string:graph_id>", methods=["POST"])
+@token_required  # Apply token authentication decorator
 def query(graph_id: str):
     """
     text2sql
     """
 
-    queries_history = request.get_json()
-    if not queries_history:
-        return jsonify({"error": "Invalid or missing JSON data"}), 400
 
     # Create a generator function for streaming
     def generate():
@@ -181,8 +205,8 @@ def query(graph_id: str):
 
     return Response(stream_with_context(generate()), content_type='application/json')
 
-def init_routes(app):
-    """
-    Initialize routes
-    """
-    app.register_blueprint(main)
+# def init_routes(app):
+#     """
+#     Initialize routes
+#     """
+#     app.register_blueprint(main)

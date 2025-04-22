@@ -3,8 +3,11 @@
 [![Discord](https://img.shields.io/discord/1146782921294884966?style=flat-square)](https://discord.com/invite/6M4QwDXn2w)
 [![Workflow](https://github.com/FalkorDB/text2sql/actions/workflows/pylint.yml/badge.svg?branch=main)](https://github.com/FalkorDB/text2sql/actions/workflows/pylint.yml)
 
-
 # Text2SQL
 
-## Introduction
 
+```bash
+poetry run flask --app ./text2sql/routes.py run
+```
+
+## Introduction
