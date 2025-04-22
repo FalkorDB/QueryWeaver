@@ -287,7 +287,7 @@ document.getElementById('file-upload').addEventListener('change', function (e) {
     const formData = new FormData();
     formData.append('file', file);
 
-    fetch("/graphs&token=" + TOKEN, {
+    fetch("/graphs?token=" + TOKEN, {
         method: 'POST',
         body: formData, // ✅ Correct, no need to set Content-Type manually
     }).then(response => {
