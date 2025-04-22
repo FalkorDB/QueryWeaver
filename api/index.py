@@ -4,12 +4,12 @@ import os
 from functools import wraps
 from dotenv import load_dotenv
 from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context, Flask
-from text2sql.graph import find
-from text2sql.extensions import db
-from text2sql.loaders.csv_loader import CSVLoader
-from text2sql.loaders.json_loader import JSONLoader
-from text2sql.loaders.odata_loader import ODataLoader
-from text2sql.agents import RelevancyAgent, AnalysisAgent
+from api.graph import find
+from api.extensions import db
+from api.loaders.csv_loader import CSVLoader
+from api.loaders.json_loader import JSONLoader
+from api.loaders.odata_loader import ODataLoader
+from api.agents import RelevancyAgent, AnalysisAgent
 
 # Load environment variables from .env file
 load_dotenv()

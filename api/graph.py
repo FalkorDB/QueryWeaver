@@ -4,8 +4,8 @@ import json
 from typing import List, Tuple, Dict, Any
 from litellm import completion
 from pydantic import BaseModel
-from text2sql.config import Config
-from text2sql.extensions import db
+from api.config import Config
+from api.extensions import db
 
 class TableDescription(BaseModel):
     """ Table Description """

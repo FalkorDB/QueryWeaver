@@ -3,11 +3,11 @@ import json
 import tqdm
 from jsonschema import ValidationError, validate
 from litellm import embedding
-from text2sql.config import Config
-from text2sql.loaders.base_loadr import BaseLoader
-from text2sql.extensions import db
-from text2sql.utils import generate_db_description
-from text2sql.loaders.graph_loader import load_to_graph
+from app.config import Config
+from app.loaders.base_loadr import BaseLoader
+from app.extensions import db
+from app.utils import generate_db_description
+from app.loaders.graph_loader import load_to_graph
 
 try:
     with open(Config.SCHEMA_PATH, 'r', encoding='utf-8') as f:

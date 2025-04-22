@@ -1,7 +1,7 @@
 import tqdm
-from text2sql.config import Config
-from text2sql.extensions import db
-from text2sql.utils import generate_db_description
+from app.config import Config
+from app.extensions import db
+from app.utils import generate_db_description
 import json
 
 def load_to_graph(graph_id: str, entities: dict, relationships: dict, batch_size: int=100, db_name: str="TBD") -> None:
