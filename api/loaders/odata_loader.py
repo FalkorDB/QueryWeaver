@@ -2,7 +2,7 @@ import re
 from typing import Tuple
 import xml.etree.ElementTree as ET
 import tqdm
-from api.loaders.base_loadr import BaseLoader
+from api.loaders.base_loader import BaseLoader
 from api.extensions import db
 from api.loaders.graph_loader import load_to_graph
 

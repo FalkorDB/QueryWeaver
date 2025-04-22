@@ -4,7 +4,7 @@ import pandas as pd
 import tqdm
 from collections import defaultdict
 from litellm import embedding
-from api.loaders.base_loadr import BaseLoader
+from api.loaders.base_loader import BaseLoader
 from api.extensions import db
 from api.loaders.graph_loader import load_to_graph
 

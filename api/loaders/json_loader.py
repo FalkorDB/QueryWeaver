@@ -4,7 +4,7 @@ import tqdm
 from jsonschema import ValidationError, validate
 from litellm import embedding
 from api.config import Config
-from api.loaders.base_loadr import BaseLoader
+from api.loaders.base_loader import BaseLoader
 from api.extensions import db
 from api.utils import generate_db_description
 from api.loaders.graph_loader import load_to_graph
