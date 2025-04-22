@@ -294,7 +294,7 @@ body {
 }
 
 #analysis-container {
-  display: none;
+  display: flex;
   flex-direction: column;
   position: fixed;
   right: 20px;
@@ -338,5 +338,62 @@ body {
   background-color: var(--falkor-elevated);
   box-shadow: inset 0 0 0 1500px rgba(0, 0, 0, 0.3);
   border-radius: 8px;
+  padding: 4px;
+}
+
+#instructions-checkbox-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+#instructions-container {
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  left: 20px;
+  top: 20px;
+  bottom: 20px;
+  width: calc((100% - 800px) / 2 - 40px);
+  background-color: var(--falkor-secondary);
+  box-shadow: inset 0 0 0 1000px rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+#instructions-header {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+}
+
+#instructions-content {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: 8px;
+}
+
+#instructions-content div {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+}
+
+#instructions-content div h2 {
+  font-weight: 500;
+}
+
+#instructions-content div textarea {
+  flex: 1 1 0;
+  background-color: var(--falkor-elevated);
+  box-shadow: inset 0 0 0 1500px rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  color: white;
   padding: 4px;
 }

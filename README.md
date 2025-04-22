@@ -7,7 +7,7 @@
 
 
 ```bash
-poetry run flask --app ./text2sql/routes.py run
+poetry run flask --app ./api/index.py run
 ```
 
 ## Introduction

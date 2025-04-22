@@ -23,13 +23,17 @@
             </div>
             <div id="analysis-checkbox-container">
                 <p>Analysis:</p>
-                <input type="checkbox" id="analysis-checkbox">
+                <input type="checkbox" id="analysis-checkbox" checked>
             </div>
-            <!-- <div class="file-upload">
+            <div id="instructions-checkbox-container">
+                <p>Instructions:</p>
+                <input type="checkbox" id="instructions-checkbox" checked>
+            </div>
+            <div class="file-upload">
                     <input type="file" id="file-upload" style="display: none;">
-                    <button class="file-upload-btn" id="upload-button">Upload Schema</button> -->
+                    <button class="file-upload-btn" id="upload-button">Upload Schema</button>
             <!-- <span class="file-name" id="file-name"></span> -->
-            <!-- </div> -->
+            </div>
             <!-- </div> -->
         </div>
         <div class="chat-messages" id="chat-messages">
@@ -48,23 +52,35 @@
         </div>
         <div id="analysis-content">
             <div>
-                <h2>Explanation</h2>
-                <p>Explanation</p>
+                <h2>Confidence Value</h2>
+                <p id="conf-value"></p>
             </div>
             <div>
-                <h2>Confidence Value</h2>
-                <p>Confidence Value</p>
+                <h2>Explanation</h2>
+                <p id="exp-value"></p>
             </div>
             <div>
                 <h2>Missing Information</h2>
-                <p>Missing Information</p>
+                <p id="miss-value"></p>
             </div>
             <div>
                 <h2>Ambiguity</h2>
-                <p>Ambiguity</p>
+                <p id="amb-value"></p>
             </div>
         </div>
     </div>
+    <div id="instructions-container">
+        <div id="instructions-header">
+            <h2>Instructions</h2>
+        </div>
+        <div id="instructions-content">
+            <div>
+                <h2></h2>
+                <textarea id="exp-instructions"></textarea>
+            </div>
+        </div>
+    </div>
+    
     <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
 </body>
 

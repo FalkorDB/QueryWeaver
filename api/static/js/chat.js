@@ -5,6 +5,14 @@ const analysisCheckbox = document.getElementById('analysis-checkbox');
 const analysisContainer = document.getElementById('analysis-container');
 const chatMessages = document.getElementById('chat-messages');
 const typingIndicator = document.getElementById('typing-indicator');
+const expValue = document.getElementById('exp-value');
+const confValue = document.getElementById('conf-value');
+const missValue = document.getElementById('miss-value');
+const ambValue = document.getElementById('amb-value');
+const instrucitonsContainer = document.getElementById('instructions-container');
+const instructionsCheckbox = document.getElementById('instructions-checkbox');
+const expInstructions = document.getElementById('exp-instructions');
+
 let questions_history = [];
 let currentRequestController = null;
 
@@ -169,6 +177,10 @@ async function sendMessage() {
                         addMessage(step.message, false);
                     } else if (step.type === 'final_result') {
                         // Final result could be displayed differently
+                        expValue.textContent = step.exp;
+                        confValue.textContent = step.conf;
+                        missValue.textContent = step.miss;
+                        ambValue.textContent = step.amb;
                         addMessage(step.message || JSON.stringify(step.data, null, 2), false, false, true);
                     } else if (step.type === 'followup_questions') {
                         // step.questions.forEach(question => {
@@ -183,6 +195,7 @@ async function sendMessage() {
                     // If it's not valid JSON, just show the message as text
                     addMessage(message, false);
                 }
+                
             }
         }
 
@@ -208,6 +221,18 @@ function handleShowAnalysis(e) {
     }
 }
 
+function handleShowInstructions(e) {
+    if (e.target.checked) {
+        instrucitonsContainer.style.display = 'flex';
+    } else {
+        instrucitonsContainer.style.display = 'none';
+    }
+}
+
+function handleInstructionsChange(e) {
+    console.log(e.target.value);
+}
+
 // Event listeners
 sendButton.addEventListener('click', sendMessage);
 messageInput.addEventListener('keypress', (e) => {
@@ -217,8 +242,10 @@ messageInput.addEventListener('keypress', (e) => {
 });
 
 analysisCheckbox.addEventListener('change', handleShowAnalysis);
-
+instructionsCheckbox.addEventListener('change', handleShowInstructions);
+expInstructions.addEventListener('change', handleInstructionsChange);
 newChatButton.addEventListener('click', initChat);
+
 
 
 document.addEventListener("DOMContentLoaded", function () {

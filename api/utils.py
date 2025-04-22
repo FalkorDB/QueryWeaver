@@ -1,7 +1,7 @@
 import json
 from litellm import completion
-from text2sql.config import Config
-from text2sql.constants import BENCHMARK
+from api.config import Config
+from api.constants import BENCHMARK
 
 def generate_db_description(db_name: str, table_names: list, temperature: float = 0.5,
                                       max_tokens: int = 150) -> str:

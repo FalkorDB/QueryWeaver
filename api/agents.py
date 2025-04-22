@@ -1,7 +1,7 @@
 import json
 from litellm import completion, embedding
-from text2sql.graph import find, find_connecting_tables
-from text2sql.config import Config
+from api.graph import find, find_connecting_tables
+from api.config import Config
 from typing import List, Tuple, Dict, Any
 
 class AnalysisAgent():
@@ -119,7 +119,6 @@ class AnalysisAgent():
         5. Whether the necessary joins can be established using available foreign keys
         6. If there are multiple possible interpretations of the query
         7. Ambiguities can be two or more column with same semantic meaning that can be used in the query
-        8. **IMPORTANT** When the user_query ask about members look for one of the memeber tables and use 'Join' clause!
 
 
         Provide your response as valid, parseable JSON only.

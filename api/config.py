@@ -4,7 +4,7 @@ This module contains the configuration for the text2sql module.
 import os
 from typing import Union
 import dataclasses
-from sentence_transformers import SentenceTransformer
+from litellm import embedding
 
 
 class EmbeddingsModel():
@@ -16,7 +16,6 @@ class EmbeddingsModel():
     ):
         self.model_name = model_name
         self.config = config
-        self.model = SentenceTransformer(model_name)
     
     def embed(self, text: Union[str, list]) -> list:
         """
@@ -29,8 +28,8 @@ class EmbeddingsModel():
             list: The embeddings of the text
         
         """
-
-        embeddings = self.model.encode(text).tolist()
+        embeddings = embedding(model=self.model_name, input=text, **self.config)
+        embeddings = [embedding["embedding"] for embedding in embeddings.data]
         if isinstance(text, str):
             return [embeddings]
         elif isinstance(text, list):
@@ -44,9 +43,9 @@ class EmbeddingsModel():
             int: The size of the vector
         
         """
-
-        response = self.model.encode("Hello World")
-        return len(response.tolist())
+        response = embedding(input = ["Hello World"], model=self.model_name, **self.config)
+        size = len(response.data[0]['embedding'])
+        return size
 
 
 @dataclasses.dataclass
@@ -54,11 +53,15 @@ class Config:
     """
     Configuration class for the text2sql module.    
     """
-    SCHEMA_PATH = "text2sql/schema_aba.json"
-    EMBEDDING_MODEL_NAME = "avsolatorio/GIST-large-Embedding-v0"
+    SCHEMA_PATH = "api/schema_aba.json"
+    EMBEDDING_MODEL_NAME = "bedrock/cohere.embed-english-v3" 
     COMPLETION_MODEL = "us.meta.llama3-3-70b-instruct-v1:0"
     TEMPERATURE = 0
+    AWS_PROFILE = os.getenv("aws_profile_name")
+    AWS_REGION = os.getenv("aws_region_name")
     config = {}
+    config["aws_profile_name"] = AWS_PROFILE
+    config["aws_region_name"] = AWS_REGION
 
     EMBEDDING_MODEL = EmbeddingsModel(
         model_name=EMBEDDING_MODEL_NAME,
