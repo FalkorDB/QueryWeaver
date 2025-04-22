@@ -54,7 +54,7 @@ class Config:
     """
     Configuration class for the text2sql module.    
     """
-    SCHEMA_PATH = "text2sql/schema_aba.json"
+    SCHEMA_PATH = "api/schema_aba.json"
     EMBEDDING_MODEL_NAME = "avsolatorio/GIST-large-Embedding-v0"
     COMPLETION_MODEL = "us.meta.llama3-3-70b-instruct-v1:0"
     TEMPERATURE = 0
