@@ -12,5 +12,4 @@ poetry run flask --app api.index run
 ## Introduction
 
 
-
 ## LICENSE
