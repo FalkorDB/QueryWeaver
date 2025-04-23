@@ -3,6 +3,11 @@ import os
 from falkordb import FalkorDB
 
 # Connect to FalkorDB
-db = FalkorDB(host='localhost', port=6379)
-
-# db = FalkorDB(host=os.getenv('FALKOR_HOST'), port=os.getenv('FALKOR_PORT'), username=os.getenv('FALKOR_USERNAME'), password=os.getenv('FALKOR_PASSWORD'))
+url = os.getenv("FALKORDB_URL", None)
+if url is None:
+    try:
+        db = FalkorDB(host='localhost', port=6379)
+    except Exception as e:
+        raise Exception(f"Failed to connect to FalkorDB: {e}")
+else:
+    db = FalkorDB.from_url(os.getenv("FALKORDB_URL"))
