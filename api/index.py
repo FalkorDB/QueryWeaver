@@ -151,7 +151,6 @@ def query(graph_id: str):
             return jsonify({"error": result}), 400
 
         answer_rel = agent_rel.get_answer(queries_history[-1], result)
-        answer_an = agent_an.get_analysis(queries_history[-1], result, db_description)
         if answer_rel["status"] != "On-topic":
             step = {"type": "followup_questions", "message": "Off topic question: " + answer_rel["reason"]}
             yield json.dumps(step) + MESSAGE_DELIMITER
@@ -159,22 +158,12 @@ def query(graph_id: str):
             step = {"type": "reasoning_step",
                     "message": "Generating SQL query from the user query and extracted schema..."}
             yield json.dumps(step) + MESSAGE_DELIMITER
-            # step = {"type": "reasoning_step",
-            #         "message": answer_an['explanation']}
+            answer_an = agent_an.get_analysis(queries_history[-1], result, db_description)
             
-            # yield json.dumps(step) + MESSAGE_DELIMITER
-
-            # step = {"type": "reasoning_step",
-            #         "message": answer_an['confidence']}
-            # yield json.dumps(step) + MESSAGE_DELIMITER
-            # step = {"type": "reasoning_step",
-            #         "message": answer_an['missing_information']}
-            # yield json.dumps(step) + MESSAGE_DELIMITER
-            # step = {"type": "reasoning_step",
-            #         "message": answer_an['ambiguities']}
-            # yield json.dumps(step) + MESSAGE_DELIMITER
-
-            yield json.dumps({"type": "final_result", "data": answer_an['potential_sql_structure']}) + MESSAGE_DELIMITER
+            yield json.dumps({"type": "final_result", "data": answer_an['potential_sql_structure'], "conf": answer_an['confidence'],
+                             "miss": answer_an['missing_information'],
+                             "amb": answer_an['ambiguities'],
+                             "exp": answer_an['explanation']}) + MESSAGE_DELIMITER
 
     return Response(stream_with_context(generate()), content_type='application/json')
 

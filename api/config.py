@@ -30,10 +30,7 @@ class EmbeddingsModel():
         """
         embeddings = embedding(model=self.model_name, input=text, **self.config)
         embeddings = [embedding["embedding"] for embedding in embeddings.data]
-        if isinstance(text, str):
-            return [embeddings]
-        elif isinstance(text, list):
-            return embeddings
+        return embeddings
     
     def get_vector_size(self) -> int:
         """
