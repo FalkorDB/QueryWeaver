@@ -6,11 +6,11 @@
 
 :root {
   /* FalkorDB brand colors - based on browser.falkordb.com */
-  --falkor-primary: #00C1D5;
+  --falkor-primary: #7466FF;
   /* FalkorDB primary teal */
-  --falkor-secondary: #152C49;
+  --falkor-secondary: #191919;
   /* Dark navy blue - main background */
-  --dark-bg: #121A29;
+  --dark-bg: black;
   /* Dark blue-gray background */
   --falkor-surface: #1A3158;
   /* Slightly lighter navy for surfaces */
@@ -181,7 +181,7 @@ body {
 #send-button {
   padding: 10px 16px;
   background: var(--falkor-primary);
-  color: #102030;
+  color: #FFFFFF;
   border: none;
   border-radius: 6px;
   cursor: pointer;
@@ -194,7 +194,7 @@ body {
 }
 
 #send-button:hover {
-  background: pink;
+  background: var(--falkor-accent);
 }
 
 .typing-indicator {
@@ -253,7 +253,7 @@ body {
 .file-upload-btn {
   padding: 8px 12px;
   background: var(--falkor-primary);
-  color: #102030;
+  color: #FFFFFF;
   border: none;
   border-radius: 6px;
   cursor: pointer;
@@ -269,7 +269,7 @@ body {
 #new-chat-button {
   padding: 10px 16px;
   background: var(--falkor-primary);
-  color: #102030;
+  color: #FFFFFF;
   border: none;
   border-radius: 6px;
   cursor: pointer;
@@ -282,7 +282,7 @@ body {
 }
 
 #new-chat-button:hover {
-  background: pink;
+  background: var(--falkor-accent);
 }
 
 #analysis-checkbox-container {
@@ -335,7 +335,7 @@ body {
 
 #analysis-content div p {
   flex: 1 1 0;
-  background-color: var(--falkor-elevated);
+  background-color: #8051E30D;
   box-shadow: inset 0 0 0 1500px rgba(0, 0, 0, 0.3);
   border-radius: 8px;
   padding: 4px;
@@ -391,7 +391,7 @@ body {
 
 #instructions-content div textarea {
   flex: 1 1 0;
-  background-color: var(--falkor-elevated);
+  background-color: #8051E30D;
   box-shadow: inset 0 0 0 1500px rgba(0, 0, 0, 0.3);
   border-radius: 8px;
   color: white;
