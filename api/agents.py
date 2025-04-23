@@ -90,7 +90,6 @@ class AnalysisAgent():
 
         <instructions>
         {instructions}
-        In the SQL query.
         </instructions>
 
         <database_schema>
