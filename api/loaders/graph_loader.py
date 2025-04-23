@@ -23,7 +23,7 @@ def load_to_graph(graph_id: str, entities: dict, relationships: dict, batch_size
         # Create vector indices
         graph.query("""
             CREATE VECTOR INDEX FOR (t:Table) ON (t.embedding) 
-            OPTIONS {dimension:$size, similarityFunction:'cosine'}
+            OPTIONS {dimension:$size, similarityFunction:'euclidean'}
         """,
         {
             'size': vec_len
@@ -31,7 +31,7 @@ def load_to_graph(graph_id: str, entities: dict, relationships: dict, batch_size
         
         graph.query("""
             CREATE VECTOR INDEX FOR (c:Column) ON (c.embedding) 
-            OPTIONS {dimension:$size, similarityFunction:'cosine'}
+            OPTIONS {dimension:$size, similarityFunction:'euclidean'}
         """,
         {
             'size': vec_len

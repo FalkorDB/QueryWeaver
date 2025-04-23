@@ -189,7 +189,12 @@ async function sendMessage() {
                         // step.questions.forEach(question => {
                         //     addMessage(question, false);
                         // });
-                        graph.Labels.findIndex(l => l.name === cat.name)(step.message, false, true);
+                        expValue.textContent = "N/A";
+                        confValue.textContent = "N/A";
+                        missValue.textContent = "N/A";
+                        ambValue.textContent = "N/A";
+                        // graph.Labels.findIndex(l => l.name === cat.name)(step.message, false, true);
+                        addMessage(step.message, false, true);
                     } else {
                         // Default handling
                         addMessage(step.message || JSON.stringify(step), false);

@@ -148,7 +148,7 @@ def query(graph_id: str):
         step = {"type": "reasoning_step", "message": "Extracting relevant tables from schema..."}
         yield json.dumps(step) + MESSAGE_DELIMITER
 
-        success, result, db_description, tables_by_method = find(graph_id, queries_history)
+        success, result, db_description, _ = find(graph_id, queries_history)
         if not success:
             return jsonify({"error": result}), 400
 
@@ -160,9 +160,9 @@ def query(graph_id: str):
             step = {"type": "reasoning_step",
                     "message": "Generating SQL query from the user query and extracted schema..."}
             yield json.dumps(step) + MESSAGE_DELIMITER
-            answer_an = agent_an.get_analysis(queries_history[-1], result, db_description)
+            answer_an = agent_an.get_analysis(queries_history[-1], result, db_description, instructions)
 
-            yield json.dumps({"type": "final_result", "data": answer_an['potential_sql_structure'], "conf": answer_an['confidence'],
+            yield json.dumps({"type": "final_result", "data": answer_an['sql_query'], "conf": answer_an['confidence'],
                              "miss": answer_an['missing_information'],
                              "amb": answer_an['ambiguities'],
                              "exp": answer_an['explanation']}) + MESSAGE_DELIMITER
@@ -172,9 +172,3 @@ def query(graph_id: str):
 if __name__ == "__main__":
     app.register_blueprint(main)
     app.run(debug=True)
-
-# def init_routes(app):
-#     """
-#     Initialize routes
-#     """
-#     app.register_blueprint(main)

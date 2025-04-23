@@ -72,7 +72,8 @@ class Config:
     These descriptions should describe the tables and columns that are relevant to the user's query.
     If the user's query is more relevant to specific columns, please provide a description of those columns.
     Try to generate description for any part of the user query.
-    Try to use similar words to the user query.
+    Try to use similar words to the user query, for example, if the user query contains "member", use "member" in the table or column description.
+    Try not use specific codes or values in the table or column description, but use general words that describe the table or column.
 
     Keep in mind that the database that you work with has the following description: {db_description}.
 

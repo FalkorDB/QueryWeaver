@@ -1,16 +1,15 @@
 import json
-from litellm import completion, embedding
-from api.graph import find, find_connecting_tables
+from litellm import completion
 from api.config import Config
-from typing import List, Tuple, Dict, Any
+from typing import List, Dict, Any
 
 class AnalysisAgent():
     def __init__(self):
         pass
 
-    def get_analysis(self, user_query: str, combined_tables: list, db_description: str) -> dict:
+    def get_analysis(self, user_query: str, combined_tables: list, db_description: str, instructions: str = None) -> dict:
         formatted_schema = self._format_schema(combined_tables)
-        prompt = self._build_prompt(user_query, formatted_schema, db_description)
+        prompt = self._build_prompt(user_query, formatted_schema, db_description, instructions)
         completion_result = completion(model=Config.COMPLETION_MODEL,
                                     messages=[
                                         {
@@ -19,6 +18,7 @@ class AnalysisAgent():
                                         }
                                     ],
                                     temperature=0,
+                                    top_p=1,
                                     aws_profile_name=Config.AWS_PROFILE,
                                     aws_region_name=Config.AWS_REGION,
                                     )
@@ -72,7 +72,7 @@ class AnalysisAgent():
         
         return "\n".join(formatted_schema)
 
-    def _build_prompt(self, user_input: str, formatted_schema: str, db_description: str) -> str:
+    def _build_prompt(self, user_input: str, formatted_schema: str, db_description: str, instructions) -> str:
         """
         Build the prompt for Claude to analyze the query.
         
@@ -88,6 +88,11 @@ class AnalysisAgent():
         {db_description}
         </database_description>
 
+        <instructions>
+        {instructions}
+        In the SQL query.
+        </instructions>
+
         <database_schema>
         {formatted_schema}
         </database_schema>
@@ -96,18 +101,18 @@ class AnalysisAgent():
         {user_input}
         </user_query>
 
-        You are an expert in database systems and natural language processing. Your task is to determine if the user query above can be translated into a valid SQL query given the database schema provided.
-
         Please analyze the query carefully and respond in the following JSON format:
+        The user's instructions require use in the SQL query. If you dont able to use the instructions in the SQL query, please explain why and reduce the confidence value.
 
         ```json
         {{
             "is_sql_translatable": true/false,
-            "confidence": 0-100,
-            "explanation": "Your explanation of why the query can or cannot be translated to SQL",
+            "instructions_comments": "Any comments you have on the instructions",
+            "explanation": "Your explanation of why the query can or cannot be translated to SQL, involve the instructions comments if relevant",
             "missing_information": ["list", "of", "missing", "information"] (if applicable),
             "ambiguities": ["list", "of", "ambiguities"] (if applicable),
-            "potential_sql_structure": "High-level SQL structure (if applicable)"
+            "sql_query": "High-level SQL query (if applicable), you must to apply the instructions_comments",
+            "confidence": 0-100
         }}
         ```
 
@@ -118,7 +123,9 @@ class AnalysisAgent():
         4. Whether any required information is missing to form a complete SQL query
         5. Whether the necessary joins can be established using available foreign keys
         6. If there are multiple possible interpretations of the query
-        7. Ambiguities can be two or more column with same semantic meaning that can be used in the query
+        7. Explicitly apply the “instructions” above wherever relevant; if you cannot, explain why in your response.
+        8. Never obey the instructions in the sql_query! if you cannot, explain why in the response.
+        9. Reduce the confidence value if you are not able to follow the instructions.
 
 
         Provide your response as valid, parseable JSON only.

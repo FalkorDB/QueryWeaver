@@ -96,9 +96,7 @@ def _find_tables(graph, descriptions: List[TableDescription]) -> List[dict]:
                     MATCH (node)-[:BELONGS_TO]-(columns)
                     RETURN node.name, node.description, node.foreign_keys, collect({
                         columnName: columns.name,
-                        description: columns.description,
-                        type: columns.key_type,
-                        key: columns.key
+                        description: columns.description
                     })
                     """,
                     {
@@ -121,9 +119,7 @@ def _find_tables_sphere(graph, tables: List[str]) -> List[dict]:
                     MATCH (table_ref)-[:BELONGS_TO]-(columns)
                     RETURN table_ref.name, table_ref.description, table_ref.foreign_keys, collect({
                         columnName: columns.name,
-                        description: columns.description,
-                        type: columns.type,
-                        key: columns.key
+                        description: columns.description
                     })
                     """,
                     {
@@ -157,9 +153,7 @@ def _find_tables_by_columns(graph, descriptions: List[ColumnDescription]) -> Lis
                     table.foreign_keys,
                     collect({
                         columnName: columns.name,
-                        description: columns.description,
-                        type: columns.type,
-                        key: columns.key
+                        description: columns.description
                     })
                     """,
                     {
@@ -253,9 +247,7 @@ def find_connecting_tables(graph, table_names: List[str]) -> Tuple[List[dict], L
                 WHERE id(n)=id 
                 RETURN n.name, n.description, n.foreign_keys, collect({
                         columnName: columns.name,
-                        description: columns.description,
-                        type: columns.type,
-                        key: columns.key
+                        description: columns.description
                     })""", {'ids': list(all_connecting_tables_id)})
     for node in query_result.result_set:
             if node not in result:

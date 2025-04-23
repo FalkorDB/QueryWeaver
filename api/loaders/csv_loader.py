@@ -1,6 +1,6 @@
 from typing import Tuple, Dict, List
 import io
-import pandas as pd
+# import pandas as pd
 import tqdm
 from collections import defaultdict
 from litellm import embedding
@@ -22,6 +22,7 @@ class CSVLoader(BaseLoader):
         Returns:
             Tuple of (success, message)
         """
+        raise NotImplementedError("CSVLoader is not implemented yet")
         try:
             # Parse CSV data using pandas for better handling of large files
             df = pd.read_csv(io.StringIO(data), encoding='utf-8')
