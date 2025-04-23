@@ -133,7 +133,9 @@ def query(graph_id: str):
     """
     text2sql
     """
-    queries_history = request.get_json()
+    request_data = request.get_json()
+    queries_history = request_data.get("chat")
+    instructions = request_data.get("instructions")
     if not queries_history:
         return jsonify({"error": "Invalid or missing JSON data"}), 400
 
@@ -159,7 +161,7 @@ def query(graph_id: str):
                     "message": "Generating SQL query from the user query and extracted schema..."}
             yield json.dumps(step) + MESSAGE_DELIMITER
             answer_an = agent_an.get_analysis(queries_history[-1], result, db_description)
-            
+
             yield json.dumps({"type": "final_result", "data": answer_an['potential_sql_structure'], "conf": answer_an['confidence'],
                              "miss": answer_an['missing_information'],
                              "amb": answer_an['ambiguities'],

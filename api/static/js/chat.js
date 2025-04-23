@@ -121,7 +121,10 @@ async function sendMessage() {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(questions_history),
+            body: JSON.stringify({
+                chat: questions_history,
+                instructions: expInstructions.value,
+            }),
             signal: currentRequestController.signal
         });
 
