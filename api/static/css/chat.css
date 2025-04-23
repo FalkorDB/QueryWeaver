@@ -11,10 +11,8 @@
   --falkor-secondary: #191919;
   /* Dark navy blue - main background */
   --dark-bg: black;
-  /* Dark blue-gray background */
-  --falkor-surface: #1A3158;
   /* Slightly lighter navy for surfaces */
-  --falkor-elevated: #223C67;
+  --falkor-elevated: #191919;
   /* Elevated component color */
   --falkor-accent: #19B6C9;
   /* Secondary teal for hover states */
@@ -28,8 +26,13 @@
   /* Highlight color */
 }
 
+@font-face {
+  font-family: 'Fira Code';
+  src: url('../../../fonts/fira_code.ttf');
+}
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: 'Fira Code', monospace;
   background-color: var(--dark-bg);
   height: 100vh;
   display: flex;
@@ -46,7 +49,7 @@ body {
 .chat-container {
   width: 800px;
   margin: 0 auto;
-  background: var(--falkor-surface);
+  background: var(--falkor-primary);
   border-radius: 8px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   display: flex;
@@ -125,7 +128,7 @@ body {
 }
 
 .bot-message {
-  background: var(--falkor-surface);
+  background: var(--falkor-primary);
   color: var(--text-primary);
   align-self: flex-start;
   border-bottom-left-radius: 2px;
@@ -200,7 +203,7 @@ body {
 .typing-indicator {
   display: none;
   align-self: flex-start;
-  background: var(--falkor-surface);
+  background: var(--falkor-primary);
   padding: 10px 15px;
   border-radius: 8px;
   border-bottom-left-radius: 2px;
@@ -243,11 +246,17 @@ body {
   border-color: var(--falkor-primary);
 }
 
+.checkbox-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
 .file-upload {
   align-items: center;
   gap: 10px;
   text-align: center;
-  margin-top: 10px;
 }
 
 .file-upload-btn {
@@ -337,6 +346,7 @@ body {
   flex: 1 1 0;
   background-color: #8051E30D;
   box-shadow: inset 0 0 0 1500px rgba(0, 0, 0, 0.3);
+  border: 0.5px solid #8051E3;
   border-radius: 8px;
   padding: 4px;
 }
@@ -394,6 +404,7 @@ body {
   background-color: #8051E30D;
   box-shadow: inset 0 0 0 1500px rgba(0, 0, 0, 0.3);
   border-radius: 8px;
+  border: 0.5px solid #8051E3;
   color: white;
   padding: 4px;
 }
