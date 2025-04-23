@@ -6,7 +6,7 @@
 # Text2SQL
 
 ```bash
-poetry run flask --app ./api/index.py run
+poetry run flask --app api.index run
 ```
 
 ## Introduction
