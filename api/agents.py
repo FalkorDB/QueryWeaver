@@ -19,8 +19,7 @@ class AnalysisAgent():
                                     ],
                                     temperature=0,
                                     top_p=1,
-                                    aws_profile_name=Config.AWS_PROFILE,
-                                    aws_region_name=Config.AWS_REGION,
+                                    **Config.config
                                     )
         
         response = completion_result.choices[0].message.content
@@ -146,8 +145,7 @@ class RelevancyAgent():
                 }
             ],
             temperature=0,
-            aws_profile_name=Config.AWS_PROFILE,
-            aws_region_name=Config.AWS_REGION,
+            **Config.config
         )
         
         answer = completion_result.choices[0].message.content
@@ -216,8 +214,7 @@ class FollowUpAgent():
             ],
             response_format={"type": "json_object"},
             temperature=0,
-            aws_profile_name=Config.AWS_PROFILE,
-            aws_region=Config.AWS_REGION,
+            **Config.config
         )
         
         answer = completion_result.choices[0].message.content
@@ -276,8 +273,7 @@ class TaxonomyAgent():
             model=Config.COMPLETION_MODEL,
             messages=messages,
             temperature=0,
-            aws_profile_name=Config.AWS_PROFILE,
-            aws_region=Config.AWS_REGION,
+            **Config.config
         )
         
         answer = completion_result.choices[0].message.content

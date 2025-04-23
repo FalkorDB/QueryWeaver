@@ -5,6 +5,7 @@ import os
 from typing import Union
 import dataclasses
 from litellm import embedding
+import boto3
 
 
 class EmbeddingsModel():
@@ -54,10 +55,23 @@ class Config:
     EMBEDDING_MODEL_NAME = "bedrock/cohere.embed-english-v3" 
     COMPLETION_MODEL = "us.meta.llama3-3-70b-instruct-v1:0"
     TEMPERATURE = 0
+    client = boto3.client('sts')
+    response = client.assume_role_with_web_identity(
+                    RoleArn=os.getenv("AWS_ROLE_ARN"),
+                    RoleSessionName='vercel-session',
+                    WebIdentityToken=os.getenv("VERCEL_OIDC_TOKEN")
+                )
     AWS_PROFILE = os.getenv("aws_profile_name")
     AWS_REGION = os.getenv("aws_region_name")
+    AWS_ROLE_ARN = os.getenv("AWS_ROLE_ARN")
+    aws_session_name = "text2sql"
+    AWS_SECRET_TOKEN = os.getenv("SECRET_TOKEN")
+    VERCEL_OIDC_TOKEN = os.getenv("VERCEL_OIDC_TOKEN")
     config = {}
-    config["aws_profile_name"] = AWS_PROFILE
+    # config["aws_profile_name"] = AWS_PROFILE
+    config["aws_access_key_id"]=response['Credentials']['AccessKeyId']
+    config["aws_secret_access_key"]=response['Credentials']['SecretAccessKey']
+    config["aws_session_token"]=response['Credentials']['SessionToken']
     config["aws_region_name"] = AWS_REGION
 
     EMBEDDING_MODEL = EmbeddingsModel(

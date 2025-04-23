@@ -58,8 +58,7 @@ def find(
                                         }
                                     ],
                                     temperature=0,
-                                    aws_profile_name=Config.AWS_PROFILE,
-                                    aws_region_name=Config.AWS_REGION,
+                                    **Config.config
                                    )
 
     json_str = completion_result.choices[0].message.content
@@ -74,7 +73,7 @@ def find(
     # table names for sphere and route extraction
     base_tables_names = [table[0] for table in tables_des]
     tables_by_sphere = _find_tables_sphere(graph, base_tables_names)
-    tables_by_route, _ = find_connecting_tables(graph, base_tables_names)
+    tables_by_route, _ = [] ,[] #find_connecting_tables(graph, base_tables_names)
     combined_tables = _get_unique_tables(tables_des + tables_by_columns_des + tables_by_route + tables_by_sphere)
     
     return True, combined_tables, db_description, [tables_des, tables_by_columns_des, tables_by_route, tables_by_sphere]
