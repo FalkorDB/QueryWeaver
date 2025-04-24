@@ -1,7 +1,7 @@
 """ Module to handle the graph data loading into the database. """
 import os
 import json
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple
 from litellm import completion
 from pydantic import BaseModel
 from api.config import Config
@@ -73,7 +73,7 @@ def find(
     # table names for sphere and route extraction
     base_tables_names = [table[0] for table in tables_des]
     tables_by_sphere = _find_tables_sphere(graph, base_tables_names)
-    tables_by_route, _ = [] ,[] #find_connecting_tables(graph, base_tables_names)
+    tables_by_route, _ = find_connecting_tables(graph, base_tables_names)
     combined_tables = _get_unique_tables(tables_des + tables_by_columns_des + tables_by_route + tables_by_sphere)
     
     return True, combined_tables, db_description, [tables_des, tables_by_columns_des, tables_by_route, tables_by_sphere]
