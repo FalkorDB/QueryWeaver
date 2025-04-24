@@ -120,8 +120,8 @@ body {
 }
 
 .user-message {
-  background: var(--falkor-primary);
-  color: #102030;
+  background: gray;
+  color: var(--text-primary);
   align-self: flex-end;
   border-bottom-right-radius: 2px;
   font-weight: 500;
@@ -407,4 +407,10 @@ body {
   border: 0.5px solid #8051E3;
   color: white;
   padding: 4px;
+}
+
+.final-result-list {
+  list-style-type: none;
+  display: flex;
+  flex-direction: column;
 }
