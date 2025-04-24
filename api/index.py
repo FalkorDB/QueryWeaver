@@ -1,6 +1,7 @@
 """ This module contains the routes for the text2sql API. """
 import json
 import os
+import logging
 from functools import wraps
 from dotenv import load_dotenv
 from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context, Flask
@@ -13,6 +14,7 @@ from api.agents import RelevancyAgent, AnalysisAgent
 
 # Load environment variables from .env file
 load_dotenv()
+logging.basicConfig(level=logging.DEBUG, format='%(filename)s - %(asctime)s - %(levelname)s - %(message)s')
 
 # Use the same delimiter as in the JavaScript
 MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||'
@@ -138,6 +140,8 @@ def query(graph_id: str):
     instructions = request_data.get("instructions")
     if not queries_history:
         return jsonify({"error": "Invalid or missing JSON data"}), 400
+    
+    logging.info(f"User Query: {queries_history[-1]}")
 
     # Create a generator function for streaming
     def generate():
@@ -155,6 +159,7 @@ def query(graph_id: str):
         answer_rel = agent_rel.get_answer(queries_history[-1], result)
         if answer_rel["status"] != "On-topic":
             step = {"type": "followup_questions", "message": "Off topic question: " + answer_rel["reason"]}
+            logging.info(f"SQL Fail reason: {answer_rel["reason"]}")
             yield json.dumps(step) + MESSAGE_DELIMITER
         else:
             step = {"type": "reasoning_step",
@@ -162,6 +167,7 @@ def query(graph_id: str):
             yield json.dumps(step) + MESSAGE_DELIMITER
             answer_an = agent_an.get_analysis(queries_history[-1], result, db_description, instructions)
 
+            logging.info(f"SQL Result: {answer_an['sql_query']}")
             yield json.dumps({"type": "final_result", "data": answer_an['sql_query'], "conf": answer_an['confidence'],
                              "miss": answer_an['missing_information'],
                              "amb": answer_an['ambiguities'],
