@@ -14,7 +14,6 @@
         <div class="chat-header">
             <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="Chat Logo" class="logo">
             <h1>Text-to-SQL</h1>
-            <!-- <div class="header-controls"> -->
             <div class="dropdown-container">
                 <label for="graph-select">Select Database:</label>
                 <select id="graph-select">
@@ -31,11 +30,11 @@
                     <input type="checkbox" id="instructions-checkbox" checked>
                 </div>
             </div>
-            <div class="file-upload">
+            <!-- <div class="file-upload">
                     <input type="file" id="file-upload" style="display: none;">
-                    <button class="file-upload-btn" id="upload-button">Upload Schema</button>
+                    <button class="file-upload-btn" id="upload-button">Upload Schema</button> -->
             <!-- <span class="file-name" id="file-name"></span> -->
-            </div>
+            <!-- </div> -->
             <!-- </div> -->
         </div>
         <div class="chat-messages" id="chat-messages">
@@ -82,7 +81,7 @@
             </div>
         </div>
     </div>
-    
+
     <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
 </body>
 

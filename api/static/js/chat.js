@@ -171,6 +171,7 @@ async function sendMessage() {
 
                 if (!message) continue; // Skip empty messages
 
+
                 try {
                     // Try to parse as JSON
                     const step = JSON.parse(message);
@@ -180,10 +181,24 @@ async function sendMessage() {
                         addMessage(step.message, false);
                     } else if (step.type === 'final_result') {
                         // Final result could be displayed differently
-                        expValue.textContent = step.exp;
-                        confValue.textContent = step.conf;
-                        missValue.textContent = step.miss;
-                        ambValue.textContent = step.amb;
+                        [[step.exp, expValue], [step.conf, confValue], [step.miss, missValue], [step.amb, ambValue]].forEach(([value, element]) => {
+                            let ul = document.getElementById(`${element.id}-list`);
+                            if (!ul) {
+                                ul = document.createElement("ul");
+                                ul.className = "final-result-list";
+                                ul.id = `${element.id}-list`;
+                                element.appendChild(ul);
+                            }
+                            value.split('-').forEach((item, i) => {
+                                let li = document.getElementById(`${element.id}-${i}-li`);
+                                if (!li) {
+                                    li = document.createElement("li");
+                                    li.id = `${element.id}-${i}-li`;
+                                    ul.appendChild(li);
+                                }
+                                li.textContent = item;
+                            });
+                        })
                         addMessage(step.message || JSON.stringify(step.data, null, 2), false, false, true);
                     } else if (step.type === 'followup_questions') {
                         // step.questions.forEach(question => {
@@ -203,7 +218,7 @@ async function sendMessage() {
                     // If it's not valid JSON, just show the message as text
                     addMessage(message, false);
                 }
-                
+
             }
         }
 
