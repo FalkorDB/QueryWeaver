@@ -5,7 +5,7 @@
 
 # Text2SQL
 
-```ba
+```bash
 poetry run flask --app api.index run
 ```
 
