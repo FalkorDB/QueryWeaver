@@ -11,7 +11,7 @@ from api.loaders.csv_loader import CSVLoader
 from api.loaders.json_loader import JSONLoader
 from api.loaders.odata_loader import ODataLoader
 from api.agents import RelevancyAgent, AnalysisAgent
-from config import set_oidc_token, assume_role, Config
+from api.config import set_oidc_token, assume_role, Config
 
 # Load environment variables from .env file
 load_dotenv()
