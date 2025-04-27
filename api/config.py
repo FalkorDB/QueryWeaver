@@ -46,33 +46,47 @@ class EmbeddingsModel():
         return size
 
 
+def set_oidc_token(token: str):
+    os.environ["VERCEL_OIDC_TOKEN"] = token
+
+def assume_role():
+    """
+    Only assume AWS role when needed (after token is available)
+    """
+    client = boto3.client('sts')
+    response = client.assume_role_with_web_identity(
+        RoleArn=os.getenv("AWS_ROLE_ARN"),
+        RoleSessionName='vercel-session',
+        WebIdentityToken=os.getenv("VERCEL_OIDC_TOKEN")
+    )
+    return {
+        "aws_access_key_id": response['Credentials']['AccessKeyId'],
+        "aws_secret_access_key": response['Credentials']['SecretAccessKey'],
+        "aws_session_token": response['Credentials']['SessionToken']
+    }
+
 @dataclasses.dataclass
 class Config:
     """
     Configuration class for the text2sql module.    
     """
     SCHEMA_PATH = "api/schema_aba.json"
-    EMBEDDING_MODEL_NAME = "bedrock/cohere.embed-english-v3" 
+    EMBEDDING_MODEL_NAME = "bedrock/amazon.titan-embed-text-v1" 
     COMPLETION_MODEL = "us.meta.llama3-3-70b-instruct-v1:0"
     TEMPERATURE = 0
     client = boto3.client('sts')
-    response = client.assume_role_with_web_identity(
-                    RoleArn=os.getenv("AWS_ROLE_ARN"),
-                    RoleSessionName='vercel-session',
-                    WebIdentityToken=os.getenv("VERCEL_OIDC_TOKEN")
-                )
     AWS_PROFILE = os.getenv("aws_profile_name")
     AWS_REGION = os.getenv("aws_region_name")
     AWS_ROLE_ARN = os.getenv("AWS_ROLE_ARN")
-    aws_session_name = "text2sql"
-    AWS_SECRET_TOKEN = os.getenv("SECRET_TOKEN")
     VERCEL_OIDC_TOKEN = os.getenv("VERCEL_OIDC_TOKEN")
+    AWS_SECRET_TOKEN = os.getenv("SECRET_TOKEN")
+    aws_session_name = "text2sql"
     config = {}
-    # config["aws_profile_name"] = AWS_PROFILE
-    config["aws_access_key_id"]=response['Credentials']['AccessKeyId']
-    config["aws_secret_access_key"]=response['Credentials']['SecretAccessKey']
-    config["aws_session_token"]=response['Credentials']['SessionToken']
-    config["aws_region_name"] = AWS_REGION
+    config["aws_profile_name"] = AWS_PROFILE
+    # config["aws_access_key_id"] = response['Credentials']['AccessKeyId']
+    # config["aws_secret_access_key"] = response['Credentials']['SecretAccessKey']
+    # config["aws_session_token"] = response['Credentials']['SessionToken']
+    # config["aws_region_name"] = AWS_REGION
 
     EMBEDDING_MODEL = EmbeddingsModel(
         model_name=EMBEDDING_MODEL_NAME,
@@ -85,9 +99,8 @@ class Config:
     Please analyze the user's query and generate a set of tables and columns descriptions that might be relevant to the user's query.
     These descriptions should describe the tables and columns that are relevant to the user's query.
     If the user's query is more relevant to specific columns, please provide a description of those columns.
-    Try to generate description for any part of the user query.
-    Try to use similar words to the user query, for example, if the user query contains "member", use "member" in the table or column description.
-    Try not use specific codes or values in the table or column description, but use general words that describe the table or column.
+    - Try to generate description for any part of the user query.
+    - Create generic table or column description, do not use specific codes, values or any specific condition.
 
     Keep in mind that the database that you work with has the following description: {db_description}.
 
