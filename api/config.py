@@ -59,11 +59,12 @@ def assume_role():
         RoleSessionName='vercel-session',
         WebIdentityToken=os.getenv("VERCEL_OIDC_TOKEN")
     )
-    return {
-        "aws_access_key_id": response['Credentials']['AccessKeyId'],
-        "aws_secret_access_key": response['Credentials']['SecretAccessKey'],
-        "aws_session_token": response['Credentials']['SessionToken']
-    }
+    os.environ["aws_access_key_id"] = response['Credentials']['AccessKeyId']
+    os.environ["aws_secret_access_key"] = response['Credentials']['SecretAccessKey']
+    os.environ["aws_session_token"] = response['Credentials']['SessionToken']
+    Config.config["aws_access_key_id"] = response['Credentials']['AccessKeyId']
+    Config.config["aws_secret_access_key"] = response['Credentials']['SecretAccessKey']
+    Config.config["aws_session_token"] = response['Credentials']['SessionToken']
 
 @dataclasses.dataclass
 class Config:
@@ -82,11 +83,11 @@ class Config:
     AWS_SECRET_TOKEN = os.getenv("SECRET_TOKEN")
     aws_session_name = "text2sql"
     config = {}
-    config["aws_profile_name"] = AWS_PROFILE
+    # config["aws_profile_name"] = AWS_PROFILE
     # config["aws_access_key_id"] = response['Credentials']['AccessKeyId']
     # config["aws_secret_access_key"] = response['Credentials']['SecretAccessKey']
     # config["aws_session_token"] = response['Credentials']['SessionToken']
-    # config["aws_region_name"] = AWS_REGION
+    config["aws_region_name"] = AWS_REGION
 
     EMBEDDING_MODEL = EmbeddingsModel(
         model_name=EMBEDDING_MODEL_NAME,
