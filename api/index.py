@@ -42,7 +42,6 @@ app = Flask(__name__)
 @app.before_request
 def before_request_func():
     oidc_token = request.headers.get('x-vercel-oidc-token')
-    logging.info(f"OIDC Token: {oidc_token}")
     if oidc_token:
         set_oidc_token(oidc_token)
         credentials = assume_role()

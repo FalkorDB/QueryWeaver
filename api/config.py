@@ -83,10 +83,6 @@ class Config:
     AWS_SECRET_TOKEN = os.getenv("SECRET_TOKEN")
     aws_session_name = "text2sql"
     config = {}
-    # config["aws_profile_name"] = AWS_PROFILE
-    # config["aws_access_key_id"] = response['Credentials']['AccessKeyId']
-    # config["aws_secret_access_key"] = response['Credentials']['SecretAccessKey']
-    # config["aws_session_token"] = response['Credentials']['SessionToken']
     config["aws_region_name"] = AWS_REGION
 
     EMBEDDING_MODEL = EmbeddingsModel(

@@ -1,12 +1,10 @@
 """ Module to handle the graph data loading into the database. """
-import os
 import json
 from typing import List, Tuple
 from litellm import completion
 from pydantic import BaseModel
 from api.config import Config
 from api.extensions import db
-import logging
 
 class TableDescription(BaseModel):
     """ Table Description """
@@ -42,7 +40,6 @@ def find(
     # Call the completion model to get the relevant Cypher queries to retrieve
     # from the Graph that represent the Database schema.
     # The completion model will generate a set of Cypher query to retrieve the relevant nodes.
-    logging.info(f"config: {Config.config}")
     completion_result = completion(model=Config.COMPLETION_MODEL,
                                     response_format=Descriptions,
                                     messages=[
