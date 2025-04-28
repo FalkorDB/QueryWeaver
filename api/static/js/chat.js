@@ -231,8 +231,11 @@ async function sendMessage() {
                                 li.textContent = i === 0 ? `${item}` : `- ${item}`;
                             });
                         })
-                        debugger
-                        addMessage(step.message || JSON.stringify(step.data, null, 2), false, false, true);
+                        if (!step.data) {
+                            step.data = "Unfortunately, an SQL query could not be created based on the extracted tables and your instructions. Please see the Explanation for more details.";
+                            addMessage(step.message || JSON.stringify(step.data, null, 2), false, true);
+                        }
+                        else addMessage(step.message || JSON.stringify(step.data, null, 2), false, false, true);
                     } else if (step.type === 'followup_questions') {
                         // step.questions.forEach(question => {
                         //     addMessage(question, false);
