@@ -19,7 +19,6 @@ class AnalysisAgent():
                                     ],
                                     temperature=0,
                                     top_p=1,
-                                    **Config.config
                                     )
         
         response = completion_result.choices[0].message.content
@@ -54,12 +53,13 @@ class AnalysisAgent():
             # Format columns using the updated OrderedDict structure
             for column in columns:
                 col_name = column.get("columnName", "")
-                col_type = column.get("type", "")
+                col_type = column.get("dataType", None)
                 col_description = column.get("description", "")
-                col_key = column.get("key", None)
+                col_key = column.get("keyType", None)
+                nullable = column.get("nullable", False)
                 
-                key_info = f", PRIMARY KEY" if col_key == "PK" else f", FOREIGN KEY" if col_key == "FK" else ""
-                column_str = f"  - {col_name} ({col_type}{key_info}): {col_description}"
+                key_info = f", PRIMARY KEY" if col_key == "PRI" else f", FOREIGN KEY" if col_key == "FK" else ""
+                column_str = f"  - {col_name} ({col_type},{key_info},{col_key},{nullable}): {col_description}"
                 table_str += column_str + "\n"
             
             # Format foreign keys

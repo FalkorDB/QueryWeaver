@@ -53,9 +53,8 @@ def generate_db_description(db_name: str, table_names: list, temperature: float 
             max_tokens=max_tokens,
             n=1,
             stop=None,
-            **Config.config
         )
-    description = response.choices[0].message['content'].strip()
+    description = response.choices[0].message['content']
     return description
 
 def llm_answer_validator(question: str, answer: str, expected_answer: str) -> float:

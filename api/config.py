@@ -29,7 +29,7 @@ class EmbeddingsModel():
             list: The embeddings of the text
         
         """
-        embeddings = embedding(model=self.model_name, input=text, **self.config)
+        embeddings = embedding(model=self.model_name, input=text)
         embeddings = [embedding["embedding"] for embedding in embeddings.data]
         return embeddings
     
@@ -41,7 +41,7 @@ class EmbeddingsModel():
             int: The size of the vector
         
         """
-        response = embedding(input = ["Hello World"], model=self.model_name, **self.config)
+        response = embedding(input = ["Hello World"], model=self.model_name)
         size = len(response.data[0]['embedding'])
         return size
 
@@ -62,18 +62,18 @@ def assume_role():
     os.environ["aws_access_key_id"] = response['Credentials']['AccessKeyId']
     os.environ["aws_secret_access_key"] = response['Credentials']['SecretAccessKey']
     os.environ["aws_session_token"] = response['Credentials']['SessionToken']
-    Config.config["aws_access_key_id"] = response['Credentials']['AccessKeyId']
-    Config.config["aws_secret_access_key"] = response['Credentials']['SecretAccessKey']
-    Config.config["aws_session_token"] = response['Credentials']['SessionToken']
+    # Config.config["aws_access_key_id"] = response['Credentials']['AccessKeyId']
+    # Config.config["aws_secret_access_key"] = response['Credentials']['SecretAccessKey']
+    # Config.config["aws_session_token"] = response['Credentials']['SessionToken']
 
 @dataclasses.dataclass
 class Config:
     """
     Configuration class for the text2sql module.    
     """
-    SCHEMA_PATH = "api/schema_aba.json"
-    EMBEDDING_MODEL_NAME = "bedrock/amazon.titan-embed-text-v1" 
-    COMPLETION_MODEL = "us.meta.llama3-3-70b-instruct-v1:0"
+    SCHEMA_PATH = "api/schema_schema.json"
+    EMBEDDING_MODEL_NAME = "azure/text-embedding-ada-002"#"bedrock/amazon.titan-embed-text-v1" 
+    COMPLETION_MODEL = "azure/gpt-4o-2024-08-06"#"us.anthropic.claude-3-7-sonnet-20250219-v1:0"
     TEMPERATURE = 0
     client = boto3.client('sts')
     AWS_PROFILE = os.getenv("aws_profile_name")
@@ -84,6 +84,7 @@ class Config:
     aws_session_name = "text2sql"
     config = {}
     config["aws_region_name"] = AWS_REGION
+    config["aws_profile_name"] = AWS_PROFILE
 
     EMBEDDING_MODEL = EmbeddingsModel(
         model_name=EMBEDDING_MODEL_NAME,
@@ -98,6 +99,7 @@ class Config:
     If the user's query is more relevant to specific columns, please provide a description of those columns.
     - Try to generate description for any part of the user query.
     - Create generic table or column description, do not use specific codes, values or any specific condition.
+    - Try to be accurate and precise in your descriptions.
 
     Keep in mind that the database that you work with has the following description: {db_description}.
 
