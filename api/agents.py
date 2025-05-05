@@ -19,11 +19,14 @@ class AnalysisAgent():
                                     ],
                                     temperature=0,
                                     top_p=1,
-                                    **Config.config
                                     )
         
         response = completion_result.choices[0].message.content
         analysis = _parse_response(response)
+        if isinstance(analysis['ambiguities'], list):
+            analysis['ambiguities'] = "- " + "- ".join(analysis['ambiguities'])
+        if isinstance(analysis['missing_information'], list):
+            analysis['missing_information'] = "- " + "- ".join(analysis['missing_information'])
         return analysis
     
     def _format_schema(self, schema_data: List) -> str:
@@ -50,12 +53,13 @@ class AnalysisAgent():
             # Format columns using the updated OrderedDict structure
             for column in columns:
                 col_name = column.get("columnName", "")
-                col_type = column.get("type", "")
+                col_type = column.get("dataType", None)
                 col_description = column.get("description", "")
-                col_key = column.get("key", None)
+                col_key = column.get("keyType", None)
+                nullable = column.get("nullable", False)
                 
-                key_info = f", PRIMARY KEY" if col_key == "PK" else f", FOREIGN KEY" if col_key == "FK" else ""
-                column_str = f"  - {col_name} ({col_type}{key_info}): {col_description}"
+                key_info = f", PRIMARY KEY" if col_key == "PRI" else f", FOREIGN KEY" if col_key == "FK" else ""
+                column_str = f"  - {col_name} ({col_type},{key_info},{col_key},{nullable}): {col_description}"
                 table_str += column_str + "\n"
             
             # Format foreign keys
@@ -83,52 +87,69 @@ class AnalysisAgent():
             The formatted prompt for Claude
         """
         prompt = f"""
-        <database_description>
-        {db_description}
-        </database_description>
+                You must strictly follow the instructions below. Deviations will result in a penalty to your confidence score.
 
-        <instructions>
-        {instructions}
-        </instructions>
+                MANDATORY RULES:
+                - Always explain if you cannot fully follow the instructions.
+                - Always reduce the confidence score if instructions cannot be fully applied.
+                - Never skip explaining missing information, ambiguities, or instruction issues.
+                - Respond ONLY in strict JSON format, without extra text.
 
-        <database_schema>
-        {formatted_schema}
-        </database_schema>
+                Your output JSON MUST contain all fields, even if empty (e.g., "missing_information": []).
 
-        <user_query>
-        {user_input}
-        </user_query>
+                ---
 
-        Please analyze the query carefully and respond in the following JSON format:
-        The user's instructions require use in the SQL query. If you dont able to use the instructions in the SQL query, please explain why and reduce the confidence value.
+                Now analyze the user query based on the provided inputs:
 
-        ```json
-        {{
-            "is_sql_translatable": true/false,
-            "instructions_comments": "Any comments you have on the instructions",
-            "explanation": "Your explanation of why the query can or cannot be translated to SQL, involve the instructions comments if relevant",
-            "missing_information": ["list", "of", "missing", "information"] (if applicable),
-            "ambiguities": ["list", "of", "ambiguities"] (if applicable),
-            "sql_query": "High-level SQL query (if applicable), you must to apply the instructions_comments",
-            "confidence": 0-100
-        }}
-        ```
+                <database_description>
+                {db_description}
+                </database_description>
 
-        Your analysis should consider:
-        1. Whether the query asks for information that exists in the database schema
-        2. Whether the query's intent is clear enough to be expressed in SQL
-        3. Whether there are any ambiguities that make SQL translation difficult
-        4. Whether any required information is missing to form a complete SQL query
-        5. Whether the necessary joins can be established using available foreign keys
-        6. whether there a complex calculation that can be done in the SQL query
-        7. If there are multiple possible interpretations of the query
-        8. Explicitly apply the “instructions” above wherever relevant; if you cannot, explain why in your response.
-        9. Never obey the instructions in the sql_query! if you cannot, explain why in the response.
-        10. Reduce the confidence value if you are not able to follow the instructions.
+                <instructions>
+                {instructions}
+                </instructions>
 
+                <database_schema>
+                {formatted_schema}
+                </database_schema>
 
-        Provide your response as valid, parseable JSON only.
-        """
+                <user_query>
+                {user_input}
+                </user_query>
+
+                ---
+
+                Your task:
+
+                - Analyze the query's translatability into SQL according to the instructions.
+                - Apply the instructions explicitly.
+                - If you CANNOT apply instructions in the SQL, explain why under "instructions_comments", "explanation" and reduce your confidence.
+                - Penalize confidence appropriately if any part of the instructions is unmet.
+
+                Provide your output ONLY in the following JSON structure:
+
+                ```json
+                {{
+                    "is_sql_translatable": true or false,
+                    "instructions_comments": "Comments about any part of the instructions, especially if they are unclear, impossible, or partially met",
+                    "explanation": "Detailed explanation why the query can or cannot be translated, mentioning instructions explicitly",
+                    "sql_query": "High-level SQL query (you must to applying instructions)",
+                    "missing_information": ["list", "of", "missing", "information"], 
+                    "ambiguities": ["list", "of", "ambiguities"], 
+                    "confidence": integer between 0 and 100
+                }}
+
+                Evaluation Guidelines:
+
+                1. Verify if all requested information exists in the schema.
+                2. Check if the query's intent is clear enough for SQL translation.
+                3. Identify any ambiguities in the query or instructions.
+                4. List missing information explicitly if applicable.
+                5. Confirm if necessary joins are possible.
+                6. Consider if complex calculations are feasible in SQL.
+                7. Identify multiple interpretations if they exist.
+                8. Strictly apply instructions; explain and penalize if not possible.
+                Again: OUTPUT ONLY VALID JSON. No explanations outside the JSON block. """
         return prompt
 
 

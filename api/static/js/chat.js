@@ -93,6 +93,14 @@ function initChat() {
 
 initChat();
 
+const getBackgroundStyle = (value) => {
+    return `linear-gradient(to right,
+    var(--falkor-primary) 0%,
+    var(--falkor-primary) ${value}%,
+    white ${value}%,
+    white 100%)`
+}
+
 async function sendMessage() {
     const message = messageInput.value.trim();
     if (!message) return;
@@ -171,7 +179,6 @@ async function sendMessage() {
 
                 if (!message) continue; // Skip empty messages
 
-
                 try {
                     // Try to parse as JSON
                     const step = JSON.parse(message);
@@ -181,25 +188,54 @@ async function sendMessage() {
                         addMessage(step.message, false);
                     } else if (step.type === 'final_result') {
                         // Final result could be displayed differently
-                        [[step.exp, expValue], [step.conf, confValue], [step.miss, missValue], [step.amb, ambValue]].forEach(([value, element]) => {
+                        let confValueDiv = document.getElementById("conf-value-div");
+                        let confValueTitle = document.getElementById("conf-value-title");
+                        
+                        if (!confValueDiv) {
+                            confValueDiv = document.createElement("div");
+                            confValueDiv.id = "conf-value-div";
+                            confValue.appendChild(confValueDiv);
+                        }
+
+                        if (!confValueTitle) {
+                            confValueTitle = document.createElement("div");
+                            confValueTitle.id = "conf-value-title";
+                            confValue.appendChild(confValueTitle);
+                        }
+
+                        confValueTitle.textContent = `${step.conf}%`;
+                        confValueDiv.style.background = getBackgroundStyle(step.conf);
+                        console.log(step);
+                        [[step.exp, expValue], [step.miss, missValue], [step.amb, ambValue]].forEach(([value, element]) => {
+                            if (!value || typeof value == "object") return;
                             let ul = document.getElementById(`${element.id}-list`);
+
                             if (!ul) {
                                 ul = document.createElement("ul");
-                                ul.className = "final-result-list";
+                                ul.className = `final-result-list`;
                                 ul.id = `${element.id}-list`;
                                 element.appendChild(ul);
                             }
+
                             value.split('-').forEach((item, i) => {
+                                if (item === '') return;
+
                                 let li = document.getElementById(`${element.id}-${i}-li`);
+
                                 if (!li) {
                                     li = document.createElement("li");
                                     li.id = `${element.id}-${i}-li`;
                                     ul.appendChild(li);
                                 }
-                                li.textContent = item;
+
+                                li.textContent = i === 0 ? `${item}` : `- ${item}`;
                             });
                         })
-                        addMessage(step.message || JSON.stringify(step.data, null, 2), false, false, true);
+                        if (!step.data) {
+                            step.data = "Unfortunately, an SQL query could not be created based on the extracted tables and your instructions. Please see the Explanation for more details.";
+                            addMessage(step.message || JSON.stringify(step.data, null, 2), false, true);
+                        }
+                        else addMessage(step.message || JSON.stringify(step.data, null, 2), false, false, true);
                     } else if (step.type === 'followup_questions') {
                         // step.questions.forEach(question => {
                         //     addMessage(question, false);

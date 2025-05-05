@@ -330,20 +330,26 @@ body {
   gap: 8px;
 }
 
-#analysis-content div {
+#analysis-content>div:not(#conf-value-container) {
   flex: 1 1 0;
+}
+
+#analysis-content>div {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 4px;
 }
 
-#analysis-content div h2 {
+#analysis-content>div>h2 {
   font-weight: 500;
 }
 
-#analysis-content div p {
+#analysis-content>div>p:not(#conf-value) {
   flex: 1 1 0;
+}
+
+#analysis-content>div>p {
   background-color: #8051E30D;
   box-shadow: inset 0 0 0 1500px rgba(0, 0, 0, 0.3);
   border: 0.5px solid #8051E3;
@@ -387,7 +393,7 @@ body {
   gap: 8px;
 }
 
-#instructions-content div {
+#instructions-content>div {
   flex: 1 1 0;
   display: flex;
   flex-direction: column;
@@ -395,11 +401,11 @@ body {
   padding: 4px;
 }
 
-#instructions-content div h2 {
+#instructions-content>div>h2 {
   font-weight: 500;
 }
 
-#instructions-content div textarea {
+#instructions-content>div>textarea {
   flex: 1 1 0;
   background-color: #8051E30D;
   box-shadow: inset 0 0 0 1500px rgba(0, 0, 0, 0.3);
@@ -413,4 +419,19 @@ body {
   list-style-type: none;
   display: flex;
   flex-direction: column;
+}
+
+#conf-value-div {
+  width: 80%;
+  height: 10px;
+  border-radius: 8px;
+}
+
+#conf-value {
+  min-height: 43px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }

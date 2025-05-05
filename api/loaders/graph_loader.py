@@ -126,7 +126,7 @@ def load_to_graph(graph_id: str, entities: dict, relationships: dict, batch_size
                     'table_name': table_name,
                     'col_name': col_name,
                     'type': col_info.get('type', 'unknown'),
-                    'nullable': col_info.get('nullable', 'unknown'),
+                    'nullable': col_info.get('null', 'unknown'),
                     'key': col_info.get('key', 'unknown'),
                     'description': col_info['description'],
                     'embedding': embed_columns[idx]

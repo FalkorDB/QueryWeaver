@@ -1,5 +1,4 @@
 """ Module to handle the graph data loading into the database. """
-import os
 import json
 from typing import List, Tuple
 from litellm import completion
@@ -41,7 +40,6 @@ def find(
     # Call the completion model to get the relevant Cypher queries to retrieve
     # from the Graph that represent the Database schema.
     # The completion model will generate a set of Cypher query to retrieve the relevant nodes.
-
     completion_result = completion(model=Config.COMPLETION_MODEL,
                                     response_format=Descriptions,
                                     messages=[
@@ -58,7 +56,6 @@ def find(
                                         }
                                     ],
                                     temperature=0,
-                                    **Config.config
                                    )
 
     json_str = completion_result.choices[0].message.content
@@ -95,7 +92,10 @@ def _find_tables(graph, descriptions: List[TableDescription]) -> List[dict]:
                     MATCH (node)-[:BELONGS_TO]-(columns)
                     RETURN node.name, node.description, node.foreign_keys, collect({
                         columnName: columns.name,
-                        description: columns.description
+                        description: columns.description,
+                        dataType: columns.type,
+                        keyType: columns.key,
+                        nullable: columns.nullable
                     })
                     """,
                     {
@@ -118,7 +118,10 @@ def _find_tables_sphere(graph, tables: List[str]) -> List[dict]:
                     MATCH (table_ref)-[:BELONGS_TO]-(columns)
                     RETURN table_ref.name, table_ref.description, table_ref.foreign_keys, collect({
                         columnName: columns.name,
-                        description: columns.description
+                        description: columns.description,
+                        dataType: columns.type,
+                        keyType: columns.key,
+                        nullable: columns.nullable
                     })
                     """,
                     {
@@ -152,7 +155,10 @@ def _find_tables_by_columns(graph, descriptions: List[ColumnDescription]) -> Lis
                     table.foreign_keys,
                     collect({
                         columnName: columns.name,
-                        description: columns.description
+                        description: columns.description,
+                        dataType: columns.type,
+                        keyType: columns.key,
+                        nullable: columns.nullable
                     })
                     """,
                     {
@@ -246,7 +252,10 @@ def find_connecting_tables(graph, table_names: List[str]) -> Tuple[List[dict], L
                 WHERE id(n)=id 
                 RETURN n.name, n.description, n.foreign_keys, collect({
                         columnName: columns.name,
-                        description: columns.description
+                        description: columns.description,
+                        dataType: columns.type,
+                        keyType: columns.key,
+                        nullable: columns.nullable
                     })""", {'ids': list(all_connecting_tables_id)})
     for node in query_result.result_set:
             if node not in result:

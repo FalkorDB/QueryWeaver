@@ -15,3 +15,5 @@ poetry run flask --app api.index run
 
 
 ## LICENSE
+
+Copyrights FalkorDB Ltd. 2025
