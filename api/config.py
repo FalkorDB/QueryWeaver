@@ -46,23 +46,6 @@ class EmbeddingsModel():
         return size
 
 
-def set_oidc_token(token: str):
-    os.environ["VERCEL_OIDC_TOKEN"] = token
-
-def assume_role():
-    """
-    Only assume AWS role when needed (after token is available)
-    """
-    client = boto3.client('sts')
-    response = client.assume_role_with_web_identity(
-        RoleArn=os.getenv("AWS_ROLE_ARN"),
-        RoleSessionName='vercel-session',
-        WebIdentityToken=os.getenv("VERCEL_OIDC_TOKEN")
-    )
-    os.environ["aws_access_key_id"] = response['Credentials']['AccessKeyId']
-    os.environ["aws_secret_access_key"] = response['Credentials']['SecretAccessKey']
-    os.environ["aws_session_token"] = response['Credentials']['SessionToken']
-
 @dataclasses.dataclass
 class Config:
     """
@@ -72,16 +55,16 @@ class Config:
     EMBEDDING_MODEL_NAME = "azure/text-embedding-ada-002"
     COMPLETION_MODEL = "azure/gpt-4o-2024-08-06"
     TEMPERATURE = 0
-    client = boto3.client('sts')
-    AWS_PROFILE = os.getenv("aws_profile_name")
-    AWS_REGION = os.getenv("aws_region_name")
-    AWS_ROLE_ARN = os.getenv("AWS_ROLE_ARN")
-    VERCEL_OIDC_TOKEN = os.getenv("VERCEL_OIDC_TOKEN")
-    AWS_SECRET_TOKEN = os.getenv("SECRET_TOKEN")
-    aws_session_name = "text2sql"
+    # client = boto3.client('sts')
+    # AWS_PROFILE = os.getenv("aws_profile_name")
+    # AWS_REGION = os.getenv("aws_region_name")
+    # AWS_ROLE_ARN = os.getenv("AWS_ROLE_ARN")
+    # VERCEL_OIDC_TOKEN = os.getenv("VERCEL_OIDC_TOKEN")
+    # AWS_SECRET_TOKEN = os.getenv("SECRET_TOKEN")
+    # aws_session_name = "text2sql"
     config = {}
-    config["aws_region_name"] = AWS_REGION
-    config["aws_profile_name"] = AWS_PROFILE
+    # config["aws_region_name"] = AWS_REGION
+    # config["aws_profile_name"] = AWS_PROFILE
 
     EMBEDDING_MODEL = EmbeddingsModel(
         model_name=EMBEDDING_MODEL_NAME,

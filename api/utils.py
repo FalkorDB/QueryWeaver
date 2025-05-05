@@ -111,7 +111,6 @@ def llm_answer_validator(question: str, answer: str, expected_answer: str=None) 
                                 {"role": "user", "content": prompt.format(question=question, expected_answer=expected_answer, generated_answer=answer)}
                             ],
                             response_format={"type": "json_object"},
-                            **Config.config
 
                         )
     validation_set = response.choices[0].message['content'].strip()
@@ -142,7 +141,6 @@ def llm_table_validator(question: str, answer: str, tables: list[str]) -> float:
                                 {"role": "user", "content": prompt.format(question=question, tables=tables, generated_answer=answer)}
                             ],
                             response_format={"type": "json_object"},
-                            **Config.config
                         )
     validation_set = response.choices[0].message['content'].strip()
     try:

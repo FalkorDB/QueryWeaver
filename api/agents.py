@@ -167,7 +167,6 @@ class RelevancyAgent():
                 }
             ],
             temperature=0,
-            **Config.config
         )
         
         answer = completion_result.choices[0].message.content
@@ -236,7 +235,6 @@ class FollowUpAgent():
             ],
             response_format={"type": "json_object"},
             temperature=0,
-            **Config.config
         )
         
         answer = completion_result.choices[0].message.content
@@ -295,7 +293,6 @@ class TaxonomyAgent():
             model=Config.COMPLETION_MODEL,
             messages=messages,
             temperature=0,
-            **Config.config
         )
         
         answer = completion_result.choices[0].message.content

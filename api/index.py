@@ -11,7 +11,7 @@ from api.loaders.csv_loader import CSVLoader
 from api.loaders.json_loader import JSONLoader
 from api.loaders.odata_loader import ODataLoader
 from api.agents import RelevancyAgent, AnalysisAgent
-from api.config import set_oidc_token, assume_role, Config
+from api.config import Config
 
 # Load environment variables from .env file
 load_dotenv()
@@ -41,15 +41,15 @@ def token_required(f):
 
 app = Flask(__name__)
 
-@app.before_request
-def before_request_func():
-    oidc_token = request.headers.get('x-vercel-oidc-token')
-    if oidc_token:
-        set_oidc_token(oidc_token)
-        credentials = assume_role()
-    else:
-        # Optional: require it for protected routes
-        pass
+# @app.before_request
+# def before_request_func():
+#     oidc_token = request.headers.get('x-vercel-oidc-token')
+#     if oidc_token:
+#         set_oidc_token(oidc_token)
+#         credentials = assume_role()
+#     else:
+#         # Optional: require it for protected routes
+#         pass
 
 @app.route('/')
 @token_required  # Apply token authentication decorator
