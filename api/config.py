@@ -62,9 +62,6 @@ def assume_role():
     os.environ["aws_access_key_id"] = response['Credentials']['AccessKeyId']
     os.environ["aws_secret_access_key"] = response['Credentials']['SecretAccessKey']
     os.environ["aws_session_token"] = response['Credentials']['SessionToken']
-    # Config.config["aws_access_key_id"] = response['Credentials']['AccessKeyId']
-    # Config.config["aws_secret_access_key"] = response['Credentials']['SecretAccessKey']
-    # Config.config["aws_session_token"] = response['Credentials']['SessionToken']
 
 @dataclasses.dataclass
 class Config:
@@ -72,8 +69,8 @@ class Config:
     Configuration class for the text2sql module.    
     """
     SCHEMA_PATH = "api/schema_schema.json"
-    EMBEDDING_MODEL_NAME = "azure/text-embedding-ada-002"#"bedrock/amazon.titan-embed-text-v1" 
-    COMPLETION_MODEL = "azure/gpt-4o-2024-08-06"#"us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+    EMBEDDING_MODEL_NAME = "azure/text-embedding-ada-002"
+    COMPLETION_MODEL = "azure/gpt-4o-2024-08-06"
     TEMPERATURE = 0
     client = boto3.client('sts')
     AWS_PROFILE = os.getenv("aws_profile_name")
