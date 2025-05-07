@@ -32,7 +32,7 @@ def token_required(f):
     """ Decorator to protect routes with token authentication """
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        token = request.args.get('token')  # Get token from header
+        token = request.args.get('token', 'EMPTY')  # Get token from header
         os.environ["USER_TOKEN"] = token
         if not verify_token(token):
             return jsonify(message="Unauthorized"), 401
