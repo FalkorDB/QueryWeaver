@@ -169,8 +169,11 @@ def query(graph_id: str):
 
         step = {"type": "reasoning_step", "message": "Extracting relevant tables from schema..."}
         yield json.dumps(step) + MESSAGE_DELIMITER
-
-        success, result, db_description, _ = find(graph_id, queries_history)
+        try:
+            success, result, db_description, _ = find(graph_id, queries_history)
+        except Exception as e:
+            logging.error(f"Error in find function: {e}")
+            return jsonify({"error": "Error in find function"}), 500
         if not success:
             return jsonify({"error": result}), 400
 
