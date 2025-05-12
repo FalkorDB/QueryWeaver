@@ -15,7 +15,7 @@ from api.config import Config
 
 # Load environment variables from .env file
 load_dotenv()
-logging.basicConfig(level=logging.DEBUG, format='%(filename)s - %(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Use the same delimiter as in the JavaScript
 MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||'
