@@ -177,6 +177,7 @@ def query(graph_id: str):
         if not success:
             return jsonify({"error": result}), 400
 
+        logging.info(f"Calling to relvancy agent with query: {queries_history[-1]}")
         answer_rel = agent_rel.get_answer(queries_history[-1], result)
         if answer_rel["status"] != "On-topic":
             step = {"type": "followup_questions", "message": "Off topic question: " + answer_rel["reason"]}
@@ -186,6 +187,7 @@ def query(graph_id: str):
             step = {"type": "reasoning_step",
                     "message": "Generating SQL query from the user query and extracted schema..."}
             yield json.dumps(step) + MESSAGE_DELIMITER
+            logging.info(f"Calling to analysis agent with query: {queries_history[-1]}")
             answer_an = agent_an.get_analysis(queries_history[-1], result, db_description, instructions)
 
             logging.info(f"SQL Result: {answer_an['sql_query']}")
