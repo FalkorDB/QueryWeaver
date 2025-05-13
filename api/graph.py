@@ -1,10 +1,13 @@
 """ Module to handle the graph data loading into the database. """
 import json
+import logging
 from typing import List, Tuple
 from litellm import completion
 from pydantic import BaseModel
 from api.config import Config
 from api.extensions import db
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class TableDescription(BaseModel):
     """ Table Description """
@@ -36,7 +39,7 @@ def find(
         RETURN d.description
         """
     ).result_set[0][0]
-
+    logging.info(f"Calling to an LLM to find relevant tables and columns for the query: {user_query}")
     # Call the completion model to get the relevant Cypher queries to retrieve
     # from the Graph that represent the Database schema.
     # The completion model will generate a set of Cypher query to retrieve the relevant nodes.
@@ -63,13 +66,16 @@ def find(
     # Parse JSON string and convert to Pydantic model
     json_data = json.loads(json_str)
     descriptions = Descriptions(**json_data)
-
+    logging.info(f"Find tables based on: {descriptions.tables_descriptions}")
     tables_des = _find_tables(graph, descriptions.tables_descriptions)
+    logging.info(f"Find tables based on columns: {descriptions.columns_descriptions}")
     tables_by_columns_des = _find_tables_by_columns(graph, descriptions.columns_descriptions)
 
     # table names for sphere and route extraction
     base_tables_names = [table[0] for table in tables_des]
+    logging.info("Extracting tables by sphere")
     tables_by_sphere = _find_tables_sphere(graph, base_tables_names)
+    logging.info("Extracting tables by connecting routes")
     tables_by_route, _ = find_connecting_tables(graph, base_tables_names)
     combined_tables = _get_unique_tables(tables_des + tables_by_columns_des + tables_by_route + tables_by_sphere)
     

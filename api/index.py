@@ -172,7 +172,7 @@ def query(graph_id: str):
         try:
             success, result, db_description, _ = find(graph_id, queries_history)
         except Exception as e:
-            logging.error(f"Error in find function: {e}")
+            logging.info(f"Error in find function: {e}")
             return jsonify({"error": "Error in find function"}), 500
         if not success:
             return jsonify({"error": result}), 400
