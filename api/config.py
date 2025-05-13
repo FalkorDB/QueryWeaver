@@ -80,8 +80,10 @@ class Config:
     - Try to generate description for any part of the user query.
     - Create generic table or column description, do not use specific codes, values or any specific condition.
     - Try to be accurate and precise in your descriptions.
+    - In any case do not generate more than five descriptions (each).
+    - List the tables and columns in the order of their relevance to the user's query.
 
-    Keep in mind that the database that you work with has the following description: {db_description}.
+    Keep in mind that the database that you work with has the following DB description: {db_description}.
 
     **Input:**
     * **Relational Database:**
