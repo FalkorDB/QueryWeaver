@@ -75,8 +75,8 @@ def find(
     base_tables_names = [table[0] for table in tables_des]
     logging.info("Extracting tables by sphere")
     tables_by_sphere = _find_tables_sphere(graph, base_tables_names)
-    logging.info("Extracting tables by connecting routes")
-    tables_by_route, _ = find_connecting_tables(graph, base_tables_names)
+    logging.info(f"Extracting tables by connecting routes {base_tables_names}")
+    tables_by_route, _ = [] #find_connecting_tables(graph, base_tables_names)
     combined_tables = _get_unique_tables(tables_des + tables_by_columns_des + tables_by_route + tables_by_sphere)
     
     return True, combined_tables, db_description, [tables_des, tables_by_columns_des, tables_by_route, tables_by_sphere]
