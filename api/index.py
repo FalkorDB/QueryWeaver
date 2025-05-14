@@ -26,13 +26,13 @@ SECRET_TOKEN = os.getenv('SECRET_TOKEN')
 SECRET_TOKEN_GEN = os.getenv('SECRET_TOKEN_GEN')
 def verify_token(token):
     """ Verify the token provided in the request """
-    return token == SECRET_TOKEN or token == SECRET_TOKEN_GEN
+    return token == SECRET_TOKEN or token == SECRET_TOKEN_GEN or token == "null"
 
 def token_required(f):
     """ Decorator to protect routes with token authentication """
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        token = request.args.get('token', 'EMPTY')  # Get token from header
+        token = request.args.get('token', 'null')  # Get token from header
         os.environ["USER_TOKEN"] = token
         if not verify_token(token):
             return jsonify(message="Unauthorized"), 401
@@ -67,6 +67,13 @@ def graphs():
     if os.getenv("USER_TOKEN") == SECRET_TOKEN:
         if 'hospital' in graphs:
             return ['hospital']
+        else:
+            return []
+    elif os.getenv("USER_TOKEN") == "null":
+        if 'crm_usecase' in graphs:
+            return ['crm_usecase']
+        else:
+            return []
     else:
         graphs.remove('hospital')
     return graphs
