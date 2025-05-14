@@ -5,13 +5,13 @@ import logging
 from functools import wraps
 from dotenv import load_dotenv
 from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context, Flask
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from api.graph import find
 from api.extensions import db
 from api.loaders.csv_loader import CSVLoader
 from api.loaders.json_loader import JSONLoader
 from api.loaders.odata_loader import ODataLoader
 from api.agents import RelevancyAgent, AnalysisAgent
-from api.config import Config
 
 # Load environment variables from .env file
 load_dotenv()
@@ -167,15 +167,20 @@ def query(graph_id: str):
         agent_an = AnalysisAgent()
 
 
-        step = {"type": "reasoning_step", "message": "Extracting relevant tables from schema..."}
+        step = {"type": "reasoning_step", "message": "Step 1: Analyzing the user query"}
         yield json.dumps(step) + MESSAGE_DELIMITER
-        try:
-            success, result, db_description, _ = find(graph_id, queries_history)
-        except Exception as e:
-            logging.info(f"Error in find function: {e}")
-            return jsonify({"error": "Error in find function"}), 500
-        if not success:
-            return jsonify({"error": result}), 400
+        # Use a thread pool to enforce timeout
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(find, graph_id, queries_history)
+            try:
+                success, result, db_description, _ = future.result(timeout=60)
+            except FuturesTimeoutError:
+                yield json.dumps({"type": "error", "message": "Timeout error while finding tables relevant to your request."}) + MESSAGE_DELIMITER
+                return
+            except Exception as e:
+                logging.info(f"Error in find function: {e}")
+                yield json.dumps({"type": "error", "message": "Error in find function"}) + MESSAGE_DELIMITER
+                return
 
         logging.info(f"Calling to relvancy agent with query: {queries_history[-1]}")
         answer_rel = agent_rel.get_answer(queries_history[-1], result)
@@ -185,7 +190,7 @@ def query(graph_id: str):
             yield json.dumps(step) + MESSAGE_DELIMITER
         else:
             step = {"type": "reasoning_step",
-                    "message": "Generating SQL query from the user query and extracted schema..."}
+                    "message": "Step 2: Generating SQL query"}
             yield json.dumps(step) + MESSAGE_DELIMITER
             logging.info(f"Calling to analysis agent with query: {queries_history[-1]}")
             answer_an = agent_an.get_analysis(queries_history[-1], result, db_description, instructions)

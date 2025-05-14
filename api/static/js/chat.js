@@ -102,6 +102,7 @@ const getBackgroundStyle = (value) => {
 }
 
 async function sendMessage() {
+    // debugger
     const message = messageInput.value.trim();
     if (!message) return;
 
@@ -115,7 +116,7 @@ async function sendMessage() {
     messageInput.value = '';
 
     // Show typing indicator
-    typingIndicator.style.display = 'block';
+    typingIndicator.style.display = 'flex';
 
     try {
         const selectedValue = document.getElementById("graph-select").value;
@@ -146,11 +147,9 @@ async function sendMessage() {
         let decoder = new TextDecoder();
         let buffer = '';
 
-        // Hide typing indicator once we start receiving data
-        typingIndicator.style.display = 'none';
-
+        let streamListining = true;
         // Process the stream
-        while (true) {
+        while (streamListining) {
             const { done, value } = await reader.read();
 
             if (done) {
@@ -246,6 +245,9 @@ async function sendMessage() {
                         ambValue.textContent = "N/A";
                         // graph.Labels.findIndex(l => l.name === cat.name)(step.message, false, true);
                         addMessage(step.message, false, true);
+                    } else if (step.type === 'error') {
+                        addMessage(step.message || JSON.stringify(step), false, true);
+                        streamListining = false;
                     } else {
                         // Default handling
                         addMessage(step.message || JSON.stringify(step), false);
@@ -254,7 +256,6 @@ async function sendMessage() {
                     // If it's not valid JSON, just show the message as text
                     addMessage(message, false);
                 }
-
             }
         }
 
@@ -265,11 +266,14 @@ async function sendMessage() {
             console.log('Request was aborted');
         } else {
             console.error('Error:', error);
-            typingIndicator.style.display = 'none';
+            // typingIndicator.style.display = 'none';
             addMessage('Sorry, there was an error processing your message: ' + error.message, false);
         }
         currentRequestController = null;
-    }
+    } finally {
+                    // Hide typing indicator once we start receiving data
+                    typingIndicator.style.display = 'none';
+                }
 }
 
 function handleShowAnalysis(e) {

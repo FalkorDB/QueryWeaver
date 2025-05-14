@@ -202,6 +202,7 @@ body {
 
 .typing-indicator {
   display: none;
+  flex-direction: row;
   align-self: flex-start;
   background: var(--falkor-primary);
   padding: 10px 15px;
@@ -210,6 +211,18 @@ body {
   color: var(--text-secondary);
   font-style: italic;
   border-left: 3px solid var(--falkor-primary);
+}
+
+.typing-indicator::after {
+  content: '...';
+  display: inline-block;
+  animation: dots-typing 1.5s steps(3) infinite;
+}
+
+@keyframes dots-typing {
+  0% { content: '.'; }
+  50% { content: '..'; }
+  100% { content: '...'; }
 }
 
 .dropdown-container {
