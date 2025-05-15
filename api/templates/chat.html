@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot Interface</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+</head>
+
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="Chat Logo" class="logo">
+            <h1>Text-to-SQL</h1>
+            <div class="dropdown-container">
+                <label for="graph-select">Select Database:</label>
+                <select id="graph-select">
+                    <option value="">Loading...</option>
+                </select>
+            </div>
+            <div class="checkbox-container">
+                <div id="analysis-checkbox-container">
+                    <p>Analysis:</p>
+                    <input type="checkbox" id="analysis-checkbox" checked>
+                </div>
+                <div id="instructions-checkbox-container">
+                    <p>Instructions:</p>
+                    <input type="checkbox" id="instructions-checkbox" checked>
+                </div>
+            </div>
+            <!-- <div class="file-upload">
+                    <input type="file" id="file-upload" style="display: none;">
+                    <button class="file-upload-btn" id="upload-button">Upload Schema</button>
+            </div> -->
+            <!-- <span class="file-name" id="file-name"></span> -->
+            <!-- </div> -->
+            <!-- </div> -->
+        </div>
+        <div class="chat-messages" id="chat-messages">
+        </div>
+        <div class="typing-indicator" id="typing-indicator">Bot is typing</div>
+        <div class="chat-input">
+            <input type="text" id="message-input" placeholder="Type your message...">
+            <button id="send-button">Send</button>
+            <button id="new-chat-button">New Conversation</button>
+
+        </div>
+    </div>
+    <div id="analysis-container">
+        <div id="analysis-header">
+            <h2>Analysis</h2>
+        </div>
+        <div id="analysis-content">
+            <div id="conf-value-container">
+                <h2>Confidence Value</h2>
+                <p id="conf-value"></p>
+            </div>
+            <div>
+                <h2>Explanation</h2>
+                <p id="exp-value"></p>
+            </div>
+            <div>
+                <h2>Missing Information</h2>
+                <p id="miss-value"></p>
+            </div>
+            <div>
+                <h2>Ambiguity</h2>
+                <p id="amb-value"></p>
+            </div>
+        </div>
+    </div>
+    <div id="instructions-container">
+        <div id="instructions-header">
+            <h2>Instructions</h2>
+        </div>
+        <div id="instructions-content">
+            <div>
+                <h2></h2>
+                <textarea id="exp-instructions"></textarea>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+</body>
+
+</html>

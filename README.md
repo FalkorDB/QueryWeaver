@@ -3,8 +3,18 @@
 [![Discord](https://img.shields.io/discord/1146782921294884966?style=flat-square)](https://discord.com/invite/6M4QwDXn2w)
 [![Workflow](https://github.com/FalkorDB/text2sql/actions/workflows/pylint.yml/badge.svg?branch=main)](https://github.com/FalkorDB/text2sql/actions/workflows/pylint.yml)
 
-
 # Text2SQL
 
+```bash
+poetry run flask --app api.index run
+```
+
 ## Introduction
+
+![image](https://github.com/user-attachments/assets/8b1743a8-1d24-4cb7-89a8-a95f626e68d9)
+
+
+## LICENSE
+
+Copyrights FalkorDB Ltd. 2025
 
