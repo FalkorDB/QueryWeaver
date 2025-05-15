@@ -162,6 +162,7 @@ def query(graph_id: str):
     """
     request_data = request.get_json()
     queries_history = request_data.get("chat")
+    result_history = request_data.get("result")
     instructions = request_data.get("instructions")
     if not queries_history:
         return jsonify({"error": "Invalid or missing JSON data"}), 400
@@ -170,8 +171,8 @@ def query(graph_id: str):
 
     # Create a generator function for streaming
     def generate():
-        agent_rel = RelevancyAgent()
-        agent_an = AnalysisAgent()
+        agent_rel = RelevancyAgent(queries_history, result_history)
+        agent_an = AnalysisAgent(queries_history, result_history)
 
 
         step = {"type": "reasoning_step", "message": "Step 1: Analyzing the user query"}

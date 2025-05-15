@@ -4,19 +4,21 @@ from api.config import Config
 from typing import List, Dict, Any
 
 class AnalysisAgent():
-    def __init__(self):
-        pass
+    def __init__(self, queries_history: list, result_history: list):
+        if result_history is None:
+            self.messages = []
+        else:
+            self.messages = []
+            for query, result in zip(queries_history[:-1], result_history):
+                self.messages.append({"role": "user", "content": query})
+                self.messages.append({"role": "assistant", "content": result})
 
     def get_analysis(self, user_query: str, combined_tables: list, db_description: str, instructions: str = None) -> dict:
         formatted_schema = self._format_schema(combined_tables)
         prompt = self._build_prompt(user_query, formatted_schema, db_description, instructions)
+        self.messages.append({"role": "user", "content": prompt})
         completion_result = completion(model=Config.COMPLETION_MODEL,
-                                    messages=[
-                                        {
-                                            "content": prompt,
-                                            "role": "user"
-                                        }
-                                    ],
+                                    messages=self.messages,
                                     temperature=0,
                                     top_p=1,
                                     )
@@ -27,6 +29,7 @@ class AnalysisAgent():
             analysis['ambiguities'] = "- " + "- ".join(analysis['ambiguities'])
         if isinstance(analysis['missing_information'], list):
             analysis['missing_information'] = "- " + "- ".join(analysis['missing_information'])
+        self.messages.append({"role": "assistant", "content": analysis['sql_query']})
         return analysis
     
     def _format_schema(self, schema_data: List) -> str:
@@ -87,90 +90,102 @@ class AnalysisAgent():
             The formatted prompt for Claude
         """
         prompt = f"""
-                You must strictly follow the instructions below. Deviations will result in a penalty to your confidence score.
+            You must strictly follow the instructions below. Deviations will result in a penalty to your confidence score.
 
-                MANDATORY RULES:
-                - Always explain if you cannot fully follow the instructions.
-                - Always reduce the confidence score if instructions cannot be fully applied.
-                - Never skip explaining missing information, ambiguities, or instruction issues.
-                - Respond ONLY in strict JSON format, without extra text.
+            MANDATORY RULES:
+            - Always explain if you cannot fully follow the instructions.
+            - Always reduce the confidence score if instructions cannot be fully applied.
+            - Never skip explaining missing information, ambiguities, or instruction issues.
+            - Respond ONLY in strict JSON format, without extra text.
+            - If the query relates to a previous question, you MUST take into account the previous question and its answer, and answer based on the context and information provided so far.
 
-                Your output JSON MUST contain all fields, even if empty (e.g., "missing_information": []).
+            If the user is asking a follow-up or continuing question, use the conversation history and previous answers to resolve references, context, or ambiguities. Always base your analysis on the cumulative context, not just the current question.
 
-                ---
+            Your output JSON MUST contain all fields, even if empty (e.g., "missing_information": []).
 
-                Now analyze the user query based on the provided inputs:
+            ---
 
-                <database_description>
-                {db_description}
-                </database_description>
+            Now analyze the user query based on the provided inputs:
 
-                <instructions>
-                {instructions}
-                </instructions>
+            <database_description>
+            {db_description}
+            </database_description>
 
-                <database_schema>
-                {formatted_schema}
-                </database_schema>
+            <instructions>
+            {instructions}
+            </instructions>
 
-                <user_query>
-                {user_input}
-                </user_query>
+            <database_schema>
+            {formatted_schema}
+            </database_schema>
 
-                ---
+            <conversation_history>
+            {self.messages}
+            </conversation_history>
 
-                Your task:
+            <user_query>
+            {user_input}
+            </user_query>
 
-                - Analyze the query's translatability into SQL according to the instructions.
-                - Apply the instructions explicitly.
-                - If you CANNOT apply instructions in the SQL, explain why under "instructions_comments", "explanation" and reduce your confidence.
-                - Penalize confidence appropriately if any part of the instructions is unmet.
-                - Do not provide SQL for too ambiguous queries.
+            ---
 
-                Provide your output ONLY in the following JSON structure:
+            Your task:
 
-                ```json
-                {{
-                    "is_sql_translatable": true or false,
-                    "instructions_comments": "Comments about any part of the instructions, especially if they are unclear, impossible, or partially met",
-                    "explanation": "Detailed explanation why the query can or cannot be translated, mentioning instructions explicitly",
-                    "sql_query": "High-level SQL query (you must to applying instructions)",
-                    "missing_information": ["list", "of", "missing", "information"], 
-                    "ambiguities": ["list", "of", "ambiguities"], 
-                    "confidence": integer between 0 and 100
-                }}
+            - Analyze the query's translatability into SQL according to the instructions.
+            - Apply the instructions explicitly.
+            - If you CANNOT apply instructions in the SQL, explain why under "instructions_comments", "explanation" and reduce your confidence.
+            - Penalize confidence appropriately if any part of the instructions is unmet.
+            - Do not provide SQL for too ambiguous queries.
 
-                Evaluation Guidelines:
+            Provide your output ONLY in the following JSON structure:
 
-                1. Verify if all requested information exists in the schema.
-                2. Check if the query's intent is clear enough for SQL translation.
-                3. Identify any ambiguities in the query or instructions.
-                4. List missing information explicitly if applicable.
-                5. Confirm if necessary joins are possible.
-                6. Consider if complex calculations are feasible in SQL.
-                7. Identify multiple interpretations if they exist.
-                8. Strictly apply instructions; explain and penalize if not possible.
-                Again: OUTPUT ONLY VALID JSON. No explanations outside the JSON block. """
+            ```json
+            {{
+                "is_sql_translatable": true or false,
+                "instructions_comments": "Comments about any part of the instructions, especially if they are unclear, impossible, or partially met",
+                "explanation": "Detailed explanation why the query can or cannot be translated, mentioning instructions explicitly and referencing conversation history if relevant",
+                "sql_query": "High-level SQL query (you must to applying instructions and use previous answers if the question is a continuation)",
+                "missing_information": ["list", "of", "missing", "information"], 
+                "ambiguities": ["list", "of", "ambiguities"], 
+                "confidence": integer between 0 and 100
+            }}
+
+            Evaluation Guidelines:
+
+            1. Verify if all requested information exists in the schema.
+            2. Check if the query's intent is clear enough for SQL translation.
+            3. Identify any ambiguities in the query or instructions.
+            4. List missing information explicitly if applicable.
+            5. Confirm if necessary joins are possible.
+            6. Consider if complex calculations are feasible in SQL.
+            7. Identify multiple interpretations if they exist.
+            8. Strictly apply instructions; explain and penalize if not possible.
+            9. If the question is a follow-up, resolve references using the conversation history and previous answers.
+
+            Again: OUTPUT ONLY VALID JSON. No explanations outside the JSON block. """
         return prompt
 
 
 class RelevancyAgent():
-    def __init__(self):
-        pass
+    def __init__(self, queries_history: list, result_history: list):
+        if result_history is None:
+            self.messages = []
+        else:
+            self.messages = []
+            for query, result in zip(queries_history[:-1], result_history):
+                self.messages.append({"role": "user", "content": query})
+                self.messages.append({"role": "assistant", "content": result})
 
     def get_answer(self, user_question: str, database_schema: dict) -> dict:
+        self.messages.append({"role": "user", "content": RELEVANCY_PROMPT.format(QUESTION_PLACEHOLDER=user_question, SCHEMA_PLACEHOLDER=json.dumps(database_schema))})
         completion_result = completion(
             model=Config.COMPLETION_MODEL,
-            messages=[
-                {
-                    "content": RELEVANCY_PROMPT.format(QUESTION_PLACEHOLDER=user_question, SCHEMA_PLACEHOLDER=json.dumps(database_schema)),
-                    "role": "user"
-                }
-            ],
+            messages=self.messages,
             temperature=0,
         )
         
         answer = completion_result.choices[0].message.content
+        self.messages.append({"role": "assistant", "content": answer})
         return _parse_response(answer)
 
 
