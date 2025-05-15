@@ -14,6 +14,7 @@ const instructionsCheckbox = document.getElementById('instructions-checkbox');
 const expInstructions = document.getElementById('exp-instructions');
 
 let questions_history = [];
+let result_history = [];
 let currentRequestController = null;
 
 // Custom delimiter that's unlikely to appear in your data
@@ -35,6 +36,7 @@ function addMessage(message, isUser = false, isFollowup = false, isFinalResult =
     }
     else if (isFinalResult) {
         messageDiv.className = "message final-result-message";
+        result_history.push(message);
         // messageDiv.textContent = message;
     }
     else {
@@ -89,6 +91,7 @@ function initChat() {
     chatMessages.innerHTML = '';
     addMessage('Hello! How can I help you today?', false);
     questions_history = [];
+    result_history = [];
 }
 
 initChat();
@@ -132,6 +135,7 @@ async function sendMessage() {
             },
             body: JSON.stringify({
                 chat: questions_history,
+                result: result_history,
                 instructions: expInstructions.value,
             }),
             signal: currentRequestController.signal
