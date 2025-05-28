@@ -1,11 +1,11 @@
 const messageInput = document.getElementById('message-input');
 const submitButton = document.getElementById('submit-button');
+const pauseButton = document.getElementById('pause-button');
 const newChatButton = document.getElementById('reset-button');
 const chatMessages = document.getElementById('chat-messages');
-const typingIndicator = document.getElementById('typing-indicator');
 const expValue = document.getElementById('exp-value');
 const confValue = document.getElementById('conf-value');
-const missValue = document.getElementById('miss-value');
+const missValue = document.getElementById('info-value');
 const ambValue = document.getElementById('amb-value');
 const fileUpload = document.getElementById('schema-upload');
 const fileLabel = document.getElementById('custom-file-upload');
@@ -15,6 +15,9 @@ const menuContainer = document.getElementById('menu-container');
 const chatContainer = document.getElementById('chat-container');
 const suggestionsContainer = document.getElementById('suggestions-container');
 const expInstructions = document.getElementById('instructions-textarea');
+const inputContainer = document.getElementById('input-container');
+
+
 
 let questions_history = [];
 let currentRequestController = null;
@@ -96,7 +99,7 @@ function formatBlock(text) {
 }
 
 function initChat() {
-    chatMessages.innerHTML = '<div style="display: none;" class="typing-indicator" id="typing-indicator">Generating Query</div>';
+    chatMessages.innerHTML = '';
     addMessage('Hello! How can I help you today?', false);
     suggestionsContainer.style.display = 'flex';
     questions_history = [];
@@ -113,6 +116,7 @@ const getBackgroundStyle = (value) => {
 }
 
 async function sendMessage() {
+
     const message = messageInput.value.trim();
     if (!message) return;
 
@@ -126,7 +130,9 @@ async function sendMessage() {
     messageInput.value = '';
 
     // Show typing indicator
-    typingIndicator.style.display = 'block';
+    inputContainer.classList.add('loading');
+    submitButton.style.display = 'none';
+    pauseButton.style.display = 'block';
 
     try {
         const selectedValue = document.getElementById("graph-select").value;
@@ -158,7 +164,9 @@ async function sendMessage() {
         let buffer = '';
 
         // Hide typing indicator once we start receiving data
-        // typingIndicator.style.display = 'none';
+        inputContainer.classList.remove('loading');
+        submitButton.style.display = 'block';
+        pauseButton.style.display = 'none';
 
         // Process the stream
         while (true) {
@@ -191,6 +199,7 @@ async function sendMessage() {
                 if (!message) continue; // Skip empty messages
 
                 try {
+                    debugger;
                     // Try to parse as JSON
                     const step = JSON.parse(message);
 
@@ -199,44 +208,25 @@ async function sendMessage() {
                         addMessage(step.message, false);
                     } else if (step.type === 'final_result') {
                         // Final result could be displayed differently
-                        let confValueDiv = document.getElementById("conf-value-div");
-                        let confValueTitle = document.getElementById("conf-value-title");
-
-                        if (!confValueDiv) {
-                            confValueDiv = document.createElement("div");
-                            confValueDiv.id = "conf-value-div";
-                            confValue.appendChild(confValueDiv);
-                        }
-
-                        if (!confValueTitle) {
-                            confValueTitle = document.createElement("div");
-                            confValueTitle.id = "conf-value-title";
-                            confValue.appendChild(confValueTitle);
-                        }
-
-                        confValueTitle.textContent = `${step.conf}%`;
-                        confValueDiv.style.background = getBackgroundStyle(step.conf);
+                        confValue.textContent = `${step.conf}%`;
 
                         [[step.exp, expValue], [step.miss, missValue], [step.amb, ambValue]].forEach(([value, element]) => {
+                            element.innerHTML = '';
                             let ul = document.getElementById(`${element.id}-list`);
 
-                            if (!ul) {
-                                ul = document.createElement("ul");
-                                ul.className = `final-result-list`;
-                                ul.id = `${element.id}-list`;
-                                element.appendChild(ul);
-                            }
+                            ul = document.createElement("ul");
+                            ul.className = `final-result-list`;
+                            ul.id = `${element.id}-list`;
+                            element.appendChild(ul);
 
                             value.split('-').forEach((item, i) => {
                                 if (item === '') return;
 
                                 let li = document.getElementById(`${element.id}-${i}-li`);
 
-                                if (!li) {
-                                    li = document.createElement("li");
-                                    li.id = `${element.id}-${i}-li`;
-                                    ul.appendChild(li);
-                                }
+                                li = document.createElement("li");
+                                li.id = `${element.id}-${i}-li`;
+                                ul.appendChild(li);
 
                                 li.textContent = i === 0 ? `${item}` : `- ${item}`;
                             });
@@ -259,7 +249,7 @@ async function sendMessage() {
                     }
                 } catch (e) {
                     // If it's not valid JSON, just show the message as text
-                    addMessage(message, false);
+                    addMessage("Faild: " + message, false);
                 }
 
             }
@@ -272,31 +262,13 @@ async function sendMessage() {
             console.log('Request was aborted');
         } else {
             console.error('Error:', error);
-            // typingIndicator.style.display = 'none';
+            inputContainer.classList.remove('loading');
+            submitButton.style.display = 'block';
+            pauseButton.style.display = 'none';
             addMessage('Sorry, there was an error processing your message: ' + error.message, false);
         }
         currentRequestController = null;
     }
-}
-
-function handleShowAnalysis(e) {
-    if (e.target.checked) {
-        analysisContainer.style.display = 'flex';
-    } else {
-        analysisContainer.style.display = 'none';
-    }
-}
-
-function handleShowInstructions(e) {
-    if (e.target.checked) {
-        instrucitonsContainer.style.display = 'flex';
-    } else {
-        instrucitonsContainer.style.display = 'none';
-    }
-}
-
-function handleInstructionsChange(e) {
-    console.log(e.target.value);
 }
 
 function toggleMenu() {

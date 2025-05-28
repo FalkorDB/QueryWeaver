@@ -6,7 +6,7 @@ from functools import wraps
 from dotenv import load_dotenv
 from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context, Flask
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from api.graph import find
+from api.graph import find, get_db_description
 from api.extensions import db
 from api.loaders.csv_loader import CSVLoader
 from api.loaders.json_loader import JSONLoader
@@ -177,26 +177,28 @@ def query(graph_id: str):
 
         step = {"type": "reasoning_step", "message": "Step 1: Analyzing the user query"}
         yield json.dumps(step) + MESSAGE_DELIMITER
-        # Use a thread pool to enforce timeout
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(find, graph_id, queries_history)
-            try:
-                success, result, db_description, _ = future.result(timeout=60)
-            except FuturesTimeoutError:
-                yield json.dumps({"type": "error", "message": "Timeout error while finding tables relevant to your request."}) + MESSAGE_DELIMITER
-                return
-            except Exception as e:
-                logging.info(f"Error in find function: {e}")
-                yield json.dumps({"type": "error", "message": "Error in find function"}) + MESSAGE_DELIMITER
-                return
-
+        db_description = get_db_description(graph_id)  # Ensure the database description is loaded
+        
         logging.info(f"Calling to relvancy agent with query: {queries_history[-1]}")
-        answer_rel = agent_rel.get_answer(queries_history[-1], result)
+        answer_rel = agent_rel.get_answer(queries_history[-1], db_description)
         if answer_rel["status"] != "On-topic":
             step = {"type": "followup_questions", "message": "Off topic question: " + answer_rel["reason"]}
             logging.info(f"SQL Fail reason: {answer_rel["reason"]}")
             yield json.dumps(step) + MESSAGE_DELIMITER
         else:
+            # Use a thread pool to enforce timeout
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(find, graph_id, queries_history, db_description)
+                try:
+                    success, result, _ = future.result(timeout=60)
+                except FuturesTimeoutError:
+                    yield json.dumps({"type": "error", "message": "Timeout error while finding tables relevant to your request."}) + MESSAGE_DELIMITER
+                    return
+                except Exception as e:
+                    logging.info(f"Error in find function: {e}")
+                    yield json.dumps({"type": "error", "message": "Error in find function"}) + MESSAGE_DELIMITER
+                    return
+
             step = {"type": "reasoning_step",
                     "message": "Step 2: Generating SQL query"}
             yield json.dumps(step) + MESSAGE_DELIMITER

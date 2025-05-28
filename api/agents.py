@@ -145,6 +145,7 @@ class AnalysisAgent():
                 "instructions_comments": "Comments about any part of the instructions, especially if they are unclear, impossible, or partially met",
                 "explanation": "Detailed explanation why the query can or cannot be translated, mentioning instructions explicitly and referencing conversation history if relevant",
                 "sql_query": "High-level SQL query (you must to applying instructions and use previous answers if the question is a continuation)",
+                "tables_used": ["list", "of", "tables", "used", "in", "the", "query", "with", "the", "relationships", "between", "them"],
                 "missing_information": ["list", "of", "missing", "information"], 
                 "ambiguities": ["list", "of", "ambiguities"], 
                 "confidence": integer between 0 and 100
@@ -176,8 +177,8 @@ class RelevancyAgent():
                 self.messages.append({"role": "user", "content": query})
                 self.messages.append({"role": "assistant", "content": result})
 
-    def get_answer(self, user_question: str, database_schema: dict) -> dict:
-        self.messages.append({"role": "user", "content": RELEVANCY_PROMPT.format(QUESTION_PLACEHOLDER=user_question, SCHEMA_PLACEHOLDER=json.dumps(database_schema))})
+    def get_answer(self, user_question: str, database_desc: dict) -> dict:
+        self.messages.append({"role": "user", "content": RELEVANCY_PROMPT.format(QUESTION_PLACEHOLDER=user_question, DB_PLACEHOLDER=json.dumps(database_desc))})
         completion_result = completion(
             model=Config.COMPLETION_MODEL,
             messages=self.messages,
@@ -190,14 +191,14 @@ class RelevancyAgent():
 
 
 RELEVANCY_PROMPT = """
-You are an expert assistant tasked with determining whether the user’s question aligns with a given database schema and whether the question is appropriate. You receive two inputs:
+You are an expert assistant tasked with determining whether the user’s question aligns with a given database description and whether the question is appropriate. You receive two inputs:
 
 The user’s question: {QUESTION_PLACEHOLDER}
-The detected database schema (all relevant tables, columns, and their descriptions): {SCHEMA_PLACEHOLDER}
+The database description: {DB_PLACEHOLDER}
 Please follow these instructions:
 
-Understand the question in the context of the database schema.
-• Ask yourself: “Does this question relate to the data or concepts described in the schema?”
+Understand the question in the context of the database.
+• Ask yourself: “Does this question relate to the data or concepts described in the database description?”
 • Don't answer questions that related to yourself.
 • Don't answer questions that related to personal information.
 • Questions about the user's (first person) defined as "personal" and is Off-topic.

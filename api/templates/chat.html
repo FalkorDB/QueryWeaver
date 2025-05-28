@@ -26,21 +26,21 @@
                 <div class="menu-item" id="conf-container">
                     <div id="conf-text-container">
                         <h2>CONFIDENCE VALUE</h2>
-                        <p id="conf-description">Explainer Explainer Explainer</p>
+                        <div id="conf-description">Explainer Explainer Explainer</div>
                     </div>
                     <p class="menu-value" id="conf-value">0</p>
                 </div>
-                <div class="menu-item" id="explanation-container">
+                <div class="menu-item" id="exp-container">
                     <h2>EXPLANATION</h2>
-                    <p class="menu-value" id="explanation-value">An explanation of your query</p>
+                    <div class="menu-value" id="exp-value">An explanation of your query</div>
                 </div>
                 <div class="menu-item" id="info-container">
                     <h2>INFO</h2>
-                    <p class="menu-value" id="info-value">An explanation of your query</p>
+                    <div class="menu-value" id="info-value">An explanation of your query</div>
                 </div>
-                <div class="menu-item" id="ambiguity-container">
+                <div class="menu-item" id="amb-container">
                     <h2>AMBIGUITY</h2>
-                    <p class="menu-value" id="ambiguity-value">An explanation of your query</p>
+                    <div class="menu-value" id="amb-value">An explanation of your query</div>
                 </div>
             </div>
             <div id="menu-footer">
@@ -66,7 +66,6 @@
                 </div>
             </div>
             <div class="chat-messages" id="chat-messages">
-                <div style="display: none;" class="typing-indicator" id="typing-indicator">Generating Query</div>
             </div>
             <div class="chat-input">
                 <div class="suggestions-input-container">
@@ -81,10 +80,13 @@
                             <button id="suggestion-3">Suggestion 3</button>
                         </li>
                     </ul>
-                    <div class="input-container">
+                    <div class="input-container" id="input-container">
                         <input type="text" id="message-input" placeholder="Describe the SQL query you want..." />
-                        <button title="Submit" id="submit-button">
+                        <button class="input-button" title="Submit" id="submit-button">
                             <img src="{{ url_for('static', filename='public/icons/submit.svg') }}" alt="Submit">
+                        </button>
+                        <button class="input-button" title="Pause" id="pause-button">
+                            <img src="{{ url_for('static', filename='public/icons/pause.svg') }}" alt="Pause">
                         </button>
                         <button id="reset-button">Reset</button>
                     </div>
