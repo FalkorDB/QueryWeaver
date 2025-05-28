@@ -10,79 +10,89 @@
 </head>
 
 <body>
-    <div class="chat-container">
-        <div class="chat-header">
-            <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="Chat Logo" class="logo">
-            <h1>Text-to-SQL</h1>
-            <div class="dropdown-container">
-                <label for="graph-select">Select Database:</label>
-                <select id="graph-select">
-                    <option value="">Loading...</option>
-                </select>
+    <div id="container">
+        <div id="menu-container">
+            <div id="menu-header">
+                <button class="menu-trigger" id="menu-button" title="Close Menu"><img
+                        src="{{ url_for('static', filename='public/icons/menu.svg') }}" alt="Menu"></button>
             </div>
-            <div class="checkbox-container">
-                <div id="analysis-checkbox-container">
-                    <p>Analysis:</p>
-                    <input type="checkbox" id="analysis-checkbox" checked>
+            <div id="menu-content">
+                <div class="menu-item" id="instructions-container">
+                    <h2>INSTRUCTIONS</h2>
+                    <textarea class="menu-value" id="instructions-textarea"
+                        placeholder="Enter your instructions for the generator..."></textarea>
                 </div>
-                <div id="instructions-checkbox-container">
-                    <p>Instructions:</p>
-                    <input type="checkbox" id="instructions-checkbox" checked>
+                <div class="horizontal-separator"></div>
+                <div class="menu-item" id="conf-container">
+                    <div id="conf-text-container">
+                        <h2>CONFIDENCE VALUE</h2>
+                        <p id="conf-description">Explainer Explainer Explainer</p>
+                    </div>
+                    <p class="menu-value" id="conf-value">0</p>
+                </div>
+                <div class="menu-item" id="explanation-container">
+                    <h2>EXPLANATION</h2>
+                    <p class="menu-value" id="explanation-value">An explanation of your query</p>
+                </div>
+                <div class="menu-item" id="info-container">
+                    <h2>INFO</h2>
+                    <p class="menu-value" id="info-value">An explanation of your query</p>
+                </div>
+                <div class="menu-item" id="ambiguity-container">
+                    <h2>AMBIGUITY</h2>
+                    <p class="menu-value" id="ambiguity-value">An explanation of your query</p>
                 </div>
             </div>
-            <!-- <div class="file-upload">
-                    <input type="file" id="file-upload" style="display: none;">
-                    <button class="file-upload-btn" id="upload-button">Upload Schema</button>
-            </div> -->
-            <!-- <span class="file-name" id="file-name"></span> -->
-            <!-- </div> -->
-            <!-- </div> -->
-        </div>
-        <div class="chat-messages" id="chat-messages">
-        </div>
-        <div class="typing-indicator" id="typing-indicator">Bot is typing</div>
-        <div class="chat-input">
-            <input type="text" id="message-input" placeholder="Type your message...">
-            <button id="send-button">Send</button>
-            <button id="new-chat-button">New Conversation</button>
-
-        </div>
-    </div>
-    <div id="analysis-container">
-        <div id="analysis-header">
-            <h2>Analysis</h2>
-        </div>
-        <div id="analysis-content">
-            <div id="conf-value-container">
-                <h2>Confidence Value</h2>
-                <p id="conf-value"></p>
-            </div>
-            <div>
-                <h2>Explanation</h2>
-                <p id="exp-value"></p>
-            </div>
-            <div>
-                <h2>Missing Information</h2>
-                <p id="miss-value"></p>
-            </div>
-            <div>
-                <h2>Ambiguity</h2>
-                <p id="amb-value"></p>
+            <div id="menu-footer">
+                <p id="rights-reserved">All Rights Reserved (c) FalkorDB 2025 | <a class="link"
+                        href="https://falkordb.com" target="_blank">falkordb.com</a></p>
             </div>
         </div>
-    </div>
-    <div id="instructions-container">
-        <div id="instructions-header">
-            <h2>Instructions</h2>
-        </div>
-        <div id="instructions-content">
-            <div>
-                <h2></h2>
-                <textarea id="exp-instructions"></textarea>
+        <div id="chat-container" class="chat-container">
+            <button class="menu-trigger" id="side-menu-button" title="Open Menu"><img
+                    src="{{ url_for('static', filename='public/icons/menu.svg') }}" alt="Menu"></button>
+            <div class="chat-header">
+                <img src="{{ url_for('static', filename='public/icons/logo.svg') }}" alt="Chat Logo" class="logo">
+                <h1> Text-to-SQL(Natural Language to SQL Generator)</h1>
+                <div class="button-container">
+                    <select title="Select Database" id="graph-select">
+                        <option value="">Loading...</option>
+                    </select>
+                    <div class="vertical-separator"></div>
+                    <label for="schema-upload" id="custom-file-upload" tabindex="-1">
+                        Upload Schema
+                    </label>
+                    <input title="Upload Schema" id="schema-upload" type="file" accept=".json" style="display: none;" />
+                </div>
+            </div>
+            <div class="chat-messages" id="chat-messages">
+                <div style="display: none;" class="typing-indicator" id="typing-indicator">Generating Query</div>
+            </div>
+            <div class="chat-input">
+                <div class="suggestions-input-container">
+                    <ul class="suggestions-container" id="suggestions-container">
+                        <li class="suggestion-item">
+                            <button id="suggestion-1">Suggestion 1</button>
+                        </li>
+                        <li class="suggestion-item">
+                            <button id="suggestion-2">Suggestion 2</button>
+                        </li>
+                        <li class="suggestion-item">
+                            <button id="suggestion-3">Suggestion 3</button>
+                        </li>
+                    </ul>
+                    <div class="input-container">
+                        <input type="text" id="message-input" placeholder="Describe the SQL query you want..." />
+                        <button title="Submit" id="submit-button">
+                            <img src="{{ url_for('static', filename='public/icons/submit.svg') }}" alt="Submit">
+                        </button>
+                        <button id="reset-button">Reset</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-
+    <div id="gradient"></div>
     <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
 </body>
 

@@ -1,20 +1,22 @@
 const messageInput = document.getElementById('message-input');
-const sendButton = document.getElementById('send-button');
-const newChatButton = document.getElementById('new-chat-button');
-const analysisCheckbox = document.getElementById('analysis-checkbox');
-const analysisContainer = document.getElementById('analysis-container');
+const submitButton = document.getElementById('submit-button');
+const newChatButton = document.getElementById('reset-button');
 const chatMessages = document.getElementById('chat-messages');
 const typingIndicator = document.getElementById('typing-indicator');
 const expValue = document.getElementById('exp-value');
 const confValue = document.getElementById('conf-value');
 const missValue = document.getElementById('miss-value');
 const ambValue = document.getElementById('amb-value');
-const instrucitonsContainer = document.getElementById('instructions-container');
-const instructionsCheckbox = document.getElementById('instructions-checkbox');
-const expInstructions = document.getElementById('exp-instructions');
+const fileUpload = document.getElementById('schema-upload');
+const fileLabel = document.getElementById('custom-file-upload');
+const sideMenuButton = document.getElementById('side-menu-button');
+const menuButton = document.getElementById('menu-button');
+const menuContainer = document.getElementById('menu-container');
+const chatContainer = document.getElementById('chat-container');
+const suggestionsContainer = document.getElementById('suggestions-container');
+const expInstructions = document.getElementById('instructions-textarea');
 
 let questions_history = [];
-let result_history = [];
 let currentRequestController = null;
 
 // Custom delimiter that's unlikely to appear in your data
@@ -26,23 +28,28 @@ const TOKEN = urlParams.get('token');
 
 function addMessage(message, isUser = false, isFollowup = false, isFinalResult = false) {
     const messageDiv = document.createElement('div');
+    const messageDivContainer = document.createElement('div');
+
+    messageDiv.className = "message";
+    messageDivContainer.className = "message-container";
+
     if (isFollowup) {
-        messageDiv.className = "message followup-message";
+        messageDivContainer.className += " followup-message-container";
+        messageDiv.className += " followup-message";
         messageDiv.textContent = message;
-    }
-    else if (isUser) {
-        messageDiv.className = "message user-message";
+    } else if (isUser) {
+        suggestionsContainer.style.display = 'none';
+        messageDivContainer.className += " user-message-container";
+        messageDiv.className += " user-message";
         questions_history.push(message);
-    }
-    else if (isFinalResult) {
-        messageDiv.className = "message final-result-message";
-        result_history.push(message);
+    } else if (isFinalResult) {
+        messageDivContainer.className += " final-result-message-container";
+        messageDiv.className += " final-result-message";
         // messageDiv.textContent = message;
+    } else {
+        messageDivContainer.className += " bot-message-container";
+        messageDiv.className += " bot-message";
     }
-    else {
-        messageDiv.className = "message bot-message";
-    }
-    ;
 
     const block = formatBlock(message)
     if (block) {
@@ -54,7 +61,8 @@ function addMessage(message, isUser = false, isFollowup = false, isFinalResult =
         messageDiv.textContent = message;
     }
 
-    chatMessages.appendChild(messageDiv);
+    messageDivContainer.appendChild(messageDiv);
+    chatMessages.appendChild(messageDivContainer);
     chatMessages.scrollTop = chatMessages.scrollHeight;
     return messageDiv;
 }
@@ -88,10 +96,10 @@ function formatBlock(text) {
 }
 
 function initChat() {
-    chatMessages.innerHTML = '';
+    chatMessages.innerHTML = '<div style="display: none;" class="typing-indicator" id="typing-indicator">Generating Query</div>';
     addMessage('Hello! How can I help you today?', false);
+    suggestionsContainer.style.display = 'flex';
     questions_history = [];
-    result_history = [];
 }
 
 initChat();
@@ -105,7 +113,6 @@ const getBackgroundStyle = (value) => {
 }
 
 async function sendMessage() {
-    // debugger
     const message = messageInput.value.trim();
     if (!message) return;
 
@@ -119,7 +126,7 @@ async function sendMessage() {
     messageInput.value = '';
 
     // Show typing indicator
-    typingIndicator.style.display = 'flex';
+    typingIndicator.style.display = 'block';
 
     try {
         const selectedValue = document.getElementById("graph-select").value;
@@ -135,7 +142,6 @@ async function sendMessage() {
             },
             body: JSON.stringify({
                 chat: questions_history,
-                result: result_history,
                 instructions: expInstructions.value,
             }),
             signal: currentRequestController.signal
@@ -151,9 +157,11 @@ async function sendMessage() {
         let decoder = new TextDecoder();
         let buffer = '';
 
-        let streamListining = true;
+        // Hide typing indicator once we start receiving data
+        // typingIndicator.style.display = 'none';
+
         // Process the stream
-        while (streamListining) {
+        while (true) {
             const { done, value } = await reader.read();
 
             if (done) {
@@ -193,7 +201,7 @@ async function sendMessage() {
                         // Final result could be displayed differently
                         let confValueDiv = document.getElementById("conf-value-div");
                         let confValueTitle = document.getElementById("conf-value-title");
-                        
+
                         if (!confValueDiv) {
                             confValueDiv = document.createElement("div");
                             confValueDiv.id = "conf-value-div";
@@ -208,9 +216,8 @@ async function sendMessage() {
 
                         confValueTitle.textContent = `${step.conf}%`;
                         confValueDiv.style.background = getBackgroundStyle(step.conf);
-                        console.log(step);
+
                         [[step.exp, expValue], [step.miss, missValue], [step.amb, ambValue]].forEach(([value, element]) => {
-                            if (!value || typeof value == "object") return;
                             let ul = document.getElementById(`${element.id}-list`);
 
                             if (!ul) {
@@ -234,11 +241,8 @@ async function sendMessage() {
                                 li.textContent = i === 0 ? `${item}` : `- ${item}`;
                             });
                         })
-                        if (!step.data) {
-                            step.data = "Unfortunately, an SQL query could not be created based on the extracted tables and your instructions. Please see the Explanation for more details.";
-                            addMessage(step.message || JSON.stringify(step.data, null, 2), false, true);
-                        }
-                        else addMessage(step.message || JSON.stringify(step.data, null, 2), false, false, true);
+
+                        addMessage(step.message || JSON.stringify(step.data, null, 2), false, false, true);
                     } else if (step.type === 'followup_questions') {
                         // step.questions.forEach(question => {
                         //     addMessage(question, false);
@@ -249,9 +253,6 @@ async function sendMessage() {
                         ambValue.textContent = "N/A";
                         // graph.Labels.findIndex(l => l.name === cat.name)(step.message, false, true);
                         addMessage(step.message, false, true);
-                    } else if (step.type === 'error') {
-                        addMessage(step.message || JSON.stringify(step), false, true);
-                        streamListining = false;
                     } else {
                         // Default handling
                         addMessage(step.message || JSON.stringify(step), false);
@@ -260,6 +261,7 @@ async function sendMessage() {
                     // If it's not valid JSON, just show the message as text
                     addMessage(message, false);
                 }
+
             }
         }
 
@@ -274,10 +276,7 @@ async function sendMessage() {
             addMessage('Sorry, there was an error processing your message: ' + error.message, false);
         }
         currentRequestController = null;
-    } finally {
-                    // Hide typing indicator once we start receiving data
-                    typingIndicator.style.display = 'none';
-                }
+    }
 }
 
 function handleShowAnalysis(e) {
@@ -300,20 +299,41 @@ function handleInstructionsChange(e) {
     console.log(e.target.value);
 }
 
+function toggleMenu() {
+    if (!menuContainer.classList.contains('open')) {
+        menuContainer.classList.add('open');
+        sideMenuButton.style.display = 'none';
+        chatContainer.style.paddingRight = '10%';
+        chatContainer.style.paddingLeft = '10%';
+    } else {
+        menuContainer.classList.remove('open');
+        sideMenuButton.style.display = 'block';
+        chatContainer.style.paddingRight = '20%';
+        chatContainer.style.paddingLeft = '20%';
+    }
+}
+
 // Event listeners
-sendButton.addEventListener('click', sendMessage);
+submitButton.addEventListener('click', sendMessage);
 messageInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
         sendMessage();
     }
 });
 
-analysisCheckbox.addEventListener('change', handleShowAnalysis);
-instructionsCheckbox.addEventListener('change', handleShowInstructions);
-expInstructions.addEventListener('change', handleInstructionsChange);
+menuButton.addEventListener('click', toggleMenu);
+
+sideMenuButton.addEventListener('click', toggleMenu);
+
 newChatButton.addEventListener('click', initChat);
 
+for (let i = 0; i < suggestionsContainer.children.length; i++) {
+    const item = suggestionsContainer.children.item(i).children.item(0);
 
+    item.addEventListener('click', () => {
+        messageInput.value = item.textContent;
+    });
+}
 
 document.addEventListener("DOMContentLoaded", function () {
     const chatMessages = document.getElementById("chat-messages");
@@ -327,6 +347,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 const option = document.createElement("option");
                 option.value = graph;
                 option.textContent = graph;
+                option.title = graph;
                 graphSelect.appendChild(option);
             });
         })
@@ -337,32 +358,5 @@ document.addEventListener("DOMContentLoaded", function () {
 
     graphSelect.addEventListener("change", function () {
         initChat();
-    });
-});
-
-// Add file upload functionality
-document.getElementById('upload-button').addEventListener('click', function () {
-    document.getElementById('file-upload').click();
-});
-
-document.getElementById('file-upload').addEventListener('change', function (e) {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    // document.getElementById('file-name').textContent = file.name;
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    fetch("/graphs?token=" + TOKEN, {
-        method: 'POST',
-        body: formData, // ✅ Correct, no need to set Content-Type manually
-    }).then(response => {
-        response.json()
-    }).then(data => {
-        console.log('File uploaded successfully', data);
-    }).catch(error => {
-        console.error('Error uploading file:', error);
-        addMessage('Sorry, there was an error uploading your file: ' + error.message, false);
     });
 });
