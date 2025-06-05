@@ -6,12 +6,14 @@ from functools import wraps
 from dotenv import load_dotenv
 from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context, Flask
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from api.graph import find, get_db_description
-from api.extensions import db
-from api.loaders.csv_loader import CSVLoader
-from api.loaders.json_loader import JSONLoader
-from api.loaders.odata_loader import ODataLoader
-from api.agents import RelevancyAgent, AnalysisAgent
+from graph import find, get_db_description
+from extensions import db
+from loaders.csv_loader import CSVLoader
+from loaders.json_loader import JSONLoader
+from loaders.odata_loader import ODataLoader
+from agents import RelevancyAgent, AnalysisAgent
+from constants import BENCHMARK, EXAMPLES
+import random
 
 # Load environment variables from .env file
 load_dotenv()
@@ -212,6 +214,35 @@ def query(graph_id: str):
                              "exp": answer_an['explanation']}) + MESSAGE_DELIMITER
 
     return Response(stream_with_context(generate()), content_type='application/json')
+
+@app.route('/suggestions')
+@token_required  # Apply token authentication decorator
+def suggestions():
+    """
+    This route returns 3 random suggestions from the examples data for the chat interface.
+    It takes graph_id as a query parameter and returns examples specific to that graph.
+    If no examples exist for the graph, returns an empty list.
+    """
+    try:
+        # Get graph_id from query parameters
+        graph_id = request.args.get('graph_id', '')
+        
+        if not graph_id:
+            return jsonify([]), 400
+        
+        # Check if graph has specific examples
+        if graph_id in EXAMPLES:
+            graph_examples = EXAMPLES[graph_id]
+            # Return up to 3 examples, or all if less than 3
+            suggestion_questions = random.sample(graph_examples, min(3, len(graph_examples)))
+            return jsonify(suggestion_questions)
+        else:
+            # If graph doesn't exist in EXAMPLES, return empty list
+            return jsonify([])
+            
+    except Exception as e:
+        logging.error(f"Error fetching suggestions: {e}")
+        return jsonify([]), 500
 
 if __name__ == "__main__":
     app.register_blueprint(main)

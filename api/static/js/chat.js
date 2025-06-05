@@ -29,7 +29,7 @@ const urlParams = new URLSearchParams(window.location.search);
 
 const TOKEN = urlParams.get('token');
 
-function addMessage(message, isUser = false, isFollowup = false, isFinalResult = false) {
+function addMessage(message, isUser = false, isFollowup = false, isFinalResult = false, isLoading = false) {
     const messageDiv = document.createElement('div');
     const messageDivContainer = document.createElement('div');
 
@@ -52,22 +52,45 @@ function addMessage(message, isUser = false, isFollowup = false, isFinalResult =
     } else {
         messageDivContainer.className += " bot-message-container";
         messageDiv.className += " bot-message";
+        if (isLoading) {
+            messageDivContainer.id = "loading-message-container";
+            messageDivContainer.className += " loading-message-container";
+        }
     }
 
     const block = formatBlock(message)
+
     if (block) {
         block.forEach(lineDiv => {
             messageDiv.appendChild(lineDiv);
         });
-    }
-    else {
+    } else if (!isLoading) {
         messageDiv.textContent = message;
     }
 
-    messageDivContainer.appendChild(messageDiv);
+    if (!isLoading) {
+        messageDivContainer.appendChild(messageDiv);
+    }
     chatMessages.appendChild(messageDivContainer);
     chatMessages.scrollTop = chatMessages.scrollHeight;
     return messageDiv;
+}
+
+function removeLoadingMessage() {
+    const loadingMessageContainer = document.getElementById("loading-message-container");
+    if (loadingMessageContainer) {
+        loadingMessageContainer.remove();
+    }
+}
+
+function moveLoadingMessageToBottom() {
+    const loadingMessageContainer = document.getElementById("loading-message-container");
+    if (loadingMessageContainer) {
+        // Remove from current position and append to bottom
+        loadingMessageContainer.remove();
+        chatMessages.appendChild(loadingMessageContainer);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
 }
 
 function formatBlock(text) {
@@ -100,6 +123,9 @@ function formatBlock(text) {
 
 function initChat() {
     chatMessages.innerHTML = '';
+    [confValue, expValue, missValue, ambValue].forEach((element) => {
+        element.innerHTML = '';
+    });
     addMessage('Hello! How can I help you today?', false);
     suggestionsContainer.style.display = 'flex';
     questions_history = [];
@@ -133,6 +159,11 @@ async function sendMessage() {
     inputContainer.classList.add('loading');
     submitButton.style.display = 'none';
     pauseButton.style.display = 'block';
+    addMessage("", false, false, false, true);
+
+    [confValue, expValue, missValue, ambValue].forEach((element) => {
+        element.innerHTML = '';
+    });
 
     try {
         const selectedValue = document.getElementById("graph-select").value;
@@ -164,9 +195,6 @@ async function sendMessage() {
         let buffer = '';
 
         // Hide typing indicator once we start receiving data
-        inputContainer.classList.remove('loading');
-        submitButton.style.display = 'block';
-        pauseButton.style.display = 'none';
 
         // Process the stream
         while (true) {
@@ -199,13 +227,14 @@ async function sendMessage() {
                 if (!message) continue; // Skip empty messages
 
                 try {
-                    debugger;
                     // Try to parse as JSON
                     const step = JSON.parse(message);
 
                     // Handle different types of messages from server
                     if (step.type === 'reasoning_step') {
+                        // Move loading message to bottom when we receive reasoning steps
                         addMessage(step.message, false);
+                        moveLoadingMessageToBottom();
                     } else if (step.type === 'final_result') {
                         // Final result could be displayed differently
                         confValue.textContent = `${step.conf}%`;
@@ -247,6 +276,12 @@ async function sendMessage() {
                         // Default handling
                         addMessage(step.message || JSON.stringify(step), false);
                     }
+                    if (step.type !== 'reasoning_step') {
+                        inputContainer.classList.remove('loading');
+                        submitButton.style.display = 'block';
+                        pauseButton.style.display = 'none';
+                        removeLoadingMessage();
+                    }
                 } catch (e) {
                     // If it's not valid JSON, just show the message as text
                     addMessage("Faild: " + message, false);
@@ -265,6 +300,7 @@ async function sendMessage() {
             inputContainer.classList.remove('loading');
             submitButton.style.display = 'block';
             pauseButton.style.display = 'none';
+            removeLoadingMessage();
             addMessage('Sorry, there was an error processing your message: ' + error.message, false);
         }
         currentRequestController = null;
@@ -299,18 +335,22 @@ sideMenuButton.addEventListener('click', toggleMenu);
 
 newChatButton.addEventListener('click', initChat);
 
-for (let i = 0; i < suggestionsContainer.children.length; i++) {
-    const item = suggestionsContainer.children.item(i).children.item(0);
-
-    item.addEventListener('click', () => {
-        messageInput.value = item.textContent;
-    });
-}
+// Use event delegation for suggestion clicks to handle dynamically loaded content
+suggestionsContainer.addEventListener('click', (e) => {
+    const button = e.target.closest('button');
+    if (button && !button.closest('.suggestion-item').classList.contains('loading')) {
+        const text = button.querySelector('p').textContent;
+        if (text.trim()) {
+            messageInput.value = text;
+        }
+    }
+});
 
 document.addEventListener("DOMContentLoaded", function () {
     const chatMessages = document.getElementById("chat-messages");
     const graphSelect = document.getElementById("graph-select");
 
+    // Fetch available graphs
     fetch("/graphs?token=" + TOKEN)
         .then(response => response.json())
         .then(data => {
@@ -322,13 +362,118 @@ document.addEventListener("DOMContentLoaded", function () {
                 option.title = graph;
                 graphSelect.appendChild(option);
             });
+            
+            // Fetch suggestions for the first graph (if any)
+            if (data.length > 0) {
+                fetchSuggestions();
+            }
         })
         .catch(error => {
             console.error("Error fetching graphs:", error);
             addMessage("Sorry, there was an error fetching the available graphs: " + error.message, false);
         });
 
+// Function to fetch suggestions based on selected graph
+function fetchSuggestions() {
+    const graphSelect = document.getElementById("graph-select");
+    const selectedGraph = graphSelect.value;
+    
+    if (!selectedGraph) {
+        // Hide suggestions if no graph is selected
+        const suggestionItems = suggestionsContainer.querySelectorAll('.suggestion-item');
+        suggestionItems.forEach(item => {
+            item.style.display = 'none';
+        });
+        return;
+    }
+    
+    // Show suggestions and reset to loading state
+    const suggestionItems = suggestionsContainer.querySelectorAll('.suggestion-item');
+    suggestionItems.forEach(item => {
+        item.style.display = 'flex';
+        item.classList.remove('loaded');
+        item.classList.add('loading');
+        const button = item.querySelector('button');
+        const p = item.querySelector('p');
+        button.title = "Loading suggestion...";
+        p.textContent = "";
+    });
+    
+    // Fetch suggestions for the selected graph
+    fetch(`/suggestions?token=${TOKEN}&graph_id=${selectedGraph}`)
+        .then(response => response.json())
+        .then(suggestions => {
+            // If no suggestions for this graph, hide the suggestions
+            if (!suggestions || suggestions.length === 0) {
+                suggestionItems.forEach(item => {
+                    item.style.display = 'none';
+                });
+                return;
+            }
+            
+            // Update each suggestion with fetched data and add loaded styling
+            suggestions.forEach((suggestion, index) => {
+                if (suggestionItems[index]) {
+                    const item = suggestionItems[index];
+                    const button = item.querySelector('button');
+                    const p = item.querySelector('p');
+                    
+                    // Add a slight delay for staggered animation
+                    setTimeout(() => {
+                        // Remove loading state and add content
+                        item.classList.remove('loading');
+                        item.classList.add('loaded');
+                        
+                        // Update content
+                        p.textContent = suggestion;
+                        button.title = suggestion;
+                        
+                        // Enable click functionality
+                        button.style.cursor = 'pointer';
+                    }, index * 200); // 200ms delay between each suggestion
+                }
+            });
+            
+            // Hide unused suggestion slots
+            for (let i = suggestions.length; i < suggestionItems.length; i++) {
+                suggestionItems[i].style.display = 'none';
+            }
+        })
+        .catch(error => {
+            console.error("Error fetching suggestions:", error);
+            
+            // Hide suggestions on error
+            suggestionItems.forEach(item => {
+                item.style.display = 'none';
+            });
+        });
+}
+
     graphSelect.addEventListener("change", function () {
         initChat();
+        fetchSuggestions(); // Fetch new suggestions when graph changes
+    });
+});
+
+
+fileUpload.addEventListener('change', function (e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // document.getElementById('file-name').textContent = file.name;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    fetch("/graphs?token=" + TOKEN, {
+        method: 'POST',
+        body: formData, // ✅ Correct, no need to set Content-Type manually
+    }).then(response => {
+        response.json()
+    }).then(data => {
+        console.log('File uploaded successfully', data);
+    }).catch(error => {
+        console.error('Error uploading file:', error);
+        addMessage('Sorry, there was an error uploading your file: ' + error.message, false);
     });
 });

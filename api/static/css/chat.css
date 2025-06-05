@@ -125,28 +125,13 @@ body {
   justify-content: flex-start;
 }
 
-.user-message-container::before {
-  height: 32px;
-  width: 32px;
-  content: 'You';
-  color: var(--text-secondary);
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  margin-right: 10px;
-  border-radius: 100%;
-  background: var(--falkor-quaternary);
-  padding: 4px;
-}
-
 .bot-message-container,
 .followup-message-container,
 .final-result-message-container {
   justify-content: flex-end;
 }
 
+.user-message-container::before,
 .bot-message-container::after,
 .followup-message-container::after,
 .final-result-message-container::after {
@@ -161,8 +146,36 @@ body {
   font-size: 16px;
   margin-left: 10px;
   border-radius: 100%;
-  background: color-mix(in srgb, var(--falkor-tertiary) 33%, transparent);
   padding: 4px;
+}
+
+.user-message-container::before {
+  margin-right: 10px;
+  background: var(--falkor-quaternary);
+}
+
+.bot-message-container::after {
+  background: color-mix(in srgb, var(--falkor-tertiary) 33%, transparent);
+}
+
+.followup-message-container::after {
+  background: #492231;
+}
+
+.final-result-message-container::after {
+  background: #1f4122;
+}
+
+.loading-message-container::before {
+  content: "...";
+  font-size: 32px;
+  line-height: 1.2;
+  text-align: center;
+  animation: typing 1.5s steps(3) infinite;
+  padding-bottom: 16px;
+  border-radius: 8px;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--falkor-tertiary) 33%, transparent);
 }
 
 .message {
@@ -179,21 +192,12 @@ body {
   font-weight: 500;
 }
 
-
-.bot-message {
-  background: color-mix(in srgb, var(--falkor-tertiary) 33%, transparent);
-}
-
 .followup-message {
   background: #492231;
-  color: var(--text-primary);
-  border-bottom-left-radius: 2px;
-  border-left: 3px solid var(--falkor-primary);
 }
 
 .final-result-message {
   background: #1f4122;
-  color: var(--text-primary);
 }
 
 .chat-input {
@@ -315,6 +319,7 @@ body {
 
 .menu-item {
   overflow: hidden;
+  flex: 1 1 0;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -324,6 +329,7 @@ body {
 #conf-container {
   flex-direction: row;
   flex-wrap: wrap;
+  max-height: fit-content;
 }
 
 #conf-text-container {
@@ -334,14 +340,15 @@ body {
 }
 
 .menu-value {
+  flex: 1 1 0;
   border: 1px solid var(--falkor-border-primary);
   width: 100%;
   background: var(--falkor-secondary);
   padding: 4px;
   border-radius: 8px;
-  min-height: 100px;
   color: var(--text-primary);
   overflow-y: auto;
+  min-height: 100px;
 }
 
 #conf-value {
@@ -409,13 +416,23 @@ body {
   border-color: var(--falkor-border-primary);
 }
 
+/* Suggestions and input container */
+.suggestions-input-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
 .suggestions-container {
   display: flex;
   gap: 10px;
   list-style: none;
   padding-left: 0;
   margin: 0;
-  overflow: hidden;
+  align-items: flex-start; /* Changed from stretch to flex-start to allow different heights */
+  width: 100%;
+  min-height: 56px; /* Fixed minimum height to prevent layout shift */
 }
 
 .suggestion-item {
@@ -426,9 +443,13 @@ body {
   border: 1px solid var(--falkor-border-tertiary);
   padding: 8px;
   border-radius: 6px;
-  text-overflow: ellipsis;
-  text-wrap: nowrap;
-  overflow: hidden;
+  min-height: 56px; /* Fixed minimum height for consistency */
+  max-height: 56px; /* Default max height for loading state */
+  width: calc(33.333% - 7px); /* Fixed width accounting for gap */
+  min-width: calc(33.333% - 7px); /* Prevent width shrinking */
+  max-width: calc(33.333% - 7px); /* Prevent width expansion */
+  overflow: hidden; /* Hide overflow by default for loading state */
+  transition: max-height 0.3s ease-out, overflow 0.3s ease-out; /* Smooth transition */
 }
 
 .suggestion-item button {
@@ -438,113 +459,79 @@ body {
   width: 100%;
   height: 100%;
   color: var(--text-primary);
-}
-
-.suggestions-input-container {
-  flex: 1 1 0;
   display: flex;
-  flex-direction: column;
-  gap: 30px;
-}
-
-#custom-file-upload {
-  height: 100%;
-  padding: 8px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--text-primary);
-  font-size: 14px;
-  background-color: var(--falkor-secondary);
-  color: var(--text-primary);
-  transition: border-color 0.2s;
-  min-width: 180px;
-  appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
-    linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
-  background-position: calc(100% - 20px) center, calc(100% - 15px) center;
-  background-size: 5px 5px, 5px 5px;
-  background-repeat: no-repeat;
-  content: 'Upload Schema';
-}
-
-#custom-file-upload:focus {
-  border-color: var(--falkor-border-primary);
-}
-
-#reset-button {
-  position: absolute;
-  right: -60px;
-  top: 50%;
-  transform: translateY(-50%);
-  border: none;
-  background: transparent;
-  color: rgba(128, 128, 128, 0.5);
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.final-result-list {
-  list-style-type: none;
-  display: flex;
-  flex-direction: column;
-}
-
-#conf-value {
-  min-height: 43px;
-  display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  min-height: 40px; /* Consistent button height */
+  padding: 4px; /* Internal padding for button */
 }
 
-#conf-description {
-  font-size: 16px;
-  font-weight: 400;
-  text-wrap: nowrap;
-  color: rgba(128, 128, 128, 0.5);
-}
-
-.link {
-  color: var(--text-primary);
-  text-underline-offset: 2px;
-  text-decoration-thickness: 1px;
-}
-
-#rights-reserved {
+.suggestion-item button p {
+  margin: 0;
   text-align: center;
-  font-size: 12px;
-  font-weight: 300;
-  text-wrap: nowrap;
-  color: var(--text-primary);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  line-height: 1.3;
+  max-width: 100%;
+  font-size: 14px; /* Fixed font size for consistency */
+  display: -webkit-box;
+  -webkit-line-clamp: 2; /* Limit to 2 lines to prevent overflow */
+  -webkit-box-orient: vertical;
+  line-clamp: 2; /* Standard property for compatibility */
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-input[type="file"] {
-  display: none;
+/* Loading state for suggestions */
+.suggestion-item.loading {
+  border: 1px solid var(--falkor-border-secondary);
+  background: linear-gradient(90deg, 
+    rgba(136, 135, 135, 0.1) 0%, 
+    rgba(136, 135, 135, 0.3) 50%, 
+    rgba(136, 135, 135, 0.1) 100%);
+  background-size: 200% 100%;
+  animation: suggestion-loading 1.5s ease-in-out infinite;
+  min-height: 56px; /* Same as normal state */
+  max-height: 56px; /* Same as normal state */
 }
 
-input {
-  font-family: 'Fira Code', monospace;
+.suggestion-item.loading button {
+  cursor: default;
+  opacity: 0.7;
 }
 
-::-webkit-scrollbar {
-  width: 20px;
-  height: 20px;
+.suggestion-item.loading button p {
+  min-height: 20px;
+  width: 80%;
+  background: rgba(136, 135, 135, 0.2);
+  border-radius: 4px;
+  animation: pulse 1.5s ease-in-out infinite;
+  font-size: 14px; /* Same font size as loaded state */
 }
 
-::-webkit-scrollbar-corner {
-  background-color: transparent;
+/* Loaded state animation */
+.suggestion-item.loaded {
+  animation: suggestion-fade-in 0.5s ease-out;
+  min-height: 56px; /* Maintain minimum height */
+  max-height: none; /* Allow expansion for longer text */
+  height: auto; /* Let height adjust to content */
+  overflow: visible; /* Show all content */
+  align-items: flex-start; /* Align content to top for better text layout */
 }
 
-::-webkit-scrollbar-thumb {
-  background-color: #d6dee1;
-  border-radius: 20px;
-  border: 6px solid transparent;
-  background-clip: content-box;
+.suggestion-item.loaded button {
+  height: auto; /* Allow button to expand */
+  align-items: flex-start; /* Align content to top for better text layout */
+  padding: 8px 4px; /* Increase vertical padding for better spacing */
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background-color: #a8bbbf;
+.suggestion-item.loaded button p {
+  -webkit-line-clamp: none; /* Remove line limit for loaded state */
+  line-clamp: none; /* Remove line limit for loaded state */
+  display: block; /* Change from -webkit-box to block for full text display */
+  white-space: normal; /* Allow text wrapping */
+  max-height: none; /* Remove height restriction */
 }
 
 @keyframes shadow-fade {
@@ -558,5 +545,48 @@ input {
 
   100% {
     box-shadow: 0 0 20px 3px var(--falkor-tertiary)
+  }
+}
+
+@keyframes typing {
+  0% {
+    content: ".";
+  }
+
+  50% {
+    content: "..";
+  }
+
+  100% {
+    content: "...";
+  }
+}
+
+@keyframes suggestion-loading {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+@keyframes suggestion-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

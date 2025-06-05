@@ -63,6 +63,7 @@ def load_to_graph(graph_id: str, entities: dict, relationships: dict, batch_size
     for table_name, table_info in tqdm.tqdm(entities.items(), desc="Creating Graph Table Nodes"):
         table_desc = table_info['description']
         embedding_result = embedding_model.embed(table_desc)
+        fk = json.dumps(table_info.get('foreign_keys', []))
 
         # Create table node
         graph.query(
@@ -78,7 +79,7 @@ def load_to_graph(graph_id: str, entities: dict, relationships: dict, batch_size
                 'table_name': table_name,
                 'description': table_desc,
                 'embedding': embedding_result[0],
-                'foreign_keys': json.dumps(table_info['foreign_keys'])
+                'foreign_keys': fk
             }
         )
 

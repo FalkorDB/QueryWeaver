@@ -200,7 +200,7 @@ Please follow these instructions:
 Understand the question in the context of the database.
 • Ask yourself: “Does this question relate to the data or concepts described in the database description?”
 • Don't answer questions that related to yourself.
-• Don't answer questions that related to personal information.
+• Don't answer questions that related to personal information unless it related to data in the schemas.
 • Questions about the user's (first person) defined as "personal" and is Off-topic.
 • Questions about yourself defined as "personal" and is Off-topic.
 
