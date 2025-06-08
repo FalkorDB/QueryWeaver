@@ -16,8 +16,7 @@ const chatContainer = document.getElementById('chat-container');
 const suggestionsContainer = document.getElementById('suggestions-container');
 const expInstructions = document.getElementById('instructions-textarea');
 const inputContainer = document.getElementById('input-container');
-
-
+const suggestionItems = document.querySelectorAll('.suggestion-item');
 
 let questions_history = [];
 let currentRequestController = null;
@@ -94,10 +93,13 @@ function moveLoadingMessageToBottom() {
 }
 
 function formatBlock(text) {
+    // Remove surrounding quotes if present
+    text = text.replace(/^"(.*)"$/, '$1').trim();
 
-    if (text.startsWith('"```sql') && text.endsWith('```"')) {
-        const sql = text.slice(7, -4).trim();
-        return sql.split('\\n').map((line, i) => {
+    // SQL block
+    if (text.startsWith('```sql') && text.endsWith('```')) {
+        const sql = text.slice(6, -3).trim();
+        return sql.split('\n').map((line, i) => {
             const lineDiv = document.createElement('div');
             lineDiv.className = 'sql-line';
             lineDiv.textContent = line;
@@ -105,23 +107,52 @@ function formatBlock(text) {
         });
     }
 
+    // Array block
     if (text.includes('[') && text.includes(']')) {
         const parts = text.split('[');
         const formattedParts = parts.map((part, i) => {
             const lineDiv = document.createElement('div');
             lineDiv.className = 'array-line';
-
-            // remove all closing if exists in the text
             part = part.replaceAll(']', '');
-
             lineDiv.textContent = part;
             return lineDiv;
         });
         return formattedParts;
     }
+
+    // Generic multi-line block (replace \n with real newlines first)
+    text = text.replace(/\\n/g, '\n');
+    if (text.includes('\n')) {
+        return text.split('\n').map((line, i) => {
+            const lineDiv = document.createElement('div');
+            lineDiv.className = 'plain-line';
+            lineDiv.textContent = line;
+            return lineDiv;
+        });
+    }
+    if (text.includes('\n')) {
+        return text.split('\n').map((line, i) => {
+            const lineDiv = document.createElement('div');
+            lineDiv.className = 'plain-line';
+            lineDiv.textContent = line;
+            return lineDiv;
+        });
+    }
+    if (text.includes('\n')) {
+        return text.split('\n').map((line, i) => {
+            const lineDiv = document.createElement('div');
+            lineDiv.className = 'plain-line';
+            lineDiv.textContent = line;
+            return lineDiv;
+        });
+    }
 }
 
 function initChat() {
+    messageInput.value = '';
+    suggestionItems.forEach(item => {
+        item.classList.remove('active');
+    });
     chatMessages.innerHTML = '';
     [confValue, expValue, missValue, ambValue].forEach((element) => {
         element.innerHTML = '';
@@ -159,6 +190,7 @@ async function sendMessage() {
     inputContainer.classList.add('loading');
     submitButton.style.display = 'none';
     pauseButton.style.display = 'block';
+    newChatButton.disabled = true;
     addMessage("", false, false, false, true);
 
     [confValue, expValue, missValue, ambValue].forEach((element) => {
@@ -261,7 +293,9 @@ async function sendMessage() {
                             });
                         })
 
-                        addMessage(step.message || JSON.stringify(step.data, null, 2), false, false, true);
+                        let message = step.message || JSON.stringify(step.data, null, 2);
+
+                        addMessage(message, false, false, true);
                     } else if (step.type === 'followup_questions') {
                         // step.questions.forEach(question => {
                         //     addMessage(question, false);
@@ -280,6 +314,7 @@ async function sendMessage() {
                         inputContainer.classList.remove('loading');
                         submitButton.style.display = 'block';
                         pauseButton.style.display = 'none';
+                        newChatButton.disabled = false;
                         removeLoadingMessage();
                     }
                 } catch (e) {
@@ -300,6 +335,7 @@ async function sendMessage() {
             inputContainer.classList.remove('loading');
             submitButton.style.display = 'block';
             pauseButton.style.display = 'none';
+            newChatButton.disabled = false;
             removeLoadingMessage();
             addMessage('Sorry, there was an error processing your message: ' + error.message, false);
         }
@@ -329,21 +365,35 @@ messageInput.addEventListener('keypress', (e) => {
     }
 });
 
+messageInput.addEventListener('input', (e) => {
+    suggestionItems.forEach(item => {
+        if (e.target.value && item.querySelector('p').textContent === e.target.value) {
+            item.classList.add('active');
+        } else {
+            item.classList.remove('active');
+        }
+    });
+})
+
 menuButton.addEventListener('click', toggleMenu);
 
 sideMenuButton.addEventListener('click', toggleMenu);
 
 newChatButton.addEventListener('click', initChat);
 
-// Use event delegation for suggestion clicks to handle dynamically loaded content
-suggestionsContainer.addEventListener('click', (e) => {
-    const button = e.target.closest('button');
-    if (button && !button.closest('.suggestion-item').classList.contains('loading')) {
-        const text = button.querySelector('p').textContent;
-        if (text.trim()) {
-            messageInput.value = text;
-        }
-    }
+// Add event listener to each suggestion item
+suggestionItems.forEach(item => {
+    item.addEventListener('click', () => {
+        // Set the value of the message input to the text of the clicked suggestion item
+        const text = item.querySelector('p').textContent;
+        messageInput.value = text;
+        // Remove 'active' from all suggestion items
+        document.querySelectorAll('.suggestion-item.active').forEach(item => {
+            item.classList.remove('active');
+        });
+        // Add 'active' to the clicked suggestion item
+        item.classList.add('active');
+    });
 });
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -362,7 +412,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 option.title = graph;
                 graphSelect.appendChild(option);
             });
-            
+
             // Fetch suggestions for the first graph (if any)
             if (data.length > 0) {
                 fetchSuggestions();
@@ -373,81 +423,78 @@ document.addEventListener("DOMContentLoaded", function () {
             addMessage("Sorry, there was an error fetching the available graphs: " + error.message, false);
         });
 
-// Function to fetch suggestions based on selected graph
-function fetchSuggestions() {
-    const graphSelect = document.getElementById("graph-select");
-    const selectedGraph = graphSelect.value;
-    
-    if (!selectedGraph) {
-        // Hide suggestions if no graph is selected
-        const suggestionItems = suggestionsContainer.querySelectorAll('.suggestion-item');
-        suggestionItems.forEach(item => {
-            item.style.display = 'none';
-        });
-        return;
-    }
-    
-    // Show suggestions and reset to loading state
-    const suggestionItems = suggestionsContainer.querySelectorAll('.suggestion-item');
-    suggestionItems.forEach(item => {
-        item.style.display = 'flex';
-        item.classList.remove('loaded');
-        item.classList.add('loading');
-        const button = item.querySelector('button');
-        const p = item.querySelector('p');
-        button.title = "Loading suggestion...";
-        p.textContent = "";
-    });
-    
-    // Fetch suggestions for the selected graph
-    fetch(`/suggestions?token=${TOKEN}&graph_id=${selectedGraph}`)
-        .then(response => response.json())
-        .then(suggestions => {
-            // If no suggestions for this graph, hide the suggestions
-            if (!suggestions || suggestions.length === 0) {
-                suggestionItems.forEach(item => {
-                    item.style.display = 'none';
-                });
-                return;
-            }
-            
-            // Update each suggestion with fetched data and add loaded styling
-            suggestions.forEach((suggestion, index) => {
-                if (suggestionItems[index]) {
-                    const item = suggestionItems[index];
-                    const button = item.querySelector('button');
-                    const p = item.querySelector('p');
-                    
-                    // Add a slight delay for staggered animation
-                    setTimeout(() => {
-                        // Remove loading state and add content
-                        item.classList.remove('loading');
-                        item.classList.add('loaded');
-                        
-                        // Update content
-                        p.textContent = suggestion;
-                        button.title = suggestion;
-                        
-                        // Enable click functionality
-                        button.style.cursor = 'pointer';
-                    }, index * 200); // 200ms delay between each suggestion
-                }
-            });
-            
-            // Hide unused suggestion slots
-            for (let i = suggestions.length; i < suggestionItems.length; i++) {
-                suggestionItems[i].style.display = 'none';
-            }
-        })
-        .catch(error => {
-            console.error("Error fetching suggestions:", error);
-            
-            // Hide suggestions on error
+    // Function to fetch suggestions based on selected graph
+    function fetchSuggestions() {
+        const graphSelect = document.getElementById("graph-select");
+        const selectedGraph = graphSelect.value;
+
+        if (!selectedGraph) {
+            // Hide suggestions if no graph is selected
             suggestionItems.forEach(item => {
                 item.style.display = 'none';
             });
+            return;
+        }
+
+        suggestionItems.forEach(item => {
+            item.style.display = 'flex';
+            item.classList.remove('loaded');
+            item.classList.add('loading');
+            const button = item.querySelector('button');
+            const p = item.querySelector('p');
+            button.title = "Loading suggestion...";
+            p.textContent = "";
         });
-}
+
+        // Fetch suggestions for the selected graph
+        fetch(`/suggestions?token=${TOKEN}&graph_id=${selectedGraph}`)
+            .then(response => response.json())
+            .then(suggestions => {
+                // If no suggestions for this graph, hide the suggestions
+                if (!suggestions || suggestions.length === 0) {
+                    suggestionItems.forEach(item => {
+                        item.style.display = 'none';
+                    });
+                    return;
+                }
+
+                // Hide unused suggestion slots
+                for (let i = suggestions.length; i < suggestionItems.length; i++) {
+                    suggestionItems[i].style.display = 'none';
+                }
+
+                // Update each suggestion with fetched data and add loaded styling
+                suggestions.forEach((suggestion, index) => {
+                    if (suggestionItems[index]) {
+                        const item = suggestionItems[index];
+                        const button = item.querySelector('button');
+                        const p = item.querySelector('p');
+
+                        // Add a slight delay for staggered animation
+                        setTimeout(() => {
+                            // Remove loading state and add content
+                            item.classList.remove('loading');
+                            item.classList.add('loaded');
+
+                            // Update content
+                            p.textContent = suggestion;
+                            button.title = suggestion;
+
+                            // Enable click functionality
+                            button.style.cursor = 'pointer';
+                        }, index * 300); // 300ms delay between each suggestion
+                    }
+                });
+            })
+            .catch(error => {
+                console.error("Error fetching suggestions:", error);
+
+                // Hide suggestions on error
+                suggestionItems.forEach(item => {
+                    item.style.display = 'none';
+                });
+            });
+    }
 
     graphSelect.addEventListener("change", function () {
         initChat();

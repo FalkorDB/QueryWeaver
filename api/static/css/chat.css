@@ -187,6 +187,10 @@ body {
   color: var(--text-primary);
 }
 
+.bot-message {
+  background: color-mix(in srgb, var(--falkor-tertiary) 33%, transparent);
+}
+
 .user-message {
   background: var(--falkor-quaternary);
   font-weight: 500;
@@ -213,7 +217,7 @@ body {
   flex-direction: row;
   align-items: center;
   gap: 5px;
-  flex: 1 1 0;
+  flex-grow: 1;
   padding: 10px;
   border-radius: 6px;
   box-shadow: 0 0 20px 3px var(--falkor-tertiary);
@@ -288,7 +292,7 @@ body {
 }
 
 #menu-content {
-  flex: 1 1 0;
+  flex-grow: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -319,7 +323,7 @@ body {
 
 .menu-item {
   overflow: hidden;
-  flex: 1 1 0;
+  flex: 1 1 auto;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -327,16 +331,12 @@ body {
 }
 
 #conf-container {
+  flex-grow: 0;
+  height: fit-content;
   flex-direction: row;
-  flex-wrap: wrap;
-  max-height: fit-content;
-}
-
-#conf-text-container {
-  flex: 1 1 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  justify-content: space-between;
+  width: 100%;
+  gap: 16px;
 }
 
 .menu-value {
@@ -348,14 +348,15 @@ body {
   border-radius: 8px;
   color: var(--text-primary);
   overflow-y: auto;
-  min-height: 100px;
 }
 
 #conf-value {
-  width: fit-content;
-  height: fit-content;
-  padding: 2px 24px;
+  flex: 0 0 auto;
   overflow: hidden;
+  min-height: 0;
+  width: fit-content;
+  min-width: 50px;
+  padding: 8px;
 }
 
 #info-value,
@@ -416,7 +417,46 @@ body {
   border-color: var(--falkor-border-primary);
 }
 
-/* Suggestions and input container */
+#custom-file-upload {
+  height: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--text-primary);
+  font-size: 14px;
+  background-color: var(--falkor-secondary);
+  color: var(--text-primary);
+  transition: border-color 0.2s;
+  min-width: 180px;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+    linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
+  background-position: calc(100% - 20px) center, calc(100% - 15px) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+#custom-file-upload:focus {
+  outline: none;
+  border-color: var(--falkor-border-primary);
+}
+
+#reset-button {
+  position: absolute;
+  right: -60px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  color: var(--text-primary);
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+}
+
+#reset-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .suggestions-input-container {
   display: flex;
   flex-direction: column;
@@ -426,59 +466,62 @@ body {
 
 .suggestions-container {
   display: flex;
+  align-items: stretch;
   gap: 10px;
   list-style: none;
   padding-left: 0;
   margin: 0;
-  align-items: flex-start; /* Changed from stretch to flex-start to allow different heights */
   width: 100%;
-  min-height: 56px; /* Fixed minimum height to prevent layout shift */
+  min-height: 56px;
 }
 
 .suggestion-item {
-  flex: 1 1 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  min-height: 56px;
+  height: 100%;
+  max-height: none;
+  width: calc(33.333% - 7px);
+  min-width: calc(33.333% - 7px);
+  max-width: calc(33.333% - 7px);
+  overflow: hidden;
+  transition: max-height 0.3s ease-out, overflow 0.3s ease-out;
   border: 1px solid var(--falkor-border-tertiary);
   padding: 8px;
   border-radius: 6px;
-  min-height: 56px; /* Fixed minimum height for consistency */
-  max-height: 56px; /* Default max height for loading state */
-  width: calc(33.333% - 7px); /* Fixed width accounting for gap */
-  min-width: calc(33.333% - 7px); /* Prevent width shrinking */
-  max-width: calc(33.333% - 7px); /* Prevent width expansion */
-  overflow: hidden; /* Hide overflow by default for loading state */
-  transition: max-height 0.3s ease-out, overflow 0.3s ease-out; /* Smooth transition */
 }
 
 .suggestion-item button {
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  width: 100%;
-  height: 100%;
-  color: var(--text-primary);
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 40px; /* Consistent button height */
-  padding: 4px; /* Internal padding for button */
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-primary);
 }
 
 .suggestion-item button p {
   margin: 0;
   text-align: center;
+  width: 100%;
+  white-space: normal;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  -webkit-box-orient: unset;
   word-wrap: break-word;
   overflow-wrap: break-word;
   hyphens: auto;
   line-height: 1.3;
   max-width: 100%;
-  font-size: 14px; /* Fixed font size for consistency */
+  font-size: 14px;
   display: -webkit-box;
-  -webkit-line-clamp: 2; /* Limit to 2 lines to prevent overflow */
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-  line-clamp: 2; /* Standard property for compatibility */
+  line-clamp: 2;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -486,14 +529,13 @@ body {
 /* Loading state for suggestions */
 .suggestion-item.loading {
   border: 1px solid var(--falkor-border-secondary);
-  background: linear-gradient(90deg, 
-    rgba(136, 135, 135, 0.1) 0%, 
-    rgba(136, 135, 135, 0.3) 50%, 
-    rgba(136, 135, 135, 0.1) 100%);
+  background: linear-gradient(90deg,
+      rgba(136, 135, 135, 0.1) 0%,
+      rgba(136, 135, 135, 0.3) 50%,
+      rgba(136, 135, 135, 0.1) 100%);
   background-size: 200% 100%;
   animation: suggestion-loading 1.5s ease-in-out infinite;
-  min-height: 56px; /* Same as normal state */
-  max-height: 56px; /* Same as normal state */
+  min-height: 56px;
 }
 
 .suggestion-item.loading button {
@@ -507,31 +549,38 @@ body {
   background: rgba(136, 135, 135, 0.2);
   border-radius: 4px;
   animation: pulse 1.5s ease-in-out infinite;
-  font-size: 14px; /* Same font size as loaded state */
+  font-size: 14px;
 }
 
 /* Loaded state animation */
 .suggestion-item.loaded {
   animation: suggestion-fade-in 0.5s ease-out;
-  min-height: 56px; /* Maintain minimum height */
-  max-height: none; /* Allow expansion for longer text */
-  height: auto; /* Let height adjust to content */
-  overflow: visible; /* Show all content */
-  align-items: flex-start; /* Align content to top for better text layout */
+  min-height: 56px;
+  max-height: none;
+  overflow: visible;
+  align-items: flex-start;
+}
+
+.suggestion-item.loaded.active,
+.suggestion-item.loaded:hover {
+  border: 1px solid var(--falkor-border-primary);
 }
 
 .suggestion-item.loaded button {
-  height: auto; /* Allow button to expand */
-  align-items: flex-start; /* Align content to top for better text layout */
-  padding: 8px 4px; /* Increase vertical padding for better spacing */
+  align-items: center;
+  padding: 8px 4px;
+}
+
+.suggestion-item.loaded button:focus {
+  outline: none;
 }
 
 .suggestion-item.loaded button p {
-  -webkit-line-clamp: none; /* Remove line limit for loaded state */
-  line-clamp: none; /* Remove line limit for loaded state */
-  display: block; /* Change from -webkit-box to block for full text display */
-  white-space: normal; /* Allow text wrapping */
-  max-height: none; /* Remove height restriction */
+  -webkit-line-clamp: none;
+  line-clamp: none;
+  display: block;
+  white-space: normal;
+  max-height: none;
 }
 
 @keyframes shadow-fade {
@@ -566,15 +615,19 @@ body {
   0% {
     background-position: -200% 0;
   }
+
   100% {
     background-position: 200% 0;
   }
 }
 
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 0.4;
   }
+
   50% {
     opacity: 0.8;
   }
@@ -585,8 +638,29 @@ body {
     opacity: 0;
     transform: translateY(10px);
   }
+
   100% {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+::-webkit-scrollbar {
+  width: 20px;
+  height: 20px;
+}
+
+::-webkit-scrollbar-corner {
+  background-color: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #d6dee1;
+  border-radius: 20px;
+  border: 6px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #a8bbbf;
 }
