@@ -24,9 +24,24 @@ class Descriptions(BaseModel):
     tables_descriptions: list[TableDescription]
     columns_descriptions: list[ColumnDescription]
 
+def get_db_description(graph_id: str) -> str:
+    """ Get the database description from the graph. """
+    graph = db.select_graph(graph_id)
+    query_result = graph.query("""
+        MATCH (d:Database)
+        RETURN d.description
+        """
+    )
+    
+    if not query_result.result_set:
+        return "No description available for this database."
+    
+    return query_result.result_set[0][0]  # Return the first result's description
+
 def find(
     graph_id: str,
-    queries_history: List[str]
+    queries_history: List[str],
+    db_description: str = None
 ) -> Tuple[bool, List[dict]]:
     """ Find the tables and columns relevant to the user's query. """
     
@@ -34,11 +49,6 @@ def find(
     user_query = queries_history[-1]
     previous_queries = queries_history[:-1]
 
-    db_description = graph.query("""
-        MATCH (d:Database)
-        RETURN d.description
-        """
-    ).result_set[0][0]
     logging.info(f"Calling to an LLM to find relevant tables and columns for the query: {user_query}")
     # Call the completion model to get the relevant Cypher queries to retrieve
     # from the Graph that represent the Database schema.
@@ -79,7 +89,7 @@ def find(
     tables_by_route, _ = find_connecting_tables(graph, base_tables_names)
     combined_tables = _get_unique_tables(tables_des + tables_by_columns_des + tables_by_route + tables_by_sphere)
     
-    return True, combined_tables, db_description, [tables_des, tables_by_columns_des, tables_by_route, tables_by_sphere]
+    return True, combined_tables, [tables_des, tables_by_columns_des, tables_by_route, tables_by_sphere]
 
 def _find_tables(graph, descriptions: List[TableDescription]) -> List[dict]:
 

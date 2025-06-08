@@ -1,3 +1,8 @@
+EXAMPLES = {'crm_usecase': ["Which companies have generated the most revenue through closed deals, and how much revenue did they generate?",
+                            "How many leads converted into deals over the last month",
+                            "What are the usersnames of the users that thier role has security policy id 5239?"]}
+
+
 BENCHMARK = [
     {
         "question": "List all contacts who are associated with companies that have at least one active deal in the pipeline, and include the deal stage.",

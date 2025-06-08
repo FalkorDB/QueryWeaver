@@ -6,12 +6,14 @@ from functools import wraps
 from dotenv import load_dotenv
 from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context, Flask
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from api.graph import find
-from api.extensions import db
-from api.loaders.csv_loader import CSVLoader
-from api.loaders.json_loader import JSONLoader
-from api.loaders.odata_loader import ODataLoader
-from api.agents import RelevancyAgent, AnalysisAgent
+from graph import find, get_db_description
+from extensions import db
+from loaders.csv_loader import CSVLoader
+from loaders.json_loader import JSONLoader
+from loaders.odata_loader import ODataLoader
+from agents import RelevancyAgent, AnalysisAgent
+from constants import BENCHMARK, EXAMPLES
+import random
 
 # Load environment variables from .env file
 load_dotenv()
@@ -177,26 +179,28 @@ def query(graph_id: str):
 
         step = {"type": "reasoning_step", "message": "Step 1: Analyzing the user query"}
         yield json.dumps(step) + MESSAGE_DELIMITER
-        # Use a thread pool to enforce timeout
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(find, graph_id, queries_history)
-            try:
-                success, result, db_description, _ = future.result(timeout=60)
-            except FuturesTimeoutError:
-                yield json.dumps({"type": "error", "message": "Timeout error while finding tables relevant to your request."}) + MESSAGE_DELIMITER
-                return
-            except Exception as e:
-                logging.info(f"Error in find function: {e}")
-                yield json.dumps({"type": "error", "message": "Error in find function"}) + MESSAGE_DELIMITER
-                return
-
+        db_description = get_db_description(graph_id)  # Ensure the database description is loaded
+        
         logging.info(f"Calling to relvancy agent with query: {queries_history[-1]}")
-        answer_rel = agent_rel.get_answer(queries_history[-1], result)
+        answer_rel = agent_rel.get_answer(queries_history[-1], db_description)
         if answer_rel["status"] != "On-topic":
             step = {"type": "followup_questions", "message": "Off topic question: " + answer_rel["reason"]}
             logging.info(f"SQL Fail reason: {answer_rel["reason"]}")
             yield json.dumps(step) + MESSAGE_DELIMITER
         else:
+            # Use a thread pool to enforce timeout
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(find, graph_id, queries_history, db_description)
+                try:
+                    success, result, _ = future.result(timeout=60)
+                except FuturesTimeoutError:
+                    yield json.dumps({"type": "error", "message": "Timeout error while finding tables relevant to your request."}) + MESSAGE_DELIMITER
+                    return
+                except Exception as e:
+                    logging.info(f"Error in find function: {e}")
+                    yield json.dumps({"type": "error", "message": "Error in find function"}) + MESSAGE_DELIMITER
+                    return
+
             step = {"type": "reasoning_step",
                     "message": "Step 2: Generating SQL query"}
             yield json.dumps(step) + MESSAGE_DELIMITER
@@ -210,6 +214,35 @@ def query(graph_id: str):
                              "exp": answer_an['explanation']}) + MESSAGE_DELIMITER
 
     return Response(stream_with_context(generate()), content_type='application/json')
+
+@app.route('/suggestions')
+@token_required  # Apply token authentication decorator
+def suggestions():
+    """
+    This route returns 3 random suggestions from the examples data for the chat interface.
+    It takes graph_id as a query parameter and returns examples specific to that graph.
+    If no examples exist for the graph, returns an empty list.
+    """
+    try:
+        # Get graph_id from query parameters
+        graph_id = request.args.get('graph_id', '')
+        
+        if not graph_id:
+            return jsonify([]), 400
+        
+        # Check if graph has specific examples
+        if graph_id in EXAMPLES:
+            graph_examples = EXAMPLES[graph_id]
+            # Return up to 3 examples, or all if less than 3
+            suggestion_questions = random.sample(graph_examples, min(3, len(graph_examples)))
+            return jsonify(suggestion_questions)
+        else:
+            # If graph doesn't exist in EXAMPLES, return empty list
+            return jsonify([])
+            
+    except Exception as e:
+        logging.error(f"Error fetching suggestions: {e}")
+        return jsonify([]), 500
 
 if __name__ == "__main__":
     app.register_blueprint(main)

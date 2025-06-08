@@ -1,20 +1,24 @@
 const messageInput = document.getElementById('message-input');
-const sendButton = document.getElementById('send-button');
-const newChatButton = document.getElementById('new-chat-button');
-const analysisCheckbox = document.getElementById('analysis-checkbox');
-const analysisContainer = document.getElementById('analysis-container');
+const submitButton = document.getElementById('submit-button');
+const pauseButton = document.getElementById('pause-button');
+const newChatButton = document.getElementById('reset-button');
 const chatMessages = document.getElementById('chat-messages');
-const typingIndicator = document.getElementById('typing-indicator');
 const expValue = document.getElementById('exp-value');
 const confValue = document.getElementById('conf-value');
-const missValue = document.getElementById('miss-value');
+const missValue = document.getElementById('info-value');
 const ambValue = document.getElementById('amb-value');
-const instrucitonsContainer = document.getElementById('instructions-container');
-const instructionsCheckbox = document.getElementById('instructions-checkbox');
-const expInstructions = document.getElementById('exp-instructions');
+const fileUpload = document.getElementById('schema-upload');
+const fileLabel = document.getElementById('custom-file-upload');
+const sideMenuButton = document.getElementById('side-menu-button');
+const menuButton = document.getElementById('menu-button');
+const menuContainer = document.getElementById('menu-container');
+const chatContainer = document.getElementById('chat-container');
+const suggestionsContainer = document.getElementById('suggestions-container');
+const expInstructions = document.getElementById('instructions-textarea');
+const inputContainer = document.getElementById('input-container');
+const suggestionItems = document.querySelectorAll('.suggestion-item');
 
 let questions_history = [];
-let result_history = [];
 let currentRequestController = null;
 
 // Custom delimiter that's unlikely to appear in your data
@@ -24,46 +28,78 @@ const urlParams = new URLSearchParams(window.location.search);
 
 const TOKEN = urlParams.get('token');
 
-function addMessage(message, isUser = false, isFollowup = false, isFinalResult = false) {
+function addMessage(message, isUser = false, isFollowup = false, isFinalResult = false, isLoading = false) {
     const messageDiv = document.createElement('div');
+    const messageDivContainer = document.createElement('div');
+
+    messageDiv.className = "message";
+    messageDivContainer.className = "message-container";
+
     if (isFollowup) {
-        messageDiv.className = "message followup-message";
+        messageDivContainer.className += " followup-message-container";
+        messageDiv.className += " followup-message";
         messageDiv.textContent = message;
-    }
-    else if (isUser) {
-        messageDiv.className = "message user-message";
+    } else if (isUser) {
+        suggestionsContainer.style.display = 'none';
+        messageDivContainer.className += " user-message-container";
+        messageDiv.className += " user-message";
         questions_history.push(message);
-    }
-    else if (isFinalResult) {
-        messageDiv.className = "message final-result-message";
-        result_history.push(message);
+    } else if (isFinalResult) {
+        messageDivContainer.className += " final-result-message-container";
+        messageDiv.className += " final-result-message";
         // messageDiv.textContent = message;
+    } else {
+        messageDivContainer.className += " bot-message-container";
+        messageDiv.className += " bot-message";
+        if (isLoading) {
+            messageDivContainer.id = "loading-message-container";
+            messageDivContainer.className += " loading-message-container";
+        }
     }
-    else {
-        messageDiv.className = "message bot-message";
-    }
-    ;
 
     const block = formatBlock(message)
+
     if (block) {
         block.forEach(lineDiv => {
             messageDiv.appendChild(lineDiv);
         });
-    }
-    else {
+    } else if (!isLoading) {
         messageDiv.textContent = message;
     }
 
-    chatMessages.appendChild(messageDiv);
+    if (!isLoading) {
+        messageDivContainer.appendChild(messageDiv);
+    }
+    chatMessages.appendChild(messageDivContainer);
     chatMessages.scrollTop = chatMessages.scrollHeight;
     return messageDiv;
 }
 
-function formatBlock(text) {
+function removeLoadingMessage() {
+    const loadingMessageContainer = document.getElementById("loading-message-container");
+    if (loadingMessageContainer) {
+        loadingMessageContainer.remove();
+    }
+}
 
-    if (text.startsWith('"```sql') && text.endsWith('```"')) {
-        const sql = text.slice(7, -4).trim();
-        return sql.split('\\n').map((line, i) => {
+function moveLoadingMessageToBottom() {
+    const loadingMessageContainer = document.getElementById("loading-message-container");
+    if (loadingMessageContainer) {
+        // Remove from current position and append to bottom
+        loadingMessageContainer.remove();
+        chatMessages.appendChild(loadingMessageContainer);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+}
+
+function formatBlock(text) {
+    // Remove surrounding quotes if present
+    text = text.replace(/^"(.*)"$/, '$1').trim();
+
+    // SQL block
+    if (text.startsWith('```sql') && text.endsWith('```')) {
+        const sql = text.slice(6, -3).trim();
+        return sql.split('\n').map((line, i) => {
             const lineDiv = document.createElement('div');
             lineDiv.className = 'sql-line';
             lineDiv.textContent = line;
@@ -71,27 +107,59 @@ function formatBlock(text) {
         });
     }
 
+    // Array block
     if (text.includes('[') && text.includes(']')) {
         const parts = text.split('[');
         const formattedParts = parts.map((part, i) => {
             const lineDiv = document.createElement('div');
             lineDiv.className = 'array-line';
-
-            // remove all closing if exists in the text
             part = part.replaceAll(']', '');
-
             lineDiv.textContent = part;
             return lineDiv;
         });
         return formattedParts;
     }
+
+    // Generic multi-line block (replace \n with real newlines first)
+    text = text.replace(/\\n/g, '\n');
+    if (text.includes('\n')) {
+        return text.split('\n').map((line, i) => {
+            const lineDiv = document.createElement('div');
+            lineDiv.className = 'plain-line';
+            lineDiv.textContent = line;
+            return lineDiv;
+        });
+    }
+    if (text.includes('\n')) {
+        return text.split('\n').map((line, i) => {
+            const lineDiv = document.createElement('div');
+            lineDiv.className = 'plain-line';
+            lineDiv.textContent = line;
+            return lineDiv;
+        });
+    }
+    if (text.includes('\n')) {
+        return text.split('\n').map((line, i) => {
+            const lineDiv = document.createElement('div');
+            lineDiv.className = 'plain-line';
+            lineDiv.textContent = line;
+            return lineDiv;
+        });
+    }
 }
 
 function initChat() {
+    messageInput.value = '';
+    suggestionItems.forEach(item => {
+        item.classList.remove('active');
+    });
     chatMessages.innerHTML = '';
+    [confValue, expValue, missValue, ambValue].forEach((element) => {
+        element.innerHTML = '';
+    });
     addMessage('Hello! How can I help you today?', false);
+    suggestionsContainer.style.display = 'flex';
     questions_history = [];
-    result_history = [];
 }
 
 initChat();
@@ -105,7 +173,7 @@ const getBackgroundStyle = (value) => {
 }
 
 async function sendMessage() {
-    // debugger
+
     const message = messageInput.value.trim();
     if (!message) return;
 
@@ -119,7 +187,15 @@ async function sendMessage() {
     messageInput.value = '';
 
     // Show typing indicator
-    typingIndicator.style.display = 'flex';
+    inputContainer.classList.add('loading');
+    submitButton.style.display = 'none';
+    pauseButton.style.display = 'block';
+    newChatButton.disabled = true;
+    addMessage("", false, false, false, true);
+
+    [confValue, expValue, missValue, ambValue].forEach((element) => {
+        element.innerHTML = '';
+    });
 
     try {
         const selectedValue = document.getElementById("graph-select").value;
@@ -135,7 +211,6 @@ async function sendMessage() {
             },
             body: JSON.stringify({
                 chat: questions_history,
-                result: result_history,
                 instructions: expInstructions.value,
             }),
             signal: currentRequestController.signal
@@ -151,9 +226,10 @@ async function sendMessage() {
         let decoder = new TextDecoder();
         let buffer = '';
 
-        let streamListining = true;
+        // Hide typing indicator once we start receiving data
+
         // Process the stream
-        while (streamListining) {
+        while (true) {
             const { done, value } = await reader.read();
 
             if (done) {
@@ -188,57 +264,38 @@ async function sendMessage() {
 
                     // Handle different types of messages from server
                     if (step.type === 'reasoning_step') {
+                        // Move loading message to bottom when we receive reasoning steps
                         addMessage(step.message, false);
+                        moveLoadingMessageToBottom();
                     } else if (step.type === 'final_result') {
                         // Final result could be displayed differently
-                        let confValueDiv = document.getElementById("conf-value-div");
-                        let confValueTitle = document.getElementById("conf-value-title");
-                        
-                        if (!confValueDiv) {
-                            confValueDiv = document.createElement("div");
-                            confValueDiv.id = "conf-value-div";
-                            confValue.appendChild(confValueDiv);
-                        }
+                        confValue.textContent = `${step.conf}%`;
 
-                        if (!confValueTitle) {
-                            confValueTitle = document.createElement("div");
-                            confValueTitle.id = "conf-value-title";
-                            confValue.appendChild(confValueTitle);
-                        }
-
-                        confValueTitle.textContent = `${step.conf}%`;
-                        confValueDiv.style.background = getBackgroundStyle(step.conf);
-                        console.log(step);
                         [[step.exp, expValue], [step.miss, missValue], [step.amb, ambValue]].forEach(([value, element]) => {
-                            if (!value || typeof value == "object") return;
+                            element.innerHTML = '';
                             let ul = document.getElementById(`${element.id}-list`);
 
-                            if (!ul) {
-                                ul = document.createElement("ul");
-                                ul.className = `final-result-list`;
-                                ul.id = `${element.id}-list`;
-                                element.appendChild(ul);
-                            }
+                            ul = document.createElement("ul");
+                            ul.className = `final-result-list`;
+                            ul.id = `${element.id}-list`;
+                            element.appendChild(ul);
 
                             value.split('-').forEach((item, i) => {
                                 if (item === '') return;
 
                                 let li = document.getElementById(`${element.id}-${i}-li`);
 
-                                if (!li) {
-                                    li = document.createElement("li");
-                                    li.id = `${element.id}-${i}-li`;
-                                    ul.appendChild(li);
-                                }
+                                li = document.createElement("li");
+                                li.id = `${element.id}-${i}-li`;
+                                ul.appendChild(li);
 
                                 li.textContent = i === 0 ? `${item}` : `- ${item}`;
                             });
                         })
-                        if (!step.data) {
-                            step.data = "Unfortunately, an SQL query could not be created based on the extracted tables and your instructions. Please see the Explanation for more details.";
-                            addMessage(step.message || JSON.stringify(step.data, null, 2), false, true);
-                        }
-                        else addMessage(step.message || JSON.stringify(step.data, null, 2), false, false, true);
+
+                        let message = step.message || JSON.stringify(step.data, null, 2);
+
+                        addMessage(message, false, false, true);
                     } else if (step.type === 'followup_questions') {
                         // step.questions.forEach(question => {
                         //     addMessage(question, false);
@@ -249,17 +306,22 @@ async function sendMessage() {
                         ambValue.textContent = "N/A";
                         // graph.Labels.findIndex(l => l.name === cat.name)(step.message, false, true);
                         addMessage(step.message, false, true);
-                    } else if (step.type === 'error') {
-                        addMessage(step.message || JSON.stringify(step), false, true);
-                        streamListining = false;
                     } else {
                         // Default handling
                         addMessage(step.message || JSON.stringify(step), false);
                     }
+                    if (step.type !== 'reasoning_step') {
+                        inputContainer.classList.remove('loading');
+                        submitButton.style.display = 'block';
+                        pauseButton.style.display = 'none';
+                        newChatButton.disabled = false;
+                        removeLoadingMessage();
+                    }
                 } catch (e) {
                     // If it's not valid JSON, just show the message as text
-                    addMessage(message, false);
+                    addMessage("Faild: " + message, false);
                 }
+
             }
         }
 
@@ -270,55 +332,75 @@ async function sendMessage() {
             console.log('Request was aborted');
         } else {
             console.error('Error:', error);
-            // typingIndicator.style.display = 'none';
+            inputContainer.classList.remove('loading');
+            submitButton.style.display = 'block';
+            pauseButton.style.display = 'none';
+            newChatButton.disabled = false;
+            removeLoadingMessage();
             addMessage('Sorry, there was an error processing your message: ' + error.message, false);
         }
         currentRequestController = null;
-    } finally {
-                    // Hide typing indicator once we start receiving data
-                    typingIndicator.style.display = 'none';
-                }
-}
-
-function handleShowAnalysis(e) {
-    if (e.target.checked) {
-        analysisContainer.style.display = 'flex';
-    } else {
-        analysisContainer.style.display = 'none';
     }
 }
 
-function handleShowInstructions(e) {
-    if (e.target.checked) {
-        instrucitonsContainer.style.display = 'flex';
+function toggleMenu() {
+    if (!menuContainer.classList.contains('open')) {
+        menuContainer.classList.add('open');
+        sideMenuButton.style.display = 'none';
+        chatContainer.style.paddingRight = '10%';
+        chatContainer.style.paddingLeft = '10%';
     } else {
-        instrucitonsContainer.style.display = 'none';
+        menuContainer.classList.remove('open');
+        sideMenuButton.style.display = 'block';
+        chatContainer.style.paddingRight = '20%';
+        chatContainer.style.paddingLeft = '20%';
     }
-}
-
-function handleInstructionsChange(e) {
-    console.log(e.target.value);
 }
 
 // Event listeners
-sendButton.addEventListener('click', sendMessage);
+submitButton.addEventListener('click', sendMessage);
 messageInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
         sendMessage();
     }
 });
 
-analysisCheckbox.addEventListener('change', handleShowAnalysis);
-instructionsCheckbox.addEventListener('change', handleShowInstructions);
-expInstructions.addEventListener('change', handleInstructionsChange);
+messageInput.addEventListener('input', (e) => {
+    suggestionItems.forEach(item => {
+        if (e.target.value && item.querySelector('p').textContent === e.target.value) {
+            item.classList.add('active');
+        } else {
+            item.classList.remove('active');
+        }
+    });
+})
+
+menuButton.addEventListener('click', toggleMenu);
+
+sideMenuButton.addEventListener('click', toggleMenu);
+
 newChatButton.addEventListener('click', initChat);
 
-
+// Add event listener to each suggestion item
+suggestionItems.forEach(item => {
+    item.addEventListener('click', () => {
+        // Set the value of the message input to the text of the clicked suggestion item
+        const text = item.querySelector('p').textContent;
+        messageInput.value = text;
+        // Remove 'active' from all suggestion items
+        document.querySelectorAll('.suggestion-item.active').forEach(item => {
+            item.classList.remove('active');
+        });
+        // Add 'active' to the clicked suggestion item
+        item.classList.add('active');
+    });
+});
 
 document.addEventListener("DOMContentLoaded", function () {
     const chatMessages = document.getElementById("chat-messages");
     const graphSelect = document.getElementById("graph-select");
 
+    // Fetch available graphs
     fetch("/graphs?token=" + TOKEN)
         .then(response => response.json())
         .then(data => {
@@ -327,25 +409,101 @@ document.addEventListener("DOMContentLoaded", function () {
                 const option = document.createElement("option");
                 option.value = graph;
                 option.textContent = graph;
+                option.title = graph;
                 graphSelect.appendChild(option);
             });
+
+            // Fetch suggestions for the first graph (if any)
+            if (data.length > 0) {
+                fetchSuggestions();
+            }
         })
         .catch(error => {
             console.error("Error fetching graphs:", error);
             addMessage("Sorry, there was an error fetching the available graphs: " + error.message, false);
         });
 
+    // Function to fetch suggestions based on selected graph
+    function fetchSuggestions() {
+        const graphSelect = document.getElementById("graph-select");
+        const selectedGraph = graphSelect.value;
+
+        if (!selectedGraph) {
+            // Hide suggestions if no graph is selected
+            suggestionItems.forEach(item => {
+                item.style.display = 'none';
+            });
+            return;
+        }
+
+        suggestionItems.forEach(item => {
+            item.style.display = 'flex';
+            item.classList.remove('loaded');
+            item.classList.add('loading');
+            const button = item.querySelector('button');
+            const p = item.querySelector('p');
+            button.title = "Loading suggestion...";
+            p.textContent = "";
+        });
+
+        // Fetch suggestions for the selected graph
+        fetch(`/suggestions?token=${TOKEN}&graph_id=${selectedGraph}`)
+            .then(response => response.json())
+            .then(suggestions => {
+                // If no suggestions for this graph, hide the suggestions
+                if (!suggestions || suggestions.length === 0) {
+                    suggestionItems.forEach(item => {
+                        item.style.display = 'none';
+                    });
+                    return;
+                }
+
+                // Hide unused suggestion slots
+                for (let i = suggestions.length; i < suggestionItems.length; i++) {
+                    suggestionItems[i].style.display = 'none';
+                }
+
+                // Update each suggestion with fetched data and add loaded styling
+                suggestions.forEach((suggestion, index) => {
+                    if (suggestionItems[index]) {
+                        const item = suggestionItems[index];
+                        const button = item.querySelector('button');
+                        const p = item.querySelector('p');
+
+                        // Add a slight delay for staggered animation
+                        setTimeout(() => {
+                            // Remove loading state and add content
+                            item.classList.remove('loading');
+                            item.classList.add('loaded');
+
+                            // Update content
+                            p.textContent = suggestion;
+                            button.title = suggestion;
+
+                            // Enable click functionality
+                            button.style.cursor = 'pointer';
+                        }, index * 300); // 300ms delay between each suggestion
+                    }
+                });
+            })
+            .catch(error => {
+                console.error("Error fetching suggestions:", error);
+
+                // Hide suggestions on error
+                suggestionItems.forEach(item => {
+                    item.style.display = 'none';
+                });
+            });
+    }
+
     graphSelect.addEventListener("change", function () {
         initChat();
+        fetchSuggestions(); // Fetch new suggestions when graph changes
     });
 });
 
-// Add file upload functionality
-document.getElementById('upload-button').addEventListener('click', function () {
-    document.getElementById('file-upload').click();
-});
 
-document.getElementById('file-upload').addEventListener('change', function (e) {
+fileUpload.addEventListener('change', function (e) {
     const file = e.target.files[0];
     if (!file) return;
 

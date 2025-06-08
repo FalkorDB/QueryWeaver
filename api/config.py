@@ -53,7 +53,7 @@ class Config:
     """
     SCHEMA_PATH = "api/schema_schema.json"
     EMBEDDING_MODEL_NAME = "azure/text-embedding-ada-002"
-    COMPLETION_MODEL = "azure/gpt-4o-2024-08-06"
+    COMPLETION_MODEL = "azure/gpt-4.1"
     TEMPERATURE = 0
     # client = boto3.client('sts')
     # AWS_PROFILE = os.getenv("aws_profile_name")
