@@ -192,7 +192,7 @@ def query(graph_id: str):
             with ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(find, graph_id, queries_history, db_description)
                 try:
-                    success, result, _ = future.result(timeout=60)
+                    success, result, _ = future.result(timeout=120)
                 except FuturesTimeoutError:
                     yield json.dumps({"type": "error", "message": "Timeout error while finding tables relevant to your request."}) + MESSAGE_DELIMITER
                     return
