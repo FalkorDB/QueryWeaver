@@ -357,8 +357,32 @@ function toggleMenu() {
     }
 }
 
+function pauseRequest() {
+    if (currentRequestController) {
+        // Abort the current request
+        currentRequestController.abort();
+        currentRequestController = null;
+        
+        // Reset UI state
+        inputContainer.classList.remove('loading');
+        submitButton.style.display = 'block';
+        pauseButton.style.display = 'none';
+        newChatButton.disabled = false;
+        
+        // Remove loading message
+        removeLoadingMessage();
+        
+        // Add a message indicating the request was paused
+        addMessage("Request was paused by user.", false, true);
+        
+        // Show suggestions again since we're ready for new input
+        suggestionsContainer.style.display = 'flex';
+    }
+}
+
 // Event listeners
 submitButton.addEventListener('click', sendMessage);
+pauseButton.addEventListener('click', pauseRequest);
 messageInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
         sendMessage();
