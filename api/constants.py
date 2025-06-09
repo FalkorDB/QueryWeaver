@@ -1,6 +1,7 @@
 EXAMPLES = {'crm_usecase': ["Which companies have generated the most revenue through closed deals, and how much revenue did they generate?",
                             "How many leads converted into deals over the last month",
-                            "What are the usersnames of the users that thier role has security policy id 5239?"]}
+                            "Which companies have open sales opportunities and active SLA agreements in place?",
+                            "Which high-value sales opportunities (value > $50,000) have upcoming meetings scheduled, and what companies are they associated with?"]}
 
 
 BENCHMARK = [
