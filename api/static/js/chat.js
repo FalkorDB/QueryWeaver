@@ -19,6 +19,7 @@ const inputContainer = document.getElementById('input-container');
 const suggestionItems = document.querySelectorAll('.suggestion-item');
 
 let questions_history = [];
+let result_history = [];
 let currentRequestController = null;
 
 // Custom delimiter that's unlikely to appear in your data
@@ -45,6 +46,7 @@ function addMessage(message, isUser = false, isFollowup = false, isFinalResult =
         messageDiv.className += " user-message";
         questions_history.push(message);
     } else if (isFinalResult) {
+        result_history.push(message);
         messageDivContainer.className += " final-result-message-container";
         messageDiv.className += " final-result-message";
         // messageDiv.textContent = message;
@@ -160,6 +162,7 @@ function initChat() {
     addMessage('Hello! How can I help you today?', false);
     suggestionsContainer.style.display = 'flex';
     questions_history = [];
+    result_history = [];
 }
 
 initChat();
@@ -211,6 +214,7 @@ async function sendMessage() {
             },
             body: JSON.stringify({
                 chat: questions_history,
+                result: result_history,
                 instructions: expInstructions.value,
             }),
             signal: currentRequestController.signal

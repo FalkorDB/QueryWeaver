@@ -26,8 +26,10 @@ class AnalysisAgent():
         response = completion_result.choices[0].message.content
         analysis = _parse_response(response)
         if isinstance(analysis['ambiguities'], list):
+            analysis['ambiguities'] = [item.replace('-', ' ') for item in analysis['ambiguities']]
             analysis['ambiguities'] = "- " + "- ".join(analysis['ambiguities'])
         if isinstance(analysis['missing_information'], list):
+            analysis['missing_information'] = [item.replace('-', ' ') for item in analysis['missing_information']]
             analysis['missing_information'] = "- " + "- ".join(analysis['missing_information'])
         self.messages.append({"role": "assistant", "content": analysis['sql_query']})
         return analysis
