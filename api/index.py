@@ -6,13 +6,13 @@ from functools import wraps
 from dotenv import load_dotenv
 from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context, Flask
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from graph import find, get_db_description
-from extensions import db
-from loaders.csv_loader import CSVLoader
-from loaders.json_loader import JSONLoader
-from loaders.odata_loader import ODataLoader
-from agents import RelevancyAgent, AnalysisAgent
-from constants import BENCHMARK, EXAMPLES
+from api.graph import find, get_db_description
+from api.extensions import db
+from api.loaders.csv_loader import CSVLoader
+from api.loaders.json_loader import JSONLoader
+from api.loaders.odata_loader import ODataLoader
+from api.agents import RelevancyAgent, AnalysisAgent
+from api.constants import BENCHMARK, EXAMPLES
 import random
 
 # Load environment variables from .env file
