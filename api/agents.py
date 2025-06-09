@@ -28,7 +28,8 @@ class AnalysisAgent():
         if isinstance(analysis['ambiguities'], list):
             analysis['ambiguities'] = "- " + "- ".join(analysis['ambiguities'])
         if isinstance(analysis['missing_information'], list):
-            analysis['missing_information'] = "- " + "- ".join(analysis['missing_information'].replace('-',' '))
+            analysis['missing_information'] = [item.replace('-', ' ') for item in analysis['missing_information']]
+            analysis['missing_information'] = "- " + "- ".join(analysis['missing_information'])
         self.messages.append({"role": "assistant", "content": analysis['sql_query']})
         return analysis
     
