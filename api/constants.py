@@ -1,7 +1,45 @@
 EXAMPLES = {'crm_usecase': ["Which companies have generated the most revenue through closed deals, and how much revenue did they generate?",
                             "How many leads converted into deals over the last month",
                             "Which companies have open sales opportunities and active SLA agreements in place?",
-                            "Which high-value sales opportunities (value > $50,000) have upcoming meetings scheduled, and what companies are they associated with?"]}
+                            "Which high-value sales opportunities (value > $50,000) have upcoming meetings scheduled, and what companies are they associated with?"],
+            'ERP_system': [
+                # "What is the total value of all purchase orders created in the last quarter?",
+                    # "Which suppliers have the highest number of active purchase orders, and what is the total value of those orders?",
+                    "What is the total order value for customer Almo Office?",
+                    "Show the total amount of all orders placed on 11/24",
+                    "What's the profit for order SO2400002?",
+                    "List all confirmed orders form today with their final prices",
+                    "How many items are in order SO2400002?",
+
+                    # Product-Specific Questions
+                    "What is the price of Office Chair (part 0001100)?",
+                    "List all items with quantity greater than 3 units",
+                    "Show me all products with price above $20",
+                    "What's the total cost of all A4 Paper items ordered?",
+                    "Which items have the highest profit margin?",
+
+                    # Financial Analysis Questions
+                    "Calculate the total profit for this year",
+                    "Show me orders with overall discount greater than 5%",
+                    "What's the average profit percentage across all items?",
+                    "List orders with final price exceeding $700",
+                    "Show me items with profit margin above 50%",
+
+                    # Customer-Related Questions
+                    "How many orders has customer 100038 placed?",
+                    "What's the total purchase amount by Almo Office?",
+                    "List all orders with their customer names and contact details",
+                    "Show me customers with orders above $500",
+                    "What's the average order value per customer?",
+
+                    # Inventory/Stock Questions
+                    "Which items have zero quantity?",
+                    "Show me all items with their crate types",
+                    "List products with their packaging details",
+                    "What's the total quantity ordered for each product?",
+                    "Show me items with pending shipments"
+                    ]
+                                    }
 
 
 BENCHMARK = [

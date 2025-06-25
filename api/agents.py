@@ -137,7 +137,7 @@ class AnalysisAgent():
             - Apply the instructions explicitly.
             - If you CANNOT apply instructions in the SQL, explain why under "instructions_comments", "explanation" and reduce your confidence.
             - Penalize confidence appropriately if any part of the instructions is unmet.
-            - Do not provide SQL for too ambiguous queries.
+            - When there several tables that can be used to answer the question, you can combine them in a single SQL query.
 
             Provide your output ONLY in the following JSON structure:
 
