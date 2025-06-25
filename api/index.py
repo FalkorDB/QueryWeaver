@@ -25,7 +25,7 @@ MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||'
 main = Blueprint("main", __name__)
 
 SECRET_TOKEN = os.getenv('SECRET_TOKEN')
-SECRET_TOKEN_ERP = os.getenv('SECRET_TOKEN_GEN')
+SECRET_TOKEN_ERP = os.getenv('SECRET_TOKEN_ERP')
 def verify_token(token):
     """ Verify the token provided in the request """
     return token == SECRET_TOKEN or token == SECRET_TOKEN_ERP or token == "null"
