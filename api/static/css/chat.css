@@ -435,6 +435,11 @@ body {
   background-repeat: no-repeat;
 }
 
+#schema-upload:disabled+label {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 #custom-file-upload:focus {
   outline: none;
   border-color: var(--falkor-border-primary);

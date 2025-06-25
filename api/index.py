@@ -25,10 +25,10 @@ MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||'
 main = Blueprint("main", __name__)
 
 SECRET_TOKEN = os.getenv('SECRET_TOKEN')
-SECRET_TOKEN_GEN = os.getenv('SECRET_TOKEN_GEN')
+SECRET_TOKEN_ERP = os.getenv('SECRET_TOKEN_ERP')
 def verify_token(token):
     """ Verify the token provided in the request """
-    return token == SECRET_TOKEN or token == SECRET_TOKEN_GEN or token == "null"
+    return token == SECRET_TOKEN or token == SECRET_TOKEN_ERP or token == "null"
 
 def token_required(f):
     """ Decorator to protect routes with token authentication """
@@ -71,6 +71,12 @@ def graphs():
             return ['hospital']
         else:
             return []
+        
+    if os.getenv("USER_TOKEN") == SECRET_TOKEN_ERP:
+        if 'ERP_system' in graphs:
+            return ['ERP_system']
+        else:
+            return ['crm_usecase']
     elif os.getenv("USER_TOKEN") == "null":
         if 'crm_usecase' in graphs:
             return ['crm_usecase']
@@ -211,7 +217,8 @@ def query(graph_id: str):
             yield json.dumps({"type": "final_result", "data": answer_an['sql_query'], "conf": answer_an['confidence'],
                              "miss": answer_an['missing_information'],
                              "amb": answer_an['ambiguities'],
-                             "exp": answer_an['explanation']}) + MESSAGE_DELIMITER
+                             "exp": answer_an['explanation'],
+                             "is_valid": answer_an['is_sql_translatable']}) + MESSAGE_DELIMITER
 
     return Response(stream_with_context(generate()), content_type='application/json')
 

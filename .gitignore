@@ -5,3 +5,4 @@
 .*
 api/loaders/odata_parser.py
 erp_schema.json
+erp_schema_2.json
