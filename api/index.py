@@ -217,7 +217,8 @@ def query(graph_id: str):
             yield json.dumps({"type": "final_result", "data": answer_an['sql_query'], "conf": answer_an['confidence'],
                              "miss": answer_an['missing_information'],
                              "amb": answer_an['ambiguities'],
-                             "exp": answer_an['explanation']}) + MESSAGE_DELIMITER
+                             "exp": answer_an['explanation'],
+                             "is_valid": answer_an['is_sql_translatable']}) + MESSAGE_DELIMITER
 
     return Response(stream_with_context(generate()), content_type='application/json')
 

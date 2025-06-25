@@ -298,12 +298,12 @@ async function sendMessage() {
                         })
 
                         let message = step.message || JSON.stringify(step.data, null, 2);
-
-                        addMessage(message, false, false, true);
+                        if (step.is_valid){
+                            addMessage(message, false, false, true);
+                        } else {
+                            addMessage("Sorry, we couldn't generate a valid SQL query. Please try rephrasing your question or add more details. For help, check the explanation window.", false, true);
+                        }
                     } else if (step.type === 'followup_questions') {
-                        // step.questions.forEach(question => {
-                        //     addMessage(question, false);
-                        // });
                         expValue.textContent = "N/A";
                         confValue.textContent = "N/A";
                         missValue.textContent = "N/A";
