@@ -1,3 +1,9 @@
+[project]
+name = "text2sql"
+version = "0.1.0"
+description = "Convert text to SQL queries"
+requires-python = ">=3.12,<3.13"
+
 [tool.poetry]
 name = "text2sql"
 version = "0.3.0"
@@ -7,7 +13,7 @@ license = "MIT"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = ">=3.12,<3.13"
 litellm = {extras = ["bedrock"], version = "^1.67.0.post1"}
 FalkorDB = "^1.0.10"
 Flask = "^3.1.0"
