@@ -1,59 +1,58 @@
-""" 
+"""
 This module contains the configuration for the text2sql module.
 """
-import os
-from typing import Union
+
 import dataclasses
+from typing import Union
+
 from litellm import embedding
-import boto3
 
 
-class EmbeddingsModel():
-    
-    def __init__(
-        self,
-        model_name: str,
-        config: dict = None
-    ):
+class EmbeddingsModel:
+    """Embeddings model wrapper for text embedding operations."""
+
+    def __init__(self, model_name: str, config: dict = None):
         self.model_name = model_name
         self.config = config
-    
+
     def embed(self, text: Union[str, list]) -> list:
         """
         Get the embeddings of the text
-        
+
         Args:
             text (str|list): The text(s) to embed
-            
+
         Returns:
             list: The embeddings of the text
-        
+
         """
         embeddings = embedding(model=self.model_name, input=text)
         embeddings = [embedding["embedding"] for embedding in embeddings.data]
         return embeddings
-    
+
     def get_vector_size(self) -> int:
         """
         Get the size of the vector
-        
+
         Returns:
             int: The size of the vector
-        
+
         """
-        response = embedding(input = ["Hello World"], model=self.model_name)
-        size = len(response.data[0]['embedding'])
+        response = embedding(input=["Hello World"], model=self.model_name)
+        size = len(response.data[0]["embedding"])
         return size
 
 
 @dataclasses.dataclass
 class Config:
     """
-    Configuration class for the text2sql module.    
+    Configuration class for the text2sql module.
     """
+
     SCHEMA_PATH = "api/schema_schema.json"
     EMBEDDING_MODEL_NAME = "azure/text-embedding-ada-002"
     COMPLETION_MODEL = "azure/gpt-4.1"
+    VALIDATOR_MODEL = "azure/gpt-4.1"
     TEMPERATURE = 0
     # client = boto3.client('sts')
     # AWS_PROFILE = os.getenv("aws_profile_name")
@@ -66,11 +65,7 @@ class Config:
     # config["aws_region_name"] = AWS_REGION
     # config["aws_profile_name"] = AWS_PROFILE
 
-    EMBEDDING_MODEL = EmbeddingsModel(
-        model_name=EMBEDDING_MODEL_NAME,
-        config=config
-    )
-        
+    EMBEDDING_MODEL = EmbeddingsModel(model_name=EMBEDDING_MODEL_NAME, config=config)
 
     FIND_SYSTEM_PROMPT = """
     You are an expert in analyzing natural language queries into SQL tables descriptions.
