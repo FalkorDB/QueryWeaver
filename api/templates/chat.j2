@@ -11,7 +11,7 @@
 
 <body>
         {% if is_authenticated %}
-        <a href="/logout" id="logout-btn" style="position:fixed;top:20px;right:30px;z-index:2000;padding:0.5em 1.2em;background:#e74c3c;color:#fff;border-radius:5px;text-decoration:none;font-weight:bold;box-shadow:0 2px 8px rgba(0,0,0,0.08);">Logout</a>
+        <a href="/logout" id="logout-btn" class="logout-btn">Logout</a>
         {% endif %}
     <div id="container">
         <div id="menu-container">
@@ -59,11 +59,11 @@
                         <option value="">Loading...</option>
                     </select>
                     <div class="vertical-separator"></div>
-                    <input title="Upload Schema" disabled id="schema-upload" type="file" accept=".json" style="display: none;" tabindex="-1" />
-                    <label for="schema-upload" id="custom-file-upload" tabindex="-1">
+                    <input title="Upload Schema" id="schema-upload" type="file" accept=".json" style="display: none;" tabindex="-1" />
+                    <label for="schema-upload" id="custom-file-upload" tabindex="-1" style="cursor:pointer;">
                         Upload Schema
                     </label>
-                    
+                    <button id="open-pg-modal" class="pg-connect-btn">Connect Postgres</button>
                 </div>
             </div>
             <div class="chat-messages" id="chat-messages">
@@ -102,13 +102,23 @@
         </div>
     </div>
     <div id="gradient"></div>
-    <div id="google-login-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:1000; align-items:center; justify-content:center;">
-        <div style="background:#fff; padding:2em 3em; border-radius:10px; box-shadow:0 2px 16px rgba(0,0,0,0.2); text-align:center;">
+    <div id="google-login-modal" class="google-login-modal">
+        <div class="google-login-modal-content">
             <h2>Welcome to Text-to-SQL</h2>
             <p>Please login to continue</p>
-            <a href="/login/google" style="display:inline-block; margin-top:1em; padding:0.7em 2em; background:#4285F4; color:#fff; border-radius:4px; font-size:1.1em; text-decoration:none;">
-                <img src="https://developers.google.com/identity/images/g-logo.png" alt="Google logo" style="height:20px; vertical-align:middle; margin-right:8px;">Login with Google
+            <a href="/login/google" class="google-login-btn">
+                <img src="https://developers.google.com/identity/images/g-logo.png" alt="Google logo" class="google-login-logo">Login with Google
             </a>
+        </div>
+    </div>
+    <div id="pg-modal" class="pg-modal">
+        <div class="pg-modal-content">
+            <h2 class="pg-modal-title">Connect to Postgres</h2>
+            <input type="text" id="pg-modal-url" class="pg-modal-input" placeholder="postgres://user:pass@host:port/db" />
+            <div class="pg-modal-actions">
+                <button id="pg-modal-connect" class="pg-modal-btn pg-modal-connect">Connect</button>
+                <button id="pg-modal-cancel" class="pg-modal-btn pg-modal-cancel">Cancel</button>
+            </div>
         </div>
     </div>
     <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
@@ -122,6 +132,16 @@
                 document.getElementById('google-login-modal').style.display = 'none';
                 document.getElementById('container').style.filter = '';
             }
+            // Postgres modal logic
+            var pgModal = document.getElementById('pg-modal');
+            var openPgModalBtn = document.getElementById('open-pg-modal');
+            var cancelPgModalBtn = document.getElementById('pg-modal-cancel');
+            openPgModalBtn.addEventListener('click', function() {
+                pgModal.style.display = 'flex';
+            });
+            cancelPgModalBtn.addEventListener('click', function() {
+                pgModal.style.display = 'none';
+            });
         });
     </script>
 </body>
