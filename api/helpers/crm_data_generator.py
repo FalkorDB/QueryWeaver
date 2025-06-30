@@ -1,3 +1,10 @@
+"""
+CRM data generator module for creating complete database schemas with relationships.
+
+This module provides functionality to generate comprehensive CRM database schemas
+with proper primary/foreign key relationships and table structures.
+"""
+
 import json
 import os
 import time
@@ -22,7 +29,7 @@ key_registry = {
 def load_initial_schema(file_path: str) -> Dict[str, Any]:
     """Load the initial schema file with table names"""
     try:
-        with open(file_path, "r") as file:
+        with open(file_path, "r", encoding="utf-8") as file:
             schema = json.load(file)
             print(f"Loaded initial schema with {len(schema.get('tables', {}))} tables")
             return schema
@@ -46,7 +53,7 @@ def save_schema(schema: Dict[str, Any], output_file: str = OUTPUT_FILE) -> None:
         "table_relationships": {k: list(v) for k, v in key_registry["table_relationships"].items()},
     }
 
-    with open(output_file, "w") as file:
+    with open(output_file, "w", encoding="utf-8") as file:
         json.dump(schema, file, indent=2)
     print(f"Schema saved to {output_file}")
 
@@ -71,7 +78,7 @@ def update_key_registry(table_name: str, table_data: Dict[str, Any]) -> None:
         if table_name not in key_registry["table_relationships"]:
             key_registry["table_relationships"][table_name] = set()
 
-        for fk_name, fk_data in table_data["foreign_keys"].items():
+        for fk_data in table_data["foreign_keys"].values():
             column = fk_data.get("column")
             ref_table = fk_data.get("referenced_table")
             ref_column = fk_data.get("referenced_column")
@@ -133,18 +140,18 @@ def get_table_prompt(
     related_tables = find_related_tables(table_name, all_table_names)
     related_tables_str = ", ".join(related_tables) if related_tables else "None identified yet"
 
-    # Suggest primary key pattern
-    table_base = table_name.split("_")[0] if "_" in table_name else table_name
-    suggested_pk = f"{table_name}_id"  # Default pattern
+    # # Suggest primary key pattern
+    # table_base = table_name.split("_")[0] if "_" in table_name else table_name
+    # suggested_pk = f"{table_name}_id"  # Default pattern
 
-    # Check if related tables have primary keys to follow same pattern
-    for related in related_tables:
-        if related in key_registry["primary_keys"]:
-            related_pk = key_registry["primary_keys"][related]
-            if related_pk.endswith("_id") and related in related_pk:
-                # Follow the same pattern
-                suggested_pk = f"{table_name}_id"
-                break
+    # # Check if related tables have primary keys to follow same pattern
+    # for related in related_tables:
+    #     if related in key_registry["primary_keys"]:
+    #         related_pk = key_registry["primary_keys"][related]
+    #         if related_pk.endswith("_id") and related in related_pk:
+    #             # Follow the same pattern
+    #             suggested_pk = f"{table_name}_id"
+    #             break
 
     # Prepare foreign key suggestions
     fk_suggestions = []
@@ -183,7 +190,8 @@ def get_table_prompt(
     contacts_example = """
 {
   "contacts": {
-    "description": "Stores information about individual contacts within the CRM system, including personal details and relationship to companies.",
+    "description": ("Stores information about individual contacts within the CRM "
+                   "system, including personal details and relationship to companies."),
     "columns": {
       "contact_id": {
         "description": "Unique identifier for each contact",
@@ -283,7 +291,8 @@ def get_table_prompt(
     table_context = get_table_context(table_name, related_tables)
     keys = json.dumps(topology["tables"][table_name])
     prompt = f"""
-You are an expert database architect specializing in CRM systems. Create a detailed JSON schema for the '{table_name}' table in our CRM database.
+You are an expert database architect specializing in CRM systems. Create a detailed 
+JSON schema for the '{table_name}' table in our CRM database.
 
 CONTEXT ABOUT THIS TABLE:
 {table_context}
@@ -331,7 +340,8 @@ IMPORTANT GUIDELINES:
 - For many-to-many relationships, create appropriate junction tables
 - Ensure referential integrity with foreign key constraints
 
-Return ONLY valid JSON for the '{table_name}' table structure without any explanation or additional text:
+Return ONLY valid JSON for the '{table_name}' table structure without any
+explanation or additional text:
 {{
   "{table_name}": {{
     "description": "...",
@@ -393,10 +403,11 @@ def get_table_context(table_name: str, related_tables: List[str]) -> str:
     context = f"The '{table_name}' table appears to be "
 
     # Check if this is a junction/linking table
-    if "_" in table_name and not any(p in table_name for p in relationship_patterns.keys()):
+    if "_" in table_name and not any(p in table_name for p in relationship_patterns):
         parts = table_name.split("_")
         if len(parts) == 2 and all(len(p) > 2 for p in parts):
-            return f"This appears to be a junction table linking '{parts[0]}' and '{parts[1]}', likely with a many-to-many relationship."
+            return (f"This appears to be a junction table linking '{parts[0]}' and "
+                   f"'{parts[1]}', likely with a many-to-many relationship.")
 
     # Check for main entities
     for entity, description in entities.items():
@@ -449,8 +460,8 @@ def call_llm_api(prompt: str, retries: int = MAX_RETRIES) -> Optional[str]:
             )
             if result:
                 return result
-            else:
-                print(f"Empty response from API (attempt {attempt}/{retries})")
+
+            print(f"Empty response from API (attempt {attempt}/{retries})")
 
         except requests.exceptions.RequestException as e:
             print(f"API request error (attempt {attempt}/{retries}): {e}")
@@ -479,7 +490,7 @@ def parse_llm_response(response: str, table_name: str) -> Optional[Dict[str, Any
         # Cleanup any trailing/leading text
         start_idx = response.find("{")
         end_idx = response.rfind("}") + 1
-        if start_idx >= 0 and end_idx > start_idx:
+        if 0 <= start_idx < end_idx:
             response = response[start_idx:end_idx]
 
         parsed = json.loads(response)
@@ -498,15 +509,15 @@ def parse_llm_response(response: str, table_name: str) -> Optional[Dict[str, Any
                         print(f"Warning: Column {col_name} is missing required attributes")
 
                 return {table_name: table_data}
-            else:
-                missing = [key for key in required_keys if key not in table_data]
-                print(f"Warning: Table schema missing required sections: {missing}")
-                return {table_name: table_data}  # Return anyway, but with warning
-        else:
-            # Try to get the first key if table_name is not found
-            first_key = next(iter(parsed))
-            print(f"Warning: Table name mismatch. Expected {table_name}, got {first_key}")
-            return {table_name: parsed[first_key]}
+
+            missing = [key for key in required_keys if key not in table_data]
+            print(f"Warning: Table schema missing required sections: {missing}")
+            return {table_name: table_data}  # Return anyway, but with warning
+
+        # Try to get the first key if table_name is not found
+        first_key = next(iter(parsed))
+        print(f"Warning: Table name mismatch. Expected {table_name}, got {first_key}")
+        return {table_name: parsed[first_key]}
     except Exception as e:
         print(f"Error parsing LLM response for {table_name}: {e}")
         print(f"Raw response: {response[:500]}...")  # Show first 500 chars
@@ -556,6 +567,7 @@ def process_table(
 
 
 def main():
+    """Main function to generate complete CRM schema with relationships."""
     # Load the initial schema with table names
     initial_schema_path = "examples/crm_tables.json"  # Replace with your actual file path
     initial_schema = load_initial_schema(initial_schema_path)
@@ -572,7 +584,7 @@ def main():
     # If we have existing work, load it
     if os.path.exists(OUTPUT_FILE):
         try:
-            with open(OUTPUT_FILE, "r") as file:
+            with open(OUTPUT_FILE, "r", encoding="utf-8") as file:
                 schema = json.load(file)
             print(f"Loaded existing schema from {OUTPUT_FILE}")
         except Exception as e:
@@ -595,7 +607,8 @@ def main():
     # Process tables
     for i, table_name in enumerate(tables):
         print(
-            f"\nProcessing table {i+1}/{len(tables)}: {table_name} (Priority: {table_priority(table_name)})"
+            f"\nProcessing table {i+1}/{len(tables)}: {table_name} "
+            f"(Priority: {table_priority(table_name)})"
         )
         schema = process_table(table_name, schema, all_table_names, topology)
 
@@ -616,13 +629,18 @@ def main():
 
 
 def generate_keys(tables) -> Dict[str, Any]:
+    """Generate primary and foreign keys for CRM tables."""
     path = "examples/crm_topology.json"
+    last_key = 0  # Initialize default value
+    schema = {"tables": {}}  # Initialize default schema
+
     # If we have existing work, load it
     if os.path.exists(path):
         try:
-            with open(path, "r") as file:
+            with open(path, "r", encoding="utf-8") as file:
                 schema = json.load(file)
-            last_key = tables.index(list(schema["tables"].keys())[-1])
+            if schema.get("tables"):
+                last_key = tables.index(list(schema["tables"].keys())[-1])
             print(f"Loaded existing schema from {path}")
         except Exception as e:
             print(f"Error loading existing schema: {e}")
@@ -652,7 +670,7 @@ def generate_keys(tables) -> Dict[str, Any]:
         new_table = json.loads(response)
         schema["tables"].update(new_table)
 
-    with open(path, "w") as file:
+    with open(path, "w", encoding="utf-8") as file:
         json.dump(schema, file, indent=2)
     print(f"Schema saved to {path}")
     print(f"Final schema saved to {path}")
