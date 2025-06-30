@@ -615,8 +615,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert('Database connected successfully!');
-                    pgModal.style.display = 'none';
+                    pgModal.style.display = 'none'; // Close modal on success, no alert
                 } else {
                     alert('Failed to connect: ' + (data.error || 'Unknown error'));
                 }
