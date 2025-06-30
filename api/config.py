@@ -3,10 +3,8 @@ This module contains the configuration for the text2sql module.
 """
 
 import dataclasses
-import os
 from typing import Union
 
-import boto3
 from litellm import embedding
 
 
