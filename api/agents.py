@@ -1,3 +1,5 @@
+"""Module containing agent classes for handling analysis and SQL generation tasks."""
+
 import json
 from typing import Any, Dict, List
 
@@ -7,7 +9,10 @@ from api.config import Config
 
 
 class AnalysisAgent:
+    """Agent for analyzing user queries and generating database analysis."""
+
     def __init__(self, queries_history: list, result_history: list):
+        """Initialize the analysis agent with query and result history."""
         if result_history is None:
             self.messages = []
         else:
@@ -23,6 +28,7 @@ class AnalysisAgent:
         db_description: str,
         instructions: str = None,
     ) -> dict:
+        """Get analysis of user query against database schema."""
         formatted_schema = self._format_schema(combined_tables)
         prompt = self._build_prompt(
             user_query, formatted_schema, db_description, instructions
@@ -86,7 +92,8 @@ class AnalysisAgent:
                     if col_key == "PRI"
                     else ", FOREIGN KEY" if col_key == "FK" else ""
                 )
-                column_str = f"  - {col_name} ({col_type},{key_info},{col_key},{nullable}): {col_description}"
+                column_str = (f"  - {col_name} ({col_type},{key_info},{col_key},"
+                             f"{nullable}): {col_description}")
                 table_str += column_str + "\n"
 
             # Format foreign keys
@@ -161,19 +168,27 @@ class AnalysisAgent:
 
             - Analyze the query's translatability into SQL according to the instructions.
             - Apply the instructions explicitly.
-            - If you CANNOT apply instructions in the SQL, explain why under "instructions_comments", "explanation" and reduce your confidence.
+            - If you CANNOT apply instructions in the SQL, explain why under 
+              "instructions_comments", "explanation" and reduce your confidence.
             - Penalize confidence appropriately if any part of the instructions is unmet.
-            - When there several tables that can be used to answer the question, you can combine them in a single SQL query.
+            - When there several tables that can be used to answer the question, 
+              you can combine them in a single SQL query.
 
             Provide your output ONLY in the following JSON structure:
 
             ```json
             {{
                 "is_sql_translatable": true or false,
-                "instructions_comments": "Comments about any part of the instructions, especially if they are unclear, impossible, or partially met",
-                "explanation": "Detailed explanation why the query can or cannot be translated, mentioning instructions explicitly and referencing conversation history if relevant",
-                "sql_query": "High-level SQL query (you must to applying instructions and use previous answers if the question is a continuation)",
-                "tables_used": ["list", "of", "tables", "used", "in", "the", "query", "with", "the", "relationships", "between", "them"],
+                "instructions_comments": ("Comments about any part of the instructions, "
+                                         "especially if they are unclear, impossible, "
+                                         "or partially met"),
+                "explanation": ("Detailed explanation why the query can or cannot be "
+                               "translated, mentioning instructions explicitly and "
+                               "referencing conversation history if relevant"),
+                "sql_query": ("High-level SQL query (you must to applying instructions "
+                             "and use previous answers if the question is a continuation)"),
+                "tables_used": ["list", "of", "tables", "used", "in", "the", "query",
+                               "with", "the", "relationships", "between", "them"],
                 "missing_information": ["list", "of", "missing", "information"],
                 "ambiguities": ["list", "of", "ambiguities"],
                 "confidence": integer between 0 and 100
@@ -189,14 +204,18 @@ class AnalysisAgent:
             6. Consider if complex calculations are feasible in SQL.
             7. Identify multiple interpretations if they exist.
             8. Strictly apply instructions; explain and penalize if not possible.
-            9. If the question is a follow-up, resolve references using the conversation history and previous answers.
+            9. If the question is a follow-up, resolve references using the
+               conversation history and previous answers.
 
             Again: OUTPUT ONLY VALID JSON. No explanations outside the JSON block. """
         return prompt
 
 
 class RelevancyAgent:
+    """Agent for determining relevancy of queries to database schema."""
+
     def __init__(self, queries_history: list, result_history: list):
+        """Initialize the relevancy agent with query and result history."""
         if result_history is None:
             self.messages = []
         else:
@@ -206,6 +225,7 @@ class RelevancyAgent:
                 self.messages.append({"role": "assistant", "content": result})
 
     def get_answer(self, user_question: str, database_desc: dict) -> dict:
+        """Get relevancy assessment for user question against database description."""
         self.messages.append(
             {
                 "role": "user",
@@ -275,12 +295,15 @@ Ensure your response is concise, polite, and helpful.
 
 
 class FollowUpAgent:
+    """Agent for handling follow-up questions and conversational context."""
+
     def __init__(self):
-        pass
+        """Initialize the follow-up agent."""
 
     def get_answer(
         self, user_question: str, conversation_hist: list, database_schema: dict
     ) -> dict:
+        """Get answer for follow-up questions using conversation history."""
         completion_result = completion(
             model=Config.COMPLETION_MODEL,
             messages=[
@@ -333,14 +356,19 @@ Please follow these steps:
 
 }}
 
-4. Ensure your response is concise, polite, and helpful. When asking clarifying questions, be specific and guide the user toward providing the missing details so you can effectively address their query."""
+4. Ensure your response is concise, polite, and helpful. When asking clarifying
+   questions, be specific and guide the user toward providing the missing details
+   so you can effectively address their query."""
 
 
 class TaxonomyAgent:
+    """Agent for taxonomy classification of questions and SQL queries."""
+
     def __init__(self):
-        pass
+        """Initialize the taxonomy agent."""
 
     def get_answer(self, question: str, sql: str) -> str:
+        """Get taxonomy classification for a question and SQL pair."""
         messages = [
             {
                 "content": TAXONOMY_PROMPT.format(QUESTION=question, SQL=sql),

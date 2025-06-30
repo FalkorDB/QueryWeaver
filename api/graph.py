@@ -61,7 +61,8 @@ def find(
     previous_queries = queries_history[:-1]
 
     logging.info(
-        f"Calling to an LLM to find relevant tables and columns for the query: {user_query}"
+        "Calling to an LLM to find relevant tables and columns for the query: %s", 
+        user_query
     )
     # Call the completion model to get the relevant Cypher queries to retrieve
     # from the Graph that represent the Database schema.
@@ -92,16 +93,16 @@ def find(
     # Parse JSON string and convert to Pydantic model
     json_data = json.loads(json_str)
     descriptions = Descriptions(**json_data)
-    logging.info(f"Find tables based on: {descriptions.tables_descriptions}")
+    logging.info("Find tables based on: %s", descriptions.tables_descriptions)
     tables_des = _find_tables(graph, descriptions.tables_descriptions)
-    logging.info(f"Find tables based on columns: {descriptions.columns_descriptions}")
+    logging.info("Find tables based on columns: %s", descriptions.columns_descriptions)
     tables_by_columns_des = _find_tables_by_columns(graph, descriptions.columns_descriptions)
 
     # table names for sphere and route extraction
     base_tables_names = [table[0] for table in tables_des]
     logging.info("Extracting tables by sphere")
     tables_by_sphere = _find_tables_sphere(graph, base_tables_names)
-    logging.info(f"Extracting tables by connecting routes {base_tables_names}")
+    logging.info("Extracting tables by connecting routes %s", base_tables_names)
     tables_by_route, _ = find_connecting_tables(graph, base_tables_names)
     combined_tables = _get_unique_tables(
         tables_des + tables_by_columns_des + tables_by_route + tables_by_sphere
@@ -225,8 +226,8 @@ def _get_unique_tables(tables_list):
                 table_info[3] = [dict(od) for od in table_info[3]]
                 table_info[2] = "Foreign keys: " + table_info[2]
                 unique_tables[table_name] = table_info
-        except:
-            print(f"Error: {table_info}")
+        except Exception as e:
+            print(f"Error: {table_info}, Exception: {e}")
 
     # Return the values (the unique table info lists)
     return list(unique_tables.values())

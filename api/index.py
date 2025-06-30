@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from flask import Blueprint, Flask, Response, jsonify, render_template, request, stream_with_context
 
 from api.agents import AnalysisAgent, RelevancyAgent
-from api.constants import BENCHMARK, EXAMPLES
+from api.constants import EXAMPLES
 from api.extensions import db
 from api.graph import find, get_db_description
 from api.loaders.csv_loader import CSVLoader
@@ -34,7 +34,7 @@ SECRET_TOKEN_ERP = os.getenv("SECRET_TOKEN_ERP")
 
 def verify_token(token):
     """Verify the token provided in the request"""
-    return token == SECRET_TOKEN or token == SECRET_TOKEN_ERP or token == "null"
+    return token in (SECRET_TOKEN, SECRET_TOKEN_ERP, 'null')
 
 
 def token_required(f):
@@ -77,26 +77,24 @@ def graphs():
     """
     This route is used to list all the graphs that are available in the database.
     """
-    graphs = db.list_graphs()
+    user_graphs = db.list_graphs()
     if os.getenv("USER_TOKEN") == SECRET_TOKEN:
-        if "hospital" in graphs:
+        if "hospital" in user_graphs:
             return ["hospital"]
-        else:
-            return []
+        return []
 
     if os.getenv("USER_TOKEN") == SECRET_TOKEN_ERP:
-        if "ERP_system" in graphs:
+        if "ERP_system" in user_graphs:
             return ["ERP_system"]
-        else:
+        return ["crm_usecase"]
+
+    if os.getenv("USER_TOKEN") == "null":
+        if "crm_usecase" in user_graphs:
             return ["crm_usecase"]
-    elif os.getenv("USER_TOKEN") == "null":
-        if "crm_usecase" in graphs:
-            return ["crm_usecase"]
-        else:
-            return []
-    else:
-        graphs.remove("hospital")
-    return graphs
+        return []
+
+    user_graphs.remove("hospital")
+    return user_graphs
 
 
 @app.route("/graphs", methods=["POST"])
@@ -189,7 +187,7 @@ def query(graph_id: str):
     if not queries_history:
         return jsonify({"error": "Invalid or missing JSON data"}), 400
 
-    logging.info(f"User Query: {queries_history[-1]}")
+    logging.info("User Query: %s", queries_history[-1])
 
     # Create a generator function for streaming
     def generate():
@@ -200,31 +198,32 @@ def query(graph_id: str):
         yield json.dumps(step) + MESSAGE_DELIMITER
         db_description = get_db_description(graph_id)  # Ensure the database description is loaded
 
-        logging.info(f"Calling to relvancy agent with query: {queries_history[-1]}")
+        logging.info("Calling to relvancy agent with query: %s", queries_history[-1])
         answer_rel = agent_rel.get_answer(queries_history[-1], db_description)
         if answer_rel["status"] != "On-topic":
             step = {
                 "type": "followup_questions",
                 "message": "Off topic question: " + answer_rel["reason"],
             }
-            logging.info(f"SQL Fail reason: {answer_rel["reason"]}")
+            logging.info("SQL Fail reason: %s", answer_rel["reason"])
             yield json.dumps(step) + MESSAGE_DELIMITER
         else:
             # Use a thread pool to enforce timeout
             with ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(find, graph_id, queries_history, db_description)
                 try:
-                    success, result, _ = future.result(timeout=120)
+                    _, result, _ = future.result(timeout=120)
                 except FuturesTimeoutError:
                     yield json.dumps(
                         {
                             "type": "error",
-                            "message": "Timeout error while finding tables relevant to your request.",
+                            "message": ("Timeout error while finding tables relevant to "
+                                       "your request."),
                         }
                     ) + MESSAGE_DELIMITER
                     return
                 except Exception as e:
-                    logging.info(f"Error in find function: {e}")
+                    logging.info("Error in find function: %s", e)
                     yield json.dumps(
                         {"type": "error", "message": "Error in find function"}
                     ) + MESSAGE_DELIMITER
@@ -232,12 +231,12 @@ def query(graph_id: str):
 
             step = {"type": "reasoning_step", "message": "Step 2: Generating SQL query"}
             yield json.dumps(step) + MESSAGE_DELIMITER
-            logging.info(f"Calling to analysis agent with query: {queries_history[-1]}")
+            logging.info("Calling to analysis agent with query: %s", queries_history[-1])
             answer_an = agent_an.get_analysis(
                 queries_history[-1], result, db_description, instructions
             )
 
-            logging.info(f"SQL Result: {answer_an['sql_query']}")
+            logging.info("SQL Result: %s", answer_an['sql_query'])
             yield json.dumps(
                 {
                     "type": "final_result",
@@ -274,12 +273,12 @@ def suggestions():
             # Return up to 3 examples, or all if less than 3
             suggestion_questions = random.sample(graph_examples, min(3, len(graph_examples)))
             return jsonify(suggestion_questions)
-        else:
-            # If graph doesn't exist in EXAMPLES, return empty list
-            return jsonify([])
+
+        # If graph doesn't exist in EXAMPLES, return empty list
+        return jsonify([])
 
     except Exception as e:
-        logging.error(f"Error fetching suggestions: {e}")
+        logging.error("Error fetching suggestions: %s", e)
         return jsonify([]), 500
 
 
