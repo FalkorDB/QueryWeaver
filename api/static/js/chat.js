@@ -552,3 +552,46 @@ fileUpload.addEventListener('change', function (e) {
         addMessage('Sorry, there was an error uploading your file: ' + error.message, false);
     });
 });
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Authentication modal logic
+    var isAuthenticated = window.isAuthenticated !== undefined ? window.isAuthenticated : false;
+    var googleLoginModal = document.getElementById('google-login-modal');
+    var container = document.getElementById('container');
+    if (googleLoginModal && container) {
+        if (!isAuthenticated) {
+            googleLoginModal.style.display = 'flex';
+            container.style.filter = 'blur(2px)';
+        } else {
+            googleLoginModal.style.display = 'none';
+            container.style.filter = '';
+        }
+    }
+    // Postgres modal logic
+    var pgModal = document.getElementById('pg-modal');
+    var openPgModalBtn = document.getElementById('open-pg-modal');
+    var cancelPgModalBtn = document.getElementById('pg-modal-cancel');
+    if (openPgModalBtn && pgModal) {
+        openPgModalBtn.addEventListener('click', function() {
+            pgModal.style.display = 'flex';
+        });
+    }
+    if (cancelPgModalBtn && pgModal) {
+        cancelPgModalBtn.addEventListener('click', function() {
+            pgModal.style.display = 'none';
+        });
+    }
+    // Allow closing Postgres modal with Escape key
+    document.addEventListener('keydown', function(e) {
+        if (pgModal && pgModal.style.display === 'flex' && e.key === 'Escape') {
+            pgModal.style.display = 'none';
+        }
+    });
+    // Optional: Close Google login modal with Escape (if ever needed)
+    document.addEventListener('keydown', function(e) {
+        if (googleLoginModal && googleLoginModal.style.display === 'flex' && e.key === 'Escape') {
+            googleLoginModal.style.display = 'none';
+            container.style.filter = '';
+        }
+    });
+});

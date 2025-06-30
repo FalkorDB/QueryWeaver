@@ -623,11 +623,11 @@ body {
 }
 .pg-modal-content {
   background: #fff;
-  padding: 2em 2.5em;
+  padding: 2em 5em;
   border-radius: 10px;
   box-shadow: 0 2px 16px rgba(0,0,0,0.2);
   text-align: center;
-  min-width: 340px;
+  min-width: 680px;
 }
 .pg-modal-title {
   margin-bottom: 1em;
