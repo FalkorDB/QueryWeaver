@@ -24,9 +24,7 @@ class AnalysisAgent:
         instructions: str = None,
     ) -> dict:
         formatted_schema = self._format_schema(combined_tables)
-        prompt = self._build_prompt(
-            user_query, formatted_schema, db_description, instructions
-        )
+        prompt = self._build_prompt(user_query, formatted_schema, db_description, instructions)
         self.messages.append({"role": "user", "content": prompt})
         completion_result = completion(
             model=Config.COMPLETION_MODEL,
@@ -38,17 +36,13 @@ class AnalysisAgent:
         response = completion_result.choices[0].message.content
         analysis = _parse_response(response)
         if isinstance(analysis["ambiguities"], list):
-            analysis["ambiguities"] = [
-                item.replace("-", " ") for item in analysis["ambiguities"]
-            ]
+            analysis["ambiguities"] = [item.replace("-", " ") for item in analysis["ambiguities"]]
             analysis["ambiguities"] = "- " + "- ".join(analysis["ambiguities"])
         if isinstance(analysis["missing_information"], list):
             analysis["missing_information"] = [
                 item.replace("-", " ") for item in analysis["missing_information"]
             ]
-            analysis["missing_information"] = "- " + "- ".join(
-                analysis["missing_information"]
-            )
+            analysis["missing_information"] = "- " + "- ".join(analysis["missing_information"])
         self.messages.append({"role": "assistant", "content": analysis["sql_query"]})
         return analysis
 
@@ -96,9 +90,7 @@ class AnalysisAgent:
                     column = fk_info.get("column", "")
                     ref_table = fk_info.get("referenced_table", "")
                     ref_column = fk_info.get("referenced_column", "")
-                    table_str += (
-                        f"  - {fk_name}: {column} references {ref_table}.{ref_column}\n"
-                    )
+                    table_str += f"  - {fk_name}: {column} references {ref_table}.{ref_column}\n"
 
             formatted_schema.append(table_str)
 

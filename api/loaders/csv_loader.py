@@ -68,9 +68,7 @@ deep nesting to minimize complexity and optimize performance."""
             rel_table = defaultdict(lambda: {"primary_key_table": "", "fk_tables": []})
             relationships = {}
             # First pass: Organize data into tables
-            for idx, row in tqdm.tqdm(
-                df.iterrows(), total=len(df), desc="Organizing data"
-            ):
+            for idx, row in tqdm.tqdm(df.iterrows(), total=len(df), desc="Organizing data"):
                 schema = row["Schema"]
                 domain = row["Domain"]
 
@@ -87,13 +85,9 @@ deep nesting to minimize complexity and optimize performance."""
                 # Add column information
                 field = row["Field"]
                 field_type = row["Type"] if not pd.isna(row["Type"]) else "STRING"
-                field_desc = (
-                    row["Description"] if not pd.isna(row["Description"]) else field
-                )
+                field_desc = row["Description"] if not pd.isna(row["Description"]) else field
 
-                nullable = (
-                    True  # Default to nullable since we don't have explicit null info
-                )
+                nullable = True  # Default to nullable since we don't have explicit null info
                 if not pd.isna(field):
                     tables[table_name]["col_descriptions"].append(field_desc)
                     tables[table_name]["columns"][field] = {
@@ -121,9 +115,7 @@ deep nesting to minimize complexity and optimize performance."""
                                 "source_column": source_field,
                                 "target_column": (
                                     df.to_dict("records")[idx + 1]["Array Field"]
-                                    if not pd.isna(
-                                        df.to_dict("records")[idx + 1]["Array Field"]
-                                    )
+                                    if not pd.isna(df.to_dict("records")[idx + 1]["Array Field"])
                                     else ""
                                 ),
                                 "note": "",
@@ -155,9 +147,7 @@ deep nesting to minimize complexity and optimize performance."""
                         "extra": "",
                     }
                 if field.endswith("_id"):
-                    if len(tables[table_name]["columns"]) == 1 and field.endswith(
-                        "_id"
-                    ):
+                    if len(tables[table_name]["columns"]) == 1 and field.endswith("_id"):
                         suspected_primary_key = field[:-3]
                         if suspected_primary_key in domain:
                             rel_table[field]["primary_key_table"] = table_name

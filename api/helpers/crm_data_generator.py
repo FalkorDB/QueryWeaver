@@ -45,9 +45,7 @@ def save_schema(schema: Dict[str, Any], output_file: str = OUTPUT_FILE) -> None:
     schema["metadata"]["key_registry"] = {
         "primary_keys": key_registry["primary_keys"],
         "foreign_keys": key_registry["foreign_keys"],
-        "table_relationships": {
-            k: list(v) for k, v in key_registry["table_relationships"].items()
-        },
+        "table_relationships": {k: list(v) for k, v in key_registry["table_relationships"].items()},
     }
 
     with open(output_file, "w") as file:
@@ -135,9 +133,7 @@ def get_table_prompt(
 
     # Find related tables
     related_tables = find_related_tables(table_name, all_table_names)
-    related_tables_str = (
-        ", ".join(related_tables) if related_tables else "None identified yet"
-    )
+    related_tables_str = ", ".join(related_tables) if related_tables else "None identified yet"
 
     # Suggest primary key pattern
     table_base = table_name.split("_")[0] if "_" in table_name else table_name
@@ -168,7 +164,9 @@ def get_table_prompt(
     if fk_suggestions:
         fk_suggestions_str = "Consider these foreign key relationships:\n"
         for i, fk in enumerate(fk_suggestions[:5]):  # Limit to 5 suggestions
-            fk_suggestions_str += f"{i+1}. {fk['column']} -> {fk['referenced_table']}.{fk['referenced_column']}\n"
+            fk_suggestions_str += (
+                f"{i+1}. {fk['column']} -> {fk['referenced_table']}.{fk['referenced_column']}\n"
+            )
 
     # Include examples of related tables that have been processed
     related_examples = ""
@@ -397,9 +395,7 @@ def get_table_context(table_name: str, related_tables: List[str]) -> str:
     context = f"The '{table_name}' table appears to be "
 
     # Check if this is a junction/linking table
-    if "_" in table_name and not any(
-        p in table_name for p in relationship_patterns.keys()
-    ):
+    if "_" in table_name and not any(p in table_name for p in relationship_patterns.keys()):
         parts = table_name.split("_")
         if len(parts) == 2 and all(len(p) > 2 for p in parts):
             return f"This appears to be a junction table linking '{parts[0]}' and '{parts[1]}', likely with a many-to-many relationship."
@@ -420,14 +416,14 @@ def get_table_context(table_name: str, related_tables: List[str]) -> str:
 
     # Add related tables info
     if related_tables:
-        context += f"It appears to be related to the following tables: {', '.join(related_tables)}. "
+        context += (
+            f"It appears to be related to the following tables: {', '.join(related_tables)}. "
+        )
 
         # Guess if it's a child table
         for related in related_tables:
             if related in table_name and len(related) < len(table_name):
-                context += (
-                    f"It may be a child or detail table for the {related} table. "
-                )
+                context += f"It may be a child or detail table for the {related} table. "
                 break
 
     return context
@@ -501,9 +497,7 @@ def parse_llm_response(response: str, table_name: str) -> Optional[Dict[str, Any
                 for col_name, col_data in table_data["columns"].items():
                     required_col_attrs = ["description", "type", "null"]
                     if not all(attr in col_data for attr in required_col_attrs):
-                        print(
-                            f"Warning: Column {col_name} is missing required attributes"
-                        )
+                        print(f"Warning: Column {col_name} is missing required attributes")
 
                 return {table_name: table_data}
             else:
@@ -513,9 +507,7 @@ def parse_llm_response(response: str, table_name: str) -> Optional[Dict[str, Any
         else:
             # Try to get the first key if table_name is not found
             first_key = next(iter(parsed))
-            print(
-                f"Warning: Table name mismatch. Expected {table_name}, got {first_key}"
-            )
+            print(f"Warning: Table name mismatch. Expected {table_name}, got {first_key}")
             return {table_name: parsed[first_key]}
     except Exception as e:
         print(f"Error parsing LLM response for {table_name}: {e}")
@@ -567,9 +559,7 @@ def process_table(
 
 def main():
     # Load the initial schema with table names
-    initial_schema_path = (
-        "examples/crm_tables.json"  # Replace with your actual file path
-    )
+    initial_schema_path = "examples/crm_tables.json"  # Replace with your actual file path
     initial_schema = load_initial_schema(initial_schema_path)
 
     # Get the list of tables to process
@@ -685,9 +675,7 @@ def validate_schema(schema: Dict[str, Any]) -> None:
         1 for t in schema["tables"].values() if isinstance(t, dict) and "indexes" in t
     )
     tables_with_foreign_keys = sum(
-        1
-        for t in schema["tables"].values()
-        if isinstance(t, dict) and "foreign_keys" in t
+        1 for t in schema["tables"].values() if isinstance(t, dict) and "foreign_keys" in t
     )
 
     print(f"Total tables: {table_count}")
@@ -734,18 +722,11 @@ def validate_schema(schema: Dict[str, Any]) -> None:
             ref_column = fk_data.get("referenced_column")
 
             if ref_table and ref_table not in schema["tables"]:
-                invalid_fks.append(
-                    f"{table_name}.{fk_name} -> {ref_table} (table not found)"
-                )
+                invalid_fks.append(f"{table_name}.{fk_name} -> {ref_table} (table not found)")
             elif ref_table and ref_column:
                 ref_table_data = schema["tables"].get(ref_table, {})
-                if (
-                    not isinstance(ref_table_data, dict)
-                    or "columns" not in ref_table_data
-                ):
-                    invalid_fks.append(
-                        f"{table_name}.{fk_name} -> {ref_table} (no columns)"
-                    )
+                if not isinstance(ref_table_data, dict) or "columns" not in ref_table_data:
+                    invalid_fks.append(f"{table_name}.{fk_name} -> {ref_table} (no columns)")
                 elif ref_column not in ref_table_data.get("columns", {}):
                     invalid_fks.append(
                         f"{table_name}.{fk_name} -> {ref_table}.{ref_column} (column not found)"

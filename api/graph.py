@@ -11,9 +11,7 @@ from pydantic import BaseModel
 from api.config import Config
 from api.extensions import db
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 class TableDescription(BaseModel):
@@ -73,9 +71,7 @@ def find(
         response_format=Descriptions,
         messages=[
             {
-                "content": Config.FIND_SYSTEM_PROMPT.format(
-                    db_description=db_description
-                ),
+                "content": Config.FIND_SYSTEM_PROMPT.format(db_description=db_description),
                 "role": "system",
             },
             {
@@ -99,9 +95,7 @@ def find(
     logging.info(f"Find tables based on: {descriptions.tables_descriptions}")
     tables_des = _find_tables(graph, descriptions.tables_descriptions)
     logging.info(f"Find tables based on columns: {descriptions.columns_descriptions}")
-    tables_by_columns_des = _find_tables_by_columns(
-        graph, descriptions.columns_descriptions
-    )
+    tables_by_columns_des = _find_tables_by_columns(graph, descriptions.columns_descriptions)
 
     # table names for sphere and route extraction
     base_tables_names = [table[0] for table in tables_des]
@@ -238,9 +232,7 @@ def _get_unique_tables(tables_list):
     return list(unique_tables.values())
 
 
-def find_connecting_tables(
-    graph, table_names: List[str]
-) -> Tuple[List[dict], List[str]]:
+def find_connecting_tables(graph, table_names: List[str]) -> Tuple[List[dict], List[str]]:
     """
     Find all tables that form connections between any pair of tables in the input list.
     Handles both Table nodes and Column nodes with primary keys.

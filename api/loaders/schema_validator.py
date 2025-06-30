@@ -46,9 +46,7 @@ def validate_table_schema(schema):
         # Optional: validate foreign keys
         if "foreign_keys" in table_data:
             if not isinstance(table_data["foreign_keys"], dict):
-                errors.append(
-                    f"Foreign keys for table '{table_name}' must be a dictionary"
-                )
+                errors.append(f"Foreign keys for table '{table_name}' must be a dictionary")
             else:
                 for fk_name, fk_data in table_data["foreign_keys"].items():
                     for key in ("column", "referenced_table", "referenced_column"):

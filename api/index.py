@@ -9,8 +9,7 @@ from concurrent.futures import TimeoutError as FuturesTimeoutError
 from functools import wraps
 
 from dotenv import load_dotenv
-from flask import (Blueprint, Flask, Response, jsonify, render_template,
-                   request, stream_with_context)
+from flask import Blueprint, Flask, Response, jsonify, render_template, request, stream_with_context
 
 from api.agents import AnalysisAgent, RelevancyAgent
 from api.constants import BENCHMARK, EXAMPLES
@@ -22,9 +21,7 @@ from api.loaders.odata_loader import ODataLoader
 
 # Load environment variables from .env file
 load_dotenv()
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # Use the same delimiter as in the JavaScript
 MESSAGE_DELIMITER = "|||FALKORDB_MESSAGE_BOUNDARY|||"
@@ -126,9 +123,7 @@ def load():
         success, result = JSONLoader.load(graph_id, data)
 
     # ✅ Handle XML Payload
-    elif content_type.startswith("application/xml") or content_type.startswith(
-        "text/xml"
-    ):
+    elif content_type.startswith("application/xml") or content_type.startswith("text/xml"):
         xml_data = request.data
         graph_id = ""
         success, result = ODataLoader.load(graph_id, xml_data)
@@ -203,9 +198,7 @@ def query(graph_id: str):
 
         step = {"type": "reasoning_step", "message": "Step 1: Analyzing the user query"}
         yield json.dumps(step) + MESSAGE_DELIMITER
-        db_description = get_db_description(
-            graph_id
-        )  # Ensure the database description is loaded
+        db_description = get_db_description(graph_id)  # Ensure the database description is loaded
 
         logging.info(f"Calling to relvancy agent with query: {queries_history[-1]}")
         answer_rel = agent_rel.get_answer(queries_history[-1], db_description)
@@ -219,9 +212,7 @@ def query(graph_id: str):
         else:
             # Use a thread pool to enforce timeout
             with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(
-                    find, graph_id, queries_history, db_description
-                )
+                future = executor.submit(find, graph_id, queries_history, db_description)
                 try:
                     success, result, _ = future.result(timeout=120)
                 except FuturesTimeoutError:
@@ -281,9 +272,7 @@ def suggestions():
         if graph_id in EXAMPLES:
             graph_examples = EXAMPLES[graph_id]
             # Return up to 3 examples, or all if less than 3
-            suggestion_questions = random.sample(
-                graph_examples, min(3, len(graph_examples))
-            )
+            suggestion_questions = random.sample(graph_examples, min(3, len(graph_examples)))
             return jsonify(suggestion_questions)
         else:
             # If graph doesn't exist in EXAMPLES, return empty list

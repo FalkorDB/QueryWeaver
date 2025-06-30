@@ -60,9 +60,7 @@ def load_to_graph(
         {"db_name": db_name, "description": db_des},
     )
 
-    for table_name, table_info in tqdm.tqdm(
-        entities.items(), desc="Creating Graph Table Nodes"
-    ):
+    for table_name, table_info in tqdm.tqdm(entities.items(), desc="Creating Graph Table Nodes"):
         table_desc = table_info["description"]
         embedding_result = embedding_model.embed(table_desc)
         fk = json.dumps(table_info.get("foreign_keys", []))
