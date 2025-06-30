@@ -1,22 +1,25 @@
-from typing import Tuple
 import json
+from typing import Tuple
+
 import tqdm
 from jsonschema import ValidationError, validate
 from litellm import embedding
+
 from api.config import Config
-from api.loaders.base_loader import BaseLoader
 from api.extensions import db
-from api.utils import generate_db_description
+from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
 from api.loaders.schema_validator import validate_table_schema
+from api.utils import generate_db_description
 
 try:
-    with open(Config.SCHEMA_PATH, 'r', encoding='utf-8') as f:
+    with open(Config.SCHEMA_PATH, "r", encoding="utf-8") as f:
         schema = json.load(f)
 except FileNotFoundError as exc:
     raise FileNotFoundError(f"Schema file not found: {Config.SCHEMA_PATH}") from exc
 except json.JSONDecodeError as exc:
     raise ValueError(f"Invalid schema JSON: {str(exc)}") from exc
+
 
 class JSONLoader(BaseLoader):
 
@@ -37,22 +40,32 @@ class JSONLoader(BaseLoader):
                 print("❌ Schema validation failed with the following issues:")
                 for error in validation_errors:
                     print(f" - {error}")
-                raise ValidationError("Schema validation failed. Please check the schema and try again.")
+                raise ValidationError(
+                    "Schema validation failed. Please check the schema and try again."
+                )
 
         except ValidationError as exc:
             return False, str(exc)
-        
+
         relationships = {}
-        for table_name, table_info in tqdm.tqdm(data['tables'].items(), "Create Table relationships"):
+        for table_name, table_info in tqdm.tqdm(
+            data["tables"].items(), "Create Table relationships"
+        ):
             # Create Foreign Key relationships
-            for fk_name, fk_info in tqdm.tqdm(table_info['foreign_keys'].items(), "Create Foreign Key relationships"):
+            for fk_name, fk_info in tqdm.tqdm(
+                table_info["foreign_keys"].items(), "Create Foreign Key relationships"
+            ):
                 if table_name not in relationships:
                     relationships[table_name] = []
-                relationships[table_name].append({"from": table_name,
-                                            "to": fk_info['referenced_table'],
-                                            "source_column": fk_info['column'],
-                                            "target_column": fk_info['referenced_column'],
-                                            "note": fk_name})
-        load_to_graph(graph_id, data['tables'], relationships, db_name=data['database'])
+                relationships[table_name].append(
+                    {
+                        "from": table_name,
+                        "to": fk_info["referenced_table"],
+                        "source_column": fk_info["column"],
+                        "target_column": fk_info["referenced_column"],
+                        "note": fk_name,
+                    }
+                )
+        load_to_graph(graph_id, data["tables"], relationships, db_name=data["database"])
 
         return True, "Graph loaded successfully"
