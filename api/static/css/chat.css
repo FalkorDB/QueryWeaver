@@ -410,6 +410,7 @@ body {
   background-position: calc(100% - 20px) center, calc(100% - 15px) center;
   background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
+  cursor:pointer;
 }
 
 #graph-select:focus {
@@ -433,9 +434,10 @@ body {
   background-position: calc(100% - 20px) center, calc(100% - 15px) center;
   background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
+  cursor:pointer;
 }
 
-.custom-file-upload {
+#open-pg-modal {
   height: 100%;
   padding: 8px 12px;
   border-radius: 6px;
