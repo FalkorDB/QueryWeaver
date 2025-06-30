@@ -9,7 +9,7 @@ from concurrent.futures import TimeoutError as FuturesTimeoutError
 from functools import wraps
 
 from dotenv import load_dotenv
-from flask import Blueprint, Flask, Response, jsonify, render_template, request, stream_with_context
+from flask import Blueprint, Flask, Response, jsonify, render_template, request, stream_with_context, g
 from flask import session, redirect, url_for
 from flask_dance.contrib.google import make_google_blueprint, google
 
@@ -35,19 +35,15 @@ SECRET_TOKEN = os.getenv("SECRET_TOKEN")
 SECRET_TOKEN_ERP = os.getenv("SECRET_TOKEN_ERP")
 
 
-def verify_token(token):
-    """Verify the token provided in the request"""
-    return token in (SECRET_TOKEN, SECRET_TOKEN_ERP, 'null')
-
-
 def token_required(f):
     """Decorator to protect routes with token authentication"""
 
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        token = request.args.get("token", "null")  # Get token from header
-        os.environ["USER_TOKEN"] = token
-        if not verify_token(token):
+        user_info = session.get("google_user")
+        if user_info:
+            g.user_id = user_info.get("id")
+        else:
             return jsonify(message="Unauthorized"), 401
         return f(*args, **kwargs)
 
@@ -73,10 +69,14 @@ app.register_blueprint(google_bp, url_prefix="/login")
 
 
 @app.route("/")
-@token_required  # Apply token authentication decorator
 def home():
     """Home route"""
     is_authenticated = "google_oauth_token" in session
+    if is_authenticated:
+        resp = google.get("/oauth2/v2/userinfo")
+        if resp.ok:
+            user_info = resp.json()
+            session["google_user"] = user_info
     return render_template("chat.j2", is_authenticated=is_authenticated)
 
 
@@ -86,24 +86,12 @@ def graphs():
     """
     This route is used to list all the graphs that are available in the database.
     """
+    user_id = g.user_id
     user_graphs = db.list_graphs()
-    if os.getenv("USER_TOKEN") == SECRET_TOKEN:
-        if "hospital" in user_graphs:
-            return ["hospital"]
-        return []
-
-    if os.getenv("USER_TOKEN") == SECRET_TOKEN_ERP:
-        if "ERP_system" in user_graphs:
-            return ["ERP_system"]
-        return ["crm_usecase"]
-
-    if os.getenv("USER_TOKEN") == "null":
-        if "crm_usecase" in user_graphs:
-            return ["crm_usecase"]
-        return []
-
-    user_graphs.remove("hospital")
-    return user_graphs
+    # Only include graphs that start with user_id + '_', and strip the prefix
+    filtered_graphs = [graph[len(f"{user_id}_"):]
+                       for graph in user_graphs if graph.startswith(f"{user_id}_")]
+    return jsonify(filtered_graphs)
 
 
 @app.route("/graphs", methods=["POST"])
@@ -126,7 +114,7 @@ def load():
         if not data or "database" not in data:
             return jsonify({"error": "Invalid JSON data"}), 400
 
-        graph_id = data["database"]
+        graph_id = g.user_id + "_" + data["database"]
         success, result = JSONLoader.load(graph_id, data)
 
     # ✅ Handle XML Payload
@@ -154,7 +142,7 @@ def load():
         if file.filename.endswith(".json"):
             try:
                 data = json.load(file)
-                graph_id = data.get("database", "")
+                graph_id = g.user_id + "_" + data.get("database", "")
                 success, result = JSONLoader.load(graph_id, data)
             except json.JSONDecodeError:
                 return jsonify({"error": "Invalid JSON file"}), 400
@@ -162,13 +150,13 @@ def load():
         # ✅ Check if file is XML
         elif file.filename.endswith(".xml"):
             xml_data = file.read().decode("utf-8")  # Convert bytes to string
-            graph_id = file.filename.replace(".xml", "")
+            graph_id = g.user_id + "_" + file.filename.replace(".xml", "")
             success, result = ODataLoader.load(graph_id, xml_data)
 
         # ✅ Check if file is csv
         elif file.filename.endswith(".csv"):
             csv_data = file.read().decode("utf-8")  # Convert bytes to string
-            graph_id = file.filename.replace(".csv", "")
+            graph_id = g.user_id + "_" + file.filename.replace(".csv", "")
             success, result = CSVLoader.load(graph_id, csv_data)
 
         else:
@@ -189,6 +177,7 @@ def query(graph_id: str):
     """
     text2sql
     """
+    graph_id =  g.user_id + "_" + graph_id.strip()
     request_data = request.get_json()
     queries_history = request_data.get("chat")
     result_history = request_data.get("result")
@@ -324,7 +313,7 @@ def connect_database():
         if url.startswith("postgres://") or url.startswith("postgresql://"):
             try:
                 # Attempt to connect/load using the loader
-                success, result = PostgresLoader.load(url)
+                success, result = PostgresLoader.load(g.user_id, url)
                 if success:
                     return jsonify({"success": True, "message": result}), 200
                 else:

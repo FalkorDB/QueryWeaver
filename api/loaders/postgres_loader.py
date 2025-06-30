@@ -11,7 +11,7 @@ class PostgresLoader(BaseLoader):
     """
 
     @staticmethod
-    def load(connection_url: str) -> Tuple[bool, str]:
+    def load(prefix: str, connection_url: str) -> Tuple[bool, str]:
         """
         Load the graph data from a PostgreSQL database into the graph database.
         
@@ -43,7 +43,7 @@ class PostgresLoader(BaseLoader):
             conn.close()
             
             # Load data into graph
-            load_to_graph(db_name, entities, relationships, db_name=db_name)
+            load_to_graph(prefix + "_" + db_name, entities, relationships, db_name=db_name)
             
             return True, f"PostgreSQL schema loaded successfully. Found {len(entities)} tables."
             
