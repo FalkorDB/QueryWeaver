@@ -10,6 +10,9 @@
 </head>
 
 <body>
+        {% if is_authenticated %}
+        <a href="/logout" id="logout-btn" style="position:fixed;top:20px;right:30px;z-index:2000;padding:0.5em 1.2em;background:#e74c3c;color:#fff;border-radius:5px;text-decoration:none;font-weight:bold;box-shadow:0 2px 8px rgba(0,0,0,0.08);">Logout</a>
+        {% endif %}
     <div id="container">
         <div id="menu-container">
             <div id="menu-header">
@@ -99,7 +102,28 @@
         </div>
     </div>
     <div id="gradient"></div>
+    <div id="google-login-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:1000; align-items:center; justify-content:center;">
+        <div style="background:#fff; padding:2em 3em; border-radius:10px; box-shadow:0 2px 16px rgba(0,0,0,0.2); text-align:center;">
+            <h2>Welcome to Text-to-SQL</h2>
+            <p>Please login to continue</p>
+            <a href="/login/google" style="display:inline-block; margin-top:1em; padding:0.7em 2em; background:#4285F4; color:#fff; border-radius:4px; font-size:1.1em; text-decoration:none;">
+                <img src="https://developers.google.com/identity/images/g-logo.png" alt="Google logo" style="height:20px; vertical-align:middle; margin-right:8px;">Login with Google
+            </a>
+        </div>
+    </div>
     <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var isAuthenticated = {% if is_authenticated %}true{% else %}false{% endif %};
+            if (!isAuthenticated) {
+                document.getElementById('google-login-modal').style.display = 'flex';
+                document.getElementById('container').style.filter = 'blur(2px)';
+            } else {
+                document.getElementById('google-login-modal').style.display = 'none';
+                document.getElementById('container').style.filter = '';
+            }
+        });
+    </script>
 </body>
 
 </html>

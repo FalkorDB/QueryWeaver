@@ -21,6 +21,7 @@ jsonschema = "^4.23.0"
 tqdm = "^4.67.1"
 boto3 = "^1.37.29"
 psycopg2-binary = "^2.9.9"
+flask-dance = "^7.1.0"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.2.0"
