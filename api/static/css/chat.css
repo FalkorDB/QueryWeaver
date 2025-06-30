@@ -435,6 +435,27 @@ body {
   background-repeat: no-repeat;
 }
 
+.custom-file-upload {
+  height: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--text-primary);
+  font-size: 14px;
+  background-color: var(--falkor-secondary);
+  color: var(--text-primary);
+  transition: border-color 0.2s;
+  min-width: 180px;
+  appearance: none;
+  background-position: calc(100% - 20px) center, calc(100% - 15px) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+  display: inline-block;
+  margin-bottom: 0;
+  margin-right: 0;
+  margin-left: 0;
+}
+
 #schema-upload:disabled+label {
   opacity: 0.5;
   cursor: not-allowed;
