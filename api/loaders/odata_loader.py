@@ -63,25 +63,14 @@ class ODataLoader(BaseLoader):
                         ).split(".")[-1]
                         col_des = entity_name
                         if len(prop.findall("edm:Annotation", namespaces)) > 0:
-                            if (
-                                len(
-                                    prop.findall("edm:Annotation", namespaces)[0].get(
-                                        "String"
-                                    )
+                            if len(prop.findall("edm:Annotation", namespaces)[0].get("String")) > 0:
+                                col_des = prop.findall("edm:Annotation", namespaces)[0].get(
+                                    "String"
                                 )
-                                > 0
-                            ):
-                                col_des = prop.findall("edm:Annotation", namespaces)[
-                                    0
-                                ].get("String")
                         entities[entity_name]["col_descriptions"].append(col_des)
-                        entities[entity_name]["columns"][prop_name][
-                            "description"
-                        ] = col_des
+                        entities[entity_name]["columns"][prop_name]["description"] = col_des
                 except Exception as e:
-                    print(
-                        f"Error parsing property {prop_name} for entity {entity_name}"
-                    )
+                    print(f"Error parsing property {prop_name} for entity {entity_name}")
                     continue
 
             #  = {prop.get("Name"): prop.get("Type") for prop in entity_type.findall("edm:Property", namespaces)}
@@ -95,25 +84,19 @@ class ODataLoader(BaseLoader):
                     entities[entity_name]["description"] = (
                         entity_name
                         + " with Primery key: "
-                        + entity_type.find(
-                            "edm:Key/edm:PropertyRef", namespaces
-                        ).attrib["Name"]
+                        + entity_type.find("edm:Key/edm:PropertyRef", namespaces).attrib["Name"]
                     )
                 except:
                     print(f"Error parsing description for entity {entity_name}")
                     entities[entity_name]["description"] = entity_name
 
-        for entity_type in tqdm.tqdm(
-            entity_types, "Parsing OData schema - relationships"
-        ):
+        for entity_type in tqdm.tqdm(entity_types, "Parsing OData schema - relationships"):
 
             entity_name = entity_type.attrib["Name"]
 
             for rel in entity_type.findall("edm:NavigationProperty", namespaces):
                 rel_name = rel.get("Name")
-                raw_type = rel.get(
-                    "Type"
-                )  # e.g., 'Collection(Priority.OData.ABILITYVALUES)'
+                raw_type = rel.get("Type")  # e.g., 'Collection(Priority.OData.ABILITYVALUES)'
 
                 # Clean 'Collection(...)' wrapper if exists
                 if raw_type.startswith("Collection(") and raw_type.endswith(")"):
@@ -129,9 +112,7 @@ class ODataLoader(BaseLoader):
                 target_fields = entities.get(target_entity, {})["columns"]
 
                 # TODO This usage is for demonstration purposes only, it should be replaced with a more robust method
-                source_col, target_col = guess_relationship_columns(
-                    source_fields, target_fields
-                )
+                source_col, target_col = guess_relationship_columns(source_fields, target_fields)
                 if source_col and target_col:
                     # Store the relationship
                     if rel_name not in relationships:
@@ -144,9 +125,7 @@ class ODataLoader(BaseLoader):
                             "source_column": source_col,
                             "target_column": target_col,
                             "note": (
-                                "inferred"
-                                if source_col and target_col
-                                else "implicit/subform"
+                                "inferred" if source_col and target_col else "implicit/subform"
                             ),
                         }
                     )
