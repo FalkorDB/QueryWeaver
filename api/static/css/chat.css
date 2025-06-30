@@ -588,6 +588,108 @@ body {
   max-height: none;
 }
 
+.pg-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0,0,0,0.5);
+  z-index: 3000;
+  align-items: center;
+  justify-content: center;
+}
+.pg-modal-content {
+  background: #fff;
+  padding: 2em 2.5em;
+  border-radius: 10px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.2);
+  text-align: center;
+  min-width: 340px;
+}
+.pg-modal-title {
+  margin-bottom: 1em;
+  color: #222;
+}
+.pg-modal-input {
+  width: 100%;
+  padding: 0.6em;
+  font-size: 1em;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  margin-bottom: 1.5em;
+  color: #222;
+  background: #fafafa;
+}
+.pg-modal-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 1em;
+}
+.pg-modal-btn {
+  flex: 1;
+  padding: 0.5em 0;
+  border: none;
+  border-radius: 4px;
+  font-size: 1em;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.pg-modal-connect {
+  background: #4285F4;
+  color: #fff;
+}
+.pg-modal-connect:hover {
+  background: #3367d6;
+}
+.pg-modal-cancel {
+  background: #e0e0e0;
+  color: #333;
+}
+.pg-modal-cancel:hover {
+  background: #cacaca;
+}
+.google-login-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0,0,0,0.6);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.google-login-modal-content {
+  background: #fff;
+  padding: 2em 3em;
+  border-radius: 10px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.2);
+  text-align: center;
+}
+.google-login-btn {
+  display: inline-block;
+  margin-top: 1em;
+  padding: 0.7em 2em;
+  background: #4285F4;
+  color: #fff;
+  border-radius: 4px;
+  font-size: 1.1em;
+  text-decoration: none;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+.google-login-btn:hover {
+  background: #3367d6;
+}
+.google-login-logo {
+  height: 20px;
+  vertical-align: middle;
+  margin-right: 8px;
+}
 @keyframes shadow-fade {
   0% {
     box-shadow: 0 0 20px 3px var(--falkor-tertiary)
@@ -668,4 +770,40 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background-color: #a8bbbf;
+}
+
+.pg-connect-btn {
+  margin-left: 12px;
+  padding: 0.4em 0.8em;
+  background: #f5f5f5;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1em;
+  color: #333;
+  cursor: pointer;
+  transition: background 0.2s, border 0.2s;
+}
+
+.pg-connect-btn:hover {
+  background: #eaeaea;
+  border-color: #888;
+}
+
+.logout-btn {
+  position: fixed;
+  top: 20px;
+  right: 30px;
+  z-index: 2000;
+  padding: 0.5em 1.2em;
+  background: #e74c3c;
+  color: #fff;
+  border-radius: 5px;
+  text-decoration: none;
+  font-weight: bold;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  transition: background 0.2s;
+}
+
+.logout-btn:hover {
+  background: #c0392b;
 }
