@@ -4,7 +4,6 @@ import io
 from collections import defaultdict
 from typing import Tuple
 
-import pandas as pd
 import tqdm
 
 from api.loaders.base_loader import BaseLoader
@@ -27,6 +26,8 @@ class CSVLoader(BaseLoader):
             Tuple of (success, message)
         """
         raise NotImplementedError("CSVLoader is not implemented yet")
+        import pandas as pd
+
         try:
             # Parse CSV data using pandas for better handling of large files
             df = pd.read_csv(io.StringIO(data), encoding="utf-8")
