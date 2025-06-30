@@ -571,6 +571,8 @@ document.addEventListener('DOMContentLoaded', function() {
     var pgModal = document.getElementById('pg-modal');
     var openPgModalBtn = document.getElementById('open-pg-modal');
     var cancelPgModalBtn = document.getElementById('pg-modal-cancel');
+    var connectPgModalBtn = document.getElementById('pg-modal-connect');
+    var pgUrlInput = document.getElementById('pg-url-input');
     if (openPgModalBtn && pgModal) {
         openPgModalBtn.addEventListener('click', function() {
             pgModal.style.display = 'flex';
@@ -594,4 +596,34 @@ document.addEventListener('DOMContentLoaded', function() {
             container.style.filter = '';
         }
     });
+
+    // Handle Connect button for Postgres modal
+    if (connectPgModalBtn && pgUrlInput && pgModal) {
+        connectPgModalBtn.addEventListener('click', function() {
+            const pgUrl = pgUrlInput.value.trim();
+            if (!pgUrl) {
+                alert('Please enter a Postgres URL.');
+                return;
+            }
+            fetch('/database', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ url: pgUrl })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Database connected successfully!');
+                    pgModal.style.display = 'none';
+                } else {
+                    alert('Failed to connect: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                alert('Error connecting to database: ' + error.message);
+            });
+        });
+    }
 });
