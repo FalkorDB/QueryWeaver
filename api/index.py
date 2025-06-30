@@ -10,6 +10,8 @@ from functools import wraps
 
 from dotenv import load_dotenv
 from flask import Blueprint, Flask, Response, jsonify, render_template, request, stream_with_context
+from flask import session, redirect, url_for
+from flask_dance.contrib.google import make_google_blueprint, google
 
 from api.agents import AnalysisAgent, RelevancyAgent
 from api.constants import EXAMPLES
@@ -52,23 +54,29 @@ def token_required(f):
 
 
 app = Flask(__name__)
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "supersekrit")
 
-# @app.before_request
-# def before_request_func():
-#     oidc_token = request.headers.get('x-vercel-oidc-token')
-#     if oidc_token:
-#         set_oidc_token(oidc_token)
-#         credentials = assume_role()
-#     else:
-#         # Optional: require it for protected routes
-#         pass
+# Google OAuth setup
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+google_bp = make_google_blueprint(
+    client_id=GOOGLE_CLIENT_ID,
+    client_secret=GOOGLE_CLIENT_SECRET,
+    scope=[
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+        "openid"
+    ]
+)
+app.register_blueprint(google_bp, url_prefix="/login")
 
 
 @app.route("/")
 @token_required  # Apply token authentication decorator
 def home():
     """Home route"""
-    return render_template("chat.html")
+    is_authenticated = "google_oauth_token" in session
+    return render_template("chat.j2", is_authenticated=is_authenticated)
 
 
 @app.route("/graphs")
@@ -280,6 +288,24 @@ def suggestions():
     except Exception as e:
         logging.error("Error fetching suggestions: %s", e)
         return jsonify([]), 500
+
+@app.route("/login")
+def login_google():
+    if not google.authorized:
+        return redirect(url_for("google.login"))
+    resp = google.get("/oauth2/v2/userinfo")
+    if resp.ok:
+        user_info = resp.json()
+        session["google_user"] = user_info
+        # You can set your own token/session logic here
+        return redirect(url_for("home"))
+    return "Could not fetch your information from Google.", 400
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("home"))
 
 
 if __name__ == "__main__":
