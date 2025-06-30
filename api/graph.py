@@ -6,6 +6,7 @@ from litellm import completion
 from pydantic import BaseModel
 from api.config import Config
 from api.extensions import db
+from itertools import combinations
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -24,9 +25,24 @@ class Descriptions(BaseModel):
     tables_descriptions: list[TableDescription]
     columns_descriptions: list[ColumnDescription]
 
+def get_db_description(graph_id: str) -> str:
+    """ Get the database description from the graph. """
+    graph = db.select_graph(graph_id)
+    query_result = graph.query("""
+        MATCH (d:Database)
+        RETURN d.description
+        """
+    )
+    
+    if not query_result.result_set:
+        return "No description available for this database."
+    
+    return query_result.result_set[0][0]  # Return the first result's description
+
 def find(
     graph_id: str,
-    queries_history: List[str]
+    queries_history: List[str],
+    db_description: str = None
 ) -> Tuple[bool, List[dict]]:
     """ Find the tables and columns relevant to the user's query. """
     
@@ -34,11 +50,6 @@ def find(
     user_query = queries_history[-1]
     previous_queries = queries_history[:-1]
 
-    db_description = graph.query("""
-        MATCH (d:Database)
-        RETURN d.description
-        """
-    ).result_set[0][0]
     logging.info(f"Calling to an LLM to find relevant tables and columns for the query: {user_query}")
     # Call the completion model to get the relevant Cypher queries to retrieve
     # from the Graph that represent the Database schema.
@@ -79,7 +90,7 @@ def find(
     tables_by_route, _ = find_connecting_tables(graph, base_tables_names)
     combined_tables = _get_unique_tables(tables_des + tables_by_columns_des + tables_by_route + tables_by_sphere)
     
-    return True, combined_tables, db_description, [tables_des, tables_by_columns_des, tables_by_route, tables_by_sphere]
+    return True, combined_tables, [tables_des, tables_by_columns_des, tables_by_route, tables_by_sphere]
 
 def _find_tables(graph, descriptions: List[TableDescription]) -> List[dict]:
 
@@ -209,63 +220,44 @@ def find_connecting_tables(graph, table_names: List[str]) -> Tuple[List[dict], L
     Returns:
         A set of all table names that form connections between any pair in the input
     """
-    all_connecting_tables = set()
-    all_connecting_tables_id = set()
-    result = []
-    # Check all possible pairs of tables
-    for i in range(len(table_names)):
-        for j in range(i + 1, len(table_names)):  # This ensures i != j
-            try:
-                table1 = table_names[i]
-                table2 = table_names[j]
-                # Query to find all tables in the shortest paths between the pair
-                query = """
-                MATCH (a:Table {name: $table1}), (b:Table {name: $table2})  
-                WITH a, b
-                MATCH p=allShortestPaths((a)-[r*..9]-(b))
-                RETURN nodes(p) as nodes
-                """
-                try:
-                    paths = graph.query(query, {'table1': table1, 'table2': table2}, timeout=50).result_set
-                except Exception as e:
-                    print(f"Error querying graph: {e}")
-                    continue
-                if not paths:
-                    continue
-                # Extract table names from the paths
-                for path in paths:
-                    for node in path[0]:  # path[0] contains the nodes array
-                        if 'Table' in node.labels:
-                            all_connecting_tables.add(node.properties["name"])
-                            all_connecting_tables_id.add(node.id)
-                        elif 'Column' in node.labels and node.properties.get('key_type') == 'PRI':
-                            # For primary key columns, get the table they belong to
-                            table_query = """
-                            MATCH (n:Column)-[:BELONGS_TO]->(t:Table) 
-                            WHERE id(n)=$n_id 
-                            RETURN t
-                            """
-                            parent_table = graph.query(table_query, {'n_id': node.id}).result_set
-                            if parent_table and len(parent_table) > 0:
-                                all_connecting_tables.add(parent_table[0][0].properties["name"])
-                                all_connecting_tables_id.add(parent_table[0][0].id)
-            except Exception as e:
-                print(f"Error processing tables {table1} and {table2}: {e}")
-                continue
-
-    query_result = graph.query("""UNWIND $ids AS id 
-                MATCH (n:Table)-[:BELONGS_TO]-(columns) 
-                WHERE id(n)=id 
-                RETURN n.name, n.description, n.foreign_keys, collect({
-                        columnName: columns.name,
-                        description: columns.description,
-                        dataType: columns.type,
-                        keyType: columns.key,
-                        nullable: columns.nullable
-                    })""", {'ids': list(all_connecting_tables_id)})
-    for node in query_result.result_set:
-            if node not in result:
-                result.append(node)
-
-    print(f"Connecting tables: {all_connecting_tables}")
-    return result, list(all_connecting_tables)
+    pairs = list(combinations(table_names, 2))
+    pair_params = [list(pair) for pair in pairs]
+    query = """
+    UNWIND $pairs AS pair
+    MATCH (a:Table {name: pair[0]})
+    MATCH (b:Table {name: pair[1]})
+    WITH a, b
+    MATCH p = allShortestPaths((a)-[*..9]-(b))
+    UNWIND nodes(p) AS path_node
+    WITH DISTINCT path_node
+    WHERE 'Table' IN labels(path_node) OR 
+            ('Column' IN labels(path_node) AND path_node.key_type = 'PRI')
+    WITH path_node,
+            'Table' IN labels(path_node) AS is_table,
+            'Column' IN labels(path_node) AND path_node.key_type = 'PRI' AS is_pri_column
+    OPTIONAL MATCH (path_node)-[:BELONGS_TO]->(parent_table:Table)
+    WHERE is_pri_column
+    WITH CASE 
+            WHEN is_table THEN path_node 
+            WHEN is_pri_column THEN parent_table 
+            ELSE null 
+            END AS target_table
+    WHERE target_table IS NOT NULL
+    WITH DISTINCT target_table
+    MATCH (col:Column)-[:BELONGS_TO]->(target_table)
+    WITH target_table,
+            collect({
+                columnName: col.name,
+                description: col.description,
+                dataType: col.type,
+                keyType: col.key,
+                nullable: col.nullable
+            }) AS columns
+    
+    RETURN target_table.name AS table_name,
+            target_table.description AS description,
+            target_table.foreign_keys AS foreign_keys,
+            columns
+    """
+    result = graph.query(query, {'pairs': pair_params}, timeout=300).result_set
+    return result, None
