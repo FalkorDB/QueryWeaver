@@ -1,9 +1,12 @@
 import json
-from litellm import completion
-from api.config import Config
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
-class AnalysisAgent():
+from litellm import completion
+
+from api.config import Config
+
+
+class AnalysisAgent:
     def __init__(self, queries_history: list, result_history: list):
         if result_history is None:
             self.messages = []
@@ -13,48 +16,63 @@ class AnalysisAgent():
                 self.messages.append({"role": "user", "content": query})
                 self.messages.append({"role": "assistant", "content": result})
 
-    def get_analysis(self, user_query: str, combined_tables: list, db_description: str, instructions: str = None) -> dict:
+    def get_analysis(
+        self,
+        user_query: str,
+        combined_tables: list,
+        db_description: str,
+        instructions: str = None,
+    ) -> dict:
         formatted_schema = self._format_schema(combined_tables)
-        prompt = self._build_prompt(user_query, formatted_schema, db_description, instructions)
+        prompt = self._build_prompt(
+            user_query, formatted_schema, db_description, instructions
+        )
         self.messages.append({"role": "user", "content": prompt})
-        completion_result = completion(model=Config.COMPLETION_MODEL,
-                                    messages=self.messages,
-                                    temperature=0,
-                                    top_p=1,
-                                    )
-        
+        completion_result = completion(
+            model=Config.COMPLETION_MODEL,
+            messages=self.messages,
+            temperature=0,
+            top_p=1,
+        )
+
         response = completion_result.choices[0].message.content
         analysis = _parse_response(response)
-        if isinstance(analysis['ambiguities'], list):
-            analysis['ambiguities'] = [item.replace('-', ' ') for item in analysis['ambiguities']]
-            analysis['ambiguities'] = "- " + "- ".join(analysis['ambiguities'])
-        if isinstance(analysis['missing_information'], list):
-            analysis['missing_information'] = [item.replace('-', ' ') for item in analysis['missing_information']]
-            analysis['missing_information'] = "- " + "- ".join(analysis['missing_information'])
-        self.messages.append({"role": "assistant", "content": analysis['sql_query']})
+        if isinstance(analysis["ambiguities"], list):
+            analysis["ambiguities"] = [
+                item.replace("-", " ") for item in analysis["ambiguities"]
+            ]
+            analysis["ambiguities"] = "- " + "- ".join(analysis["ambiguities"])
+        if isinstance(analysis["missing_information"], list):
+            analysis["missing_information"] = [
+                item.replace("-", " ") for item in analysis["missing_information"]
+            ]
+            analysis["missing_information"] = "- " + "- ".join(
+                analysis["missing_information"]
+            )
+        self.messages.append({"role": "assistant", "content": analysis["sql_query"]})
         return analysis
-    
+
     def _format_schema(self, schema_data: List) -> str:
         """
         Format the schema data into a readable format for the prompt.
-        
+
         Args:
             schema_data: Schema in the structure [...]
-            
+
         Returns:
             Formatted schema as a string
         """
         formatted_schema = []
-        
+
         for table_info in schema_data:
             table_name = table_info[0]
             table_description = table_info[1]
             foreign_keys = table_info[2]
             columns = table_info[3]
-            
+
             # Format table header
             table_str = f"Table: {table_name} - {table_description}\n"
-            
+
             # Format columns using the updated OrderedDict structure
             for column in columns:
                 col_name = column.get("columnName", "")
@@ -62,11 +80,15 @@ class AnalysisAgent():
                 col_description = column.get("description", "")
                 col_key = column.get("keyType", None)
                 nullable = column.get("nullable", False)
-                
-                key_info = f", PRIMARY KEY" if col_key == "PRI" else f", FOREIGN KEY" if col_key == "FK" else ""
+
+                key_info = (
+                    f", PRIMARY KEY"
+                    if col_key == "PRI"
+                    else f", FOREIGN KEY" if col_key == "FK" else ""
+                )
                 column_str = f"  - {col_name} ({col_type},{key_info},{col_key},{nullable}): {col_description}"
                 table_str += column_str + "\n"
-            
+
             # Format foreign keys
             if isinstance(foreign_keys, dict) and foreign_keys:
                 table_str += "  Foreign Keys:\n"
@@ -74,20 +96,24 @@ class AnalysisAgent():
                     column = fk_info.get("column", "")
                     ref_table = fk_info.get("referenced_table", "")
                     ref_column = fk_info.get("referenced_column", "")
-                    table_str += f"  - {fk_name}: {column} references {ref_table}.{ref_column}\n"
-            
+                    table_str += (
+                        f"  - {fk_name}: {column} references {ref_table}.{ref_column}\n"
+                    )
+
             formatted_schema.append(table_str)
-        
+
         return "\n".join(formatted_schema)
 
-    def _build_prompt(self, user_input: str, formatted_schema: str, db_description: str, instructions) -> str:
+    def _build_prompt(
+        self, user_input: str, formatted_schema: str, db_description: str, instructions
+    ) -> str:
         """
         Build the prompt for Claude to analyze the query.
-        
+
         Args:
             user_input: The natural language query from the user
             formatted_schema: Formatted database schema
-            
+
         Returns:
             The formatted prompt for Claude
         """
@@ -169,7 +195,7 @@ class AnalysisAgent():
         return prompt
 
 
-class RelevancyAgent():
+class RelevancyAgent:
     def __init__(self, queries_history: list, result_history: list):
         if result_history is None:
             self.messages = []
@@ -180,13 +206,21 @@ class RelevancyAgent():
                 self.messages.append({"role": "assistant", "content": result})
 
     def get_answer(self, user_question: str, database_desc: dict) -> dict:
-        self.messages.append({"role": "user", "content": RELEVANCY_PROMPT.format(QUESTION_PLACEHOLDER=user_question, DB_PLACEHOLDER=json.dumps(database_desc))})
+        self.messages.append(
+            {
+                "role": "user",
+                "content": RELEVANCY_PROMPT.format(
+                    QUESTION_PLACEHOLDER=user_question,
+                    DB_PLACEHOLDER=json.dumps(database_desc),
+                ),
+            }
+        )
         completion_result = completion(
             model=Config.COMPLETION_MODEL,
             messages=self.messages,
             temperature=0,
         )
-        
+
         answer = completion_result.choices[0].message.content
         self.messages.append({"role": "assistant", "content": answer})
         return _parse_response(answer)
@@ -240,26 +274,31 @@ Ensure your response is concise, polite, and helpful.
 """
 
 
-class FollowUpAgent():
+class FollowUpAgent:
     def __init__(self):
         pass
 
-    def get_answer(self, user_question: str, conversation_hist: list, database_schema: dict) -> dict:
+    def get_answer(
+        self, user_question: str, conversation_hist: list, database_schema: dict
+    ) -> dict:
         completion_result = completion(
             model=Config.COMPLETION_MODEL,
             messages=[
                 {
-                    "content": FOLLOW_UP_PROMPT.format(QUESTION=user_question, HISTORY=conversation_hist, SCHEMA=json.dumps(database_schema)),
-                    "role": "user"
+                    "content": FOLLOW_UP_PROMPT.format(
+                        QUESTION=user_question,
+                        HISTORY=conversation_hist,
+                        SCHEMA=json.dumps(database_schema),
+                    ),
+                    "role": "user",
                 }
             ],
             response_format={"type": "json_object"},
             temperature=0,
         )
-        
+
         answer = completion_result.choices[0].message.content
         return json.loads(answer)
-
 
 
 FOLLOW_UP_PROMPT = """You are an expert assistant that receives two inputs:
@@ -297,8 +336,7 @@ Please follow these steps:
 4. Ensure your response is concise, polite, and helpful. When asking clarifying questions, be specific and guide the user toward providing the missing details so you can effectively address their query."""
 
 
-
-class TaxonomyAgent():
+class TaxonomyAgent:
     def __init__(self):
         pass
 
@@ -306,7 +344,7 @@ class TaxonomyAgent():
         messages = [
             {
                 "content": TAXONOMY_PROMPT.format(QUESTION=question, SQL=sql),
-                "role": "user"
+                "role": "user",
             }
         ]
         completion_result = completion(
@@ -314,10 +352,9 @@ class TaxonomyAgent():
             messages=messages,
             temperature=0,
         )
-        
+
         answer = completion_result.choices[0].message.content
         return answer
-
 
 
 TAXONOMY_PROMPT = """You are an advanced taxonomy generator. For a pair of question and SQL query provde a single clarification question to the user.
@@ -347,22 +384,23 @@ Your output: "The diabitic desease code is E11? If not, please provide the corre
 The question to the user:"
 """
 
+
 def _parse_response(response: str) -> Dict[str, Any]:
     """
     Parse Claude's response to extract the analysis.
-    
+
     Args:
         response: Claude's response string
-        
+
     Returns:
         Parsed analysis results
     """
     try:
         # Extract JSON from the response
-        json_start = response.find('{')
-        json_end = response.rfind('}') + 1
+        json_start = response.find("{")
+        json_end = response.rfind("}") + 1
         json_str = response[json_start:json_end]
-        
+
         # Parse the JSON
         analysis = json.loads(json_str)
         return analysis
@@ -372,5 +410,5 @@ def _parse_response(response: str) -> Dict[str, Any]:
             "is_sql_translatable": False,
             "confidence": 0,
             "explanation": f"Failed to parse response: {str(e)}",
-            "error": str(response)
+            "error": str(response),
         }

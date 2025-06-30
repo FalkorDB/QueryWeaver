@@ -1,6 +1,6 @@
-
 REQUIRED_COLUMN_KEYS = {"description", "type", "null", "key", "default"}
 VALID_NULL_VALUES = {"YES", "NO"}
+
 
 def validate_table_schema(schema):
     errors = []
@@ -26,25 +26,35 @@ def validate_table_schema(schema):
             # Check for missing required keys
             missing_keys = REQUIRED_COLUMN_KEYS - column_data.keys()
             if missing_keys:
-                errors.append(f"Column '{column_name}' in table '{table_name}' is missing keys: {missing_keys}")
+                errors.append(
+                    f"Column '{column_name}' in table '{table_name}' is missing keys: {missing_keys}"
+                )
                 continue
 
             # Validate non-empty description
             if not column_data.get("description"):
-                errors.append(f"Column '{column_name}' in table '{table_name}' has an empty description")
+                errors.append(
+                    f"Column '{column_name}' in table '{table_name}' has an empty description"
+                )
 
             # Validate 'null' field
             if column_data["null"] not in VALID_NULL_VALUES:
-                errors.append(f"Column '{column_name}' in table '{table_name}' has invalid 'null' value: {column_data['null']}")
+                errors.append(
+                    f"Column '{column_name}' in table '{table_name}' has invalid 'null' value: {column_data['null']}"
+                )
 
         # Optional: validate foreign keys
         if "foreign_keys" in table_data:
             if not isinstance(table_data["foreign_keys"], dict):
-                errors.append(f"Foreign keys for table '{table_name}' must be a dictionary")
+                errors.append(
+                    f"Foreign keys for table '{table_name}' must be a dictionary"
+                )
             else:
                 for fk_name, fk_data in table_data["foreign_keys"].items():
                     for key in ("column", "referenced_table", "referenced_column"):
                         if key not in fk_data or not fk_data[key]:
-                            errors.append(f"Foreign key '{fk_name}' in table '{table_name}' is missing '{key}'")
+                            errors.append(
+                                f"Foreign key '{fk_name}' in table '{table_name}' is missing '{key}'"
+                            )
 
     return errors

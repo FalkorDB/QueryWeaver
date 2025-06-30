@@ -1,6 +1,7 @@
 from abc import ABC
 from typing import Tuple
 
+
 class BaseLoader(ABC):
 
     @staticmethod

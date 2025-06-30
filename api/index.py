@@ -1,45 +1,58 @@
-""" This module contains the routes for the text2sql API. """
+"""This module contains the routes for the text2sql API."""
+
 import json
-import os
 import logging
+import os
+import random
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from functools import wraps
+
 from dotenv import load_dotenv
-from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context, Flask
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from api.graph import find, get_db_description
+from flask import (Blueprint, Flask, Response, jsonify, render_template,
+                   request, stream_with_context)
+
+from api.agents import AnalysisAgent, RelevancyAgent
+from api.constants import BENCHMARK, EXAMPLES
 from api.extensions import db
+from api.graph import find, get_db_description
 from api.loaders.csv_loader import CSVLoader
 from api.loaders.json_loader import JSONLoader
 from api.loaders.odata_loader import ODataLoader
-from api.agents import RelevancyAgent, AnalysisAgent
-from api.constants import BENCHMARK, EXAMPLES
-import random
 
 # Load environment variables from .env file
 load_dotenv()
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 # Use the same delimiter as in the JavaScript
-MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||'
+MESSAGE_DELIMITER = "|||FALKORDB_MESSAGE_BOUNDARY|||"
 
 main = Blueprint("main", __name__)
 
-SECRET_TOKEN = os.getenv('SECRET_TOKEN')
-SECRET_TOKEN_ERP = os.getenv('SECRET_TOKEN_ERP')
+SECRET_TOKEN = os.getenv("SECRET_TOKEN")
+SECRET_TOKEN_ERP = os.getenv("SECRET_TOKEN_ERP")
+
+
 def verify_token(token):
-    """ Verify the token provided in the request """
+    """Verify the token provided in the request"""
     return token == SECRET_TOKEN or token == SECRET_TOKEN_ERP or token == "null"
 
+
 def token_required(f):
-    """ Decorator to protect routes with token authentication """
+    """Decorator to protect routes with token authentication"""
+
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        token = request.args.get('token', 'null')  # Get token from header
+        token = request.args.get("token", "null")  # Get token from header
         os.environ["USER_TOKEN"] = token
         if not verify_token(token):
             return jsonify(message="Unauthorized"), 401
         return f(*args, **kwargs)
+
     return decorated_function
+
 
 app = Flask(__name__)
 
@@ -53,13 +66,15 @@ app = Flask(__name__)
 #         # Optional: require it for protected routes
 #         pass
 
-@app.route('/')
+
+@app.route("/")
 @token_required  # Apply token authentication decorator
 def home():
-    """ Home route """
-    return render_template('chat.html')
+    """Home route"""
+    return render_template("chat.html")
 
-@app.route('/graphs')
+
+@app.route("/graphs")
 @token_required  # Apply token authentication decorator
 def graphs():
     """
@@ -67,24 +82,25 @@ def graphs():
     """
     graphs = db.list_graphs()
     if os.getenv("USER_TOKEN") == SECRET_TOKEN:
-        if 'hospital' in graphs:
-            return ['hospital']
+        if "hospital" in graphs:
+            return ["hospital"]
         else:
             return []
-        
+
     if os.getenv("USER_TOKEN") == SECRET_TOKEN_ERP:
-        if 'ERP_system' in graphs:
-            return ['ERP_system']
+        if "ERP_system" in graphs:
+            return ["ERP_system"]
         else:
-            return ['crm_usecase']
+            return ["crm_usecase"]
     elif os.getenv("USER_TOKEN") == "null":
-        if 'crm_usecase' in graphs:
-            return ['crm_usecase']
+        if "crm_usecase" in graphs:
+            return ["crm_usecase"]
         else:
             return []
     else:
-        graphs.remove('hospital')
+        graphs.remove("hospital")
     return graphs
+
 
 @app.route("/graphs", methods=["POST"])
 @token_required  # Apply token authentication decorator
@@ -110,7 +126,9 @@ def load():
         success, result = JSONLoader.load(graph_id, data)
 
     # ✅ Handle XML Payload
-    elif content_type.startswith("application/xml") or content_type.startswith("text/xml"):
+    elif content_type.startswith("application/xml") or content_type.startswith(
+        "text/xml"
+    ):
         xml_data = request.data
         graph_id = ""
         success, result = ODataLoader.load(graph_id, xml_data)
@@ -144,13 +162,13 @@ def load():
             xml_data = file.read().decode("utf-8")  # Convert bytes to string
             graph_id = file.filename.replace(".xml", "")
             success, result = ODataLoader.load(graph_id, xml_data)
-            
+
         # ✅ Check if file is csv
         elif file.filename.endswith(".csv"):
             csv_data = file.read().decode("utf-8")  # Convert bytes to string
             graph_id = file.filename.replace(".csv", "")
             success, result = CSVLoader.load(graph_id, csv_data)
-            
+
         else:
             return jsonify({"error": "Unsupported file type"}), 415
     else:
@@ -161,6 +179,7 @@ def load():
         return jsonify({"message": result, "graph_id": graph_id})
 
     return jsonify({"error": result}), 400
+
 
 @app.route("/graphs/<string:graph_id>", methods=["POST"])
 @token_required  # Apply token authentication decorator
@@ -174,7 +193,7 @@ def query(graph_id: str):
     instructions = request_data.get("instructions")
     if not queries_history:
         return jsonify({"error": "Invalid or missing JSON data"}), 400
-    
+
     logging.info(f"User Query: {queries_history[-1]}")
 
     # Create a generator function for streaming
@@ -182,47 +201,68 @@ def query(graph_id: str):
         agent_rel = RelevancyAgent(queries_history, result_history)
         agent_an = AnalysisAgent(queries_history, result_history)
 
-
         step = {"type": "reasoning_step", "message": "Step 1: Analyzing the user query"}
         yield json.dumps(step) + MESSAGE_DELIMITER
-        db_description = get_db_description(graph_id)  # Ensure the database description is loaded
-        
+        db_description = get_db_description(
+            graph_id
+        )  # Ensure the database description is loaded
+
         logging.info(f"Calling to relvancy agent with query: {queries_history[-1]}")
         answer_rel = agent_rel.get_answer(queries_history[-1], db_description)
         if answer_rel["status"] != "On-topic":
-            step = {"type": "followup_questions", "message": "Off topic question: " + answer_rel["reason"]}
+            step = {
+                "type": "followup_questions",
+                "message": "Off topic question: " + answer_rel["reason"],
+            }
             logging.info(f"SQL Fail reason: {answer_rel["reason"]}")
             yield json.dumps(step) + MESSAGE_DELIMITER
         else:
             # Use a thread pool to enforce timeout
             with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(find, graph_id, queries_history, db_description)
+                future = executor.submit(
+                    find, graph_id, queries_history, db_description
+                )
                 try:
                     success, result, _ = future.result(timeout=120)
                 except FuturesTimeoutError:
-                    yield json.dumps({"type": "error", "message": "Timeout error while finding tables relevant to your request."}) + MESSAGE_DELIMITER
+                    yield json.dumps(
+                        {
+                            "type": "error",
+                            "message": "Timeout error while finding tables relevant to your request.",
+                        }
+                    ) + MESSAGE_DELIMITER
                     return
                 except Exception as e:
                     logging.info(f"Error in find function: {e}")
-                    yield json.dumps({"type": "error", "message": "Error in find function"}) + MESSAGE_DELIMITER
+                    yield json.dumps(
+                        {"type": "error", "message": "Error in find function"}
+                    ) + MESSAGE_DELIMITER
                     return
 
-            step = {"type": "reasoning_step",
-                    "message": "Step 2: Generating SQL query"}
+            step = {"type": "reasoning_step", "message": "Step 2: Generating SQL query"}
             yield json.dumps(step) + MESSAGE_DELIMITER
             logging.info(f"Calling to analysis agent with query: {queries_history[-1]}")
-            answer_an = agent_an.get_analysis(queries_history[-1], result, db_description, instructions)
+            answer_an = agent_an.get_analysis(
+                queries_history[-1], result, db_description, instructions
+            )
 
             logging.info(f"SQL Result: {answer_an['sql_query']}")
-            yield json.dumps({"type": "final_result", "data": answer_an['sql_query'], "conf": answer_an['confidence'],
-                             "miss": answer_an['missing_information'],
-                             "amb": answer_an['ambiguities'],
-                             "exp": answer_an['explanation'],
-                             "is_valid": answer_an['is_sql_translatable']}) + MESSAGE_DELIMITER
+            yield json.dumps(
+                {
+                    "type": "final_result",
+                    "data": answer_an["sql_query"],
+                    "conf": answer_an["confidence"],
+                    "miss": answer_an["missing_information"],
+                    "amb": answer_an["ambiguities"],
+                    "exp": answer_an["explanation"],
+                    "is_valid": answer_an["is_sql_translatable"],
+                }
+            ) + MESSAGE_DELIMITER
 
-    return Response(stream_with_context(generate()), content_type='application/json')
+    return Response(stream_with_context(generate()), content_type="application/json")
 
-@app.route('/suggestions')
+
+@app.route("/suggestions")
 @token_required  # Apply token authentication decorator
 def suggestions():
     """
@@ -232,24 +272,27 @@ def suggestions():
     """
     try:
         # Get graph_id from query parameters
-        graph_id = request.args.get('graph_id', '')
-        
+        graph_id = request.args.get("graph_id", "")
+
         if not graph_id:
             return jsonify([]), 400
-        
+
         # Check if graph has specific examples
         if graph_id in EXAMPLES:
             graph_examples = EXAMPLES[graph_id]
             # Return up to 3 examples, or all if less than 3
-            suggestion_questions = random.sample(graph_examples, min(3, len(graph_examples)))
+            suggestion_questions = random.sample(
+                graph_examples, min(3, len(graph_examples))
+            )
             return jsonify(suggestion_questions)
         else:
             # If graph doesn't exist in EXAMPLES, return empty list
             return jsonify([])
-            
+
     except Exception as e:
         logging.error(f"Error fetching suggestions: {e}")
         return jsonify([]), 500
+
 
 if __name__ == "__main__":
     app.register_blueprint(main)
