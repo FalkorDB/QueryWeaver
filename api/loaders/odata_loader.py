@@ -4,7 +4,6 @@ from typing import Tuple
 
 import tqdm
 
-from api.extensions import db
 from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
 
