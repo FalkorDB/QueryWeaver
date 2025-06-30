@@ -19,6 +19,7 @@ from api.extensions import db
 from api.graph import find, get_db_description
 from api.loaders.csv_loader import CSVLoader
 from api.loaders.json_loader import JSONLoader
+from api.loaders.postgres_loader import PostgresLoader
 from api.loaders.odata_loader import ODataLoader
 
 # Load environment variables from .env file
@@ -306,6 +307,34 @@ def login_google():
 def logout():
     session.clear()
     return redirect(url_for("home"))
+
+@app.route("/database", methods=["POST"])
+@token_required  # Apply token authentication decorator
+def connect_database():
+    """
+    Accepts a JSON payload with a Postgres URL and attempts to connect.
+    Returns success or error message.
+    """
+    data = request.get_json()
+    url = data.get("url") if data else None
+    if not url:
+        return jsonify({"success": False, "error": "No URL provided"}), 400
+    try:
+        # Check for Postgres URL
+        if url.startswith("postgres://") or url.startswith("postgresql://"):
+            try:
+                # Attempt to connect/load using the loader
+                success, result = PostgresLoader.load(url)
+                if success:
+                    return jsonify({"success": True, "message": result}), 200
+                else:
+                    return jsonify({"success": False, "error": result}), 400
+            except Exception as e:
+                return jsonify({"success": False, "error": str(e)}), 500
+        else:
+            return jsonify({"success": False, "error": "Invalid Postgres URL"}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 if __name__ == "__main__":

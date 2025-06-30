@@ -1,25 +1,21 @@
 from typing import Tuple, Dict, Any, List
 import psycopg2
 import tqdm
-from api.config import Config
 from api.loaders.base_loader import BaseLoader
-from api.extensions import db
-from api.utils import generate_db_description
 from api.loaders.graph_loader import load_to_graph
 
 
-class PostgreSQLLoader(BaseLoader):
+class PostgresLoader(BaseLoader):
     """
     Loader for PostgreSQL databases that connects and extracts schema information.
     """
 
     @staticmethod
-    def load(graph_id: str, connection_url: str) -> Tuple[bool, str]:
+    def load(connection_url: str) -> Tuple[bool, str]:
         """
         Load the graph data from a PostgreSQL database into the graph database.
         
         Args:
-            graph_id: The ID of the graph to load data into
             connection_url: PostgreSQL connection URL in format:
                           postgresql://username:password@host:port/database
         
@@ -37,17 +33,17 @@ class PostgreSQLLoader(BaseLoader):
                 db_name = db_name.split('?')[0]
             
             # Get all table information
-            entities = PostgreSQLLoader.extract_tables_info(cursor)
+            entities = PostgresLoader.extract_tables_info(cursor)
             
             # Get all relationship information
-            relationships = PostgreSQLLoader.extract_relationships(cursor)
+            relationships = PostgresLoader.extract_relationships(cursor)
             
             # Close database connection
             cursor.close()
             conn.close()
             
             # Load data into graph
-            load_to_graph(graph_id, entities, relationships, db_name=db_name)
+            load_to_graph(db_name, entities, relationships, db_name=db_name)
             
             return True, f"PostgreSQL schema loaded successfully. Found {len(entities)} tables."
             
@@ -91,10 +87,10 @@ class PostgreSQLLoader(BaseLoader):
             table_name = table_name.strip()
             
             # Get column information for this table
-            columns_info = PostgreSQLLoader.extract_columns_info(cursor, table_name)
+            columns_info = PostgresLoader.extract_columns_info(cursor, table_name)
             
             # Get foreign keys for this table
-            foreign_keys = PostgreSQLLoader.extract_foreign_keys(cursor, table_name)
+            foreign_keys = PostgresLoader.extract_foreign_keys(cursor, table_name)
             
             # Generate table description
             table_description = table_comment if table_comment else f"Table: {table_name}"
