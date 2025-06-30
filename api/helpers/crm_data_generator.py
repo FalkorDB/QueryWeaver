@@ -1,12 +1,10 @@
 import json
 import os
 import time
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional
 
 import requests
 from litellm import completion
-from litellm import utils as litellm_utils
-from litellm import validate_environment
 
 OUTPUT_FILE = "complete_crm_schema.json"
 MAX_RETRIES = 3

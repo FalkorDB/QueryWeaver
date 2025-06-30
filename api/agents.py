@@ -24,7 +24,9 @@ class AnalysisAgent:
         instructions: str = None,
     ) -> dict:
         formatted_schema = self._format_schema(combined_tables)
-        prompt = self._build_prompt(user_query, formatted_schema, db_description, instructions)
+        prompt = self._build_prompt(
+            user_query, formatted_schema, db_description, instructions
+        )
         self.messages.append({"role": "user", "content": prompt})
         completion_result = completion(
             model=Config.COMPLETION_MODEL,
@@ -36,13 +38,17 @@ class AnalysisAgent:
         response = completion_result.choices[0].message.content
         analysis = _parse_response(response)
         if isinstance(analysis["ambiguities"], list):
-            analysis["ambiguities"] = [item.replace("-", " ") for item in analysis["ambiguities"]]
+            analysis["ambiguities"] = [
+                item.replace("-", " ") for item in analysis["ambiguities"]
+            ]
             analysis["ambiguities"] = "- " + "- ".join(analysis["ambiguities"])
         if isinstance(analysis["missing_information"], list):
             analysis["missing_information"] = [
                 item.replace("-", " ") for item in analysis["missing_information"]
             ]
-            analysis["missing_information"] = "- " + "- ".join(analysis["missing_information"])
+            analysis["missing_information"] = "- " + "- ".join(
+                analysis["missing_information"]
+            )
         self.messages.append({"role": "assistant", "content": analysis["sql_query"]})
         return analysis
 
@@ -76,9 +82,9 @@ class AnalysisAgent:
                 nullable = column.get("nullable", False)
 
                 key_info = (
-                    f", PRIMARY KEY"
+                    ", PRIMARY KEY"
                     if col_key == "PRI"
-                    else f", FOREIGN KEY" if col_key == "FK" else ""
+                    else ", FOREIGN KEY" if col_key == "FK" else ""
                 )
                 column_str = f"  - {col_name} ({col_type},{key_info},{col_key},{nullable}): {col_description}"
                 table_str += column_str + "\n"
@@ -90,7 +96,9 @@ class AnalysisAgent:
                     column = fk_info.get("column", "")
                     ref_table = fk_info.get("referenced_table", "")
                     ref_column = fk_info.get("referenced_column", "")
-                    table_str += f"  - {fk_name}: {column} references {ref_table}.{ref_column}\n"
+                    table_str += (
+                        f"  - {fk_name}: {column} references {ref_table}.{ref_column}\n"
+                    )
 
             formatted_schema.append(table_str)
 
@@ -166,8 +174,8 @@ class AnalysisAgent:
                 "explanation": "Detailed explanation why the query can or cannot be translated, mentioning instructions explicitly and referencing conversation history if relevant",
                 "sql_query": "High-level SQL query (you must to applying instructions and use previous answers if the question is a continuation)",
                 "tables_used": ["list", "of", "tables", "used", "in", "the", "query", "with", "the", "relationships", "between", "them"],
-                "missing_information": ["list", "of", "missing", "information"], 
-                "ambiguities": ["list", "of", "ambiguities"], 
+                "missing_information": ["list", "of", "missing", "information"],
+                "ambiguities": ["list", "of", "ambiguities"],
                 "confidence": integer between 0 and 100
             }}
 
