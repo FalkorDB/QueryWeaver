@@ -123,29 +123,11 @@
             </div>
         </div>
     </div>
-    <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+    {# Set authentication state for JS before loading chat.js #}
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            var isAuthenticated = {% if is_authenticated %}true{% else %}false{% endif %};
-            if (!isAuthenticated) {
-                document.getElementById('google-login-modal').style.display = 'flex';
-                document.getElementById('container').style.filter = 'blur(2px)';
-            } else {
-                document.getElementById('google-login-modal').style.display = 'none';
-                document.getElementById('container').style.filter = '';
-            }
-            // Postgres modal logic
-            var pgModal = document.getElementById('pg-modal');
-            var openPgModalBtn = document.getElementById('open-pg-modal');
-            var cancelPgModalBtn = document.getElementById('pg-modal-cancel');
-            openPgModalBtn.addEventListener('click', function() {
-                pgModal.style.display = 'flex';
-            });
-            cancelPgModalBtn.addEventListener('click', function() {
-                pgModal.style.display = 'none';
-            });
-        });
+      window.isAuthenticated = {{ 'true' if is_authenticated else 'false' }};
     </script>
+    <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
 </body>
 
 </html>
