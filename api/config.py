@@ -9,6 +9,7 @@ from litellm import embedding
 
 
 class EmbeddingsModel:
+    """Embeddings model wrapper for text embedding operations."""
 
     def __init__(self, model_name: str, config: dict = None):
         self.model_name = model_name
@@ -51,6 +52,7 @@ class Config:
     SCHEMA_PATH = "api/schema_schema.json"
     EMBEDDING_MODEL_NAME = "azure/text-embedding-ada-002"
     COMPLETION_MODEL = "azure/gpt-4.1"
+    VALIDATOR_MODEL = "azure/gpt-4.1"
     TEMPERATURE = 0
     # client = boto3.client('sts')
     # AWS_PROFILE = os.getenv("aws_profile_name")

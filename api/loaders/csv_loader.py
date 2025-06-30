@@ -1,17 +1,19 @@
+"""CSV loader module for processing CSV files and generating database schemas."""
+
 import io
 from collections import defaultdict
-from typing import Dict, List, Tuple
+from typing import Tuple
 
-# import pandas as pd
+import pandas as pd
 import tqdm
-from litellm import embedding
 
-from api.extensions import db
 from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
 
 
 class CSVLoader(BaseLoader):
+    """CSV data loader for processing CSV files and loading them into graph database."""
+
     @staticmethod
     def load(graph_id: str, data) -> Tuple[bool, str]:
         """

@@ -1,3 +1,5 @@
+"""Graph loader module for loading data into graph databases."""
+
 import json
 
 import tqdm

@@ -1,16 +1,15 @@
+"""JSON loader module for processing JSON schema files."""
+
 import json
 from typing import Tuple
 
 import tqdm
-from jsonschema import ValidationError, validate
-from litellm import embedding
+from jsonschema import ValidationError
 
 from api.config import Config
-from api.extensions import db
 from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
 from api.loaders.schema_validator import validate_table_schema
-from api.utils import generate_db_description
 
 try:
     with open(Config.SCHEMA_PATH, "r", encoding="utf-8") as f:
@@ -22,6 +21,7 @@ except json.JSONDecodeError as exc:
 
 
 class JSONLoader(BaseLoader):
+    """JSON schema loader for loading database schemas from JSON files."""
 
     @staticmethod
     def load(graph_id: str, data) -> Tuple[bool, str]:
