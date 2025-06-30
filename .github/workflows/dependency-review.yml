@@ -25,6 +25,7 @@ permissions:
 
 jobs:
   dependency-review:
+    if: github.repository_visibility == 'public'
     runs-on: ubuntu-latest
     steps:
       - name: 'Checkout repository'
