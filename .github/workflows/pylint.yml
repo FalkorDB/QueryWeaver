@@ -17,8 +17,6 @@ jobs:
         
     - name: Install Poetry
       uses: abatilo/actions-poetry@v3
-      with:
-        poetry-version: "1.8.3"
 
     - name: Configure Poetry
       run: |
