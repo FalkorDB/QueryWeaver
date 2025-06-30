@@ -183,7 +183,10 @@ def get_table_prompt(
             and "columns" in existing_tables[related]
             and example_count < 2
         ):
-            related_examples += f"\nRelated table example:\n```json\n{json.dumps({related: existing_tables[related]}, indent=2)}\n```\n"
+            related_examples += (
+                f"\nRelated table example:\n```json\n"
+                f"{json.dumps({related: existing_tables[related]}, indent=2)}\n```\n"
+            )
             example_count += 1
 
     # Use contacts table as primary example if no related examples found

@@ -128,7 +128,9 @@ deep nesting to minimize complexity and optimize performance."""
                         #     'source_field': source_field,
                         #     'target_table': target_table,
                         #     'cardinality': cardinality,
-                        #     'target_field': df.to_dict("records")[idx+1]['Array Field'] if not pd.isna(df.to_dict("records")[idx+1]['Array Field']) else ''
+                        #     'target_field': df.to_dict("records")[idx+1]['Array Field'] \
+                        #         if not pd.isna(df.to_dict("records")[idx+1] \
+                        #                        ['Array Field']) else ''
                         # })
                         tables[target_table]["description"] = field_desc
 
@@ -198,7 +200,8 @@ deep nesting to minimize complexity and optimize performance."""
         except Exception as e:
             return False, f"Error loading CSV: {str(e)}"
             # else:
-            #     # For case 2: when no primary key table exists, connect all FK tables to each other
+            #     # For case 2: when no primary key table exists, \
+            #     # connect all FK tables to each other
             #     graph.query(
             #                 """
             #                 CREATE (src: Column {name: $col, cardinality: $cardinality})
@@ -262,16 +265,24 @@ deep nesting to minimize complexity and optimize performance."""
 #                     batch_size = 50
 #                     col_descriptions = table_info['col_descriptions']
 #                     for batch in tqdm.tqdm(
-#                             [col_descriptions[i:i + batch_size] for i in range(0, len(col_descriptions), batch_size)],
+#                             [col_descriptions[i:i + batch_size] \
+#                              for i in range(0, len(col_descriptions), batch_size)],
 #                             desc=f"Creating embeddings for {table_name}"):
 
-#                         embedding_result = embedding(model='bedrock/cohere.embed-english-v3', input=batch[:95], aws_profile_name=Config.AWS_PROFILE, aws_region_name=Config.AWS_REGION)
+#                         embedding_result = embedding(
+#                             model='bedrock/cohere.embed-english-v3',
+#                             input=batch[:95],
+#                             aws_profile_name=Config.AWS_PROFILE,
+#                             aws_region_name=Config.AWS_REGION)
 #                         embed_columns.extend([emb.values for emb in embedding_result.embeddings])
 #                 except Exception as e:
 #                     print(f"Error creating embeddings: {str(e)}")
 
 #                 # Create column nodes
-#                 for idx, (col_name, col_info) in tqdm.tqdm(enumerate(table_info['columns'].items()), desc=f"Creating columns for {table_name}", total=len(table_info['columns'])):
+#                 for idx, (col_name, col_info) in tqdm.tqdm(
+#                     enumerate(table_info['columns'].items()),
+#                     desc=f"Creating columns for {table_name}",
+#                     total=len(table_info['columns'])):
 #                     # embedding_result = embedding(
 #                     #     model=Config.EMBEDDING_MODEL,
 #                     #     input=[col_info['description'] if col_info['description'] else col_name]
@@ -309,14 +320,20 @@ deep nesting to minimize complexity and optimize performance."""
 #                     )
 
 #             # Third pass: Create relationships
-#             for table_name, table_info in tqdm.tqdm(tables.items(), desc="Creating relationships"):
+#             for table_name, table_info in tqdm.tqdm(tables.items(), \
+#                                                   desc="Creating relationships"):
 #                 for rel in table_info['relationships']:
 #                     source_field = rel['source_field']
 #                     target_table = rel['target_table']
 #                     cardinality = rel['cardinality']
-#                     target_field = rel['target_field']#list(tables[tables[table_name]['relationships'][-1]['target_table']]['columns'].keys())[0]
+#                     target_field = rel['target_field']  # \
+#                         # list(tables[tables[table_name]['relationships'][-1] \
+#                         #                   ['target_table']]['columns'].keys())[0]
 #                     # Create constraint name
-#                     constraint_name = f"fk_{table_name.replace('.', '_')}_{source_field}_to_{target_table.replace('.', '_')}"
+#                     constraint_name = (
+#                         f"fk_{table_name.replace('.', '_')}_{source_field}_to_"
+#                         f"{target_table.replace('.', '_')}"
+#                     )
 
 #                     # Create relationship if both tables and columns exist
 #                     try:
@@ -343,7 +360,8 @@ deep nesting to minimize complexity and optimize performance."""
 #                     except Exception as e:
 #                         print(f"Warning: Could not create relationship: {str(e)}")
 #                         continue
-#             for key, tables_info in tqdm.tqdm(rel_table.items(), desc="Creating relationships from names"):
+#             for key, tables_info in tqdm.tqdm(rel_table.items(), \
+#                                                   desc="Creating relationships from names"):
 #                 if len(tables_info['fk_tables']) > 0:
 #                     fk_tables = list(set(tables_info['fk_tables']))
 #                     if len(tables_info['primary_key_table']) > 0:
@@ -369,7 +387,8 @@ deep nesting to minimize complexity and optimize performance."""
 #                                 }
 #                             )
 #                     else:
-#                         # For case 2: when no primary key table exists, connect all FK tables to each other
+#                         # For case 2: when no primary key table exists, \
+#                         # connect all FK tables to each other
 #                         graph.query(
 #                                     """
 #                                     CREATE (src: Column {name: $col, cardinality: $cardinality})

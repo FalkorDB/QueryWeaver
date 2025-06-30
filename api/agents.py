@@ -385,14 +385,17 @@ class TaxonomyAgent:
         return answer
 
 
-TAXONOMY_PROMPT = """You are an advanced taxonomy generator. For a pair of question and SQL query provde a single clarification question to the user.
-* For any SQL query that contain WHERE clause, provide a clarification question to the user about the generated value.
+TAXONOMY_PROMPT = """You are an advanced taxonomy generator. For a pair of question and SQL query \
+provde a single clarification question to the user.
+* For any SQL query that contain WHERE clause, provide a clarification question to the user about the \
+generated value.
 * Your question can contain more than one clarification related to WHERE clause.
 * Please asked only about the clarifications that you need and not extand the answer.
 * Please ask in a polite, humen, and concise manner.
 * Do not meantion any tables or columns in your ouput!.
 * If you dont need any clarification, please answer with "I don't need any clarification."
-* The user didnt saw the SQL queryor the tables, so please understand this position and ask the clarification in that way he have the relevent information to answer.
+* The user didnt saw the SQL queryor the tables, so please understand this position and ask the \
+clarification in that way he have the relevent information to answer.
 * When you ask the user to confirm a value, please provide the value in your answer.
 * Mention only question about values and dont mention the SQL query or the tables in your answer.
 

@@ -73,7 +73,8 @@ class ODataLoader(BaseLoader):
                     print(f"Error parsing property {prop_name} for entity {entity_name}")
                     continue
 
-            #  = {prop.get("Name"): prop.get("Type") for prop in entity_type.findall("edm:Property", namespaces)}
+            #  = {prop.get("Name"): prop.get("Type") \
+            #     for prop in entity_type.findall("edm:Property", namespaces)}
             description = entity_type.findall("edm:Annotation", namespaces)
             if len(description) > 0:
                 entities[entity_name]["description"] = (
@@ -111,13 +112,15 @@ class ODataLoader(BaseLoader):
                 source_fields = entities.get(entity_name, {})["columns"]
                 target_fields = entities.get(target_entity, {})["columns"]
 
-                # TODO This usage is for demonstration purposes only, it should be replaced with a more robust method
+                # TODO This usage is for demonstration purposes only, it should be \
+                # replaced with a more robust method
                 source_col, target_col = guess_relationship_columns(source_fields, target_fields)
                 if source_col and target_col:
                     # Store the relationship
                     if rel_name not in relationships:
                         relationships[rel_name] = []
-                    # src_col, tgt_col = guess_relationship_columns(source_entity, target_entity, entities[source_entity], entities[target_entity])
+                    # src_col, tgt_col = guess_relationship_columns(source_entity, \
+                    #     target_entity, entities[source_entity], entities[target_entity])
                     relationships[rel_name].append(
                         {
                             "from": source_entity,
@@ -133,7 +136,8 @@ class ODataLoader(BaseLoader):
         return entities, relationships
 
 
-# TODO: this funtion is for demonstration purposes only, it should be replaced with a more robust method
+# TODO: this funtion is for demonstration purposes only, it should be \
+# replaced with a more robust method
 def guess_relationship_columns(source_fields, target_fields):
     for src_key, src_meta in source_fields.items():
         if src_key == "description":
