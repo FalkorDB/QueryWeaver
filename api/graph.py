@@ -35,20 +35,20 @@ class Descriptions(BaseModel):
     columns_descriptions: list[ColumnDescription]
 
 
-def get_db_description(graph_id: str) -> str:
+def get_db_description(graph_id: str) -> (str, str):
     """Get the database description from the graph."""
     graph = db.select_graph(graph_id)
     query_result = graph.query(
         """
         MATCH (d:Database)
-        RETURN d.description
+        RETURN d.description, d.url
         """
     )
 
     if not query_result.result_set:
-        return "No description available for this database."
+        return ("No description available for this database.", "No URL available for this database.")
 
-    return query_result.result_set[0][0]  # Return the first result's description
+    return (query_result.result_set[0][0], query_result.result_set[0][1])  # Return the first result's description
 
 
 def find(

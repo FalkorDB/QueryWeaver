@@ -194,7 +194,7 @@ def query(graph_id: str):
 
         step = {"type": "reasoning_step", "message": "Step 1: Analyzing the user query"}
         yield json.dumps(step) + MESSAGE_DELIMITER
-        db_description = get_db_description(graph_id)  # Ensure the database description is loaded
+        db_description, db_url = get_db_description(graph_id)  # Ensure the database description is loaded
 
         logging.info("Calling to relvancy agent with query: %s", queries_history[-1])
         answer_rel = agent_rel.get_answer(queries_history[-1], db_description)
@@ -246,6 +246,22 @@ def query(graph_id: str):
                     "is_valid": answer_an["is_sql_translatable"],
                 }
             ) + MESSAGE_DELIMITER
+
+            # If the SQL query is valid, execute it using the postgress database db_url
+            if answer_an["is_sql_translatable"]:
+                try:
+                    result = PostgresLoader.execute_sql_query(answer_an["sql_query"], db_url)
+                    yield json.dumps(
+                        {
+                            "type": "query_result",
+                            "data": result,
+                        }
+                    ) + MESSAGE_DELIMITER
+                except Exception as e:
+                    logging.error("Error executing SQL query: %s", e)
+                    yield json.dumps(
+                        {"type": "error", "message": str(e)}
+                    ) + MESSAGE_DELIMITER
 
     return Response(stream_with_context(generate()), content_type="application/json")
 

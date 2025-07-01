@@ -15,6 +15,7 @@ def load_to_graph(
     relationships: dict,
     batch_size: int = 100,
     db_name: str = "TBD",
+    db_url: str = "",
 ) -> None:
     """
     Load the graph data into the database.
@@ -56,10 +57,11 @@ def load_to_graph(
         """
         CREATE (d:Database {
             name: $db_name,
-            description: $description
+            description: $description,
+            url: $url
         })
         """,
-        {"db_name": db_name, "description": db_des},
+        {"db_name": db_name, "description": db_des, "url": db_url},
     )
 
     for table_name, table_info in tqdm.tqdm(entities.items(), desc="Creating Graph Table Nodes"):
