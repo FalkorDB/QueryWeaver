@@ -63,6 +63,7 @@
                     <label for="schema-upload" id="custom-file-upload">
                         Upload Schema
                     </label>
+                    <div class="vertical-separator"></div>
                     <label id="open-pg-modal">
                         Connect Postgres
                     </label>
@@ -109,7 +110,7 @@
             <h2>Welcome to Text-to-SQL</h2>
             <p>Please login to continue</p>
             <a href="/login/google" class="google-login-btn">
-                <img src="https://developers.google.com/identity/images/g-logo.png" alt="Google logo" class="google-login-logo">Login with Google
+                <img src="{{ url_for('static', filename='public/icons/google.svg') }}"  alt="Google logo" class="google-login-logo">Sign in with Google
             </a>
         </div>
     </div>
