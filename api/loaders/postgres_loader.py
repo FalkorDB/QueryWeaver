@@ -26,27 +26,27 @@ class PostgresLoader(BaseLoader):
             # Connect to PostgreSQL database
             conn = psycopg2.connect(connection_url)
             cursor = conn.cursor()
-            
+
             # Extract database name from connection URL
             db_name = connection_url.split('/')[-1]
             if '?' in db_name:
                 db_name = db_name.split('?')[0]
-            
+
             # Get all table information
             entities = PostgresLoader.extract_tables_info(cursor)
-            
+
             # Get all relationship information
             relationships = PostgresLoader.extract_relationships(cursor)
-            
+
             # Close database connection
             cursor.close()
             conn.close()
-            
+
             # Load data into graph
-            load_to_graph(prefix + "_" + db_name, entities, relationships, db_name=db_name)
-            
+            load_to_graph(prefix + "_" + db_name, entities, relationships, db_name=db_name, db_url=connection_url)
+
             return True, f"PostgreSQL schema loaded successfully. Found {len(entities)} tables."
-            
+
         except psycopg2.Error as e:
             return False, f"PostgreSQL connection error: {str(e)}"
         except Exception as e:
@@ -276,3 +276,40 @@ class PostgresLoader(BaseLoader):
             })
         
         return relationships
+    
+    @staticmethod
+    def execute_sql_query(sql_query: str, db_url: str) -> List[Dict[str, Any]]:
+        """
+        Execute a SQL query on the PostgreSQL database and return the results.
+        
+        Args:
+            sql_query: The SQL query to execute
+            db_url: PostgreSQL connection URL in format:
+                    postgresql://username:password@host:port/database
+            
+        Returns:
+            List of dictionaries containing the query results
+        """
+        try:
+            # Connect to PostgreSQL database
+            conn = psycopg2.connect(db_url)
+            cursor = conn.cursor()
+
+            # Execute the SQL query
+            cursor.execute(sql_query)
+            columns = [desc[0] for desc in cursor.description]
+            results = cursor.fetchall()
+
+            # Convert results to list of dictionaries
+            result_list = [dict(zip(columns, row)) for row in results]
+
+            # Close database connection
+            cursor.close()
+            conn.close()
+
+            return result_list
+
+        except psycopg2.Error as e:
+            raise Exception(f"PostgreSQL query execution error: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Error executing SQL query: {str(e)}")

@@ -310,6 +310,13 @@ async function sendMessage() {
                         ambValue.textContent = "N/A";
                         // graph.Labels.findIndex(l => l.name === cat.name)(step.message, false, true);
                         addMessage(step.message, false, true);
+                    } else if (step.type === 'query_result') {
+                        // Handle query result
+                        if (step.data) {
+                            addMessage(`Query Result: ${JSON.stringify(step.data)}`, false, false, true);
+                        } else {
+                            addMessage("No results found for the query.", false);
+                        }
                     } else {
                         // Default handling
                         addMessage(step.message || JSON.stringify(step), false);
