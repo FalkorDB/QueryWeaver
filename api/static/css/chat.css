@@ -694,7 +694,10 @@ body {
   text-align: center;
 }
 .google-login-btn {
-  display: inline-block;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
   margin-top: 1em;
   padding: 0.7em 2em;
   background: #4285F4;
@@ -710,8 +713,10 @@ body {
 }
 .google-login-logo {
   height: 20px;
+  margin-right: 10px;
+  margin-left: 0;
   vertical-align: middle;
-  margin-right: 8px;
+  display: inline-block;
 }
 @keyframes shadow-fade {
   0% {
