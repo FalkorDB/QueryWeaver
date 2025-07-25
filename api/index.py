@@ -126,13 +126,13 @@ def handle_oauth_error(error):
 @app.route("/")
 def home():
     """Home route"""
-    _, is_authenticated = validate_and_cache_user()
+    user_info, is_authenticated = validate_and_cache_user()
 
     # If not authenticated through OAuth, check for any stale session data
     if not is_authenticated and not google.authorized:
         session.pop("google_user", None)
 
-    return render_template("chat.j2", is_authenticated=is_authenticated)
+    return render_template("chat.j2", is_authenticated=is_authenticated, user_info=user_info)
 
 
 @app.route("/graphs")

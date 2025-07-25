@@ -809,3 +809,29 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// User Profile Dropdown Functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const userProfileBtn = document.getElementById('user-profile-btn');
+    const userProfileDropdown = document.getElementById('user-profile-dropdown');
+
+    if (userProfileBtn && userProfileDropdown) {
+        // Toggle dropdown when profile button is clicked
+        userProfileBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            userProfileDropdown.classList.toggle('show');
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!userProfileBtn.contains(e.target) && !userProfileDropdown.contains(e.target)) {
+                userProfileDropdown.classList.remove('show');
+            }
+        });
+
+        // Prevent dropdown from closing when clicking inside it
+        userProfileDropdown.addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
+    }
+});

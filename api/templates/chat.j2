@@ -10,8 +10,19 @@
 </head>
 
 <body>
-        {% if is_authenticated %}
-        <a href="/logout" id="logout-btn" class="logout-btn">Logout</a>
+        {% if is_authenticated and user_info %}
+        <button id="user-profile-btn" class="user-profile-btn" title="{{ user_info.name }}">
+            <img src="{{ user_info.picture }}" alt="{{ user_info.name }}" class="user-profile-img">
+        </button>
+        <div id="user-profile-dropdown" class="user-profile-dropdown">
+            <div class="user-profile-info">
+                <div class="user-profile-name">{{ user_info.name }}</div>
+                <div class="user-profile-email">{{ user_info.email }}</div>
+            </div>
+            <div class="user-profile-actions">
+                <button onclick="window.location.href='/logout'" class="user-profile-logout">Logout</button>
+            </div>
+        </div>
         {% endif %}
     <div id="container">
         <div id="menu-container">
