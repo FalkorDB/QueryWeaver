@@ -144,6 +144,15 @@
     {# Set authentication state for JS before loading chat.js #}
     <script>
       window.isAuthenticated = {{ 'true' if is_authenticated else 'false' }};
+      {% if user_info %}
+      window.currentUser = {
+          name: "{{ user_info.name|e }}",
+          email: "{{ user_info.email|e }}",
+          picture: "{{ user_info.picture|e }}"
+      };
+      {% else %}
+      window.currentUser = null;
+      {% endif %}
     </script>
     <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
 </body>
