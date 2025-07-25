@@ -3,6 +3,8 @@ import re
 import logging
 import tqdm
 import psycopg2
+import datetime
+import decimal
 from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
 
@@ -34,6 +36,28 @@ class PostgresLoader(BaseLoader):
         r'^\s*CREATE\s+SCHEMA',
         r'^\s*DROP\s+SCHEMA',
     ]
+
+    @staticmethod
+    def _serialize_value(value):
+        """
+        Convert non-JSON serializable values to JSON serializable format.
+        
+        Args:
+            value: The value to serialize
+            
+        Returns:
+            JSON serializable version of the value
+        """
+        if isinstance(value, (datetime.date, datetime.datetime)):
+            return value.isoformat()
+        elif isinstance(value, datetime.time):
+            return value.isoformat()
+        elif isinstance(value, decimal.Decimal):
+            return float(value)
+        elif value is None:
+            return None
+        else:
+            return value
 
     @staticmethod
     def load(prefix: str, connection_url: str) -> Tuple[bool, str]:
@@ -405,7 +429,14 @@ class PostgresLoader(BaseLoader):
                 # This is a SELECT query or similar that returns rows
                 columns = [desc[0] for desc in cursor.description]
                 results = cursor.fetchall()
-                result_list = [dict(zip(columns, row)) for row in results]
+                result_list = []
+                for row in results:
+                    # Serialize each value to ensure JSON compatibility
+                    serialized_row = {
+                        columns[i]: PostgresLoader._serialize_value(row[i]) 
+                        for i in range(len(columns))
+                    }
+                    result_list.append(serialized_row)
             else:
                 # This is an INSERT, UPDATE, DELETE, or other non-SELECT query
                 # Return information about the operation
