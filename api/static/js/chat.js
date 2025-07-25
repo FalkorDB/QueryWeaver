@@ -407,15 +407,18 @@ function addDestructiveConfirmationMessage(step) {
     messageDivContainer.className = "message-container bot-message-container destructive-confirmation-container";
     messageDiv.className = "message bot-message destructive-confirmation-message";
     
+    // Generate a unique ID for this confirmation dialog
+    const confirmationId = 'confirmation-' + Date.now();
+    
     // Create the confirmation UI
     const confirmationHTML = `
-        <div class="destructive-confirmation">
+        <div class="destructive-confirmation" data-confirmation-id="${confirmationId}">
             <div class="confirmation-text">${step.message.replace(/\n/g, '<br>')}</div>
             <div class="confirmation-buttons">
-                <button class="confirm-btn danger" onclick="handleDestructiveConfirmation('CONFIRM', '${step.sql_query.replace(/'/g, "\\'")}')">
+                <button class="confirm-btn danger" onclick="handleDestructiveConfirmation('CONFIRM', '${step.sql_query.replace(/'/g, "\\'")}', '${confirmationId}')">
                     CONFIRM - Execute Query
                 </button>
-                <button class="cancel-btn" onclick="handleDestructiveConfirmation('CANCEL', '${step.sql_query.replace(/'/g, "\\'")}')">
+                <button class="cancel-btn" onclick="handleDestructiveConfirmation('CANCEL', '${step.sql_query.replace(/'/g, "\\'")}', '${confirmationId}')">
                     CANCEL - Abort Operation
                 </button>
             </div>
@@ -433,7 +436,17 @@ function addDestructiveConfirmationMessage(step) {
     submitButton.disabled = true;
 }
 
-async function handleDestructiveConfirmation(confirmation, sqlQuery) {
+async function handleDestructiveConfirmation(confirmation, sqlQuery, confirmationId) {
+    // Find the specific confirmation dialog using the unique ID
+    const confirmationDialog = document.querySelector(`[data-confirmation-id="${confirmationId}"]`);
+    if (confirmationDialog) {
+        // Disable both confirmation buttons within this specific dialog
+        const confirmBtn = confirmationDialog.querySelector('.confirm-btn');
+        const cancelBtn = confirmationDialog.querySelector('.cancel-btn');
+        if (confirmBtn) confirmBtn.disabled = true;
+        if (cancelBtn) cancelBtn.disabled = true;
+    }
+    
     // Re-enable the input
     messageInput.disabled = false;
     submitButton.disabled = false;
