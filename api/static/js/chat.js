@@ -846,3 +846,52 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// Theme Toggle Functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const themeToggleBtn = document.getElementById('theme-toggle-btn');
+    
+    // Get theme from localStorage or default to 'system'
+    const currentTheme = localStorage.getItem('theme') || 'system';
+    document.documentElement.setAttribute('data-theme', currentTheme);
+    
+    if (themeToggleBtn) {
+        themeToggleBtn.addEventListener('click', function() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            let newTheme;
+            
+            // Cycle through themes: dark -> light -> system -> dark
+            switch (currentTheme) {
+                case 'dark':
+                    newTheme = 'light';
+                    break;
+                case 'light':
+                    newTheme = 'system';
+                    break;
+                case 'system':
+                default:
+                    newTheme = 'dark';
+                    break;
+            }
+            
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            
+            // Update button title
+            const titles = {
+                'dark': 'Switch to Light Mode',
+                'light': 'Switch to System Mode', 
+                'system': 'Switch to Dark Mode'
+            };
+            themeToggleBtn.title = titles[newTheme];
+        });
+        
+        // Set initial title
+        const titles = {
+            'dark': 'Switch to Light Mode',
+            'light': 'Switch to System Mode',
+            'system': 'Switch to Dark Mode'
+        };
+        themeToggleBtn.title = titles[currentTheme];
+    }
+});
