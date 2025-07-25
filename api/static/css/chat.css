@@ -395,43 +395,6 @@ body {
   position: absolute;
   top: 20px;
   left: 20px;
-  z-index: 10;
-  background: var(--falkor-accent);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-}
-
-.menu-trigger {
-  border: none;
-  height: 32px;
-  width: 32px;
-  background: var(--falkor-accent);
-  border: 2px solid var(--falkor-primary);
-  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-}
-
-.menu-trigger:hover {
-  background: var(--falkor-primary);
-  border-color: var(--falkor-tertiary);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-}
-
-.menu-trigger img {
-  width: 20px;
-  height: 20px;
-  filter: brightness(0) invert(1);
-  transition: filter 0.2s ease;
-}
-
-#menu-button {
-  background: var(--falkor-accent);
-  border: 2px solid var(--falkor-primary);
-  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-}
-
-#menu-button:hover {
-  background: var(--falkor-primary);
-  border-color: var(--falkor-tertiary);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 
 #menu-button img {
@@ -599,6 +562,14 @@ body {
   right: -60px;
   top: 50%;
   transform: translateY(-50%);
+}
+
+.action-button:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  background: var(--falkor-accent);
+}
+
+.action-button{
   z-index: 2000;
   width: 48px;
   height: 48px;
@@ -613,11 +584,6 @@ body {
   align-items: center;
   justify-content: center;
   padding: 0;
-}
-
-#reset-button:hover {
-  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-  background: var(--falkor-accent);
 }
 
 #reset-button:disabled {
@@ -1105,30 +1071,10 @@ body {
 }
 
 /* Theme Toggle Button Styles */
-.theme-toggle-btn {
+#theme-toggle-btn {
   position: fixed;
   top: 20px;
   right: 90px;
-  z-index: 2000;
-  width: 48px;
-  height: 48px;
-  border: none;
-  border-radius: 50%;
-  background: var(--falkor-quaternary);
-  color: var(--text-primary);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-}
-
-.theme-toggle-btn:hover {
-  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-  transform: translateY(-1px);
-  background: var(--falkor-accent);
 }
 
 .theme-icon {
