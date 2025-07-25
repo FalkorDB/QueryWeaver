@@ -296,6 +296,9 @@ What this will do:
                     step = {"type": "reasoning_step", "message": "Step 2: Executing SQL query"}
                     yield json.dumps(step) + MESSAGE_DELIMITER
 
+                    # Check if this query modifies the database schema
+                    is_schema_modifying, operation_type = PostgresLoader.is_schema_modifying_query(sql_query)
+
                     query_results = PostgresLoader.execute_sql_query(answer_an["sql_query"], db_url)
                     yield json.dumps(
                         {
@@ -304,8 +307,33 @@ What this will do:
                         }
                     ) + MESSAGE_DELIMITER
 
+                    # If schema was modified, refresh the graph
+                    if is_schema_modifying:
+                        step = {"type": "reasoning_step", "message": "Step 3: Schema change detected - refreshing graph..."}
+                        yield json.dumps(step) + MESSAGE_DELIMITER
+
+                        refresh_success, refresh_message = PostgresLoader.refresh_graph_schema(graph_id, db_url)
+                        
+                        if refresh_success:
+                            yield json.dumps(
+                                {
+                                    "type": "schema_refresh",
+                                    "message": f"✅ Schema change detected ({operation_type} operation)\n\n🔄 Graph schema has been automatically refreshed with the latest database structure.",
+                                    "refresh_status": "success"
+                                }
+                            ) + MESSAGE_DELIMITER
+                        else:
+                            yield json.dumps(
+                                {
+                                    "type": "schema_refresh",
+                                    "message": f"⚠️ Schema was modified but graph refresh failed: {refresh_message}",
+                                    "refresh_status": "failed"
+                                }
+                            ) + MESSAGE_DELIMITER
+
                     # Generate user-readable response using AI
-                    step = {"type": "reasoning_step", "message": "Step 3: Generating user-friendly response"}
+                    step_num = "4" if is_schema_modifying else "3"
+                    step = {"type": "reasoning_step", "message": f"Step {step_num}: Generating user-friendly response"}
                     yield json.dumps(step) + MESSAGE_DELIMITER
 
                     response_agent = ResponseFormatterAgent()
@@ -353,8 +381,11 @@ def confirm_destructive_operation(graph_id: str):
             try:
                 db_description, db_url = get_db_description(graph_id)
 
-                step = {"type": "reasoning_step", "message": "Step 1: Executing confirmed SQL query"}
+                step = {"type": "reasoning_step", "message": "Step 2: Executing confirmed SQL query"}
                 yield json.dumps(step) + MESSAGE_DELIMITER
+
+                # Check if this query modifies the database schema
+                is_schema_modifying, operation_type = PostgresLoader.is_schema_modifying_query(sql_query)
 
                 query_results = PostgresLoader.execute_sql_query(sql_query, db_url)
                 yield json.dumps(
@@ -364,8 +395,33 @@ def confirm_destructive_operation(graph_id: str):
                     }
                 ) + MESSAGE_DELIMITER
 
+                # If schema was modified, refresh the graph
+                if is_schema_modifying:
+                    step = {"type": "reasoning_step", "message": "Step 3: Schema change detected - refreshing graph..."}
+                    yield json.dumps(step) + MESSAGE_DELIMITER
+
+                    refresh_success, refresh_message = PostgresLoader.refresh_graph_schema(graph_id, db_url)
+                    
+                    if refresh_success:
+                        yield json.dumps(
+                            {
+                                "type": "schema_refresh",
+                                "message": f"✅ Schema change detected ({operation_type} operation)\n\n🔄 Graph schema has been automatically refreshed with the latest database structure.",
+                                "refresh_status": "success"
+                            }
+                        ) + MESSAGE_DELIMITER
+                    else:
+                        yield json.dumps(
+                            {
+                                "type": "schema_refresh",
+                                "message": f"⚠️ Schema was modified but graph refresh failed: {refresh_message}",
+                                "refresh_status": "failed"
+                            }
+                        ) + MESSAGE_DELIMITER
+
                 # Generate user-readable response using AI
-                step = {"type": "reasoning_step", "message": "Step 2: Generating user-friendly response"}
+                step_num = "4" if is_schema_modifying else "3"
+                step = {"type": "reasoning_step", "message": f"Step {step_num}: Generating user-friendly response"}
                 yield json.dumps(step) + MESSAGE_DELIMITER
 
                 response_agent = ResponseFormatterAgent()
@@ -446,6 +502,47 @@ def login_google():
 def logout():
     session.clear()
     return redirect(url_for("home"))
+
+@app.route("/graphs/<string:graph_id>/refresh", methods=["POST"])
+@token_required  # Apply token authentication decorator
+def refresh_graph_schema(graph_id: str):
+    """
+    Manually refresh the graph schema from the database.
+    This endpoint allows users to manually trigger a schema refresh
+    if they suspect the graph is out of sync with the database.
+    """
+    graph_id = g.user_id + "_" + graph_id.strip()
+    
+    try:
+        # Get database connection details
+        db_description, db_url = get_db_description(graph_id)
+        
+        if not db_url or db_url == "No URL available for this database.":
+            return jsonify({
+                "success": False, 
+                "error": "No database URL found for this graph"
+            }), 400
+        
+        # Perform schema refresh
+        success, message = PostgresLoader.refresh_graph_schema(graph_id, db_url)
+        
+        if success:
+            return jsonify({
+                "success": True,
+                "message": f"Graph schema refreshed successfully. {message}"
+            }), 200
+        else:
+            return jsonify({
+                "success": False,
+                "error": f"Failed to refresh schema: {message}"
+            }), 500
+            
+    except Exception as e:
+        logging.error("Error in manual schema refresh: %s", e)
+        return jsonify({
+            "success": False,
+            "error": f"Error refreshing schema: {str(e)}"
+        }), 500
 
 @app.route("/database", methods=["POST"])
 @token_required  # Apply token authentication decorator
