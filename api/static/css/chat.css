@@ -267,7 +267,6 @@ body {
   word-wrap: break-word;
   overflow-wrap: break-word;
   overflow-x: auto;
-  white-space: pre-wrap;
 }
 
 /* Styles for formatted text blocks */
@@ -600,11 +599,25 @@ body {
   right: -60px;
   top: 50%;
   transform: translateY(-50%);
-  background: transparent;
-  color: var(--text-primary);
+  z-index: 2000;
+  width: 48px;
+  height: 48px;
   border: none;
+  border-radius: 50%;
+  background: var(--falkor-quaternary);
+  color: var(--text-primary);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
   cursor: pointer;
-  padding: 4px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+#reset-button:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  background: var(--falkor-accent);
 }
 
 #reset-button:disabled {
@@ -1159,16 +1172,13 @@ body {
 
 /* Destructive Confirmation Styles */
 .destructive-confirmation-container {
-  border: 2px solid #ff4444;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #2a1f1f, #3a2222);
-  margin: 10px 0;
   transition: all 0.3s ease;
 }
 
 .destructive-confirmation-message {
-  background: none !important;
-  border: none !important;
+  border: 2px solid #ff4444;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #2a1f1f, #3a2222);
 }
 
 .destructive-confirmation {
