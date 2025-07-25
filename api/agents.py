@@ -485,6 +485,9 @@ class ResponseFormatterAgent:
         # Format the query results for better readability
         formatted_results = self._format_query_results(query_results)
 
+        # Determine the type of SQL operation
+        sql_type = sql_query.strip().split()[0].upper() if sql_query else "UNKNOWN"
+
         prompt = f"""
 You are an AI assistant that helps users understand database query results. Your task is to analyze the SQL query results and provide a clear, concise, and user-friendly explanation.
 
@@ -497,18 +500,22 @@ Database Description: {db_description if db_description else "Not provided"}
 **SQL Query Executed:**
 {sql_query}
 
+**Query Type:** {sql_type}
+
 **Query Results:**
 {formatted_results}
 
 **Instructions:**
 1. Provide a clear, natural language answer to the user's question based on the query results
-2. Focus on the key insights and findings from the data
-3. Use bullet points or numbered lists when presenting multiple items
-4. Include relevant numbers, percentages, or trends if applicable
-5. Be concise but comprehensive - avoid unnecessary technical jargon
-6. If the results are empty, explain that no data was found matching the criteria
-7. If there are many results, provide a summary with highlights
-8. Do not mention the SQL query or technical database details unless specifically relevant to the user's understanding
+2. For SELECT queries: Focus on the key insights and findings from the data
+3. For INSERT/UPDATE/DELETE queries: Confirm the operation was successful and mention how many records were affected
+4. For other operations (CREATE, DROP, etc.): Confirm the operation was completed successfully
+5. Use bullet points or numbered lists when presenting multiple items
+6. Include relevant numbers, percentages, or trends if applicable
+7. Be concise but comprehensive - avoid unnecessary technical jargon
+8. If the results are empty, explain that no data was found matching the criteria
+9. If there are many results, provide a summary with highlights
+10. Do not mention the SQL query or technical database details unless specifically relevant to the user's understanding
 
 **Response Format:**
 Provide a direct answer to the user's question in a conversational tone, as if you were explaining the findings to a colleague.
@@ -524,6 +531,19 @@ Provide a direct answer to the user's question in a conversational tone, as if y
         if len(query_results) == 0:
             return "No results found."
 
+        # Check if this is an operation result (INSERT/UPDATE/DELETE)
+        if len(query_results) == 1 and "operation" in query_results[0]:
+            result = query_results[0]
+            operation = result.get("operation", "UNKNOWN")
+            affected_rows = result.get("affected_rows")
+            status = result.get("status", "unknown")
+
+            if affected_rows is not None:
+                return f"Operation: {operation}, Status: {status}, Affected rows: {affected_rows}"
+            else:
+                return f"Operation: {operation}, Status: {status}"
+
+        # Handle regular SELECT query results
         # Limit the number of results shown in the prompt to avoid token limits
         max_results_to_show = 50
         results_to_show = query_results[:max_results_to_show]

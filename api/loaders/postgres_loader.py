@@ -297,11 +297,34 @@ class PostgresLoader(BaseLoader):
 
             # Execute the SQL query
             cursor.execute(sql_query)
-            columns = [desc[0] for desc in cursor.description]
-            results = cursor.fetchall()
-
-            # Convert results to list of dictionaries
-            result_list = [dict(zip(columns, row)) for row in results]
+            
+            # Check if the query returns results (SELECT queries)
+            if cursor.description is not None:
+                # This is a SELECT query or similar that returns rows
+                columns = [desc[0] for desc in cursor.description]
+                results = cursor.fetchall()
+                result_list = [dict(zip(columns, row)) for row in results]
+            else:
+                # This is an INSERT, UPDATE, DELETE, or other non-SELECT query
+                # Return information about the operation
+                affected_rows = cursor.rowcount
+                sql_type = sql_query.strip().split()[0].upper()
+                
+                if sql_type in ['INSERT', 'UPDATE', 'DELETE']:
+                    result_list = [{
+                        "operation": sql_type,
+                        "affected_rows": affected_rows,
+                        "status": "success"
+                    }]
+                else:
+                    # For other types of queries (CREATE, DROP, etc.)
+                    result_list = [{
+                        "operation": sql_type,
+                        "status": "success"
+                    }]
+            
+            # Commit the transaction for write operations
+            conn.commit()
 
             # Close database connection
             cursor.close()
@@ -310,6 +333,16 @@ class PostgresLoader(BaseLoader):
             return result_list
 
         except psycopg2.Error as e:
+            # Rollback in case of error
+            if 'conn' in locals():
+                conn.rollback()
+                cursor.close()
+                conn.close()
             raise Exception(f"PostgreSQL query execution error: {str(e)}")
         except Exception as e:
+            # Rollback in case of error
+            if 'conn' in locals():
+                conn.rollback()
+                cursor.close()
+                conn.close()
             raise Exception(f"Error executing SQL query: {str(e)}")
