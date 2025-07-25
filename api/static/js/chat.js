@@ -317,6 +317,9 @@ async function sendMessage() {
                         } else {
                             addMessage("No results found for the query.", false);
                         }
+                    } else if (step.type === 'ai_response') {
+                        // Handle AI-generated user-friendly response
+                        addMessage(step.message, false, false, true);
                     } else {
                         // Default handling
                         addMessage(step.message || JSON.stringify(step), false);

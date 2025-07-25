@@ -13,7 +13,7 @@ from flask import Blueprint, Flask, Response, jsonify, render_template, request,
 from flask import session, redirect, url_for
 from flask_dance.contrib.google import make_google_blueprint, google
 
-from api.agents import AnalysisAgent, RelevancyAgent
+from api.agents import AnalysisAgent, RelevancyAgent, ResponseFormatterAgent
 from api.constants import EXAMPLES
 from api.extensions import db
 from api.graph import find, get_db_description
@@ -250,13 +250,36 @@ def query(graph_id: str):
             # If the SQL query is valid, execute it using the postgress database db_url
             if answer_an["is_sql_translatable"]:
                 try:
-                    result = PostgresLoader.execute_sql_query(answer_an["sql_query"], db_url)
+                    step = {"type": "reasoning_step", "message": "Step 3: Executing SQL query"}
+                    yield json.dumps(step) + MESSAGE_DELIMITER
+
+                    query_results = PostgresLoader.execute_sql_query(answer_an["sql_query"], db_url)
                     yield json.dumps(
                         {
                             "type": "query_result",
-                            "data": result,
+                            "data": query_results,
                         }
                     ) + MESSAGE_DELIMITER
+
+                    # Generate user-readable response using AI
+                    step = {"type": "reasoning_step", "message": "Step 4: Generating user-friendly response"}
+                    yield json.dumps(step) + MESSAGE_DELIMITER
+
+                    response_agent = ResponseFormatterAgent()
+                    user_readable_response = response_agent.format_response(
+                        user_query=queries_history[-1],
+                        sql_query=answer_an["sql_query"],
+                        query_results=query_results,
+                        db_description=db_description
+                    )
+
+                    yield json.dumps(
+                        {
+                            "type": "ai_response",
+                            "message": user_readable_response,
+                        }
+                    ) + MESSAGE_DELIMITER
+
                 except Exception as e:
                     logging.error("Error executing SQL query: %s", e)
                     yield json.dumps(
