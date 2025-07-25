@@ -152,6 +152,7 @@ body {
 .user-message-container::before {
   margin-right: 10px;
   background: var(--falkor-quaternary);
+  content: 'User';
 }
 
 .bot-message-container::after {
