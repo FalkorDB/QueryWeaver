@@ -881,6 +881,89 @@ body {
   background: #c0392b;
 }
 
+/* User Profile Button Styles */
+.user-profile-btn {
+  position: fixed;
+  top: 20px;
+  right: 30px;
+  z-index: 2000;
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 2px;
+}
+
+.user-profile-btn:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  transform: translateY(-1px);
+}
+
+.user-profile-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* User Profile Dropdown */
+.user-profile-dropdown {
+  position: fixed;
+  top: 80px;
+  right: 30px;
+  z-index: 1999;
+  background: var(--falkor-secondary);
+  border: 1px solid var(--falkor-border-primary);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  min-width: 200px;
+  display: none;
+}
+
+.user-profile-dropdown.show {
+  display: block;
+}
+
+.user-profile-info {
+  padding: 15px;
+  border-bottom: 1px solid var(--falkor-quaternary);
+}
+
+.user-profile-name {
+  color: var(--text-primary);
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.user-profile-email {
+  color: var(--text-secondary);
+  font-size: 0.9em;
+}
+
+.user-profile-actions {
+  padding: 10px;
+}
+
+.user-profile-logout {
+  width: 100%;
+  padding: 10px;
+  background: #e74c3c;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background 0.2s;
+}
+
+.user-profile-logout:hover {
+  background: #c0392b;
+}
+
 /* Destructive Confirmation Styles */
 .destructive-confirmation-container {
   border: 2px solid #ff4444;
