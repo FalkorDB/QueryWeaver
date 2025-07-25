@@ -680,12 +680,44 @@ body {
 .pg-modal-connect:hover {
   background: #3367d6;
 }
+.pg-modal-connect:disabled {
+  background: #6c8db8;
+  cursor: not-allowed;
+}
+.pg-modal-loading-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #ffffff40;
+  border-top: 2px solid #ffffff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
 .pg-modal-cancel {
   background: #e0e0e0;
   color: #333;
 }
 .pg-modal-cancel:hover {
   background: #cacaca;
+}
+.pg-modal-cancel:disabled {
+  background: #f0f0f0;
+  color: #999;
+  cursor: not-allowed;
+}
+.pg-modal-input:disabled {
+  background: #f8f8f8;
+  color: #999;
+  cursor: not-allowed;
 }
 .google-login-modal {
   display: none;

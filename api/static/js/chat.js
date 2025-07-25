@@ -760,6 +760,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 alert('Please enter a Postgres URL.');
                 return;
             }
+            
+            // Show loading state
+            const connectText = connectPgModalBtn.querySelector('.pg-modal-connect-text');
+            const loadingSpinner = connectPgModalBtn.querySelector('.pg-modal-loading-spinner');
+            const cancelBtn = document.getElementById('pg-modal-cancel');
+            
+            connectText.style.display = 'none';
+            loadingSpinner.style.display = 'flex';
+            connectPgModalBtn.disabled = true;
+            cancelBtn.disabled = true;
+            pgUrlInput.disabled = true;
+            
             fetch('/database', {
                 method: 'POST',
                 headers: {
@@ -769,13 +781,29 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .then(response => response.json())
             .then(data => {
+                // Reset loading state
+                connectText.style.display = 'inline';
+                loadingSpinner.style.display = 'none';
+                connectPgModalBtn.disabled = false;
+                cancelBtn.disabled = false;
+                pgUrlInput.disabled = false;
+                
                 if (data.success) {
-                    pgModal.style.display = 'none'; // Close modal on success, no alert
+                    pgModal.style.display = 'none'; // Close modal on success
+                    // Refresh the graph list to show the new database
+                    location.reload();
                 } else {
                     alert('Failed to connect: ' + (data.error || 'Unknown error'));
                 }
             })
             .catch(error => {
+                // Reset loading state on error
+                connectText.style.display = 'inline';
+                loadingSpinner.style.display = 'none';
+                connectPgModalBtn.disabled = false;
+                cancelBtn.disabled = false;
+                pgUrlInput.disabled = false;
+                
                 alert('Error connecting to database: ' + error.message);
             });
         });
