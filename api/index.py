@@ -253,8 +253,7 @@ def query(graph_id: str):
 
                 if sql_type in ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE']:
                     # This is a destructive operation - ask for user confirmation
-                    confirmation_message = f"""
-⚠️ DESTRUCTIVE OPERATION DETECTED ⚠️
+                    confirmation_message = f"""⚠️ DESTRUCTIVE OPERATION DETECTED ⚠️
 
 The generated SQL query will perform a **{sql_type}** operation:
 
