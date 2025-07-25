@@ -29,7 +29,7 @@ const urlParams = new URLSearchParams(window.location.search);
 
 const TOKEN = urlParams.get('token');
 
-function addMessage(message, isUser = false, isFollowup = false, isFinalResult = false, isLoading = false) {
+function addMessage(message, isUser = false, isFollowup = false, isFinalResult = false, isLoading = false, userInfo = null) {
     const messageDiv = document.createElement('div');
     const messageDivContainer = document.createElement('div');
 
@@ -44,6 +44,17 @@ function addMessage(message, isUser = false, isFollowup = false, isFinalResult =
         suggestionsContainer.style.display = 'none';
         messageDivContainer.className += " user-message-container";
         messageDiv.className += " user-message";
+        
+        // Add user profile image if userInfo is provided
+        if (userInfo && userInfo.picture) {
+            const userAvatar = document.createElement('img');
+            userAvatar.src = userInfo.picture;
+            userAvatar.alt = userInfo.name || 'User';
+            userAvatar.className = 'user-message-avatar';
+            messageDivContainer.appendChild(userAvatar);
+            messageDivContainer.classList.add('has-avatar');
+        }
+        
         questions_history.push(message);
     } else if (isFinalResult) {
         result_history.push(message);
@@ -186,7 +197,7 @@ async function sendMessage() {
     }
 
     // Add user message to chat
-    addMessage(message, true);
+    addMessage(message, true, false, false, false, window.currentUser);
     messageInput.value = '';
 
     // Show typing indicator
@@ -452,7 +463,7 @@ async function handleDestructiveConfirmation(confirmation, sqlQuery, confirmatio
     submitButton.disabled = false;
     
     // Add user's choice as a message
-    addMessage(`User choice: ${confirmation}`, true);
+    addMessage(`User choice: ${confirmation}`, true, false, false, false, window.currentUser);
     
     if (confirmation === 'CANCEL') {
         addMessage("Operation cancelled. The destructive SQL query was not executed.", false, true);

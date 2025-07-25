@@ -123,6 +123,22 @@ body {
 
 .user-message-container {
   justify-content: flex-start;
+  position: relative;
+}
+
+/* Hide the default "User" text when avatar is present */
+.user-message-container.has-avatar::before {
+  display: none;
+}
+
+/* User message avatar styling */
+.user-message-avatar {
+  height: 32px;
+  width: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-right: 10px;
+  border: 2px solid var(--falkor-quaternary);
 }
 
 .bot-message-container,
