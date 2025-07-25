@@ -320,6 +320,12 @@ async function sendMessage() {
                     } else if (step.type === 'ai_response') {
                         // Handle AI-generated user-friendly response
                         addMessage(step.message, false, false, true);
+                    } else if (step.type === 'destructive_confirmation') {
+                        // Handle destructive operation confirmation request
+                        addDestructiveConfirmationMessage(step);
+                    } else if (step.type === 'operation_cancelled') {
+                        // Handle cancelled operation
+                        addMessage(step.message, false, true);
                     } else {
                         // Default handling
                         addMessage(step.message || JSON.stringify(step), false);
@@ -391,6 +397,132 @@ function pauseRequest() {
         
         // Show suggestions again since we're ready for new input
         suggestionsContainer.style.display = 'flex';
+    }
+}
+
+function addDestructiveConfirmationMessage(step) {
+    const messageDiv = document.createElement('div');
+    const messageDivContainer = document.createElement('div');
+    
+    messageDivContainer.className = "message-container bot-message-container destructive-confirmation-container";
+    messageDiv.className = "message bot-message destructive-confirmation-message";
+    
+    // Create the confirmation UI
+    const confirmationHTML = `
+        <div class="destructive-confirmation">
+            <div class="confirmation-text">${step.message.replace(/\n/g, '<br>')}</div>
+            <div class="confirmation-buttons">
+                <button class="confirm-btn danger" onclick="handleDestructiveConfirmation('CONFIRM', '${step.sql_query.replace(/'/g, "\\'")}')">
+                    CONFIRM - Execute Query
+                </button>
+                <button class="cancel-btn" onclick="handleDestructiveConfirmation('CANCEL', '${step.sql_query.replace(/'/g, "\\'")}')">
+                    CANCEL - Abort Operation
+                </button>
+            </div>
+        </div>
+    `;
+    
+    messageDiv.innerHTML = confirmationHTML;
+    
+    messageDivContainer.appendChild(messageDiv);
+    chatMessages.appendChild(messageDivContainer);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    // Disable the main input while waiting for confirmation
+    messageInput.disabled = true;
+    submitButton.disabled = true;
+}
+
+async function handleDestructiveConfirmation(confirmation, sqlQuery) {
+    // Re-enable the input
+    messageInput.disabled = false;
+    submitButton.disabled = false;
+    
+    // Add user's choice as a message
+    addMessage(`User choice: ${confirmation}`, true);
+    
+    if (confirmation === 'CANCEL') {
+        addMessage("Operation cancelled. The destructive SQL query was not executed.", false, true);
+        return;
+    }
+    
+    // If confirmed, send confirmation to server
+    try {
+        const selectedValue = document.getElementById("graph-select").value;
+        
+        const response = await fetch('/graphs/' + selectedValue + '/confirm', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                confirmation: confirmation,
+                sql_query: sqlQuery,
+                chat: questions_history
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Server responded with ${response.status}`);
+        }
+        
+        // Process the streaming response
+        const reader = response.body.getReader();
+        let decoder = new TextDecoder();
+        let buffer = '';
+        
+        while (true) {
+            const { done, value } = await reader.read();
+            
+            if (done) {
+                if (buffer.trim()) {
+                    try {
+                        const step = JSON.parse(buffer);
+                        addMessage(step.message || JSON.stringify(step), false);
+                    } catch (e) {
+                        addMessage(buffer, false);
+                    }
+                }
+                break;
+            }
+            
+            const chunk = decoder.decode(value, { stream: true });
+            buffer += chunk;
+            
+            let delimiterIndex;
+            while ((delimiterIndex = buffer.indexOf(MESSAGE_DELIMITER)) !== -1) {
+                const message = buffer.slice(0, delimiterIndex).trim();
+                buffer = buffer.slice(delimiterIndex + MESSAGE_DELIMITER.length);
+                
+                if (!message) continue;
+                
+                try {
+                    const step = JSON.parse(message);
+                    
+                    if (step.type === 'reasoning_step') {
+                        addMessage(step.message, false);
+                    } else if (step.type === 'query_result') {
+                        if (step.data) {
+                            addMessage(`Query Result: ${JSON.stringify(step.data)}`, false, false, true);
+                        } else {
+                            addMessage("No results found for the query.", false);
+                        }
+                    } else if (step.type === 'ai_response') {
+                        addMessage(step.message, false, false, true);
+                    } else if (step.type === 'error') {
+                        addMessage(`Error: ${step.message}`, false, true);
+                    } else {
+                        addMessage(step.message || JSON.stringify(step), false);
+                    }
+                } catch (e) {
+                    addMessage("Failed: " + message, false);
+                }
+            }
+        }
+        
+    } catch (error) {
+        console.error('Error:', error);
+        addMessage('Sorry, there was an error processing the confirmation: ' + error.message, false);
     }
 }
 
