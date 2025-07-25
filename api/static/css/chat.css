@@ -753,6 +753,19 @@ body {
   border-radius: 10px;
   box-shadow: 0 2px 16px rgba(0,0,0,0.2);
   text-align: center;
+  color: #333;
+}
+
+.google-login-modal-content h2 {
+  color: #333;
+  margin-bottom: 0.5em;
+  font-size: 1.5em;
+}
+
+.google-login-modal-content p {
+  color: #666;
+  margin-bottom: 1em;
+  font-size: 1em;
 }
 .google-login-btn {
   display: flex;
