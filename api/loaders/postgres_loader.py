@@ -1,14 +1,39 @@
 from typing import Tuple, Dict, Any, List
-import psycopg2
+import re
+import logging
 import tqdm
+import psycopg2
 from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 class PostgresLoader(BaseLoader):
     """
     Loader for PostgreSQL databases that connects and extracts schema information.
     """
+
+    # DDL operations that modify database schema
+    SCHEMA_MODIFYING_OPERATIONS = {
+        'CREATE', 'ALTER', 'DROP', 'RENAME', 'TRUNCATE'
+    }
+    
+    # More specific patterns for schema-affecting operations
+    SCHEMA_PATTERNS = [
+        r'^\s*CREATE\s+TABLE',
+        r'^\s*CREATE\s+INDEX',
+        r'^\s*CREATE\s+UNIQUE\s+INDEX',
+        r'^\s*ALTER\s+TABLE',
+        r'^\s*DROP\s+TABLE',
+        r'^\s*DROP\s+INDEX',
+        r'^\s*RENAME\s+TABLE',
+        r'^\s*TRUNCATE\s+TABLE',
+        r'^\s*CREATE\s+VIEW',
+        r'^\s*DROP\s+VIEW',
+        r'^\s*CREATE\s+SCHEMA',
+        r'^\s*DROP\s+SCHEMA',
+    ]
 
     @staticmethod
     def load(prefix: str, connection_url: str) -> Tuple[bool, str]:
@@ -64,7 +89,7 @@ class PostgresLoader(BaseLoader):
             Dict containing table information
         """
         entities = {}
-        
+
         # Get all tables in public schema
         cursor.execute("""
             SELECT table_name, table_comment
@@ -80,31 +105,31 @@ class PostgresLoader(BaseLoader):
             AND t.table_type = 'BASE TABLE'
             ORDER BY t.table_name;
         """)
-        
+
         tables = cursor.fetchall()
-        
+
         for table_name, table_comment in tqdm.tqdm(tables, desc="Extracting table information"):
             table_name = table_name.strip()
-            
+
             # Get column information for this table
             columns_info = PostgresLoader.extract_columns_info(cursor, table_name)
-            
+
             # Get foreign keys for this table
             foreign_keys = PostgresLoader.extract_foreign_keys(cursor, table_name)
-            
+
             # Generate table description
             table_description = table_comment if table_comment else f"Table: {table_name}"
-            
+
             # Get column descriptions for batch embedding
             col_descriptions = [col_info['description'] for col_info in columns_info.values()]
-            
+
             entities[table_name] = {
                 'description': table_description,
                 'columns': columns_info,
                 'foreign_keys': foreign_keys,
                 'col_descriptions': col_descriptions
             }
-        
+
         return entities
 
     @staticmethod
@@ -155,29 +180,29 @@ class PostgresLoader(BaseLoader):
             AND c.table_schema = 'public'
             ORDER BY c.ordinal_position;
         """, (table_name, table_name, table_name))
-        
+
         columns = cursor.fetchall()
         columns_info = {}
-        
+
         for col_name, data_type, is_nullable, column_default, key_type, column_comment in columns:
             col_name = col_name.strip()
-            
+
             # Generate column description
             description_parts = []
             if column_comment:
                 description_parts.append(column_comment)
             else:
                 description_parts.append(f"Column {col_name} of type {data_type}")
-                
+
             if key_type != 'NONE':
                 description_parts.append(f"({key_type})")
-            
+
             if is_nullable == 'NO':
                 description_parts.append("(NOT NULL)")
-                
+
             if column_default:
                 description_parts.append(f"(Default: {column_default})")
-            
+
             columns_info[col_name] = {
                 'type': data_type,
                 'null': is_nullable,
@@ -185,7 +210,7 @@ class PostgresLoader(BaseLoader):
                 'description': ' '.join(description_parts),
                 'default': column_default
             }
-        
+
         return columns_info
 
     @staticmethod
@@ -217,7 +242,7 @@ class PostgresLoader(BaseLoader):
             AND tc.table_name = %s
             AND tc.table_schema = 'public';
         """, (table_name,))
-        
+
         foreign_keys = []
         for constraint_name, column_name, foreign_table, foreign_column in cursor.fetchall():
             foreign_keys.append({
@@ -226,7 +251,7 @@ class PostgresLoader(BaseLoader):
                 'referenced_table': foreign_table.strip(),
                 'referenced_column': foreign_column.strip()
             })
-        
+
         return foreign_keys
 
     @staticmethod
@@ -258,15 +283,15 @@ class PostgresLoader(BaseLoader):
             AND tc.table_schema = 'public'
             ORDER BY tc.table_name, tc.constraint_name;
         """)
-        
+
         relationships = {}
         for table_name, constraint_name, column_name, foreign_table, foreign_column in cursor.fetchall():
             table_name = table_name.strip()
             constraint_name = constraint_name.strip()
-            
+
             if constraint_name not in relationships:
                 relationships[constraint_name] = []
-            
+
             relationships[constraint_name].append({
                 'from': table_name,
                 'to': foreign_table.strip(),
@@ -274,9 +299,86 @@ class PostgresLoader(BaseLoader):
                 'target_column': foreign_column.strip(),
                 'note': f'Foreign key constraint: {constraint_name}'
             })
-        
+
         return relationships
-    
+
+    @staticmethod
+    def is_schema_modifying_query(sql_query: str) -> Tuple[bool, str]:
+        """
+        Check if a SQL query modifies the database schema.
+        
+        Args:
+            sql_query: The SQL query to check
+            
+        Returns:
+            Tuple of (is_schema_modifying, operation_type)
+        """
+        if not sql_query or not sql_query.strip():
+            return False, ""
+
+        # Clean and normalize the query
+        normalized_query = sql_query.strip().upper()
+
+        # Check for basic DDL operations
+        first_word = normalized_query.split()[0] if normalized_query.split() else ""
+        if first_word in PostgresLoader.SCHEMA_MODIFYING_OPERATIONS:
+            # Additional pattern matching for more precise detection
+            for pattern in PostgresLoader.SCHEMA_PATTERNS:
+                if re.match(pattern, normalized_query, re.IGNORECASE):
+                    return True, first_word
+
+            # If it's a known DDL operation but doesn't match specific patterns,
+            # still consider it schema-modifying (better safe than sorry)
+            return True, first_word
+
+        return False, ""
+
+    @staticmethod
+    def refresh_graph_schema(graph_id: str, db_url: str) -> Tuple[bool, str]:
+        """
+        Refresh the graph schema by clearing existing data and reloading from the database.
+        
+        Args:
+            graph_id: The graph ID to refresh
+            db_url: Database connection URL
+            
+        Returns:
+            Tuple of (success, message)
+        """
+        try:
+            logging.info("Schema modification detected. Refreshing graph schema for: %s", graph_id)
+
+            # Import here to avoid circular imports
+            from api.extensions import db
+
+            # Clear existing graph data
+            # Drop current graph before reloading
+            graph = db.select_graph(graph_id)
+            graph.delete()
+
+            # Extract prefix from graph_id (remove database name part)
+            # graph_id format is typically "prefix_database_name"
+            parts = graph_id.split('_')
+            if len(parts) >= 2:
+                # Reconstruct prefix by joining all parts except the last one
+                prefix = '_'.join(parts[:-1])
+            else:
+                prefix = graph_id
+
+            # Reuse the existing load method to reload the schema
+            success, message = PostgresLoader.load(prefix, db_url)
+
+            if success:
+                logging.info("Graph schema refreshed successfully.")
+                return True, message
+            else:
+                return False, f"Failed to reload schema: {message}"
+
+        except Exception as e:
+            error_msg = f"Error refreshing graph schema: {str(e)}"
+            logging.error(error_msg)
+            return False, error_msg
+
     @staticmethod
     def execute_sql_query(sql_query: str, db_url: str) -> List[Dict[str, Any]]:
         """
@@ -297,7 +399,7 @@ class PostgresLoader(BaseLoader):
 
             # Execute the SQL query
             cursor.execute(sql_query)
-            
+
             # Check if the query returns results (SELECT queries)
             if cursor.description is not None:
                 # This is a SELECT query or similar that returns rows
@@ -309,7 +411,7 @@ class PostgresLoader(BaseLoader):
                 # Return information about the operation
                 affected_rows = cursor.rowcount
                 sql_type = sql_query.strip().split()[0].upper()
-                
+
                 if sql_type in ['INSERT', 'UPDATE', 'DELETE']:
                     result_list = [{
                         "operation": sql_type,
@@ -322,7 +424,7 @@ class PostgresLoader(BaseLoader):
                         "operation": sql_type,
                         "status": "success"
                     }]
-            
+
             # Commit the transaction for write operations
             conn.commit()
 
