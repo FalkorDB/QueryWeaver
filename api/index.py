@@ -192,7 +192,7 @@ def query(graph_id: str):
         agent_rel = RelevancyAgent(queries_history, result_history)
         agent_an = AnalysisAgent(queries_history, result_history)
 
-        step = {"type": "reasoning_step", "message": "Step 1: Analyzing the user query"}
+        step = {"type": "reasoning_step", "message": "Step 1: Analyzing user query and generating SQL..."}
         yield json.dumps(step) + MESSAGE_DELIMITER
         db_description, db_url = get_db_description(graph_id)  # Ensure the database description is loaded
 
@@ -227,8 +227,6 @@ def query(graph_id: str):
                     ) + MESSAGE_DELIMITER
                     return
 
-            step = {"type": "reasoning_step", "message": "Step 2: Generating SQL query"}
-            yield json.dumps(step) + MESSAGE_DELIMITER
             logging.info("Calling to analysis agent with query: %s", queries_history[-1])
             answer_an = agent_an.get_analysis(
                 queries_history[-1], result, db_description, instructions
@@ -250,7 +248,7 @@ def query(graph_id: str):
             # If the SQL query is valid, execute it using the postgress database db_url
             if answer_an["is_sql_translatable"]:
                 try:
-                    step = {"type": "reasoning_step", "message": "Step 3: Executing SQL query"}
+                    step = {"type": "reasoning_step", "message": "Step 2: Executing SQL query"}
                     yield json.dumps(step) + MESSAGE_DELIMITER
 
                     query_results = PostgresLoader.execute_sql_query(answer_an["sql_query"], db_url)
@@ -262,7 +260,7 @@ def query(graph_id: str):
                     ) + MESSAGE_DELIMITER
 
                     # Generate user-readable response using AI
-                    step = {"type": "reasoning_step", "message": "Step 4: Generating user-friendly response"}
+                    step = {"type": "reasoning_step", "message": "Step 3: Generating user-friendly response"}
                     yield json.dumps(step) + MESSAGE_DELIMITER
 
                     response_agent = ResponseFormatterAgent()
