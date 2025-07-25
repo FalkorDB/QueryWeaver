@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import random
+import time
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from functools import wraps
@@ -35,16 +36,57 @@ SECRET_TOKEN = os.getenv("SECRET_TOKEN")
 SECRET_TOKEN_ERP = os.getenv("SECRET_TOKEN_ERP")
 
 
+def validate_and_cache_user():
+    """
+    Helper function to validate OAuth token and cache user info.
+    Returns (user_info, is_authenticated) tuple.
+    """
+    user_info = session.get("google_user")
+    token_validated_at = session.get("token_validated_at", 0)
+    current_time = time.time()
+
+    # Use cached user info if it's less than 15 minutes old
+    if user_info and (current_time - token_validated_at) < 900:  # 15 minutes
+        return user_info, True
+
+    # If no valid session data or cache expired, check OAuth token
+    if not google.authorized:
+        session.clear()
+        return None, False
+
+    try:
+        # Make network call to validate token
+        resp = google.get("/oauth2/v2/userinfo")
+        if not resp.ok:
+            session.clear()
+            return None, False
+
+        user_info = resp.json()
+        session["google_user"] = user_info
+        session["token_validated_at"] = current_time
+        return user_info, True
+
+    except Exception as e:
+        logging.warning(f"OAuth validation error: {e}")
+        session.clear()
+        return None, False
+
+
 def token_required(f):
     """Decorator to protect routes with token authentication"""
 
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        user_info = session.get("google_user")
-        if user_info:
-            g.user_id = user_info.get("id")
-        else:
-            return jsonify(message="Unauthorized"), 401
+        user_info, is_authenticated = validate_and_cache_user()
+
+        if not is_authenticated:
+            return jsonify(message="Unauthorized - Please log in"), 401
+
+        g.user_id = user_info.get("id")
+        if not g.user_id:
+            session.clear()
+            return jsonify(message="Unauthorized - Invalid user"), 401
+
         return f(*args, **kwargs)
 
     return decorated_function
@@ -68,15 +110,28 @@ google_bp = make_google_blueprint(
 app.register_blueprint(google_bp, url_prefix="/login")
 
 
+@app.errorhandler(Exception)
+def handle_oauth_error(error):
+    """Handle OAuth-related errors gracefully"""
+    # Check if it's an OAuth-related error
+    if "token" in str(error).lower() or "oauth" in str(error).lower():
+        logging.warning(f"OAuth error occurred: {error}")
+        session.clear()
+        return redirect(url_for("home"))
+
+    # For other errors, let them bubble up
+    raise error
+
+
 @app.route("/")
 def home():
     """Home route"""
-    is_authenticated = "google_oauth_token" in session
-    if is_authenticated:
-        resp = google.get("/oauth2/v2/userinfo")
-        if resp.ok:
-            user_info = resp.json()
-            session["google_user"] = user_info
+    _, is_authenticated = validate_and_cache_user()
+
+    # If not authenticated through OAuth, check for any stale session data
+    if not is_authenticated and not google.authorized:
+        session.pop("google_user", None)
+
     return render_template("chat.j2", is_authenticated=is_authenticated)
 
 
@@ -489,18 +544,35 @@ def suggestions():
 def login_google():
     if not google.authorized:
         return redirect(url_for("google.login"))
-    resp = google.get("/oauth2/v2/userinfo")
-    if resp.ok:
-        user_info = resp.json()
-        session["google_user"] = user_info
-        # You can set your own token/session logic here
-        return redirect(url_for("home"))
-    return "Could not fetch your information from Google.", 400
+
+    try:
+        resp = google.get("/oauth2/v2/userinfo")
+        if resp.ok:
+            user_info = resp.json()
+            session["google_user"] = user_info
+            return redirect(url_for("home"))
+        else:
+            # OAuth token might be expired, redirect to login
+            session.clear()
+            return redirect(url_for("google.login"))
+    except Exception as e:
+        logging.error(f"Login error: {e}")
+        session.clear()
+        return redirect(url_for("google.login"))
 
 
 @app.route("/logout")
 def logout():
     session.clear()
+    # Also revoke the OAuth token if possible
+    if google.authorized:
+        try:
+            google.get(
+                "https://accounts.google.com/o/oauth2/revoke",
+                params={"token": google.access_token}
+            )
+        except Exception as e:
+            logging.warning(f"Error revoking token: {e}")
     return redirect(url_for("home"))
 
 @app.route("/graphs/<string:graph_id>/refresh", methods=["POST"])
@@ -522,10 +594,10 @@ def refresh_graph_schema(graph_id: str):
                 "success": False, 
                 "error": "No database URL found for this graph"
             }), 400
-        
+
         # Perform schema refresh
         success, message = PostgresLoader.refresh_graph_schema(graph_id, db_url)
-        
+
         if success:
             return jsonify({
                 "success": True,
@@ -536,7 +608,7 @@ def refresh_graph_schema(graph_id: str):
                 "success": False,
                 "error": f"Failed to refresh schema: {message}"
             }), 500
-            
+
     except Exception as e:
         logging.error("Error in manual schema refresh: %s", e)
         return jsonify({
