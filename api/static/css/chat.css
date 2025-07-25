@@ -835,3 +835,83 @@ body {
 .logout-btn:hover {
   background: #c0392b;
 }
+
+/* Destructive Confirmation Styles */
+.destructive-confirmation-container {
+  border: 2px solid #ff4444;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #2a1f1f, #3a2222);
+  margin: 10px 0;
+  transition: all 0.3s ease;
+}
+
+.destructive-confirmation-message {
+  background: none !important;
+  border: none !important;
+}
+
+.destructive-confirmation {
+  padding: 20px;
+  transition: all 0.3s ease;
+}
+
+.confirmation-text {
+  margin-bottom: 20px;
+  line-height: 1.6;
+  color: #ffffff;
+  font-size: 14px;
+}
+
+.confirmation-text strong {
+  color: #ff6666;
+}
+
+.confirmation-buttons {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.confirm-btn, .cancel-btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  font-family: 'Fira Code', monospace;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 140px;
+}
+
+.confirm-btn {
+  background: #ff4444;
+  color: white;
+  border: 2px solid #ff4444;
+}
+
+.confirm-btn:hover {
+  background: #ff2222;
+  border-color: #ff2222;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 68, 68, 0.4);
+}
+
+.cancel-btn {
+  background: transparent;
+  color: #ffffff;
+  border: 2px solid #666666;
+}
+
+.cancel-btn:hover {
+  background: #666666;
+  border-color: #888888;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 102, 102, 0.4);
+}
+
+.confirm-btn:active, .cancel-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}

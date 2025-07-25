@@ -247,6 +247,52 @@ def query(graph_id: str):
 
             # If the SQL query is valid, execute it using the postgress database db_url
             if answer_an["is_sql_translatable"]:
+                # Check if this is a destructive operation that requires confirmation
+                sql_query = answer_an["sql_query"]
+                sql_type = sql_query.strip().split()[0].upper() if sql_query else ""
+
+                if sql_type in ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE']:
+                    # This is a destructive operation - ask for user confirmation
+                    confirmation_message = f"""
+⚠️ DESTRUCTIVE OPERATION DETECTED ⚠️
+
+The generated SQL query will perform a **{sql_type}** operation:
+
+SQL:
+{sql_query}
+
+What this will do:
+"""
+                    if sql_type == 'INSERT':
+                        confirmation_message += "• Add new data to the database"
+                    elif sql_type == 'UPDATE':
+                        confirmation_message += "• Modify existing data in the database"
+                    elif sql_type == 'DELETE':
+                        confirmation_message += "• **PERMANENTLY DELETE** data from the database"
+                    elif sql_type == 'DROP':
+                        confirmation_message += "• **PERMANENTLY DELETE** entire tables or database objects"
+                    elif sql_type == 'CREATE':
+                        confirmation_message += "• Create new tables or database objects"
+                    elif sql_type == 'ALTER':
+                        confirmation_message += "• Modify the structure of existing tables"
+                    elif sql_type == 'TRUNCATE':
+                        confirmation_message += "• **PERMANENTLY DELETE ALL DATA** from specified tables"
+
+                    confirmation_message += """
+                    
+⚠️ WARNING: This operation will make changes to your database and may be irreversible.
+"""
+                    
+                    yield json.dumps(
+                        {
+                            "type": "destructive_confirmation",
+                            "message": confirmation_message,
+                            "sql_query": sql_query,
+                            "operation_type": sql_type
+                        }
+                    ) + MESSAGE_DELIMITER
+                    return  # Stop here and wait for user confirmation
+                
                 try:
                     step = {"type": "reasoning_step", "message": "Step 2: Executing SQL query"}
                     yield json.dumps(step) + MESSAGE_DELIMITER
@@ -285,6 +331,74 @@ def query(graph_id: str):
                     ) + MESSAGE_DELIMITER
 
     return Response(stream_with_context(generate()), content_type="application/json")
+
+
+@app.route("/graphs/<string:graph_id>/confirm", methods=["POST"])
+@token_required  # Apply token authentication decorator
+def confirm_destructive_operation(graph_id: str):
+    """
+    Handle user confirmation for destructive SQL operations
+    """
+    graph_id = g.user_id + "_" + graph_id.strip()
+    request_data = request.get_json()
+    confirmation = request_data.get("confirmation", "").strip().upper()
+    sql_query = request_data.get("sql_query", "")
+    queries_history = request_data.get("chat", [])
+
+    if not sql_query:
+        return jsonify({"error": "No SQL query provided"}), 400
+
+    # Create a generator function for streaming the confirmation response
+    def generate_confirmation():
+        if confirmation == "CONFIRM":
+            try:
+                db_description, db_url = get_db_description(graph_id)
+
+                step = {"type": "reasoning_step", "message": "Step 1: Executing confirmed SQL query"}
+                yield json.dumps(step) + MESSAGE_DELIMITER
+
+                query_results = PostgresLoader.execute_sql_query(sql_query, db_url)
+                yield json.dumps(
+                    {
+                        "type": "query_result",
+                        "data": query_results,
+                    }
+                ) + MESSAGE_DELIMITER
+
+                # Generate user-readable response using AI
+                step = {"type": "reasoning_step", "message": "Step 2: Generating user-friendly response"}
+                yield json.dumps(step) + MESSAGE_DELIMITER
+
+                response_agent = ResponseFormatterAgent()
+                user_readable_response = response_agent.format_response(
+                    user_query=queries_history[-1] if queries_history else "Destructive operation",
+                    sql_query=sql_query,
+                    query_results=query_results,
+                    db_description=db_description
+                )
+
+                yield json.dumps(
+                    {
+                        "type": "ai_response",
+                        "message": user_readable_response,
+                    }
+                ) + MESSAGE_DELIMITER
+
+            except Exception as e:
+                logging.error("Error executing confirmed SQL query: %s", e)
+                yield json.dumps(
+                    {"type": "error", "message": f"Error executing query: {str(e)}"}
+                ) + MESSAGE_DELIMITER
+        else:
+            # User cancelled or provided invalid confirmation
+            yield json.dumps(
+                {
+                    "type": "operation_cancelled",
+                    "message": "Operation cancelled. The destructive SQL query was not executed."
+                }
+            ) + MESSAGE_DELIMITER
+
+    return Response(stream_with_context(generate_confirmation()), content_type="application/json")
 
 
 @app.route("/suggestions")
