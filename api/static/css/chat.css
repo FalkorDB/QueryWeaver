@@ -186,6 +186,18 @@ body {
   margin: 5px 0;
   line-height: 1.4;
   color: var(--text-primary);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+/* Styles for formatted text blocks */
+.sql-line, .array-line, .plain-line {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  margin: 2px 0;
 }
 
 .bot-message {
