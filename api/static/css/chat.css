@@ -134,6 +134,11 @@ button, input, select, textarea {
   width: auto;
 }
 
+[data-theme="light"] .logo {
+    filter: invert(1);
+}
+
+
 .chat-container {
   flex: 1 1 0;
   display: flex;
