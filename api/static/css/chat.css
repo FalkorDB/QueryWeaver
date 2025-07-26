@@ -5,91 +5,91 @@
 }
 
 :root {
-  /* FalkorDB brand colors - based on browser.falkordb.com */
-  --falkor-primary: #7466FF;
-  /* FalkorDB primary teal */
-  --falkor-secondary: #191919;
-  /* Dark navy blue - main background */
-  --falkor-tertiary: #FF66B3;
-  /* Falkor Tertiary Color */
-  --falkor-quaternary: #393939;
-  /* Falkor Quaternary Color */
-  --dark-bg: black;
-  /* Slightly lighter navy for surfaces */
-  --falkor-accent: #19B6C9;
-  /* Secondary teal for hover states */
-  --falkor-border-primary: #7466FF;
+  /* Professional color palette - muted and business-appropriate */
+  --falkor-primary: #5B6BC0;
+  /* Muted indigo - professional primary */
+  --falkor-secondary: #1A1A1A;
+  /* Dark charcoal - main background */
+  --falkor-tertiary: #B39DDB;
+  /* Muted lavender - subtle tertiary */
+  --falkor-quaternary: #424242;
+  /* Medium gray - quaternary */
+  --dark-bg: #0F0F0F;
+  /* Deep dark for surfaces */
+  --falkor-accent: #26A69A;
+  /* Professional teal - subdued accent */
+  --falkor-border-primary: #5B6BC0;
   /* Primary border color*/
-  --falkor-border-secondary: #FF804D;
-  /* Secondary border color*/
-  --falkor-border-tertiary: #FFFFFF;
-  /* Tertiary border color*/
-  --text-primary: #FFFFFF;
-  /* Primary text color */
-  --text-secondary: #CDD3DF;
-  /* Secondary text color */
-  --text-tertiary: #525252;
-  /* Tertiary text color */
-  --falkor-highlight: #20C9D8;
-  /* Highlight color */
-  --accent-green: #4CAF50;
-  /* Success/final result color */
+  --falkor-border-secondary: #90A4AE;
+  /* Muted blue-gray - professional secondary border */
+  --falkor-border-tertiary: #E0E0E0;
+  /* Light gray border */
+  --text-primary: #F5F5F5;
+  /* Soft white text */
+  --text-secondary: #B0BEC5;
+  /* Muted blue-gray text */
+  --text-tertiary: #616161;
+  /* Medium gray text */
+  --falkor-highlight: #4DB6AC;
+  /* Subtle teal highlight */
+  --accent-green: #66BB6A;
+  /* Professional green */
   --icon-filter: invert(1);
   /* Dark theme - invert icons for white appearance */
-  --bg-tertiary: #2a2a2a;
-  /* Tertiary background */
-  --border-color: #555;
-  /* Border color */
+  --bg-tertiary: #2E2E2E;
+  /* Professional dark gray */
+  --border-color: #616161;
+  /* Subtle border color */
 }
 
 /* Light theme variables */
 [data-theme="light"] {
-  --falkor-primary: #7466FF;
-  --falkor-secondary: #FFFFFF;
-  --falkor-tertiary: #FF66B3;
+  --falkor-primary: #5B6BC0;
+  --falkor-secondary: #FAFAFA;
+  --falkor-tertiary: #B39DDB;
   --falkor-quaternary: #F5F5F5;
   --dark-bg: #FFFFFF;
-  --falkor-accent: #19B6C9;
-  --falkor-border-primary: #7466FF;
-  --falkor-border-secondary: #FF804D;
-  --falkor-border-tertiary: #333333;
-  --text-primary: #333333;
-  --text-secondary: #666666;
-  --text-tertiary: #999999;
-  --falkor-highlight: #20C9D8;
-  --accent-green: #2E7D32;
-  /* Darker green for light theme */
+  --falkor-accent: #26A69A;
+  --falkor-border-primary: #5B6BC0;
+  --falkor-border-secondary: #90A4AE;
+  --falkor-border-tertiary: #424242;
+  --text-primary: #212121;
+  --text-secondary: #616161;
+  --text-tertiary: #9E9E9E;
+  --falkor-highlight: #4DB6AC;
+  --accent-green: #388E3C;
+  /* Professional dark green for light theme */
   --icon-filter: invert(0);
   /* Light theme - no inversion for dark icons */
-  --bg-tertiary: #F0F0F0;
-  /* Light tertiary background */
-  --border-color: #DDD;
+  --bg-tertiary: #F8F8F8;
+  /* Very light gray background */
+  --border-color: #E0E0E0;
   /* Light border color */
 }
 
 /* System theme detection */
 @media (prefers-color-scheme: light) {
   [data-theme="system"] {
-    --falkor-primary: #7466FF;
-    --falkor-secondary: #FFFFFF;
-    --falkor-tertiary: #FF66B3;
+    --falkor-primary: #5B6BC0;
+    --falkor-secondary: #FAFAFA;
+    --falkor-tertiary: #B39DDB;
     --falkor-quaternary: #F5F5F5;
     --dark-bg: #FFFFFF;
-    --falkor-accent: #19B6C9;
-    --falkor-border-primary: #7466FF;
-    --falkor-border-secondary: #FF804D;
-    --falkor-border-tertiary: #333333;
-    --text-primary: #333333;
-    --text-secondary: #666666;
-    --text-tertiary: #999999;
-    --falkor-highlight: #20C9D8;
-    --accent-green: #2E7D32;
-    /* Darker green for light theme */
+    --falkor-accent: #26A69A;
+    --falkor-border-primary: #5B6BC0;
+    --falkor-border-secondary: #90A4AE;
+    --falkor-border-tertiary: #424242;
+    --text-primary: #212121;
+    --text-secondary: #616161;
+    --text-tertiary: #9E9E9E;
+    --falkor-highlight: #4DB6AC;
+    --accent-green: #388E3C;
+    /* Professional dark green for light theme */
     --icon-filter: invert(0);
     /* Light theme - no inversion for dark icons */
-    --bg-tertiary: #F0F0F0;
-    /* Light tertiary background */
-    --border-color: #DDD;
+    --bg-tertiary: #F8F8F8;
+    /* Very light gray background */
+    --border-color: #E0E0E0;
     /* Light border color */
   }
 }
@@ -110,6 +110,11 @@ body {
   overflow: hidden;
 }
 
+/* Ensure all form elements inherit the consistent font */
+button, input, select, textarea {
+  font-family: inherit;
+}
+
 #container {
   height: 98%;
   width: 100%;
@@ -121,7 +126,7 @@ body {
 #gradient {
   width: 100%;
   height: 2%;
-  background: linear-gradient(to right, #C15CFF, #FF5454);
+  background: linear-gradient(to right, var(--falkor-primary), var(--falkor-accent));
 }
 
 .logo {
@@ -312,7 +317,8 @@ body {
   flex-grow: 1;
   padding: 10px;
   border-radius: 6px;
-  box-shadow: 0 0 20px 3px var(--falkor-tertiary);
+  box-shadow: 0 0 8px 1px var(--falkor-primary);
+  border: 1px solid var(--border-color);
 }
 
 .input-container.loading {
@@ -345,6 +351,10 @@ body {
   cursor: pointer;
   transition: opacity 0.2s;
   border: none;
+}
+
+.input-button img {
+  filter: var(--icon-filter) brightness(0.8) saturate(0.3);
 }
 
 .input-button:hover {
@@ -567,6 +577,7 @@ body {
 .action-button:hover {
   box-shadow: 0 4px 12px rgba(0,0,0,0.25);
   background: var(--falkor-accent);
+  transform: translateY(-1px);
 }
 
 .action-button{
@@ -871,15 +882,15 @@ body {
 }
 @keyframes shadow-fade {
   0% {
-    box-shadow: 0 0 20px 3px var(--falkor-tertiary)
+    box-shadow: 0 0 8px 1px var(--falkor-primary)
   }
 
   50% {
-    box-shadow: 0 0 40px 6px var(--falkor-tertiary)
+    box-shadow: 0 0 12px 2px var(--falkor-primary)
   }
 
   100% {
-    box-shadow: 0 0 20px 3px var(--falkor-tertiary)
+    box-shadow: 0 0 8px 1px var(--falkor-primary)
   }
 }
 
@@ -1057,7 +1068,7 @@ body {
 .user-profile-logout {
   width: 100%;
   padding: 10px;
-  background: #e74c3c;
+  background: #D32F2F;
   color: #fff;
   border: none;
   border-radius: 5px;
@@ -1067,7 +1078,7 @@ body {
 }
 
 .user-profile-logout:hover {
-  background: #c0392b;
+  background: #B71C1C;
 }
 
 /* Theme Toggle Button Styles */
@@ -1122,9 +1133,9 @@ body {
 }
 
 .destructive-confirmation-message {
-  border: 2px solid #ff4444;
+  border: 1px solid #D32F2F;
   border-radius: 8px;
-  background: linear-gradient(135deg, #2a1f1f, #3a2222);
+  background: linear-gradient(135deg, var(--bg-tertiary), var(--falkor-quaternary));
 }
 
 .destructive-confirmation {
@@ -1140,7 +1151,7 @@ body {
 }
 
 .confirmation-text strong {
-  color: #ff6666;
+  color: #FFCDD2;
 }
 
 .confirmation-buttons {
@@ -1163,29 +1174,29 @@ body {
 }
 
 .confirm-btn {
-  background: #ff4444;
+  background: #D32F2F;
   color: white;
-  border: 2px solid #ff4444;
+  border: 1px solid #D32F2F;
 }
 
 .confirm-btn:hover {
-  background: #ff2222;
-  border-color: #ff2222;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 68, 68, 0.4);
+  background: #B71C1C;
+  border-color: #B71C1C;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(211, 47, 47, 0.3);
 }
 
 .cancel-btn {
   background: transparent;
-  color: #ffffff;
-  border: 2px solid #666666;
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
 }
 
 .cancel-btn:hover {
-  background: #666666;
-  border-color: #888888;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 102, 102, 0.4);
+  background: var(--bg-tertiary);
+  border-color: var(--text-secondary);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .confirm-btn:active, .cancel-btn:active {
