@@ -588,7 +588,40 @@ menuButton.addEventListener('click', toggleMenu);
 
 sideMenuButton.addEventListener('click', toggleMenu);
 
-newChatButton.addEventListener('click', initChat);
+// Reset confirmation modal elements
+const resetConfirmationModal = document.getElementById('reset-confirmation-modal');
+const resetConfirmBtn = document.getElementById('reset-confirm-btn');
+const resetCancelBtn = document.getElementById('reset-cancel-btn');
+
+// Show reset confirmation modal instead of directly resetting
+newChatButton.addEventListener('click', () => {
+    resetConfirmationModal.style.display = 'flex';
+});
+
+// Handle reset confirmation
+resetConfirmBtn.addEventListener('click', () => {
+    resetConfirmationModal.style.display = 'none';
+    initChat();
+});
+
+// Handle reset cancellation
+resetCancelBtn.addEventListener('click', () => {
+    resetConfirmationModal.style.display = 'none';
+});
+
+// Close modal when clicking outside of it
+resetConfirmationModal.addEventListener('click', (e) => {
+    if (e.target === resetConfirmationModal) {
+        resetConfirmationModal.style.display = 'none';
+    }
+});
+
+// Close modal with Escape key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && resetConfirmationModal.style.display === 'flex') {
+        resetConfirmationModal.style.display = 'none';
+    }
+});
 
 // Add event listener to each suggestion item
 suggestionItems.forEach(item => {
