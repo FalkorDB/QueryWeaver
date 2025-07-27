@@ -765,7 +765,7 @@ button, input, select, textarea {
   border-radius: 4px;
   margin-bottom: 1.5em;
   color: var(--text-primary);
-  background: var(--falkor-primary);
+  background: var(--falkor-quaternary);
 }
 .pg-modal-actions {
   display: flex;
@@ -814,6 +814,7 @@ button, input, select, textarea {
 .pg-modal-cancel {
   background: var(--bg-tertiary);
   color: var(--text-primary);
+  border: 1px solid var(--border-color);
 }
 .pg-modal-cancel:hover {
   background: var(--border-color);
@@ -822,6 +823,7 @@ button, input, select, textarea {
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   cursor: not-allowed;
+  border: 1px solid var(--text-secondary);
 }
 .pg-modal-input:disabled {
   background: var(--bg-tertiary);
