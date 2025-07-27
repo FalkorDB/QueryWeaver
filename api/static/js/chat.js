@@ -151,11 +151,20 @@ function initChat() {
         item.classList.remove('active');
     });
     chatMessages.innerHTML = '';
-    [confValue, expValue, missValue, ambValue].forEach((element) => {
+    [confValue, expValue, missValue].forEach((element) => {
         element.innerHTML = '';
     });
-    addMessage('Hello! How can I help you today?', false);
-    suggestionsContainer.style.display = 'flex';
+    
+    // Check if we have graphs available
+    const graphSelect = document.getElementById("graph-select");
+    if (graphSelect && graphSelect.options.length > 0 && graphSelect.options[0].value) {
+        addMessage('Hello! How can I help you today?', false);
+        suggestionsContainer.style.display = 'flex';
+    } else {
+        addMessage('Hello! Please select a graph from the dropdown above or upload a schema to get started.', false);
+        suggestionsContainer.style.display = 'none';
+    }
+    
     questions_history = [];
     result_history = [];
 }
@@ -174,6 +183,13 @@ async function sendMessage() {
 
     const message = messageInput.value.trim();
     if (!message) return;
+
+    // Check if a graph is selected
+    const selectedValue = document.getElementById("graph-select").value;
+    if (!selectedValue) {
+        addMessage("Please select a graph from the dropdown before sending a message.", false, true);
+        return;
+    }
 
     // Cancel any ongoing request
     if (currentRequestController) {
@@ -196,7 +212,6 @@ async function sendMessage() {
     });
 
     try {
-        const selectedValue = document.getElementById("graph-select").value;
 
         // Create an AbortController for this request
         currentRequestController = new AbortController();
@@ -591,9 +606,35 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Fetch available graphs
     fetch("/graphs?token=" + TOKEN)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                if (response.status === 401) {
+                    throw new Error("Authentication required. Please log in to access graphs.");
+                }
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
         .then(data => {
             graphSelect.innerHTML = "";
+            
+            if (!data || data.length === 0) {
+                // No graphs available
+                const option = document.createElement("option");
+                option.value = "";
+                option.textContent = "No graphs available";
+                option.disabled = true;
+                graphSelect.appendChild(option);
+                
+                // Disable chat input when no graphs are available
+                messageInput.disabled = true;
+                submitButton.disabled = true;
+                messageInput.placeholder = "Please upload a schema or connect a database to start chatting";
+                
+                addMessage("No graphs are available. Please upload a schema file or connect to a database to get started.", false);
+                return;
+            }
+            
             data.forEach(graph => {
                 const option = document.createElement("option");
                 option.value = graph;
@@ -602,6 +643,11 @@ document.addEventListener("DOMContentLoaded", function () {
                 graphSelect.appendChild(option);
             });
 
+            // Re-enable chat input when graphs are available
+            messageInput.disabled = false;
+            submitButton.disabled = false;
+            messageInput.placeholder = "Describe the SQL query you want...";
+
             // Fetch suggestions for the first graph (if any)
             if (data.length > 0) {
                 fetchSuggestions();
@@ -609,7 +655,25 @@ document.addEventListener("DOMContentLoaded", function () {
         })
         .catch(error => {
             console.error("Error fetching graphs:", error);
-            addMessage("Sorry, there was an error fetching the available graphs: " + error.message, false);
+            
+            // Show appropriate error message and disable input
+            if (error.message.includes("Authentication required")) {
+                addMessage("Authentication required. Please log in to access your graphs.", false);
+                // Don't disable input for auth errors as user needs to log in
+            } else {
+                addMessage("Sorry, there was an error fetching the available graphs: " + error.message, false);
+                messageInput.disabled = true;
+                submitButton.disabled = true;
+                messageInput.placeholder = "Cannot connect to server";
+            }
+            
+            // Add a placeholder option to show the error state
+            graphSelect.innerHTML = "";
+            const option = document.createElement("option");
+            option.value = "";
+            option.textContent = error.message.includes("Authentication") ? "Please log in" : "Error loading graphs";
+            option.disabled = true;
+            graphSelect.appendChild(option);
         });
 
     // Function to fetch suggestions based on selected graph
