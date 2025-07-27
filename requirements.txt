@@ -1,63 +1,62 @@
-aiohappyeyeballs==2.6.1 ; python_version == "3.12"
-aiohttp==3.12.13 ; python_version == "3.12"
-aiosignal==1.3.2 ; python_version == "3.12"
-annotated-types==0.7.0 ; python_version == "3.12"
-anyio==4.9.0 ; python_version == "3.12"
-attrs==25.3.0 ; python_version == "3.12"
-blinker==1.9.0 ; python_version == "3.12"
-boto3==1.38.46 ; python_version == "3.12"
-botocore==1.38.46 ; python_version == "3.12"
-certifi==2025.6.15 ; python_version == "3.12"
-charset-normalizer==3.4.2 ; python_version == "3.12"
-click==8.2.1 ; python_version == "3.12"
-colorama==0.4.6 ; python_version == "3.12" and platform_system == "Windows"
-distro==1.9.0 ; python_version == "3.12"
-falkordb==1.1.2 ; python_version == "3.12"
-filelock==3.18.0 ; python_version == "3.12"
-flask==3.1.1 ; python_version == "3.12"
-flask-dance==7.1.0 ; python_version == "3.12"
-frozenlist==1.7.0 ; python_version == "3.12"
-fsspec==2025.5.1 ; python_version == "3.12"
-h11==0.16.0 ; python_version == "3.12"
-hf-xet==1.1.5 ; python_version == "3.12" and (platform_machine == "x86_64" or platform_machine == "amd64" or platform_machine == "arm64" or platform_machine == "aarch64")
-httpcore==1.0.9 ; python_version == "3.12"
-httpx==0.28.1 ; python_version == "3.12"
-huggingface-hub==0.33.1 ; python_version == "3.12"
-idna==3.10 ; python_version == "3.12"
-importlib-metadata==8.7.0 ; python_version == "3.12"
-itsdangerous==2.2.0 ; python_version == "3.12"
-jinja2==3.1.6 ; python_version == "3.12"
-jiter==0.10.0 ; python_version == "3.12"
-jmespath==1.0.1 ; python_version == "3.12"
-jsonschema-specifications==2025.4.1 ; python_version == "3.12"
-jsonschema==4.24.0 ; python_version == "3.12"
-litellm==1.73.6 ; python_version == "3.12"
-markupsafe==3.0.2 ; python_version == "3.12"
-multidict==6.6.2 ; python_version == "3.12"
-openai==1.93.0 ; python_version == "3.12"
-packaging==25.0 ; python_version == "3.12"
-propcache==0.3.2 ; python_version == "3.12"
-pydantic-core==2.33.2 ; python_version == "3.12"
-pydantic==2.11.7 ; python_version == "3.12"
-pyjwt==2.9.0 ; python_version == "3.12"
-python-dateutil==2.9.0.post0 ; python_version == "3.12"
-python-dotenv==1.1.1 ; python_version == "3.12"
-pyyaml==6.0.2 ; python_version == "3.12"
-redis==5.3.0 ; python_version == "3.12"
-referencing==0.36.2 ; python_version == "3.12"
-regex==2024.11.6 ; python_version == "3.12"
-requests==2.32.4 ; python_version == "3.12"
-rpds-py==0.25.1 ; python_version == "3.12"
-s3transfer==0.13.0 ; python_version == "3.12"
-six==1.17.0 ; python_version == "3.12"
-sniffio==1.3.1 ; python_version == "3.12"
-tiktoken==0.9.0 ; python_version == "3.12"
-tokenizers==0.21.2 ; python_version == "3.12"
-tqdm==4.67.1 ; python_version == "3.12"
-typing-extensions==4.14.0 ; python_version == "3.12"
-typing-inspection==0.4.1 ; python_version == "3.12"
-urllib3==2.5.0 ; python_version == "3.12"
-werkzeug==3.1.3 ; python_version == "3.12"
-yarl==1.20.1 ; python_version == "3.12"
-zipp==3.23.0 ; python_version == "3.12"
-psycopg2-binary==2.9.9 ; python_version == "3.12"
+aiohappyeyeballs==2.6.1
+aiohttp==3.12.13
+aiosignal==1.3.2
+annotated-types==0.7.0
+anyio==4.9.0
+attrs==25.3.0
+blinker==1.9.0
+boto3==1.38.46
+botocore==1.38.46
+certifi==2025.6.15
+charset-normalizer==3.4.2
+click==8.2.1
+distro==1.9.0
+falkordb==1.1.2
+filelock==3.18.0
+flask==3.1.1
+flask-dance==7.1.0
+frozenlist==1.7.0
+fsspec==2025.5.1
+h11==0.16.0
+hf-xet==1.1.5
+httpcore==1.0.9
+httpx==0.28.1
+huggingface-hub==0.33.1
+idna==3.10
+importlib-metadata==8.7.0
+itsdangerous==2.2.0
+jinja2==3.1.6
+jiter==0.10.0
+jmespath==1.0.1
+jsonschema-specifications==2025.4.1
+jsonschema==4.24.0
+litellm==1.73.6
+markupsafe==3.0.2
+multidict==6.6.2
+openai==1.93.0
+packaging==25.0
+propcache==0.3.2
+pydantic-core==2.33.2
+pydantic==2.11.7
+pyjwt==2.9.0
+python-dateutil==2.9.0.post0
+python-dotenv==1.1.1
+pyyaml==6.0.2
+redis==5.3.0
+referencing==0.36.2
+regex==2024.11.6
+requests==2.32.4
+rpds-py==0.25.1
+s3transfer==0.13.0
+six==1.17.0
+sniffio==1.3.1
+tiktoken==0.9.0
+tokenizers==0.21.2
+tqdm==4.67.1
+typing-extensions==4.14.0
+typing-inspection==0.4.1
+urllib3==2.5.0
+werkzeug==3.1.3
+yarl==1.20.1
+zipp==3.23.0
+psycopg2-binary==2.9.9
