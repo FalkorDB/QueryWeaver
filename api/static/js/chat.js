@@ -143,22 +143,6 @@ function formatBlock(text) {
             return lineDiv;
         });
     }
-    if (text.includes('\n')) {
-        return text.split('\n').map((line, i) => {
-            const lineDiv = document.createElement('div');
-            lineDiv.className = 'plain-line';
-            lineDiv.textContent = line;
-            return lineDiv;
-        });
-    }
-    if (text.includes('\n')) {
-        return text.split('\n').map((line, i) => {
-            const lineDiv = document.createElement('div');
-            lineDiv.className = 'plain-line';
-            lineDiv.textContent = line;
-            return lineDiv;
-        });
-    }
 }
 
 function initChat() {
