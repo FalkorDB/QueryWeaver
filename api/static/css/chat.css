@@ -221,12 +221,17 @@ button, input, select, textarea {
 
 /* User message avatar styling */
 .user-message-avatar {
-  height: 32px;
-  width: 32px;
+  height: 40px;
+  width: 40px;
   border-radius: 50%;
   object-fit: cover;
   margin-left: 10px;
   border: 2px solid var(--falkor-quaternary);
+  font-weight: 500;
+  font-size: 16px;
+  justify-content: center;
+  align-items: center;
+  display: flex;
 }
 
 .bot-message-container,
@@ -1165,6 +1170,8 @@ button, input, select, textarea {
   height: 100%;
   border-radius: 50%;
   object-fit: cover;
+  font-weight: 500;
+  font-size: 22px;
 }
 
 /* User Profile Dropdown */
