@@ -375,16 +375,27 @@ async function sendMessage() {
 }
 
 function toggleMenu() {
+    // Check if we're on mobile (768px breakpoint to match CSS)
+    const isMobile = window.innerWidth <= 768;
+    
     if (!menuContainer.classList.contains('open')) {
         menuContainer.classList.add('open');
         sideMenuButton.style.display = 'none';
-        chatContainer.style.paddingRight = '10%';
-        chatContainer.style.paddingLeft = '10%';
+        
+        // Only adjust padding on desktop, not mobile (mobile uses overlay)
+        if (!isMobile) {
+            chatContainer.style.paddingRight = '10%';
+            chatContainer.style.paddingLeft = '10%';
+        }
     } else {
         menuContainer.classList.remove('open');
         sideMenuButton.style.display = 'block';
-        chatContainer.style.paddingRight = '20%';
-        chatContainer.style.paddingLeft = '20%';
+        
+        // Only adjust padding on desktop, not mobile (mobile uses overlay)
+        if (!isMobile) {
+            chatContainer.style.paddingRight = '20%';
+            chatContainer.style.paddingLeft = '20%';
+        }
     }
 }
 
@@ -893,5 +904,26 @@ document.addEventListener('DOMContentLoaded', function() {
             'system': 'Switch to Dark Mode'
         };
         themeToggleBtn.title = titles[currentTheme];
+    }
+});
+
+// Handle window resize to ensure proper menu behavior across breakpoints
+window.addEventListener('resize', function() {
+    const isMobile = window.innerWidth <= 768;
+    
+    // If menu is open and we switch to mobile, remove any desktop padding
+    if (isMobile && menuContainer.classList.contains('open')) {
+        chatContainer.style.paddingRight = '';
+        chatContainer.style.paddingLeft = '';
+    }
+    // If menu is open and we switch to desktop, apply desktop padding
+    else if (!isMobile && menuContainer.classList.contains('open')) {
+        chatContainer.style.paddingRight = '10%';
+        chatContainer.style.paddingLeft = '10%';
+    }
+    // If menu is closed and we're on desktop, ensure default desktop padding
+    else if (!isMobile && !menuContainer.classList.contains('open')) {
+        chatContainer.style.paddingRight = '20%';
+        chatContainer.style.paddingLeft = '20%';
     }
 });
