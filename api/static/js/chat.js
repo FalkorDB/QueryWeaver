@@ -36,6 +36,8 @@ function addMessage(message, isUser = false, isFollowup = false, isFinalResult =
     messageDiv.className = "message";
     messageDivContainer.className = "message-container";
 
+    let userAvatar = null;
+
     if (isFollowup) {
         messageDivContainer.className += " followup-message-container";
         messageDiv.className += " followup-message";
@@ -45,13 +47,12 @@ function addMessage(message, isUser = false, isFollowup = false, isFinalResult =
         messageDivContainer.className += " user-message-container";
         messageDiv.className += " user-message";
         
-        // Add user profile image if userInfo is provided
+        // Prepare user avatar if userInfo is provided
         if (userInfo && userInfo.picture) {
-            const userAvatar = document.createElement('img');
+            userAvatar = document.createElement('img');
             userAvatar.src = userInfo.picture;
             userAvatar.alt = userInfo.name || 'User';
             userAvatar.className = 'user-message-avatar';
-            messageDivContainer.appendChild(userAvatar);
             messageDivContainer.classList.add('has-avatar');
         }
         
@@ -60,7 +61,6 @@ function addMessage(message, isUser = false, isFollowup = false, isFinalResult =
         result_history.push(message);
         messageDivContainer.className += " final-result-message-container";
         messageDiv.className += " final-result-message";
-        // messageDiv.textContent = message;
     } else {
         messageDivContainer.className += " bot-message-container";
         messageDiv.className += " bot-message";
@@ -70,7 +70,7 @@ function addMessage(message, isUser = false, isFollowup = false, isFinalResult =
         }
     }
 
-    const block = formatBlock(message)
+    const block = formatBlock(message);
 
     if (block) {
         block.forEach(lineDiv => {
@@ -82,9 +82,14 @@ function addMessage(message, isUser = false, isFollowup = false, isFinalResult =
 
     if (!isLoading) {
         messageDivContainer.appendChild(messageDiv);
+        if (userAvatar) {
+            messageDivContainer.appendChild(userAvatar);
+        }
     }
+
     chatMessages.appendChild(messageDivContainer);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+
     return messageDiv;
 }
 

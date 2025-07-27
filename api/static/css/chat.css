@@ -210,12 +210,12 @@ button, input, select, textarea {
 }
 
 .user-message-container {
-  justify-content: flex-start;
+  justify-content: flex-end;
   position: relative;
 }
 
 /* Hide the default "User" text when avatar is present */
-.user-message-container.has-avatar::before {
+.user-message-container.has-avatar::after {
   display: none;
 }
 
@@ -225,20 +225,20 @@ button, input, select, textarea {
   width: 32px;
   border-radius: 50%;
   object-fit: cover;
-  margin-right: 10px;
+  margin-left: 10px;
   border: 2px solid var(--falkor-quaternary);
 }
 
 .bot-message-container,
 .followup-message-container,
 .final-result-message-container {
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
-.user-message-container::before,
-.bot-message-container::after,
-.followup-message-container::after,
-.final-result-message-container::after {
+.user-message-container::after,
+.bot-message-container::before,
+.followup-message-container::before,
+.final-result-message-container::before {
   height: 32px;
   width: 32px;
   content: 'Bot';
@@ -248,27 +248,27 @@ button, input, select, textarea {
   justify-content: center;
   font-weight: 500;
   font-size: 16px;
-  margin-left: 10px;
+  margin-right: 10px;
   border-radius: 100%;
   padding: 4px;
 }
 
-.user-message-container::before {
-  margin-right: 10px;
+.user-message-container::after {
+  margin-left: 10px;
   background: var(--falkor-quaternary);
   content: 'User';
 }
 
-.bot-message-container::after {
+.bot-message-container::before {
   background: color-mix(in srgb, var(--falkor-tertiary) 33%, transparent);
 }
 
-.followup-message-container::after {
+.followup-message-container::before {
   background: color-mix(in srgb, var(--falkor-tertiary) 40%, transparent);
   border: 1px solid var(--falkor-tertiary);
 }
 
-.final-result-message-container::after {
+.final-result-message-container::before {
   background: color-mix(in srgb, var(--accent-green) 40%, transparent);
   border: 1px solid var(--accent-green);
 }
