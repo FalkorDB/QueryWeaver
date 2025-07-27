@@ -51,7 +51,7 @@ function addMessage(message, isUser = false, isFollowup = false, isFinalResult =
         if (userInfo && userInfo.picture) {
             userAvatar = document.createElement('img');
             userAvatar.src = userInfo.picture;
-            userAvatar.alt = userInfo.name || 'User';
+            userAvatar.alt = userInfo.name?.charAt(0).toUpperCase() || 'User';
             userAvatar.className = 'user-message-avatar';
             messageDivContainer.classList.add('has-avatar');
         }
