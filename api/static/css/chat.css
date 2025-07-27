@@ -400,10 +400,19 @@ button, input, select, textarea {
   cursor: pointer;
   transition: opacity 0.2s;
   border: none;
+  width: 48px;
+  height: 48px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .input-button img {
   filter: var(--icon-filter) brightness(0.8) saturate(0.3);
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .input-button:hover {
@@ -1019,6 +1028,31 @@ button, input, select, textarea {
   background: #3367d6;
 }
 .google-login-logo {
+  height: 20px;
+  margin-right: 10px;
+  margin-left: 0;
+  vertical-align: middle;
+  display: inline-block;
+}
+
+.github-login-btn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 0.7em 2em;
+  background: #24292f;
+  color: #fff;
+  border-radius: 4px;
+  font-size: 1.1em;
+  text-decoration: none;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+.github-login-btn:hover {
+  background: #171a1d;
+}
+.github-login-logo {
   height: 20px;
   margin-right: 10px;
   margin-left: 0;

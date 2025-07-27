@@ -819,13 +819,7 @@ document.addEventListener('DOMContentLoaded', function() {
             pgModal.style.display = 'none';
         }
     });
-    // Optional: Close Google login modal with Escape (if ever needed)
-    document.addEventListener('keydown', function(e) {
-        if (googleLoginModal && googleLoginModal.style.display === 'flex' && e.key === 'Escape') {
-            googleLoginModal.style.display = 'none';
-            container.style.filter = '';
-        }
-    });
+    // Do NOT allow closing Google login modal with Escape or any other means except successful login
 
     // Handle Connect button for Postgres modal
     if (connectPgModalBtn && pgUrlInput && pgModal) {

@@ -13,6 +13,9 @@ from dotenv import load_dotenv
 from flask import Blueprint, Flask, Response, jsonify, render_template, request, stream_with_context, g
 from flask import session, redirect, url_for
 from flask_dance.contrib.google import make_google_blueprint, google
+from flask_dance.contrib.github import make_github_blueprint, github
+from flask_dance.consumer.storage.session import SessionStorage
+from flask_dance.consumer import oauth_authorized
 
 from api.agents import AnalysisAgent, RelevancyAgent, ResponseFormatterAgent
 from api.constants import EXAMPLES
@@ -40,8 +43,10 @@ def validate_and_cache_user():
     """
     Helper function to validate OAuth token and cache user info.
     Returns (user_info, is_authenticated) tuple.
+    Supports both Google and GitHub OAuth.
     """
-    user_info = session.get("google_user")
+    # Check for cached user info from either provider
+    user_info = session.get("user_info")
     token_validated_at = session.get("token_validated_at", 0)
     current_time = time.time()
 
@@ -49,27 +54,65 @@ def validate_and_cache_user():
     if user_info and (current_time - token_validated_at) < 900:  # 15 minutes
         return user_info, True
 
-    # If no valid session data or cache expired, check OAuth token
-    if not google.authorized:
-        session.clear()
-        return None, False
+    # Check Google OAuth first
+    if google.authorized:
+        try:
+            resp = google.get("/oauth2/v2/userinfo")
+            if resp.ok:
+                google_user = resp.json()
+                # Normalize user info structure
+                user_info = {
+                    "id": google_user.get("id"),
+                    "name": google_user.get("name"),
+                    "email": google_user.get("email"),
+                    "picture": google_user.get("picture"),
+                    "provider": "google"
+                }
+                session["user_info"] = user_info
+                session["token_validated_at"] = current_time
+                return user_info, True
+        except Exception as e:
+            logging.warning(f"Google OAuth validation error: {e}")
 
-    try:
-        # Make network call to validate token
-        resp = google.get("/oauth2/v2/userinfo")
-        if not resp.ok:
-            session.clear()
-            return None, False
+    # Check GitHub OAuth
+    if github.authorized:
+        try:
+            # Get user profile
+            resp = github.get("/user")
+            if resp.ok:
+                github_user = resp.json()
+                
+                # Get user email (GitHub may require separate call for email)
+                email_resp = github.get("/user/emails")
+                email = None
+                if email_resp.ok:
+                    emails = email_resp.json()
+                    # Find primary email
+                    for email_obj in emails:
+                        if email_obj.get("primary", False):
+                            email = email_obj.get("email")
+                            break
+                    # If no primary email found, use the first one
+                    if not email and emails:
+                        email = emails[0].get("email")
+                
+                # Normalize user info structure
+                user_info = {
+                    "id": str(github_user.get("id")),  # Convert to string for consistency
+                    "name": github_user.get("name") or github_user.get("login"),
+                    "email": email,
+                    "picture": github_user.get("avatar_url"),
+                    "provider": "github"
+                }
+                session["user_info"] = user_info
+                session["token_validated_at"] = current_time
+                return user_info, True
+        except Exception as e:
+            logging.warning(f"GitHub OAuth validation error: {e}")
 
-        user_info = resp.json()
-        session["google_user"] = user_info
-        session["token_validated_at"] = current_time
-        return user_info, True
-
-    except Exception as e:
-        logging.warning(f"OAuth validation error: {e}")
-        session.clear()
-        return None, False
+    # If no valid authentication found, clear session
+    session.clear()
+    return None, False
 
 
 def token_required(f):
@@ -109,6 +152,61 @@ google_bp = make_google_blueprint(
 )
 app.register_blueprint(google_bp, url_prefix="/login")
 
+# GitHub OAuth setup
+GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
+GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
+github_bp = make_github_blueprint(
+    client_id=GITHUB_CLIENT_ID,
+    client_secret=GITHUB_CLIENT_SECRET,
+    scope="user:email",
+    storage=SessionStorage()
+)
+app.register_blueprint(github_bp, url_prefix="/login")
+
+# GitHub OAuth signal handler
+
+@oauth_authorized.connect_via(github_bp)
+def github_logged_in(blueprint, token):
+    if not token:
+        return False
+
+    try:
+        # Get user profile
+        resp = github.get("/user")
+        if resp.ok:
+            github_user = resp.json()
+            
+            # Get user email (GitHub may require separate call for email)
+            email_resp = github.get("/user/emails")
+            email = None
+            if email_resp.ok:
+                emails = email_resp.json()
+                # Find primary email
+                for email_obj in emails:
+                    if email_obj.get("primary", False):
+                        email = email_obj.get("email")
+                        break
+                # If no primary email found, use the first one
+                if not email and emails:
+                    email = emails[0].get("email")
+            
+            # Normalize user info structure
+            user_info = {
+                "id": str(github_user.get("id")),  # Convert to string for consistency
+                "name": github_user.get("name") or github_user.get("login"),
+                "email": email,
+                "picture": github_user.get("avatar_url"),
+                "provider": "github"
+            }
+            session["user_info"] = user_info
+            session["token_validated_at"] = time.time()
+            return False  # Don't create default flask-dance entry in session
+        
+    except Exception as e:
+        logging.error(f"GitHub OAuth signal error: {e}")
+    
+    return False
+
 
 @app.errorhandler(Exception)
 def handle_oauth_error(error):
@@ -129,8 +227,8 @@ def home():
     user_info, is_authenticated = validate_and_cache_user()
 
     # If not authenticated through OAuth, check for any stale session data
-    if not is_authenticated and not google.authorized:
-        session.pop("google_user", None)
+    if not is_authenticated and not google.authorized and not github.authorized:
+        session.pop("user_info", None)
 
     return render_template("chat.j2", is_authenticated=is_authenticated, user_info=user_info)
 
@@ -548,23 +646,35 @@ def login_google():
     try:
         resp = google.get("/oauth2/v2/userinfo")
         if resp.ok:
-            user_info = resp.json()
-            session["google_user"] = user_info
+            google_user = resp.json()
+            # Normalize user info structure
+            user_info = {
+                "id": google_user.get("id"),
+                "name": google_user.get("name"),
+                "email": google_user.get("email"),
+                "picture": google_user.get("picture"),
+                "provider": "google"
+            }
+            session["user_info"] = user_info
+            session["token_validated_at"] = time.time()
             return redirect(url_for("home"))
         else:
             # OAuth token might be expired, redirect to login
             session.clear()
             return redirect(url_for("google.login"))
     except Exception as e:
-        logging.error(f"Login error: {e}")
+        logging.error(f"Google login error: {e}")
         session.clear()
         return redirect(url_for("google.login"))
+
+
 
 
 @app.route("/logout")
 def logout():
     session.clear()
-    # Also revoke the OAuth token if possible
+
+    # Revoke Google OAuth token if authorized
     if google.authorized:
         try:
             google.get(
@@ -572,7 +682,17 @@ def logout():
                 params={"token": google.access_token}
             )
         except Exception as e:
-            logging.warning(f"Error revoking token: {e}")
+            logging.warning(f"Error revoking Google token: {e}")
+    
+    # Revoke GitHub OAuth token if authorized
+    if github.authorized:
+        try:
+            # GitHub doesn't have a simple revoke endpoint like Google
+            # The token will expire naturally or can be revoked from GitHub settings
+            pass
+        except Exception as e:
+            logging.warning(f"Error with GitHub token cleanup: {e}")
+    
     return redirect(url_for("home"))
 
 @app.route("/graphs/<string:graph_id>/refresh", methods=["POST"])

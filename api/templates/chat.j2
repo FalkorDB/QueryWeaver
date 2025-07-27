@@ -140,7 +140,11 @@
                         <button class="input-button" title="Pause" id="pause-button">
                             <img src="{{ url_for('static', filename='public/icons/pause.svg') }}" alt="Pause">
                         </button>
-                        <button id="reset-button" class="action-button">Reset</button>
+                        <button id="reset-button" class="action-button" title="Reset session">
+                            <svg width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path fill="none" stroke="currentColor" stroke-width="2" d="M20,8 C18.5974037,5.04031171 15.536972,3 12,3 C7.02943725,3 3,7.02943725 3,12 C3,16.9705627 7.02943725,21 12,21 L12,21 C16.9705627,21 21,16.9705627 21,12 M21,3 L21,9 L15,9"/>
+                            </svg>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -151,8 +155,11 @@
         <div class="google-login-modal-content">
             <h2>Welcome to Text-to-SQL</h2>
             <p>Please login to continue</p>
-            <a href="/login/google" class="google-login-btn">
+            <a href="{{ url_for('google.login') }}" class="google-login-btn">
                 <img src="{{ url_for('static', filename='public/icons/google.svg') }}"  alt="Google logo" class="google-login-logo">Sign in with Google
+            </a>
+            <a href="{{ url_for('github.login') }}" class="github-login-btn" style="margin-top: 0.5em;">
+                <img src="{{ url_for('static', filename='public/icons/github.svg') }}" alt="GitHub logo" class="github-login-logo">Sign in with GitHub
             </a>
         </div>
     </div>
