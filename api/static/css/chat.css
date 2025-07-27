@@ -153,8 +153,26 @@ button, input, select, textarea {
   transition: margin-left 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  .chat-container {
+    padding-right: 10px;
+    padding-left: 10px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+}
+
+/* Desktop: Menu pushes content */
 #menu-container.open~#chat-container {
-  margin-left: 0;
+  margin-left: 30dvw;
+}
+
+/* Mobile: Menu overlays content (no pushing) */
+@media (max-width: 768px) {
+  #menu-container.open~#chat-container {
+    margin-left: 0;
+  }
 }
 
 .chat-header {
@@ -279,6 +297,27 @@ button, input, select, textarea {
   overflow-x: auto;
 }
 
+/* Mobile responsive messages */
+@media (max-width: 768px) {
+  .message {
+    max-width: 85%;
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+  
+  .chat-header h1 {
+    font-size: 18px;
+  }
+  
+  #message-input {
+    font-size: 16px !important;
+  }
+  
+  #message-input::placeholder {
+    font-size: 16px !important;
+  }
+}
+
 /* Styles for formatted text blocks */
 .sql-line, .array-line, .plain-line {
   word-wrap: break-word;
@@ -393,6 +432,22 @@ button, input, select, textarea {
   pointer-events: auto;
 }
 
+/* Mobile responsive menu */
+@media (max-width: 768px) {
+  #menu-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 999;
+  }
+  
+  #menu-container.open {
+    width: 80vw;
+    padding: 15px;
+  }
+}
+
 #menu-header {
   display: flex;
   flex-direction: row;
@@ -412,6 +467,14 @@ button, input, select, textarea {
   left: 20px;
 }
 
+/* Mobile responsive side menu button */
+@media (max-width: 768px) {
+  #side-menu-button {
+    top: 15px;
+    left: 15px;
+  }
+}
+
 #menu-button img {
   rotate: 180deg;
   filter: brightness(0) invert(1);
@@ -422,7 +485,6 @@ button, input, select, textarea {
   width: 32px;
   height: 32px;
   object-fit: cover;
-  background: none !important;
 }
 
 .menu-item {
@@ -498,6 +560,14 @@ button, input, select, textarea {
   gap: 10px;
 }
 
+/* Mobile responsive button container */
+@media (max-width: 768px) {
+  .button-container {
+    flex-direction: row;
+    gap: 8px;
+  }
+}
+
 #graph-select {
   height: 100%;
   padding: 8px 12px;
@@ -515,6 +585,19 @@ button, input, select, textarea {
   background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
   cursor:pointer;
+}
+
+/* Mobile responsive select elements */
+@media (max-width: 768px) {
+  #graph-select,
+  #custom-file-upload,
+  #open-pg-modal {
+    min-width: 120px;
+    width: auto;
+    padding: 8px 10px;
+    font-size: 14px;
+    flex: 1;
+  }
 }
 
 #graph-select:focus {
@@ -579,6 +662,22 @@ button, input, select, textarea {
   transform: translateY(-50%);
 }
 
+/* Mobile responsive reset button */
+@media (max-width: 768px) {
+  #reset-button {
+    position: relative;
+    right: auto;
+    top: auto;
+    transform: none;
+    margin-left: 10px;
+  }
+  
+  .chat-input {
+    padding: 12px 16px;
+    gap: 12px;
+  }
+}
+
 .action-button:hover {
   box-shadow: 0 4px 12px rgba(0,0,0,0.25);
   background: var(--falkor-accent);
@@ -586,7 +685,7 @@ button, input, select, textarea {
 }
 
 .action-button{
-  z-index: 2000;
+  z-index: 100;
   width: 48px;
   height: 48px;
   border: none;
@@ -600,6 +699,7 @@ button, input, select, textarea {
   align-items: center;
   justify-content: center;
   padding: 0;
+  position: relative;
 }
 
 #reset-button:disabled {
@@ -625,6 +725,14 @@ button, input, select, textarea {
   min-height: 56px;
 }
 
+/* Mobile responsive suggestions */
+@media (max-width: 768px) {
+  .suggestions-container {
+    flex-direction: row;
+    gap: 6px;
+  }
+}
+
 .suggestion-item {
   display: flex;
   align-items: center;
@@ -640,6 +748,22 @@ button, input, select, textarea {
   border: 1px solid var(--falkor-border-tertiary);
   padding: 8px;
   border-radius: 6px;
+}
+
+/* Mobile responsive suggestion items */
+@media (max-width: 768px) {
+  .suggestion-item {
+    width: calc(33.333% - 4px);
+    min-width: calc(33.333% - 4px);
+    max-width: calc(33.333% - 4px);
+    min-height: 48px;
+    padding: 8px 6px;
+  }
+  
+  .suggestion-item button p {
+    font-size: 12px;
+    line-height: 1.2;
+  }
 }
 
 .suggestion-item button {
@@ -752,6 +876,15 @@ button, input, select, textarea {
   box-shadow: 0 2px 16px rgba(0,0,0,0.2);
   text-align: center;
   min-width: 680px;
+}
+
+/* Mobile responsive modal */
+@media (max-width: 768px) {
+  .pg-modal-content {
+    padding: 1.5em 2em;
+    min-width: 90vw;
+    margin: 0 5vw;
+  }
 }
 .pg-modal-title {
   margin-bottom: 1em;
@@ -1048,6 +1181,15 @@ button, input, select, textarea {
   display: none;
 }
 
+/* Mobile responsive dropdown */
+@media (max-width: 768px) {
+  .user-profile-dropdown {
+    top: 65px;
+    right: 15px;
+    min-width: 180px;
+  }
+}
+
 .user-profile-dropdown.show {
   display: block;
 }
@@ -1100,6 +1242,30 @@ button, input, select, textarea {
   height: 20px;
   color: var(--text-primary);
   transition: all 0.3s ease;
+}
+
+/* Mobile responsive user profile and theme toggle */
+@media (max-width: 768px) {
+  .action-button {
+    width: 40px;
+    height: 40px;
+  }
+  .user-profile-btn {
+    top: 15px;
+    right: 15px;
+    width: 40px;
+    height: 40px;
+  }
+  
+  #theme-toggle-btn {
+    top: 15px;
+    right: 80px;
+  }
+  
+  .theme-icon {
+    width: 18px;
+    height: 18px;
+  }
 }
 
 /* Theme icon states */
