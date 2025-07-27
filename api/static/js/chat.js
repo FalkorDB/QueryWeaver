@@ -13,10 +13,8 @@ const sideMenuButton = document.getElementById('side-menu-button');
 const menuButton = document.getElementById('menu-button');
 const menuContainer = document.getElementById('menu-container');
 const chatContainer = document.getElementById('chat-container');
-const suggestionsContainer = document.getElementById('suggestions-container');
 const expInstructions = document.getElementById('instructions-textarea');
 const inputContainer = document.getElementById('input-container');
-const suggestionItems = document.querySelectorAll('.suggestion-item');
 
 let questions_history = [];
 let result_history = [];
@@ -26,8 +24,6 @@ let currentRequestController = null;
 const MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||';
 
 const urlParams = new URLSearchParams(window.location.search);
-
-const TOKEN = urlParams.get('token');
 
 function addMessage(message, isUser = false, isFollowup = false, isFinalResult = false, isLoading = false, userInfo = null) {
     const messageDiv = document.createElement('div');
@@ -43,7 +39,6 @@ function addMessage(message, isUser = false, isFollowup = false, isFinalResult =
         messageDiv.className += " followup-message";
         messageDiv.textContent = message;
     } else if (isUser) {
-        suggestionsContainer.style.display = 'none';
         messageDivContainer.className += " user-message-container";
         messageDiv.className += " user-message";
         
@@ -152,9 +147,6 @@ function formatBlock(text) {
 
 function initChat() {
     messageInput.value = '';
-    suggestionItems.forEach(item => {
-        item.classList.remove('active');
-    });
     chatMessages.innerHTML = '';
     [confValue, expValue, missValue].forEach((element) => {
         element.innerHTML = '';
@@ -164,10 +156,8 @@ function initChat() {
     const graphSelect = document.getElementById("graph-select");
     if (graphSelect && graphSelect.options.length > 0 && graphSelect.options[0].value) {
         addMessage('Hello! How can I help you today?', false);
-        suggestionsContainer.style.display = 'flex';
     } else {
         addMessage('Hello! Please select a graph from the dropdown above or upload a schema to get started.', false);
-        suggestionsContainer.style.display = 'none';
     }
     
     questions_history = [];
@@ -222,7 +212,7 @@ async function sendMessage() {
         currentRequestController = new AbortController();
 
         // Use fetch with streaming response (GET method)
-        const response = await fetch('/graphs/' + selectedValue + '?q=' + encodeURIComponent(message) + '&token=' + TOKEN, {
+        const response = await fetch('/graphs/' + selectedValue + '?q=' + encodeURIComponent(message), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -420,9 +410,6 @@ function pauseRequest() {
         
         // Add a message indicating the request was paused
         addMessage("Request was paused by user.", false, true);
-        
-        // Show suggestions again since we're ready for new input
-        suggestionsContainer.style.display = 'flex';
     }
 }
 
@@ -574,16 +561,6 @@ messageInput.addEventListener('keypress', (e) => {
     }
 });
 
-messageInput.addEventListener('input', (e) => {
-    suggestionItems.forEach(item => {
-        if (e.target.value && item.querySelector('p').textContent === e.target.value) {
-            item.classList.add('active');
-        } else {
-            item.classList.remove('active');
-        }
-    });
-})
-
 menuButton.addEventListener('click', toggleMenu);
 
 sideMenuButton.addEventListener('click', toggleMenu);
@@ -623,27 +600,12 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-// Add event listener to each suggestion item
-suggestionItems.forEach(item => {
-    item.addEventListener('click', () => {
-        // Set the value of the message input to the text of the clicked suggestion item
-        const text = item.querySelector('p').textContent;
-        messageInput.value = text;
-        // Remove 'active' from all suggestion items
-        document.querySelectorAll('.suggestion-item.active').forEach(item => {
-            item.classList.remove('active');
-        });
-        // Add 'active' to the clicked suggestion item
-        item.classList.add('active');
-    });
-});
-
 document.addEventListener("DOMContentLoaded", function () {
     const chatMessages = document.getElementById("chat-messages");
     const graphSelect = document.getElementById("graph-select");
 
     // Fetch available graphs
-    fetch("/graphs?token=" + TOKEN)
+    fetch("/graphs")
         .then(response => {
             if (!response.ok) {
                 if (response.status === 401) {
@@ -685,11 +647,6 @@ document.addEventListener("DOMContentLoaded", function () {
             messageInput.disabled = false;
             submitButton.disabled = false;
             messageInput.placeholder = "Describe the SQL query you want...";
-
-            // Fetch suggestions for the first graph (if any)
-            if (data.length > 0) {
-                fetchSuggestions();
-            }
         })
         .catch(error => {
             console.error("Error fetching graphs:", error);
@@ -714,82 +671,8 @@ document.addEventListener("DOMContentLoaded", function () {
             graphSelect.appendChild(option);
         });
 
-    // Function to fetch suggestions based on selected graph
-    function fetchSuggestions() {
-        const graphSelect = document.getElementById("graph-select");
-        const selectedGraph = graphSelect.value;
-
-        if (!selectedGraph) {
-            // Hide suggestions if no graph is selected
-            suggestionItems.forEach(item => {
-                item.style.display = 'none';
-            });
-            return;
-        }
-
-        suggestionItems.forEach(item => {
-            item.style.display = 'flex';
-            item.classList.remove('loaded');
-            item.classList.add('loading');
-            const button = item.querySelector('button');
-            const p = item.querySelector('p');
-            button.title = "Loading suggestion...";
-            p.textContent = "";
-        });
-
-        // Fetch suggestions for the selected graph
-        fetch(`/suggestions?token=${TOKEN}&graph_id=${selectedGraph}`)
-            .then(response => response.json())
-            .then(suggestions => {
-                // If no suggestions for this graph, hide the suggestions
-                if (!suggestions || suggestions.length === 0) {
-                    suggestionItems.forEach(item => {
-                        item.style.display = 'none';
-                    });
-                    return;
-                }
-
-                // Hide unused suggestion slots
-                for (let i = suggestions.length; i < suggestionItems.length; i++) {
-                    suggestionItems[i].style.display = 'none';
-                }
-
-                // Update each suggestion with fetched data and add loaded styling
-                suggestions.forEach((suggestion, index) => {
-                    if (suggestionItems[index]) {
-                        const item = suggestionItems[index];
-                        const button = item.querySelector('button');
-                        const p = item.querySelector('p');
-
-                        // Add a slight delay for staggered animation
-                        setTimeout(() => {
-                            // Remove loading state and add content
-                            item.classList.remove('loading');
-                            item.classList.add('loaded');
-
-                            // Update content
-                            p.textContent = suggestion;
-                            button.title = suggestion;
-
-                            // Enable click functionality
-                            button.style.cursor = 'pointer';
-                        }, index * 300); // 300ms delay between each suggestion
-                    }
-                });
-            })
-            .catch(error => {
-                console.error("Error fetching suggestions:", error);
-
-                // Hide suggestions on error
-                suggestionItems.forEach(item => {
-                    item.style.display = 'none';
-                });
-            });
-    }
-
     graphSelect.addEventListener("change", function () {
         initChat();
-        fetchSuggestions(); // Fetch new suggestions when graph changes
     });
 });
 
@@ -803,7 +686,7 @@ fileUpload.addEventListener('change', function (e) {
     const formData = new FormData();
     formData.append('file', file);
 
-    fetch("/graphs?token=" + TOKEN, {
+    fetch("/graphs", {
         method: 'POST',
         body: formData, // ✅ Correct, no need to set Content-Type manually
     }).then(response => {
@@ -856,6 +739,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Handle Connect button for Postgres modal
     if (connectPgModalBtn && pgUrlInput && pgModal) {
+        // Add Enter key support for the input field
+        pgUrlInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                connectPgModalBtn.click();
+            }
+        });
+
         connectPgModalBtn.addEventListener('click', function() {
             const pgUrl = pgUrlInput.value.trim();
             if (!pgUrl) {

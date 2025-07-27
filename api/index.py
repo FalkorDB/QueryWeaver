@@ -35,10 +35,6 @@ MESSAGE_DELIMITER = "|||FALKORDB_MESSAGE_BOUNDARY|||"
 
 main = Blueprint("main", __name__)
 
-SECRET_TOKEN = os.getenv("SECRET_TOKEN")
-SECRET_TOKEN_ERP = os.getenv("SECRET_TOKEN_ERP")
-
-
 def validate_and_cache_user():
     """
     Helper function to validate OAuth token and cache user info.
@@ -175,7 +171,7 @@ def github_logged_in(blueprint, token):
         resp = github.get("/user")
         if resp.ok:
             github_user = resp.json()
-            
+
             # Get user email (GitHub may require separate call for email)
             email_resp = github.get("/user/emails")
             email = None
@@ -189,7 +185,7 @@ def github_logged_in(blueprint, token):
                 # If no primary email found, use the first one
                 if not email and emails:
                     email = emails[0].get("email")
-            
+
             # Normalize user info structure
             user_info = {
                 "id": str(github_user.get("id")),  # Convert to string for consistency
@@ -201,10 +197,10 @@ def github_logged_in(blueprint, token):
             session["user_info"] = user_info
             session["token_validated_at"] = time.time()
             return False  # Don't create default flask-dance entry in session
-        
+
     except Exception as e:
         logging.error(f"GitHub OAuth signal error: {e}")
-    
+
     return False
 
 
@@ -234,7 +230,7 @@ def home():
 
 
 @app.route("/graphs")
-@token_required  # Apply token authentication decorator
+@token_required
 def graphs():
     """
     This route is used to list all the graphs that are available in the database.
@@ -248,7 +244,7 @@ def graphs():
 
 
 @app.route("/graphs", methods=["POST"])
-@token_required  # Apply token authentication decorator
+@token_required
 def load():
     """
     This route is used to load the graph data into the database.
@@ -325,7 +321,7 @@ def load():
 
 
 @app.route("/graphs/<string:graph_id>", methods=["POST"])
-@token_required  # Apply token authentication decorator
+@token_required
 def query(graph_id: str):
     """
     text2sql
@@ -514,7 +510,7 @@ What this will do:
 
 
 @app.route("/graphs/<string:graph_id>/confirm", methods=["POST"])
-@token_required  # Apply token authentication decorator
+@token_required
 def confirm_destructive_operation(graph_id: str):
     """
     Handle user confirmation for destructive SQL operations
@@ -608,36 +604,6 @@ def confirm_destructive_operation(graph_id: str):
 
     return Response(stream_with_context(generate_confirmation()), content_type="application/json")
 
-
-@app.route("/suggestions")
-@token_required  # Apply token authentication decorator
-def suggestions():
-    """
-    This route returns 3 random suggestions from the examples data for the chat interface.
-    It takes graph_id as a query parameter and returns examples specific to that graph.
-    If no examples exist for the graph, returns an empty list.
-    """
-    try:
-        # Get graph_id from query parameters
-        graph_id = request.args.get("graph_id", "")
-
-        if not graph_id:
-            return jsonify([]), 400
-
-        # Check if graph has specific examples
-        if graph_id in EXAMPLES:
-            graph_examples = EXAMPLES[graph_id]
-            # Return up to 3 examples, or all if less than 3
-            suggestion_questions = random.sample(graph_examples, min(3, len(graph_examples)))
-            return jsonify(suggestion_questions)
-
-        # If graph doesn't exist in EXAMPLES, return empty list
-        return jsonify([])
-
-    except Exception as e:
-        logging.error("Error fetching suggestions: %s", e)
-        return jsonify([]), 500
-
 @app.route("/login")
 def login_google():
     if not google.authorized:
@@ -663,7 +629,7 @@ def login_google():
             session.clear()
             return redirect(url_for("google.login"))
     except Exception as e:
-        logging.error(f"Google login error: {e}")
+        logging.error("Google login error: %s", e)
         session.clear()
         return redirect(url_for("google.login"))
 
@@ -682,8 +648,8 @@ def logout():
                 params={"token": google.access_token}
             )
         except Exception as e:
-            logging.warning(f"Error revoking Google token: {e}")
-    
+            logging.warning("Error revoking Google token: %s", e)
+
     # Revoke GitHub OAuth token if authorized
     if github.authorized:
         try:
@@ -691,12 +657,12 @@ def logout():
             # The token will expire naturally or can be revoked from GitHub settings
             pass
         except Exception as e:
-            logging.warning(f"Error with GitHub token cleanup: {e}")
-    
+            logging.warning("Error with GitHub token cleanup: %s", e)
+
     return redirect(url_for("home"))
 
 @app.route("/graphs/<string:graph_id>/refresh", methods=["POST"])
-@token_required  # Apply token authentication decorator
+@token_required
 def refresh_graph_schema(graph_id: str):
     """
     Manually refresh the graph schema from the database.
@@ -737,7 +703,7 @@ def refresh_graph_schema(graph_id: str):
         }), 500
 
 @app.route("/database", methods=["POST"])
-@token_required  # Apply token authentication decorator
+@token_required
 def connect_database():
     """
     Accepts a JSON payload with a Postgres URL and attempts to connect.
