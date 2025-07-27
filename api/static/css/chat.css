@@ -376,8 +376,7 @@ button, input, select, textarea {
 
 #message-input {
   color: var(--text-primary);
-  width: 100%;
-  height: 100%;
+  flex-grow: 1;
   background-color: transparent;
   border: none;
   font-size: 18px !important;
@@ -422,6 +421,15 @@ button, input, select, textarea {
 #pause-button {
   display: none;
 }
+
+/* Mobile responsive reset button */
+@media (max-width: 768px) {
+  .input-button {
+    width: 40px;
+    height: 40px;
+  }
+}
+
 
 #menu-container {
   width: 0;
@@ -676,6 +684,11 @@ button, input, select, textarea {
   transform: translateY(-50%);
 }
 
+#reset-button svg {
+  width: 20px;
+  height: 20px;
+}
+
 /* Mobile responsive reset button */
 @media (max-width: 768px) {
   #reset-button {
@@ -686,6 +699,11 @@ button, input, select, textarea {
     margin-left: 10px;
   }
   
+  #reset-button svg {
+    width: 18px;
+    height: 18px;
+  }
+
   .chat-input {
     padding: 12px 16px;
     gap: 12px;
@@ -1433,4 +1451,50 @@ button, input, select, textarea {
   border-color: #cccccc;
   transform: none;
   box-shadow: none;
+}
+
+/* Reset Confirmation Modal */
+.reset-confirmation-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0,0,0,0.6);
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+}
+
+.reset-confirmation-modal-content {
+  background: var(--falkor-secondary);
+  padding: 2em 3em;
+  border-radius: 10px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.2);
+  text-align: center;
+  color: var(--text-primary);
+  min-width: 400px;
+}
+
+/* Mobile responsive reset modal */
+@media (max-width: 768px) {
+  .reset-confirmation-modal-content {
+    padding: 1.5em 2em;
+    min-width: 90vw;
+    margin: 0 5vw;
+  }
+}
+
+.reset-confirmation-modal-content h3 {
+  color: var(--text-primary);
+  margin-bottom: 0.5em;
+  font-size: 1.3em;
+}
+
+.reset-confirmation-modal-content p {
+  color: var(--text-secondary);
+  margin-bottom: 1.5em;
+  font-size: 1em;
+  line-height: 1.5;
 }
