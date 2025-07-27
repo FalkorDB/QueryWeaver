@@ -18,11 +18,21 @@
                 <path class="sun" d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="2"/>
                 <!-- Moon icon -->
                 <path class="moon" d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" stroke-width="2" fill="currentColor"/>
-                <!-- System icon -->
-                <rect class="system" x="2" y="4" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2" fill="none"/>
-                <circle class="system" cx="8" cy="11" r="1" fill="currentColor"/>
-                <circle class="system" cx="12" cy="11" r="1" fill="currentColor"/>
-                <circle class="system" cx="16" cy="11" r="1" fill="currentColor"/>
+                <!-- System icon - Split circle icon - half white, half dark -->
+                <defs>
+                    <clipPath id="leftHalf">
+                        <rect x="0" y="0" width="12" height="24"/>
+                    </clipPath>
+                    <clipPath id="rightHalf">
+                        <rect x="12" y="0" width="12" height="24"/>
+                    </clipPath>
+                </defs>
+                <!-- Dark half (left) -->
+                <circle class="system" cx="12" cy="12" r="8" fill="currentColor" clip-path="url(#leftHalf)"/>
+                <!-- Light half (right) -->
+                <circle class="system" cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2" clip-path="url(#rightHalf)"/>
+                <!-- Circle outline -->
+                <circle class="system" cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/>
             </svg>
         </button>
         {% if is_authenticated and user_info %}
