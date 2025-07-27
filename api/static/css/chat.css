@@ -163,11 +163,6 @@ button, input, select, textarea {
   }
 }
 
-/* Desktop: Menu pushes content */
-#menu-container.open~#chat-container {
-  margin-left: 30dvw;
-}
-
 /* Mobile: Menu overlays content (no pushing) */
 @media (max-width: 768px) {
   #menu-container.open~#chat-container {
