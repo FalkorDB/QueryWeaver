@@ -3,7 +3,6 @@
 import json
 import logging
 import os
-import random
 import time
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
@@ -18,7 +17,6 @@ from flask_dance.consumer.storage.session import SessionStorage
 from flask_dance.consumer import oauth_authorized
 
 from api.agents import AnalysisAgent, RelevancyAgent, ResponseFormatterAgent
-from api.constants import EXAMPLES
 from api.extensions import db
 from api.graph import find, get_db_description
 from api.loaders.csv_loader import CSVLoader
@@ -266,17 +264,17 @@ def load():
         graph_id = g.user_id + "_" + data["database"]
         success, result = JSONLoader.load(graph_id, data)
 
-    # ✅ Handle XML Payload
-    elif content_type.startswith("application/xml") or content_type.startswith("text/xml"):
-        xml_data = request.data
-        graph_id = ""
-        success, result = ODataLoader.load(graph_id, xml_data)
+    # # ✅ Handle XML Payload
+    # elif content_type.startswith("application/xml") or content_type.startswith("text/xml"):
+    #     xml_data = request.data
+    #     graph_id = ""
+    #     success, result = ODataLoader.load(graph_id, xml_data)
 
-    # ✅ Handle CSV Payload
-    elif content_type.startswith("text/csv"):
-        csv_data = request.data
-        graph_id = ""
-        success, result = CSVLoader.load(graph_id, csv_data)
+    # # ✅ Handle CSV Payload
+    # elif content_type.startswith("text/csv"):
+    #     csv_data = request.data
+    #     graph_id = ""
+    #     success, result = CSVLoader.load(graph_id, csv_data)
 
     # ✅ Handle File Upload (FormData with JSON/XML)
     elif content_type.startswith("multipart/form-data"):
@@ -670,7 +668,7 @@ def refresh_graph_schema(graph_id: str):
     if they suspect the graph is out of sync with the database.
     """
     graph_id = g.user_id + "_" + graph_id.strip()
-    
+
     try:
         # Get database connection details
         db_description, db_url = get_db_description(graph_id)
