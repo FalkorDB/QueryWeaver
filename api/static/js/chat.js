@@ -573,6 +573,10 @@ const resetCancelBtn = document.getElementById('reset-cancel-btn');
 // Show reset confirmation modal instead of directly resetting
 newChatButton.addEventListener('click', () => {
     resetConfirmationModal.style.display = 'flex';
+    // Focus the Reset Session button when modal opens
+    setTimeout(() => {
+        resetConfirmBtn.focus();
+    }, 100); // Small delay to ensure modal is fully rendered
 });
 
 // Handle reset confirmation
@@ -722,6 +726,12 @@ document.addEventListener('DOMContentLoaded', function() {
     if (openPgModalBtn && pgModal) {
         openPgModalBtn.addEventListener('click', function() {
             pgModal.style.display = 'flex';
+            // Focus the input field when modal opens
+            if (pgUrlInput) {
+                setTimeout(() => {
+                    pgUrlInput.focus();
+                }, 100); // Small delay to ensure modal is fully rendered
+            }
         });
     }
     if (cancelPgModalBtn && pgModal) {
@@ -817,6 +827,13 @@ document.addEventListener('DOMContentLoaded', function() {
         // Close dropdown when clicking outside
         document.addEventListener('click', function(e) {
             if (!userProfileBtn.contains(e.target) && !userProfileDropdown.contains(e.target)) {
+                userProfileDropdown.classList.remove('show');
+            }
+        });
+
+        // Close dropdown with Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && userProfileDropdown.classList.contains('show')) {
                 userProfileDropdown.classList.remove('show');
             }
         });
