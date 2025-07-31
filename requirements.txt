@@ -32,7 +32,7 @@ jsonschema-specifications==2025.4.1
 jsonschema==4.24.0
 litellm==1.73.6
 markupsafe==3.0.2
-multidict==6.6.2
+multidict==6.6.3
 openai==1.93.0
 packaging==25.0
 propcache==0.3.2
