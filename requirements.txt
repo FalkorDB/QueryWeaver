@@ -36,7 +36,7 @@ multidict==6.6.3
 openai==1.93.0
 packaging==25.0
 propcache==0.3.2
-pydantic-core==2.33.2
+pydantic-core==2.37.2
 pydantic==2.11.7
 pyjwt==2.9.0
 python-dateutil==2.9.0.post0
