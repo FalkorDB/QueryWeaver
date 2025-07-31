@@ -1,8 +1,7 @@
 .env
+.venv
 *.pyc
 .vscode/
 *_conf*
-.*
-api/loaders/odata_parser.py
-erp_schema.json
-erp_schema_2.json
+.ruff_code/
+.vercel/
