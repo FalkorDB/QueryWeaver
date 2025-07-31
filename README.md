@@ -1,19 +1,19 @@
 [![Try Free](https://img.shields.io/badge/Try%20Free-FalkorDB%20Cloud-FF8101?labelColor=FDE900&link=https://app.falkordb.cloud)](https://app.falkordb.cloud)
 [![Dockerhub](https://img.shields.io/docker/pulls/falkordb/falkordb?label=Docker)](https://hub.docker.com/r/falkordb/falkordb/)
 [![Discord](https://img.shields.io/discord/1146782921294884966?style=flat-square)](https://discord.com/invite/6M4QwDXn2w)
-[![Workflow](https://github.com/FalkorDB/text2sql/actions/workflows/pylint.yml/badge.svg?branch=main)](https://github.com/FalkorDB/text2sql/actions/workflows/pylint.yml)
+[![Workflow](https://github.com/FalkorDB/QueryWeaver/actions/workflows/pylint.yml/badge.svg?branch=main)](https://github.com/FalkorDB/QueryWeaver/actions/workflows/pylint.yml)
 
-# Text2SQL
+# QueryWeaver
 
-Text2SQL is a web application that allows users to interact with databases using natural language queries, powered by AI and graph database technology.
+QueryWeaver is an open-source Text2SQL tool that transforms natural language into SQL using graph-powered schema understanding. Ask your database questions in plain English—QueryWeaver handles the weaving.
 
 ## Setup
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.12+
 - Poetry (for dependency management)
-- FalkorDB instance (or Redis with FalkorDB module)
+- FalkorDB instance
 
 ### Installation
 
@@ -62,10 +62,12 @@ The application will be available at `http://localhost:5000`.
 
 ## Introduction
 
-![image](https://github.com/user-attachments/assets/8b1743a8-1d24-4cb7-89a8-a95f626e68d9)
+<img width="1863" height="996" alt="image" src="https://github.com/user-attachments/assets/a0be7bbd-0c99-4399-a302-2b9f7b419dd2" />
 
 
 ## LICENSE
+
+Licensed under the GNU Affero General Public License (AGPL). See [LICENSE](LICENSE.txt).
 
 Copyrights FalkorDB Ltd. 2025
 
