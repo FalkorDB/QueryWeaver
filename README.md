@@ -12,15 +12,15 @@ QueryWeaver is an open-source Text2SQL tool that transforms natural language int
 ### Prerequisites
 
 - Python 3.12+
-- Poetry (for dependency management)
+- pipenv (for dependency management)
 - FalkorDB instance
 
 ### Installation
 
 1. Clone the repository
-2. Install dependencies with Poetry:
+2. Install dependencies with Pipenv:
    ```bash
-   poetry install
+   pipenv sync
    ```
 
 3. Set up environment variables by copying `.env.example` to `.env` and filling in your values:
@@ -55,7 +55,7 @@ This application supports authentication via Google and GitHub OAuth. You'll nee
 ### Running the Application
 
 ```bash
-poetry run flask --app api.index run
+pipenv run flask --app api.index run
 ```
 
 The application will be available at `http://localhost:5000`.

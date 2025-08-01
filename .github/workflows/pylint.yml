@@ -5,29 +5,24 @@ on: [push]
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.12"]
+
     steps:
     - uses: actions/checkout@v4
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
       with:
-        python-version: ${{ matrix.python-version }}
-        
-    - name: Install Poetry
-      uses: abatilo/actions-poetry@v3
-
-    - name: Configure Poetry
+        python-version: '3.12'
+    
+    - name: Install pipenv
       run: |
-        poetry config virtualenvs.create true
-        poetry config virtualenvs.in-project true
-
+        python -m pip install --upgrade pip
+        pip install pipenv
+    
     - name: Install dependencies
       run: |
-        poetry install --no-interaction --no-root
-
-    - name: Run Pylint
+        pipenv sync --dev
+    
+    - name: Run pylint
       run: |
-        poetry run pylint $(git ls-files '*.py')
-
+        pipenv run pylint $(git ls-files '*.py')
