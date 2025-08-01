@@ -30,3 +30,5 @@ Nullability
 endcapture
 CVSS
 falkordb
+pipenv
+Pipenv
