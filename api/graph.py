@@ -46,7 +46,8 @@ def get_db_description(graph_id: str) -> (str, str):
     )
 
     if not query_result.result_set:
-        return ("No description available for this database.", "No URL available for this database.")
+        return ("No description available for this database.",
+                "No URL available for this database.")
 
     return (query_result.result_set[0][0],
             query_result.result_set[0][1])  # Return the first result's description
