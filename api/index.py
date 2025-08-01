@@ -8,9 +8,10 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from functools import wraps
 
+import requests
 from dotenv import load_dotenv
-from flask import Blueprint, Flask, Response, jsonify, render_template, request, stream_with_context, g
-from flask import session, redirect, url_for
+from flask import (Blueprint, Flask, Response, jsonify, render_template, 
+                  request, stream_with_context, g, session, redirect, url_for)
 from flask_dance.contrib.google import make_google_blueprint, google
 from flask_dance.contrib.github import make_github_blueprint, github
 from flask_dance.consumer.storage.session import SessionStorage
@@ -23,6 +24,113 @@ from api.loaders.csv_loader import CSVLoader
 from api.loaders.json_loader import JSONLoader
 from api.loaders.postgres_loader import PostgresLoader
 from api.loaders.odata_loader import ODataLoader
+
+# User management functions
+def ensure_user_in_organizations(provider_user_id, email, name, provider, picture=None):
+    """
+    Check if identity exists in Organizations graph, create if not.
+    Creates separate Identity and User nodes with proper relationships.
+    Uses MERGE for atomic operations and better performance.
+    Returns (is_new_user, user_info)
+    """
+    try:
+        # Select the Organizations graph
+        organizations_graph = db.select_graph("Organizations")
+
+        # Extract first and last name
+        name_parts = (name or "").split(" ", 1) if name else ["", ""]
+        first_name = name_parts[0] if len(name_parts) > 0 else ""
+        last_name = name_parts[1] if len(name_parts) > 1 else ""
+
+        # Use MERGE to handle all scenarios in a single atomic operation
+        merge_query = """
+        // First, ensure user exists (merge by email)
+        MERGE (user:User {email: $email})
+        ON CREATE SET 
+            user.first_name = $first_name,
+            user.last_name = $last_name,
+            user.created_at = timestamp()
+        
+        // Then, merge identity and link to user
+        MERGE (identity:Identity {provider: $provider, provider_user_id: $provider_user_id})
+        ON CREATE SET 
+            identity.email = $email,
+            identity.name = $name,
+            identity.picture = $picture,
+            identity.created_at = timestamp(),
+            identity.last_login = timestamp()
+        ON MATCH SET 
+            identity.email = $email,
+            identity.name = $name,
+            identity.picture = $picture,
+            identity.last_login = timestamp()
+        
+        // Ensure relationship exists
+        MERGE (identity)-[:AUTHENTICATES]->(user)
+        
+        // Return results with flags to determine if this was a new user/identity
+        RETURN 
+            identity,
+            user,
+            identity.created_at = identity.last_login AS is_new_identity,
+            EXISTS((user)<-[:AUTHENTICATES]-(:Identity)) AS had_other_identities
+        """
+
+        result = organizations_graph.query(merge_query, {
+            "provider": provider,
+            "provider_user_id": provider_user_id,
+            "email": email,
+            "name": name,
+            "picture": picture,
+            "first_name": first_name,
+            "last_name": last_name
+        })
+
+        if result.result_set:
+            identity = result.result_set[0][0]
+            user = result.result_set[0][1]
+            is_new_identity = result.result_set[0][2]
+            had_other_identities = result.result_set[0][3]
+
+            # Determine the type of operation for logging
+            if is_new_identity and not had_other_identities:
+                # Brand new user (first identity)
+                logging.info("NEW USER CREATED: provider=%s, provider_user_id=%s, email=%s, name=%s", 
+                           provider, provider_user_id, email, name)
+                return True, {"identity": identity, "user": user}
+            elif is_new_identity and had_other_identities:
+                # New identity for existing user (cross-provider linking)
+                logging.info("NEW IDENTITY LINKED TO EXISTING USER: provider=%s, provider_user_id=%s, email=%s, name=%s", 
+                           provider, provider_user_id, email, name)
+                return True, {"identity": identity, "user": user}
+            else:
+                # Existing identity login
+                logging.info("Existing identity found: provider=%s, email=%s", provider, email)
+                return False, {"identity": identity, "user": user}
+        else:
+            logging.error("Failed to create/update identity and user: email=%s", email)
+            return False, None
+
+    except Exception as e:
+        logging.error("Error managing user in Organizations graph: %s", e)
+        return False, None
+
+def update_identity_last_login(provider, provider_user_id):
+    """Update the last login timestamp for an existing identity"""
+    try:
+        organizations_graph = db.select_graph("Organizations")
+        update_query = """
+        MATCH (identity:Identity {provider: $provider, provider_user_id: $provider_user_id})
+        SET identity.last_login = timestamp()
+        RETURN identity
+        """
+        organizations_graph.query(update_query, {
+            "provider": provider,
+            "provider_user_id": provider_user_id
+        })
+        logging.info("Updated last login for identity: provider=%s, provider_user_id=%s", provider, provider_user_id)
+    except Exception as e:
+        logging.error("Error updating last login for identity %s/%s: %s", provider, provider_user_id, e)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -65,8 +173,8 @@ def validate_and_cache_user():
                 session["user_info"] = user_info
                 session["token_validated_at"] = current_time
                 return user_info, True
-        except Exception as e:
-            logging.warning(f"Google OAuth validation error: {e}")
+        except (requests.RequestException, KeyError, ValueError) as e:
+            logging.warning("Google OAuth validation error: %s", e)
 
     # Check GitHub OAuth
     if github.authorized:
@@ -75,7 +183,7 @@ def validate_and_cache_user():
             resp = github.get("/user")
             if resp.ok:
                 github_user = resp.json()
-                
+
                 # Get user email (GitHub may require separate call for email)
                 email_resp = github.get("/user/emails")
                 email = None
@@ -86,10 +194,11 @@ def validate_and_cache_user():
                         if email_obj.get("primary", False):
                             email = email_obj.get("email")
                             break
+
                     # If no primary email found, use the first one
                     if not email and emails:
                         email = emails[0].get("email")
-                
+
                 # Normalize user info structure
                 user_info = {
                     "id": str(github_user.get("id")),  # Convert to string for consistency
@@ -101,8 +210,8 @@ def validate_and_cache_user():
                 session["user_info"] = user_info
                 session["token_validated_at"] = current_time
                 return user_info, True
-        except Exception as e:
-            logging.warning(f"GitHub OAuth validation error: {e}")
+        except (requests.RequestException, KeyError, ValueError) as e:
+            logging.warning("GitHub OAuth validation error: %s", e)
 
     # If no valid authentication found, clear session
     session.clear()
@@ -159,8 +268,49 @@ app.register_blueprint(github_bp, url_prefix="/login")
 
 # GitHub OAuth signal handler
 
+@oauth_authorized.connect_via(google_bp)
+def google_logged_in(blueprint, token):  # pylint: disable=unused-argument
+    """Handle Google OAuth authorization callback."""
+    if not token:
+        return False
+
+    try:
+        # Get user profile
+        resp = google.get("/oauth2/v2/userinfo")
+        if resp.ok:
+            google_user = resp.json()
+            user_id = google_user.get("id")
+            email = google_user.get("email")
+            name = google_user.get("name")
+
+            if user_id and email:
+                # Check if identity exists in Organizations graph, create if new
+                is_new_user, _ = ensure_user_in_organizations(
+                    user_id, email, name, "google", google_user.get("picture")
+                )
+
+                # If existing identity, just update last login (already done in ensure_user_in_organizations)
+
+            # Normalize user info structure for session
+            user_info_session = {
+                "id": user_id,
+                "name": name,
+                "email": email,
+                "picture": google_user.get("picture"),
+                "provider": "google"
+            }
+            session["user_info"] = user_info_session
+            session["token_validated_at"] = time.time()
+            return False  # Don't create default flask-dance entry in session
+
+    except (requests.RequestException, KeyError, ValueError, AttributeError) as e:
+        logging.error("Google OAuth signal error: %s", e)
+
+    return False
+
 @oauth_authorized.connect_via(github_bp)
-def github_logged_in(blueprint, token):
+def github_logged_in(blueprint, token):  # pylint: disable=unused-argument
+    """Handle GitHub OAuth authorization callback."""
     if not token:
         return False
 
@@ -184,20 +334,31 @@ def github_logged_in(blueprint, token):
                 if not email and emails:
                     email = emails[0].get("email")
 
-            # Normalize user info structure
-            user_info = {
-                "id": str(github_user.get("id")),  # Convert to string for consistency
-                "name": github_user.get("name") or github_user.get("login"),
+            user_id = str(github_user.get("id"))
+            name = github_user.get("name") or github_user.get("login")
+            
+            if user_id and email:
+                # Check if identity exists in Organizations graph, create if new
+                is_new_user, _ = ensure_user_in_organizations(
+                    user_id, email, name, "github", github_user.get("avatar_url")
+                )
+                
+                # If existing identity, just update last login (already done in ensure_user_in_organizations)
+
+            # Normalize user info structure for session
+            user_info_session = {
+                "id": user_id,
+                "name": name,
                 "email": email,
                 "picture": github_user.get("avatar_url"),
                 "provider": "github"
             }
-            session["user_info"] = user_info
+            session["user_info"] = user_info_session
             session["token_validated_at"] = time.time()
             return False  # Don't create default flask-dance entry in session
 
-    except Exception as e:
-        logging.error(f"GitHub OAuth signal error: {e}")
+    except (requests.RequestException, KeyError, ValueError, AttributeError) as e:
+        logging.error("GitHub OAuth signal error: %s", e)
 
     return False
 
@@ -207,7 +368,7 @@ def handle_oauth_error(error):
     """Handle OAuth-related errors gracefully"""
     # Check if it's an OAuth-related error
     if "token" in str(error).lower() or "oauth" in str(error).lower():
-        logging.warning(f"OAuth error occurred: {error}")
+        logging.warning("OAuth error occurred: %s", error)
         session.clear()
         return redirect(url_for("home"))
 
@@ -339,11 +500,14 @@ def query(graph_id: str):
         agent_rel = RelevancyAgent(queries_history, result_history)
         agent_an = AnalysisAgent(queries_history, result_history)
 
-        step = {"type": "reasoning_step", "message": "Step 1: Analyzing user query and generating SQL..."}
+        step = {"type": "reasoning_step",
+                "message": "Step 1: Analyzing user query and generating SQL..."}
         yield json.dumps(step) + MESSAGE_DELIMITER
-        db_description, db_url = get_db_description(graph_id)  # Ensure the database description is loaded
+        # Ensure the database description is loaded
+        db_description, db_url = get_db_description(graph_id)
 
-        logging.info("Calling to relvancy agent with query: %s", queries_history[-1])
+        logging.info("Calling to relevancy agent with query: %s",
+                     queries_history[-1])
         answer_rel = agent_rel.get_answer(queries_history[-1], db_description)
         if answer_rel["status"] != "On-topic":
             step = {
@@ -398,7 +562,9 @@ def query(graph_id: str):
                 sql_query = answer_an["sql_query"]
                 sql_type = sql_query.strip().split()[0].upper() if sql_query else ""
 
-                if sql_type in ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE']:
+                destructive_ops = ['INSERT', 'UPDATE', 'DELETE', 'DROP',
+                                  'CREATE', 'ALTER', 'TRUNCATE']
+                if sql_type in destructive_ops:
                     # This is a destructive operation - ask for user confirmation
                     confirmation_message = f"""⚠️ DESTRUCTIVE OPERATION DETECTED ⚠️
 
@@ -412,18 +578,23 @@ What this will do:
                     if sql_type == 'INSERT':
                         confirmation_message += "• Add new data to the database"
                     elif sql_type == 'UPDATE':
-                        confirmation_message += "• Modify existing data in the database"
+                        confirmation_message += ("• Modify existing data in the "
+                                                "database")
                     elif sql_type == 'DELETE':
-                        confirmation_message += "• **PERMANENTLY DELETE** data from the database"
+                        confirmation_message += ("• **PERMANENTLY DELETE** data "
+                                                "from the database")
                     elif sql_type == 'DROP':
-                        confirmation_message += "• **PERMANENTLY DELETE** entire tables or database objects"
+                        confirmation_message += ("• **PERMANENTLY DELETE** entire "
+                                                "tables or database objects")
                     elif sql_type == 'CREATE':
-                        confirmation_message += "• Create new tables or database objects"
+                        confirmation_message += ("• Create new tables or database "
+                                                "objects")
                     elif sql_type == 'ALTER':
-                        confirmation_message += "• Modify the structure of existing tables"
+                        confirmation_message += ("• Modify the structure of existing "
+                                                "tables")
                     elif sql_type == 'TRUNCATE':
-                        confirmation_message += "• **PERMANENTLY DELETE ALL DATA** from specified tables"
-
+                        confirmation_message += ("• **PERMANENTLY DELETE ALL DATA** "
+                                                "from specified tables")
                     confirmation_message += """
                     
 ⚠️ WARNING: This operation will make changes to your database and may be irreversible.
@@ -456,31 +627,43 @@ What this will do:
 
                     # If schema was modified, refresh the graph
                     if is_schema_modifying:
-                        step = {"type": "reasoning_step", "message": "Step 3: Schema change detected - refreshing graph..."}
+                        step = {"type": "reasoning_step",
+                               "message": ("Step 3: Schema change detected - "
+                                         "refreshing graph...")}
                         yield json.dumps(step) + MESSAGE_DELIMITER
 
-                        refresh_success, refresh_message = PostgresLoader.refresh_graph_schema(graph_id, db_url)
-                        
+                        refresh_result = PostgresLoader.refresh_graph_schema(
+                            graph_id, db_url)
+                        refresh_success, refresh_message = refresh_result
+
                         if refresh_success:
+                            refresh_msg = (f"✅ Schema change detected "
+                                         f"({operation_type} operation)\n\n"
+                                         f"🔄 Graph schema has been automatically "
+                                         f"refreshed with the latest database "
+                                         f"structure.")
                             yield json.dumps(
                                 {
                                     "type": "schema_refresh",
-                                    "message": f"✅ Schema change detected ({operation_type} operation)\n\n🔄 Graph schema has been automatically refreshed with the latest database structure.",
+                                    "message": refresh_msg,
                                     "refresh_status": "success"
                                 }
                             ) + MESSAGE_DELIMITER
                         else:
+                            failure_msg = (f"⚠️ Schema was modified but graph "
+                                         f"refresh failed: {refresh_message}")
                             yield json.dumps(
                                 {
                                     "type": "schema_refresh",
-                                    "message": f"⚠️ Schema was modified but graph refresh failed: {refresh_message}",
+                                    "message": failure_msg,
                                     "refresh_status": "failed"
                                 }
                             ) + MESSAGE_DELIMITER
 
                     # Generate user-readable response using AI
                     step_num = "4" if is_schema_modifying else "3"
-                    step = {"type": "reasoning_step", "message": f"Step {step_num}: Generating user-friendly response"}
+                    step = {"type": "reasoning_step",
+                           "message": f"Step {step_num}: Generating user-friendly response"}
                     yield json.dumps(step) + MESSAGE_DELIMITER
 
                     response_agent = ResponseFormatterAgent()
@@ -604,6 +787,7 @@ def confirm_destructive_operation(graph_id: str):
 
 @app.route("/login")
 def login_google():
+    """Handle Google OAuth login route."""
     if not google.authorized:
         return redirect(url_for("google.login"))
 
@@ -622,10 +806,10 @@ def login_google():
             session["user_info"] = user_info
             session["token_validated_at"] = time.time()
             return redirect(url_for("home"))
-        else:
-            # OAuth token might be expired, redirect to login
-            session.clear()
-            return redirect(url_for("google.login"))
+
+        # OAuth token might be expired, redirect to login
+        session.clear()
+        return redirect(url_for("google.login"))
     except Exception as e:
         logging.error("Google login error: %s", e)
         session.clear()
@@ -636,6 +820,7 @@ def login_google():
 
 @app.route("/logout")
 def logout():
+    """Handle user logout and token revocation."""
     session.clear()
 
     # Revoke Google OAuth token if authorized
@@ -671,8 +856,8 @@ def refresh_graph_schema(graph_id: str):
 
     try:
         # Get database connection details
-        db_description, db_url = get_db_description(graph_id)
-        
+        _, db_url = get_db_description(graph_id)
+
         if not db_url or db_url == "No URL available for this database.":
             return jsonify({
                 "success": False, 
@@ -719,12 +904,12 @@ def connect_database():
                 success, result = PostgresLoader.load(g.user_id, url)
                 if success:
                     return jsonify({"success": True, "message": result}), 200
-                else:
-                    return jsonify({"success": False, "error": result}), 400
+
+                return jsonify({"success": False, "error": result}), 400
             except Exception as e:
                 return jsonify({"success": False, "error": str(e)}), 500
-        else:
-            return jsonify({"success": False, "error": "Invalid Postgres URL"}), 400
+
+        return jsonify({"success": False, "error": "Invalid Postgres URL"}), 400
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
