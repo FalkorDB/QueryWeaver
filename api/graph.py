@@ -48,12 +48,12 @@ def get_db_description(graph_id: str) -> (str, str):
     if not query_result.result_set:
         return ("No description available for this database.", "No URL available for this database.")
 
-    return (query_result.result_set[0][0], query_result.result_set[0][1])  # Return the first result's description
+    return (query_result.result_set[0][0],
+            query_result.result_set[0][1])  # Return the first result's description
 
 
-def find(
-    graph_id: str, queries_history: List[str], db_description: str = None
-) -> Tuple[bool, List[dict]]:
+def find(graph_id: str, queries_history: List[str],
+         db_description: str = None) -> Tuple[bool, List[dict]]:
     """Find the tables and columns relevant to the user's query."""
 
     graph = db.select_graph(graph_id)
@@ -61,7 +61,7 @@ def find(
     previous_queries = queries_history[:-1]
 
     logging.info(
-        "Calling to an LLM to find relevant tables and columns for the query: %s", 
+        "Calling to an LLM to find relevant tables and columns for the query: %s",
         user_query
     )
     # Call the completion model to get the relevant Cypher queries to retrieve

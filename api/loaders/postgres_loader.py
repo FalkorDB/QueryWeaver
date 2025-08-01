@@ -1,10 +1,14 @@
-from typing import Tuple, Dict, Any, List
-import re
-import logging
-import tqdm
-import psycopg2
+"""PostgreSQL loader for loading database schemas into FalkorDB graphs."""
+
 import datetime
 import decimal
+import logging
+import re
+from typing import Tuple, Dict, Any, List
+
+import psycopg2
+import tqdm
+
 from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
 
@@ -20,7 +24,7 @@ class PostgresLoader(BaseLoader):
     SCHEMA_MODIFYING_OPERATIONS = {
         'CREATE', 'ALTER', 'DROP', 'RENAME', 'TRUNCATE'
     }
-    
+
     # More specific patterns for schema-affecting operations
     SCHEMA_PATTERNS = [
         r'^\s*CREATE\s+TABLE',
@@ -50,9 +54,9 @@ class PostgresLoader(BaseLoader):
         """
         if isinstance(value, (datetime.date, datetime.datetime)):
             return value.isoformat()
-        elif isinstance(value, datetime.time):
+        if isinstance(value, datetime.time):
             return value.isoformat()
-        elif isinstance(value, decimal.Decimal):
+        if isinstance(value, decimal.Decimal):
             return float(value)
         elif value is None:
             return None
@@ -92,9 +96,11 @@ class PostgresLoader(BaseLoader):
             conn.close()
 
             # Load data into graph
-            load_to_graph(prefix + "_" + db_name, entities, relationships, db_name=db_name, db_url=connection_url)
+            load_to_graph(prefix + "_" + db_name, entities, relationships,
+                         db_name=db_name, db_url=connection_url)
 
-            return True, f"PostgreSQL schema loaded successfully. Found {len(entities)} tables."
+            return True, (f"PostgreSQL schema loaded successfully. "
+                         f"Found {len(entities)} tables.")
 
         except psycopg2.Error as e:
             return False, f"PostgreSQL connection error: {str(e)}"

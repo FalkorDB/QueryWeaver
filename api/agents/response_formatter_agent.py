@@ -44,9 +44,9 @@ class ResponseFormatterAgent:
 
     def __init__(self):
         """Initialize the response formatter agent."""
-        pass
 
-    def format_response(self, user_query: str, sql_query: str, query_results: List[Dict], db_description: str = "") -> str:
+    def format_response(self, user_query: str, sql_query: str,
+                       query_results: List[Dict], db_description: str = "") -> str:
         """
         Generate a user-readable response based on the SQL query results.
         
@@ -73,7 +73,8 @@ class ResponseFormatterAgent:
         response = completion_result.choices[0].message.content
         return response.strip()
 
-    def _build_response_prompt(self, user_query: str, sql_query: str, query_results: List[Dict], db_description: str) -> str:
+    def _build_response_prompt(self, user_query: str, sql_query: str,
+                              query_results: List[Dict], db_description: str) -> str:
         """Build the prompt for generating user-readable responses."""
 
         # Format the query results for better readability
@@ -109,8 +110,8 @@ class ResponseFormatterAgent:
 
             if affected_rows is not None:
                 return f"Operation: {operation}, Status: {status}, Affected rows: {affected_rows}"
-            else:
-                return f"Operation: {operation}, Status: {status}"
+
+            return f"Operation: {operation}, Status: {status}"
 
         # Handle regular SELECT query results
         # Limit the number of results shown in the prompt to avoid token limits
