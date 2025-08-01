@@ -3,6 +3,7 @@
 import logging
 import time
 
+import requests
 from flask import Blueprint, render_template, redirect, url_for, session
 from flask_dance.contrib.google import google
 from flask_dance.contrib.github import github
@@ -34,12 +35,19 @@ def login_google():
         resp = google.get("/oauth2/v2/userinfo")
         if resp.ok:
             google_user = resp.json()
+            
+            # Validate required fields
+            if not google_user.get("id") or not google_user.get("email"):
+                logging.error("Invalid Google user data received during login")
+                session.clear()
+                return redirect(url_for("google.login"))
+                
             # Normalize user info structure
             user_info = {
-                "id": google_user.get("id"),
-                "name": google_user.get("name"),
+                "id": str(google_user.get("id")),  # Ensure string type
+                "name": google_user.get("name", ""),
                 "email": google_user.get("email"),
-                "picture": google_user.get("picture"),
+                "picture": google_user.get("picture", ""),
                 "provider": "google"
             }
             session["user_info"] = user_info
@@ -49,7 +57,7 @@ def login_google():
         # OAuth token might be expired, redirect to login
         session.clear()
         return redirect(url_for("google.login"))
-    except Exception as e:
+    except (requests.RequestException, KeyError, ValueError) as e:
         logging.error("Google login error: %s", e)
         session.clear()
         return redirect(url_for("google.login"))
@@ -67,7 +75,7 @@ def logout():
                 "https://accounts.google.com/o/oauth2/revoke",
                 params={"token": google.access_token}
             )
-        except Exception as e:
+        except (requests.RequestException, AttributeError) as e:
             logging.warning("Error revoking Google token: %s", e)
 
     # Revoke GitHub OAuth token if authorized
@@ -76,7 +84,7 @@ def logout():
             # GitHub doesn't have a simple revoke endpoint like Google
             # The token will expire naturally or can be revoked from GitHub settings
             pass
-        except Exception as e:
+        except AttributeError as e:
             logging.warning("Error with GitHub token cleanup: %s", e)
 
     return redirect(url_for("auth.home"))

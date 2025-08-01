@@ -30,9 +30,14 @@ def setup_oauth_handlers(google_bp, github_bp):
                 email = google_user.get("email")
                 name = google_user.get("name")
 
+                # Validate required fields
+                if not user_id or not email:
+                    logging.error("Missing required fields from Google OAuth response")
+                    return False
+
                 if user_id and email:
                     # Check if identity exists in Organizations graph, create if new
-                    is_new_user, _ = ensure_user_in_organizations(
+                    _, _ = ensure_user_in_organizations(
                         user_id, email, name, "google", google_user.get("picture")
                     )
 
@@ -41,10 +46,10 @@ def setup_oauth_handlers(google_bp, github_bp):
 
                 # Normalize user info structure for session
                 user_info_session = {
-                    "id": user_id,
-                    "name": name,
+                    "id": str(user_id),  # Ensure string type
+                    "name": name or "",
                     "email": email,
-                    "picture": google_user.get("picture"),
+                    "picture": google_user.get("picture", ""),
                     "provider": "google"
                 }
                 session["user_info"] = user_info_session
@@ -85,9 +90,14 @@ def setup_oauth_handlers(google_bp, github_bp):
                 user_id = str(github_user.get("id"))
                 name = github_user.get("name") or github_user.get("login")
 
+                # Validate required fields
+                if not user_id or not email:
+                    logging.error("Missing required fields from GitHub OAuth response")
+                    return False
+
                 if user_id and email:
                     # Check if identity exists in Organizations graph, create if new
-                    is_new_user, _ = ensure_user_in_organizations(
+                    _, _ = ensure_user_in_organizations(
                         user_id, email, name, "github", github_user.get("avatar_url")
                     )
 
@@ -97,9 +107,9 @@ def setup_oauth_handlers(google_bp, github_bp):
                 # Normalize user info structure for session
                 user_info_session = {
                     "id": user_id,
-                    "name": name,
+                    "name": name or "",
                     "email": email,
-                    "picture": github_user.get("avatar_url"),
+                    "picture": github_user.get("avatar_url", ""),
                     "provider": "github"
                 }
                 session["user_info"] = user_info_session

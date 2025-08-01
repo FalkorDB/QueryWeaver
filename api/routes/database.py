@@ -19,6 +19,11 @@ def connect_database():
     url = data.get("url") if data else None
     if not url:
         return jsonify({"success": False, "error": "No URL provided"}), 400
+        
+    # Validate URL format
+    if not isinstance(url, str) or len(url.strip()) == 0:
+        return jsonify({"success": False, "error": "Invalid URL format"}), 400
+        
     try:
         # Check for Postgres URL
         if url.startswith("postgres://") or url.startswith("postgresql://"):
@@ -29,9 +34,9 @@ def connect_database():
                     return jsonify({"success": True, "message": result}), 200
 
                 return jsonify({"success": False, "error": result}), 400
-            except Exception as e:
+            except (ValueError, ConnectionError) as e:
                 return jsonify({"success": False, "error": str(e)}), 500
 
         return jsonify({"success": False, "error": "Invalid Postgres URL"}), 400
-    except Exception as e:
+    except (ValueError, TypeError) as e:
         return jsonify({"success": False, "error": str(e)}), 500
