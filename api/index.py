@@ -10,7 +10,7 @@ from functools import wraps
 
 import requests
 from dotenv import load_dotenv
-from flask import (Blueprint, Flask, Response, jsonify, render_template, 
+from flask import (Blueprint, Flask, Response, jsonify, render_template,
                   request, stream_with_context, g, session, redirect, url_for)
 from flask_dance.contrib.google import make_google_blueprint, google
 from flask_dance.contrib.github import make_github_blueprint, github
@@ -46,30 +46,30 @@ def ensure_user_in_organizations(provider_user_id, email, name, provider, pictur
         merge_query = """
         // First, ensure user exists (merge by email)
         MERGE (user:User {email: $email})
-        ON CREATE SET 
+        ON CREATE SET
             user.first_name = $first_name,
             user.last_name = $last_name,
             user.created_at = timestamp()
-        
+
         // Then, merge identity and link to user
         MERGE (identity:Identity {provider: $provider, provider_user_id: $provider_user_id})
-        ON CREATE SET 
+        ON CREATE SET
             identity.email = $email,
             identity.name = $name,
             identity.picture = $picture,
             identity.created_at = timestamp(),
             identity.last_login = timestamp()
-        ON MATCH SET 
+        ON MATCH SET
             identity.email = $email,
             identity.name = $name,
             identity.picture = $picture,
             identity.last_login = timestamp()
-        
+
         // Ensure relationship exists
         MERGE (identity)-[:AUTHENTICATES]->(user)
-        
+
         // Return results with flags to determine if this was a new user/identity
-        RETURN 
+        RETURN
             identity,
             user,
             identity.created_at = identity.last_login AS is_new_identity,
@@ -95,12 +95,13 @@ def ensure_user_in_organizations(provider_user_id, email, name, provider, pictur
             # Determine the type of operation for logging
             if is_new_identity and not had_other_identities:
                 # Brand new user (first identity)
-                logging.info("NEW USER CREATED: provider=%s, provider_user_id=%s, email=%s, name=%s", 
-                           provider, provider_user_id, email, name)
+                logging.info("NEW USER CREATED: provider=%s, provider_user_id=%s, "
+                           "email=%s, name=%s", provider, provider_user_id, email, name)
                 return True, {"identity": identity, "user": user}
             elif is_new_identity and had_other_identities:
                 # New identity for existing user (cross-provider linking)
-                logging.info("NEW IDENTITY LINKED TO EXISTING USER: provider=%s, provider_user_id=%s, email=%s, name=%s", 
+                logging.info("NEW IDENTITY LINKED TO EXISTING USER: provider=%s, "
+                           "provider_user_id=%s, email=%s, name=%s",
                            provider, provider_user_id, email, name)
                 return True, {"identity": identity, "user": user}
             else:
@@ -128,9 +129,11 @@ def update_identity_last_login(provider, provider_user_id):
             "provider": provider,
             "provider_user_id": provider_user_id
         })
-        logging.info("Updated last login for identity: provider=%s, provider_user_id=%s", provider, provider_user_id)
+        logging.info("Updated last login for identity: provider=%s, provider_user_id=%s",
+                    provider, provider_user_id)
     except Exception as e:
-        logging.error("Error updating last login for identity %s/%s: %s", provider, provider_user_id, e)
+        logging.error("Error updating last login for identity %s/%s: %s",
+                     provider, provider_user_id, e)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -289,7 +292,8 @@ def google_logged_in(blueprint, token):  # pylint: disable=unused-argument
                     user_id, email, name, "google", google_user.get("picture")
                 )
 
-                # If existing identity, just update last login (already done in ensure_user_in_organizations)
+                # If existing identity, just update last login
+                # (already done in ensure_user_in_organizations)
 
             # Normalize user info structure for session
             user_info_session = {
@@ -336,14 +340,15 @@ def github_logged_in(blueprint, token):  # pylint: disable=unused-argument
 
             user_id = str(github_user.get("id"))
             name = github_user.get("name") or github_user.get("login")
-            
+
             if user_id and email:
                 # Check if identity exists in Organizations graph, create if new
                 is_new_user, _ = ensure_user_in_organizations(
                     user_id, email, name, "github", github_user.get("avatar_url")
                 )
-                
-                # If existing identity, just update last login (already done in ensure_user_in_organizations)
+
+                # If existing identity, just update last login
+                # (already done in ensure_user_in_organizations)
 
             # Normalize user info structure for session
             user_info_session = {
@@ -596,10 +601,10 @@ What this will do:
                         confirmation_message += ("• **PERMANENTLY DELETE ALL DATA** "
                                                 "from specified tables")
                     confirmation_message += """
-                    
+
 ⚠️ WARNING: This operation will make changes to your database and may be irreversible.
 """
-                    
+
                     yield json.dumps(
                         {
                             "type": "destructive_confirmation",
@@ -609,13 +614,15 @@ What this will do:
                         }
                     ) + MESSAGE_DELIMITER
                     return  # Stop here and wait for user confirmation
-                
+
                 try:
                     step = {"type": "reasoning_step", "message": "Step 2: Executing SQL query"}
                     yield json.dumps(step) + MESSAGE_DELIMITER
 
                     # Check if this query modifies the database schema
-                    is_schema_modifying, operation_type = PostgresLoader.is_schema_modifying_query(sql_query)
+                    is_schema_modifying, operation_type = (
+                        PostgresLoader.is_schema_modifying_query(sql_query)
+                    )
 
                     query_results = PostgresLoader.execute_sql_query(answer_an["sql_query"], db_url)
                     yield json.dumps(
@@ -711,11 +718,14 @@ def confirm_destructive_operation(graph_id: str):
             try:
                 db_description, db_url = get_db_description(graph_id)
 
-                step = {"type": "reasoning_step", "message": "Step 2: Executing confirmed SQL query"}
+                step = {"type": "reasoning_step",
+                       "message": "Step 2: Executing confirmed SQL query"}
                 yield json.dumps(step) + MESSAGE_DELIMITER
 
                 # Check if this query modifies the database schema
-                is_schema_modifying, operation_type = PostgresLoader.is_schema_modifying_query(sql_query)
+                is_schema_modifying, operation_type = (
+                    PostgresLoader.is_schema_modifying_query(sql_query)
+                )
 
                 query_results = PostgresLoader.execute_sql_query(sql_query, db_url)
                 yield json.dumps(
@@ -727,16 +737,21 @@ def confirm_destructive_operation(graph_id: str):
 
                 # If schema was modified, refresh the graph
                 if is_schema_modifying:
-                    step = {"type": "reasoning_step", "message": "Step 3: Schema change detected - refreshing graph..."}
+                    step = {"type": "reasoning_step",
+                           "message": "Step 3: Schema change detected - refreshing graph..."}
                     yield json.dumps(step) + MESSAGE_DELIMITER
 
-                    refresh_success, refresh_message = PostgresLoader.refresh_graph_schema(graph_id, db_url)
-                    
+                    refresh_success, refresh_message = (
+                        PostgresLoader.refresh_graph_schema(graph_id, db_url)
+                    )
+
                     if refresh_success:
                         yield json.dumps(
                             {
                                 "type": "schema_refresh",
-                                "message": f"✅ Schema change detected ({operation_type} operation)\n\n🔄 Graph schema has been automatically refreshed with the latest database structure.",
+                                "message": (f"✅ Schema change detected ({operation_type} "
+                                          "operation)\n\n🔄 Graph schema has been automatically "
+                                          "refreshed with the latest database structure."),
                                 "refresh_status": "success"
                             }
                         ) + MESSAGE_DELIMITER
@@ -744,14 +759,16 @@ def confirm_destructive_operation(graph_id: str):
                         yield json.dumps(
                             {
                                 "type": "schema_refresh",
-                                "message": f"⚠️ Schema was modified but graph refresh failed: {refresh_message}",
+                                "message": (f"⚠️ Schema was modified but graph refresh failed: "
+                                          f"{refresh_message}"),
                                 "refresh_status": "failed"
                             }
                         ) + MESSAGE_DELIMITER
 
                 # Generate user-readable response using AI
                 step_num = "4" if is_schema_modifying else "3"
-                step = {"type": "reasoning_step", "message": f"Step {step_num}: Generating user-friendly response"}
+                step = {"type": "reasoning_step",
+                       "message": f"Step {step_num}: Generating user-friendly response"}
                 yield json.dumps(step) + MESSAGE_DELIMITER
 
                 response_agent = ResponseFormatterAgent()

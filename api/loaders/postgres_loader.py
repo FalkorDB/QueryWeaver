@@ -315,7 +315,8 @@ class PostgresLoader(BaseLoader):
         """)
 
         relationships = {}
-        for table_name, constraint_name, column_name, foreign_table, foreign_column in cursor.fetchall():
+        for (table_name, constraint_name, column_name,
+             foreign_table, foreign_column) in cursor.fetchall():
             table_name = table_name.strip()
             constraint_name = constraint_name.strip()
 
@@ -439,7 +440,7 @@ class PostgresLoader(BaseLoader):
                 for row in results:
                     # Serialize each value to ensure JSON compatibility
                     serialized_row = {
-                        columns[i]: PostgresLoader._serialize_value(row[i]) 
+                        columns[i]: PostgresLoader._serialize_value(row[i])
                         for i in range(len(columns))
                     }
                     result_list.append(serialized_row)
