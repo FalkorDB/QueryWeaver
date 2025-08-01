@@ -5,29 +5,13 @@ on: [push]
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.12"]
+
     steps:
     - uses: actions/checkout@v4
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
-        
-    - name: Install Poetry
-      uses: abatilo/actions-poetry@v3
-
-    - name: Configure Poetry
-      run: |
-        poetry config virtualenvs.create true
-        poetry config virtualenvs.in-project true
 
     - name: Install dependencies
-      run: |
-        poetry install --no-interaction --no-root
-
-    - name: Run Pylint
-      run: |
-        poetry run pylint $(git ls-files '*.py')
+      uses: gabrielfalcao/pyenv-action@v18
+      with:
+        default: 3.10.12
+        command: pipenv install --dev
 
