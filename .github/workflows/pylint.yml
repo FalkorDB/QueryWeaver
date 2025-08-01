@@ -13,8 +13,8 @@ jobs:
       uses: gabrielfalcao/pyenv-action@v18
       with:
         default: 3.12
-        command: pipenv sync --dev
+        command: |
+          pipenv sync --dev
+          pipenv run pylint $(git ls-files '*.py')
 
-    - name: Run Pylint
-      run: |
-        pipenv run pylint $(git ls-files '*.py')
+        
