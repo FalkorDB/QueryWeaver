@@ -12,6 +12,6 @@ jobs:
     - name: Install dependencies
       uses: gabrielfalcao/pyenv-action@v18
       with:
-        default: 3.10.12
+        default: 3.12
         command: pipenv install --dev
 
