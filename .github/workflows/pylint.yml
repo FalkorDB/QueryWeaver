@@ -8,13 +8,21 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-
-    - name: Install dependencies
-      uses: gabrielfalcao/pyenv-action@v18
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
       with:
-        default: 3.12
-        command: |
-          pipenv sync --dev
-          pipenv run pylint $(git ls-files '*.py')
-
-        
+        python-version: '3.12'
+    
+    - name: Install pipenv
+      run: |
+        python -m pip install --upgrade pip
+        pip install pipenv
+    
+    - name: Install dependencies
+      run: |
+        pipenv sync --dev
+    
+    - name: Run pylint
+      run: |
+        pipenv run pylint $(git ls-files '*.py')
