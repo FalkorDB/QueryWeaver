@@ -18,6 +18,18 @@ export function setupAuthenticationModal() {
     }
 }
 
+function setLoadingState(isLoading) {
+    const connectText = connectPgModalBtn.querySelector('.pg-modal-connect-text');
+    const loadingSpinner = connectPgModalBtn.querySelector('.pg-modal-loading-spinner');
+    const cancelBtn = document.getElementById('pg-modal-cancel');
+    
+    connectText.style.display = isLoading ? 'none' : 'inline';
+    loadingSpinner.style.display = isLoading ? 'flex' : 'none';
+    connectPgModalBtn.disabled = isLoading;
+    cancelBtn.disabled = isLoading;
+    pgUrlInput.disabled = isLoading;
+}
+
 export function setupPostgresModal() {
     var pgModal = document.getElementById('pg-modal');
     var openPgModalBtn = document.getElementById('open-pg-modal');
@@ -67,15 +79,7 @@ export function setupPostgresModal() {
             }
             
             // Show loading state
-            const connectText = connectPgModalBtn.querySelector('.pg-modal-connect-text');
-            const loadingSpinner = connectPgModalBtn.querySelector('.pg-modal-loading-spinner');
-            const cancelBtn = document.getElementById('pg-modal-cancel');
-            
-            connectText.style.display = 'none';
-            loadingSpinner.style.display = 'flex';
-            connectPgModalBtn.disabled = true;
-            cancelBtn.disabled = true;
-            pgUrlInput.disabled = true;
+            setLoadingState(true);
             
             fetch('/database', {
                 method: 'POST',
@@ -87,12 +91,8 @@ export function setupPostgresModal() {
             .then(response => response.json())
             .then(data => {
                 // Reset loading state
-                connectText.style.display = 'inline';
-                loadingSpinner.style.display = 'none';
-                connectPgModalBtn.disabled = false;
-                cancelBtn.disabled = false;
-                pgUrlInput.disabled = false;
-                
+                setLoadingState(false);
+
                 if (data.success) {
                     pgModal.style.display = 'none'; // Close modal on success
                     // Refresh the graph list to show the new database
@@ -103,11 +103,7 @@ export function setupPostgresModal() {
             })
             .catch(error => {
                 // Reset loading state on error
-                connectText.style.display = 'inline';
-                loadingSpinner.style.display = 'none';
-                connectPgModalBtn.disabled = false;
-                cancelBtn.disabled = false;
-                pgUrlInput.disabled = false;
+                setLoadingState(false);
                 
                 alert('Error connecting to database: ' + error.message);
             });
