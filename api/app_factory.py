@@ -6,6 +6,7 @@ import os
 from dotenv import load_dotenv
 from flask import Flask, redirect, url_for, request, abort
 from werkzeug.exceptions import HTTPException
+from werkzeug.utils import secure_filename
 from flask_dance.contrib.google import make_google_blueprint
 from flask_dance.contrib.github import make_github_blueprint
 from flask_dance.consumer.storage.session import SessionStorage
@@ -83,7 +84,7 @@ def create_app():
     def block_static_directories():
         if request.path.startswith('/static/'):
             # Remove /static/ prefix to get the actual path
-            filename = request.path[8:]  # len('/static/') = 8
+            filename = secure_filename(request.path[8:])
             # Normalize and ensure the path stays within static_folder
             static_folder = os.path.abspath(app.static_folder)
             file_path = os.path.normpath(os.path.join(static_folder, filename))
