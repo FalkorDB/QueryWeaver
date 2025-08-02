@@ -43,6 +43,7 @@ Please follow these steps:
 
 
 class FollowUpAgent:
+    # pylint: disable=too-few-public-methods
     """Agent for handling follow-up questions and conversational context."""
 
     def __init__(self):

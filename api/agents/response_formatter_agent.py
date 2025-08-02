@@ -40,6 +40,7 @@ Provide a direct answer to the user's question in a conversational tone, as if y
 
 
 class ResponseFormatterAgent:
+    # pylint: disable=too-few-public-methods
     """Agent for generating user-readable responses from SQL query results."""
 
     def __init__(self):

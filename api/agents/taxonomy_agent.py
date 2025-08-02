@@ -36,6 +36,7 @@ The question to the user:"
 
 
 class TaxonomyAgent:
+    # pylint: disable=too-few-public-methods
     """Agent for taxonomy classification of questions and SQL queries."""
 
     def __init__(self):

@@ -2,9 +2,10 @@
 
 import logging
 import os
+import secrets
 
 from dotenv import load_dotenv
-from flask import Flask, redirect, url_for, request, abort
+from flask import Flask, redirect, url_for, request, abort, session
 from werkzeug.exceptions import HTTPException
 from werkzeug.utils import secure_filename
 from flask_dance.contrib.google import make_google_blueprint
@@ -26,16 +27,15 @@ def create_app():
     app = Flask(__name__)
     app.secret_key = os.getenv("FLASK_SECRET_KEY")
     if not app.secret_key:
-        import secrets
         app.secret_key = secrets.token_hex(32)
         logging.warning("FLASK_SECRET_KEY not set, using generated key. Set this in production!")
 
     # Google OAuth setup
-    GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-    GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+    google_client_id = os.getenv("GOOGLE_CLIENT_ID")
+    google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
     google_bp = make_google_blueprint(
-        client_id=GOOGLE_CLIENT_ID,
-        client_secret=GOOGLE_CLIENT_SECRET,
+        client_id=google_client_id,
+        client_secret=google_client_secret,
         scope=[
             "https://www.googleapis.com/auth/userinfo.email",
             "https://www.googleapis.com/auth/userinfo.profile",
@@ -45,11 +45,11 @@ def create_app():
     app.register_blueprint(google_bp, url_prefix="/login")
 
     # GitHub OAuth setup
-    GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
-    GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
+    github_client_id = os.getenv("GITHUB_CLIENT_ID")
+    github_client_secret = os.getenv("GITHUB_CLIENT_SECRET")
     github_bp = make_github_blueprint(
-        client_id=GITHUB_CLIENT_ID,
-        client_secret=GITHUB_CLIENT_SECRET,
+        client_id=github_client_id,
+        client_secret=github_client_secret,
         scope="user:email",
         storage=SessionStorage()
     )
@@ -69,7 +69,6 @@ def create_app():
         # Check if it's an OAuth-related error
         if "token" in str(error).lower() or "oauth" in str(error).lower():
             logging.warning("OAuth error occurred: %s", error)
-            from flask import session
             session.clear()
             return redirect(url_for("auth.home"))
 

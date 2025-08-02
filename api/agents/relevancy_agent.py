@@ -55,6 +55,7 @@ Ensure your response is concise, polite, and helpful.
 
 
 class RelevancyAgent:
+    # pylint: disable=too-few-public-methods
     """Agent for determining relevancy of queries to database schema."""
 
     def __init__(self, queries_history: list, result_history: list):
