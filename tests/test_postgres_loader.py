@@ -71,7 +71,7 @@ class TestPostgreSQLLoader(unittest.TestCase):
         ]
 
         # Test the method
-        columns_info = PostgresLoader._extract_columns_info(mock_cursor, "users")
+        columns_info = PostgresLoader.extract_columns_info(mock_cursor, "users")
 
         # Assertions
         self.assertEqual(len(columns_info), 3)
@@ -94,7 +94,7 @@ class TestPostgreSQLLoader(unittest.TestCase):
         ]
 
         # Test the method
-        foreign_keys = PostgresLoader._extract_foreign_keys(mock_cursor, "orders")
+        foreign_keys = PostgresLoader.extract_foreign_keys(mock_cursor, "orders")
 
         # Assertions
         self.assertEqual(len(foreign_keys), 2)
@@ -112,7 +112,7 @@ class TestPostgreSQLLoader(unittest.TestCase):
         ]
 
         # Test the method
-        relationships = PostgresLoader._extract_relationships(mock_cursor)
+        relationships = PostgresLoader.extract_relationships(mock_cursor)
 
         # Assertions
         self.assertEqual(len(relationships), 2)
