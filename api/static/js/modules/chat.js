@@ -210,6 +210,14 @@ export function pauseRequest() {
     }
 }
 
+/**
+ * Escapes a string for safe embedding in a single-quoted JavaScript string literal.
+ * Replaces backslashes and single quotes.
+ */
+function escapeForSingleQuotedJsString(str) {
+    return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 export function addDestructiveConfirmationMessage(step) {
     const messageDiv = document.createElement('div');
     const messageDivContainer = document.createElement('div');
@@ -225,10 +233,10 @@ export function addDestructiveConfirmationMessage(step) {
         <div class="destructive-confirmation" data-confirmation-id="${confirmationId}">
             <div class="confirmation-text">${step.message.replace(/\n/g, '<br>')}</div>
             <div class="confirmation-buttons">
-                <button class="confirm-btn danger" onclick="handleDestructiveConfirmation('CONFIRM', '${step.sql_query.replace(/'/g, "\\'")}', '${confirmationId}')">
+                <button class="confirm-btn danger" onclick="handleDestructiveConfirmation('CONFIRM', '${escapeForSingleQuotedJsString(step.sql_query)}', '${confirmationId}')">
                     CONFIRM - Execute Query
                 </button>
-                <button class="cancel-btn" onclick="handleDestructiveConfirmation('CANCEL', '${step.sql_query.replace(/'/g, "\\'")}', '${confirmationId}')">
+                <button class="cancel-btn" onclick="handleDestructiveConfirmation('CANCEL', '${escapeForSingleQuotedJsString(step.sql_query)}', '${confirmationId}')">
                     CANCEL - Abort Operation
                 </button>
             </div>
