@@ -16,6 +16,9 @@ flask-dance = "~=7.1.0"
 [dev-packages]
 pytest = "~=8.2.0"
 pylint = "~=3.3.4"
+playwright = "~=1.47.0"
+pytest-playwright = "~=0.5.2"
+pytest-asyncio = "~=0.24.0"
 
 [requires]
 python_version = "3.12"
