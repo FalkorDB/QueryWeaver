@@ -1,8 +1,9 @@
 {# User profile button and dropdown #}
-<button id="user-profile-btn" class="user-profile-btn" title="{{ user_info.name }}">
+<button id="user-profile-btn" class="user-profile-btn" title="{{ user_info.name }}"
+        aria-haspopup="true" aria-expanded="false" aria-controls="user-profile-dropdown">
     <img src="{{ user_info.picture }}" alt="{{ user_info.name[0] | upper }}" class="user-profile-img">
 </button>
-<div id="user-profile-dropdown" class="user-profile-dropdown">
+<div id="user-profile-dropdown" class="user-profile-dropdown" role="menu" aria-labelledby="user-profile-btn">
     <div class="user-profile-info">
         <div class="user-profile-name">{{ user_info.name }}</div>
         <div class="user-profile-email">{{ user_info.email }}</div>

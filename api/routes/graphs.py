@@ -343,9 +343,9 @@ What this will do:
                     ) + MESSAGE_DELIMITER
 
                 except Exception as e:
-                    logging.error("Error executing SQL query: %s", e)
+                    logging.error("Error executing SQL query: %s", str(e))
                     yield json.dumps(
-                        {"type": "error", "message": str(e)}
+                        {"type": "error", "message": "Error executing SQL query"}
                     ) + MESSAGE_DELIMITER
 
     return Response(stream_with_context(generate()), content_type="application/json")
@@ -441,9 +441,9 @@ def confirm_destructive_operation(graph_id: str):
                 ) + MESSAGE_DELIMITER
 
             except Exception as e:
-                logging.error("Error executing confirmed SQL query: %s", e)
+                logging.error("Error executing confirmed SQL query: %s", str(e))
                 yield json.dumps(
-                    {"type": "error", "message": f"Error executing query: {str(e)}"}
+                    {"type": "error", "message": "Error executing query"}
                 ) + MESSAGE_DELIMITER
         else:
             # User cancelled or provided invalid confirmation
