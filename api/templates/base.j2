@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Chatbot Interface{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    {% block toolbar %}{% endblock %}
+    
+    {% block content %}{% endblock %}
+    
+    {% block modals %}{% endblock %}
+    
+    {% block scripts %}
+    {# Set authentication state for JS #}
+    <script>
+      window.isAuthenticated = {{ 'true' if is_authenticated else 'false' }};
+      {% if user_info %}
+      window.currentUser = {
+          name: "{{ user_info.name|e }}",
+          email: "{{ user_info.email|e }}",
+          picture: "{{ user_info.picture|e }}"
+      };
+      {% else %}
+      window.currentUser = null;
+      {% endif %}
+    </script>
+    {% endblock %}
+</body>
+</html>

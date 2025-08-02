@@ -25,6 +25,11 @@ const MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||';
 
 const urlParams = new URLSearchParams(window.location.search);
 
+// Helper function to escape backslashes and single quotes for JS string literals
+function escapeForJsString(str) {
+    return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 function addMessage(message, isUser = false, isFollowup = false, isFinalResult = false, isLoading = false, userInfo = null) {
     const messageDiv = document.createElement('div');
     const messageDivContainer = document.createElement('div');
@@ -428,10 +433,10 @@ function addDestructiveConfirmationMessage(step) {
         <div class="destructive-confirmation" data-confirmation-id="${confirmationId}">
             <div class="confirmation-text">${step.message.replace(/\n/g, '<br>')}</div>
             <div class="confirmation-buttons">
-                <button class="confirm-btn danger" onclick="handleDestructiveConfirmation('CONFIRM', '${step.sql_query.replace(/'/g, "\\'")}', '${confirmationId}')">
+                <button class="confirm-btn danger" onclick="handleDestructiveConfirmation('CONFIRM', '${escapeForJsString(step.sql_query)}', '${confirmationId}')">
                     CONFIRM - Execute Query
                 </button>
-                <button class="cancel-btn" onclick="handleDestructiveConfirmation('CANCEL', '${step.sql_query.replace(/'/g, "\\'")}', '${confirmationId}')">
+                <button class="cancel-btn" onclick="handleDestructiveConfirmation('CANCEL', '${escapeForJsString(step.sql_query)}', '${confirmationId}')">
                     CANCEL - Abort Operation
                 </button>
             </div>
@@ -608,7 +613,13 @@ document.addEventListener("DOMContentLoaded", function () {
     const chatMessages = document.getElementById("chat-messages");
     const graphSelect = document.getElementById("graph-select");
 
-    // Fetch available graphs
+    // Only fetch available graphs if user is authenticated
+    const isAuthenticated = window.isAuthenticated !== undefined ? window.isAuthenticated : false;
+    if (!isAuthenticated) {
+        return; // Don't fetch graphs if not authenticated
+    }
+
+    // Fetch available graphs (only if authenticated)
     fetch("/graphs")
         .then(response => {
             if (!response.ok) {

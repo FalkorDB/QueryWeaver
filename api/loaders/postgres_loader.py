@@ -402,11 +402,14 @@ class PostgresLoader(BaseLoader):
             if success:
                 logging.info("Graph schema refreshed successfully.")
                 return True, message
-            else:
-                return False, f"Failed to reload schema: {message}"
+
+            logging.error("Schema refresh failed for graph %s: %s", graph_id, message)
+            return False, "Failed to reload schema"
 
         except Exception as e:
-            error_msg = f"Error refreshing graph schema: {str(e)}"
+            # Log the error and return failure
+            logging.error("Error refreshing graph schema: %s", str(e))
+            error_msg = "Error refreshing graph schema"
             logging.error(error_msg)
             return False, error_msg
 

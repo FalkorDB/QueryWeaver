@@ -1,0 +1,297 @@
+/* Button Styles and Interactive Elements */
+
+.input-button {
+  background: var(--falkor-quaternary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+  width: 48px;
+  height: 48px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.input-button img {
+  filter: var(--icon-filter) brightness(0.8) saturate(0.3);
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.input-button:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  background: var(--falkor-accent);
+  transform: translateY(-1px);
+}
+
+.action-button {
+  z-index: 100;
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 6px;
+  background: var(--falkor-quaternary);
+  color: var(--text-primary);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  position: relative;
+}
+
+.action-button:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  background: var(--falkor-accent);
+  transform: translateY(-1px);
+}
+
+.pg-connect-btn {
+  margin-left: 12px;
+  padding: 0.4em 0.8em;
+  background: #f5f5f5;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 1em;
+  color: #333;
+  cursor: pointer;
+  transition: background 0.2s, border 0.2s;
+}
+
+.pg-connect-btn:hover {
+  background: #eaeaea;
+  border-color: #888;
+}
+
+.logout-btn {
+  position: fixed;
+  top: 20px;
+  right: 30px;
+  z-index: 2000;
+  padding: 0.5em 1.2em;
+  background: #e74c3c;
+  color: #fff;
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: bold;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  transition: background 0.2s;
+}
+
+.logout-btn:hover {
+  background: #c0392b;
+}
+
+/* User Profile Button Styles */
+.user-profile-btn {
+  position: fixed;
+  top: 20px;
+  right: 30px;
+  z-index: 2000;
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 2px;
+}
+
+.user-profile-btn:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  transform: translateY(-1px);
+}
+
+.user-profile-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  object-fit: cover;
+  font-weight: 500;
+  font-size: 22px;
+}
+
+.user-profile-logout {
+  width: 100%;
+  padding: 10px;
+  background: #D32F2F;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background 0.2s;
+}
+
+.user-profile-logout:hover {
+  background: #B71C1C;
+}
+
+/* Theme Toggle Button Styles */
+#theme-toggle-btn {
+  position: fixed;
+  top: 20px;
+  right: 90px;
+}
+
+/* GitHub Link Button Styles */
+#github-link-btn {
+  position: fixed;
+  top: 20px;
+  right: 150px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--falkor-quaternary);
+  color: var(--text-primary);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  transition: all 0.2s ease;
+  z-index: 100;
+  height: 48px;
+  box-sizing: border-box;
+}
+
+#github-link-btn:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  background: var(--falkor-accent);
+  transform: translateY(-1px);
+  color: var(--text-primary);
+}
+
+.theme-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--text-primary);
+  transition: all 0.3s ease;
+}
+
+/* Authentication Buttons */
+.google-login-btn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  margin-top: 1em;
+  padding: 0.7em 2em;
+  background: #4285F4;
+  color: #fff;
+  border-radius: 6px;
+  font-size: 1.1em;
+  text-decoration: none;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.google-login-btn:hover {
+  background: #3367d6;
+}
+
+.google-login-logo {
+  height: 20px;
+  margin-right: 10px;
+  margin-left: 0;
+  vertical-align: middle;
+  display: inline-block;
+}
+
+.github-login-btn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 0.7em 2em;
+  background: #24292f;
+  color: #fff;
+  border-radius: 6px;
+  font-size: 1.1em;
+  text-decoration: none;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.github-login-btn:hover {
+  background: #171a1d;
+}
+
+.github-login-logo {
+  height: 20px;
+  margin-right: 10px;
+  margin-left: 0;
+  vertical-align: middle;
+  display: inline-block;
+}
+
+/* Confirmation Buttons */
+.confirm-btn, .cancel-btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  font-family: 'Fira Code', monospace;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 140px;
+}
+
+.confirm-btn {
+  background: #D32F2F;
+  color: white;
+  border: 1px solid #D32F2F;
+}
+
+.confirm-btn:hover {
+  background: #B71C1C;
+  border-color: #B71C1C;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(211, 47, 47, 0.3);
+}
+
+.cancel-btn {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.cancel-btn:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--text-secondary);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.confirm-btn:active, .cancel-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.confirm-btn:disabled, .cancel-btn:disabled {
+  background: #cccccc;
+  color: #888888;
+  border-color: #cccccc;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.confirm-btn:disabled:hover, .cancel-btn:disabled:hover {
+  background: #cccccc;
+  color: #888888;
+  border-color: #cccccc;
+  transform: none;
+  box-shadow: none;
+}
