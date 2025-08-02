@@ -27,7 +27,7 @@ class TestFileUpload:
 
             # Verify upload success (would need to check specific UI elements)
             # This is a placeholder for when authentication is set up
-            assert True
+            pytest.skip("CSV upload test requires authentication")
 
         finally:
             TestDataFixtures.cleanup_temp_file(csv_file)
@@ -49,7 +49,7 @@ class TestFileUpload:
             home_page.wait_for_response()
 
             # Verify upload success
-            assert True
+            pytest.skip("JSON upload test requires authentication")
 
         finally:
             TestDataFixtures.cleanup_temp_file(json_file)
@@ -62,7 +62,7 @@ class TestFileUpload:
 
         # Try to upload an invalid file type
         # This test would verify error handling
-        assert True
+        pytest.skip("Invalid file upload test requires authentication")
 
     def test_file_upload_interface_elements(self, page_with_base_url):
         """Test that file upload interface elements exist."""
@@ -72,9 +72,15 @@ class TestFileUpload:
         page = page_with_base_url
 
         # Check if file upload input exists (might be hidden or require auth)
-        file_inputs = page.query_selector_all("input[type='file']")
+        page.query_selector_all("input[type='file']")
 
-        # The interface might have file upload capabilities
-        # This verifies the structure exists even if not accessible without auth
-        # Accept that it might not be visible without authentication
-        assert len(file_inputs) >= 0  # Non-failing assertion
+        # Check for upload-related UI elements even if not directly accessible
+        # (checking for various upload-related selectors)
+        page.query_selector("button[aria-label*='upload']")
+        page.query_selector(".upload")
+        page.query_selector("[data-testid*='upload']")
+
+        # This test documents the expected UI structure
+        # Will need updating once authentication is implemented
+        # For now, just verify the page loads successfully
+        assert "QueryWeaver" in page.title() or page.url.endswith("/")

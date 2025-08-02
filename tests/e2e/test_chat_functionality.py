@@ -68,12 +68,12 @@ class TestChatFunctionality:
 
         page = page_with_base_url
 
-        # Check for basic chat elements
+        # Check for basic chat elements and verify page loaded successfully
         # These might not be visible without authentication
-        input_elements = page.query_selector_all("input, textarea")
+        page.query_selector_all("input, textarea")
 
-        # At least some form of input should exist
-        assert len(input_elements) >= 0  # Non-failing assertion
+        # Verify the page loaded successfully by checking the title or URL
+        assert "QueryWeaver" in page.title() or page.url.endswith("/")
 
     def test_input_validation(self, page_with_base_url):
         """Test input validation and limits."""
@@ -92,9 +92,14 @@ class TestChatFunctionality:
             # Test that long input is handled appropriately
             page.fill("input[type='text'], textarea", long_text)
 
-            # Check that input was either accepted or truncated
+            # Check if input was truncated (indicating validation) or fully accepted
             actual_value = page.input_value("input[type='text'], textarea")
-            assert len(actual_value) <= 1000  # Should be limited or accepted
+            if len(actual_value) < 1000:
+                # Input was truncated - validation is working
+                assert len(actual_value) > 0, "Input should not be completely rejected"
+            else:
+                # Input was fully accepted - ensure it matches what we entered
+                assert actual_value == long_text, "Input should be preserved if not truncated"
 
     @pytest.mark.skip(reason="Requires streaming response setup")
     def test_streaming_responses(self, page_with_base_url):
@@ -104,4 +109,4 @@ class TestChatFunctionality:
 
         # Test that streaming responses work correctly
         # This would require a test query that generates streaming response
-        assert True
+        pytest.skip("Streaming response test not yet implemented")

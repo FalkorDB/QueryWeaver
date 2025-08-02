@@ -105,7 +105,7 @@ success, message = PostgreSQLLoader.load(graph_id, connection_url)
 if success:
     # The schema is now available in the graph database
     graph = db.select_graph(graph_id)
-    
+
     # Query for all tables
     result = graph.query("MATCH (t:Table) RETURN t.name")
     print("Tables:", [record[0] for record in result.result_set])

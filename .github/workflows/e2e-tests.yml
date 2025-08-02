@@ -56,7 +56,7 @@ jobs:
 
     - name: Wait for FalkorDB
       run: |
-        until docker exec $(docker ps -q --filter ancestor=falkordb/falkordb:latest) redis-cli ping; do
+        until docker exec "$(docker ps -q --filter ancestor=falkordb/falkordb:latest)" redis-cli ping; do
           echo "Waiting for FalkorDB..."
           sleep 2
         done

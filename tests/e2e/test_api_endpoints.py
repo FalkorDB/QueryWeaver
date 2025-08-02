@@ -61,7 +61,7 @@ class TestAPIEndpoints:
         """Test endpoints that require authentication."""
         # This would test with proper authentication headers
         # Placeholder for when auth tokens are available
-        assert True
+        pytest.skip("Authenticated endpoints test requires auth token setup")
 
     def test_cors_headers(self, app_url):
         """Test CORS headers if configured."""
