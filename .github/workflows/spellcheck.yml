@@ -1,4 +1,6 @@
 name: Spellcheck
+permissions:
+  contents: read
 on:
   push:
     branches: [main]
