@@ -21,13 +21,13 @@ test-unit: ## Run unit tests only
 	pipenv run pytest tests/ -k "not e2e" --verbose
 
 test-e2e: ## Run E2E tests headless
-	pipenv run pytest tests/e2e/ --browser chromium --headed=false
+	pipenv run pytest tests/e2e/ --browser chromium
 
 test-e2e-headed: ## Run E2E tests with browser visible
-	pipenv run pytest tests/e2e/ --browser chromium --headed=true
+	pipenv run pytest tests/e2e/ --browser chromium --headed
 
 test-e2e-debug: ## Run E2E tests with debugging enabled
-	pipenv run pytest tests/e2e/ --browser chromium --headed=true --slowmo=1000
+	pipenv run pytest tests/e2e/ --browser chromium --slowmo=1000
 
 lint: ## Run linting
 	pipenv run pylint $(shell git ls-files '*.py')
