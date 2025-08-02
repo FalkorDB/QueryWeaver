@@ -22,7 +22,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 def create_app():
     """Create and configure the Flask application."""
     app = Flask(__name__)
-    app.secret_key = os.getenv("FLASK_SECRET_KEY", "supersekrit")
+    app.secret_key = os.getenv("FLASK_SECRET_KEY")
+    if not app.secret_key:
+        import secrets
+        app.secret_key = secrets.token_hex(32)
+        logging.warning("FLASK_SECRET_KEY not set, using generated key. Set this in production!")
 
     # Google OAuth setup
     GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
