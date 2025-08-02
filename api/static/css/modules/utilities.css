@@ -1,0 +1,70 @@
+/**
+ * Utility Classes and Animations
+ * Keyframe animations, scrollbar styles, and utility classes
+ */
+
+/* Keyframe Animations */
+@keyframes shadow-fade {
+  0% {
+    box-shadow: 0 0 8px 1px var(--falkor-primary)
+  }
+
+  50% {
+    box-shadow: 0 0 12px 2px var(--falkor-primary)
+  }
+
+  100% {
+    box-shadow: 0 0 8px 1px var(--falkor-primary)
+  }
+}
+
+@keyframes typing {
+  0% {
+    content: ".";
+  }
+
+  50% {
+    content: "..";
+  }
+
+  100% {
+    content: "...";
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+
+  50% {
+    opacity: 0.8;
+  }
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Custom Scrollbar Styles */
+::-webkit-scrollbar {
+  width: 20px;
+  height: 20px;
+}
+
+::-webkit-scrollbar-corner {
+  background-color: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #d6dee1;
+  border-radius: 20px;
+  border: 6px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #a8bbbf;
+}

@@ -1,0 +1,215 @@
+/**
+ * Modal Dialogs and Popups
+ * Login modals, postgres modal, and other popup dialogs
+ */
+
+.pg-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0,0,0,0.5);
+  z-index: 3000;
+  align-items: center;
+  justify-content: center;
+}
+
+.pg-modal-content {
+  background: var(--falkor-secondary);
+  padding: 2em 5em;
+  border-radius: 10px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.2);
+  text-align: center;
+  min-width: 680px;
+}
+
+/* Mobile responsive modal */
+@media (max-width: 768px) {
+  .pg-modal-content {
+    padding: 1.5em 2em;
+    min-width: 90vw;
+    margin: 0 5vw;
+  }
+}
+
+.pg-modal-title {
+  margin-bottom: 1em;
+  color: var(--text-primary);
+}
+
+.pg-modal-input {
+  width: 100%;
+  padding: 0.6em;
+  font-size: 1em;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  margin-bottom: 1.5em;
+  color: var(--text-primary);
+  background: var(--falkor-quaternary);
+}
+
+.pg-modal-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 1em;
+}
+
+.pg-modal-btn {
+  flex: 1;
+  padding: 0.5em 0;
+  border: none;
+  border-radius: 6px;
+  font-size: 1em;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.pg-modal-connect {
+  background: #4285F4;
+  color: #fff;
+}
+
+.pg-modal-connect:hover {
+  background: #3367d6;
+}
+
+.pg-modal-connect:disabled {
+  background: #6c8db8;
+  cursor: not-allowed;
+}
+
+.pg-modal-loading-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #ffffff40;
+  border-top: 2px solid #ffffff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.pg-modal-cancel {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.pg-modal-cancel:hover {
+  background: var(--border-color);
+}
+
+.pg-modal-cancel:disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+  border: 1px solid var(--text-secondary);
+}
+
+.pg-modal-input:disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+}
+
+.google-login-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0,0,0,0.6);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+
+.google-login-modal-content {
+  background: var(--falkor-secondary);
+  padding: 2em 3em;
+  border-radius: 10px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.2);
+  text-align: center;
+  color: var(--text-primary);
+}
+
+.google-login-modal-content h2 {
+  color: var(--text-primary);
+  margin-bottom: 0.5em;
+  font-size: 1.5em;
+}
+
+.google-login-modal-content p {
+  color: var(--text-secondary);
+  margin-bottom: 1em;
+  font-size: 1em;
+}
+
+.google-login-btn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  margin-top: 1em;
+  padding: 0.7em 2em;
+  background: #4285F4;
+  color: #fff;
+  border-radius: 6px;
+  font-size: 1.1em;
+  text-decoration: none;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.google-login-btn:hover {
+  background: #3367d6;
+}
+
+.google-login-logo {
+  height: 20px;
+  margin-right: 10px;
+  margin-left: 0;
+  vertical-align: middle;
+  display: inline-block;
+}
+
+.github-login-btn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 0.7em 2em;
+  background: #24292f;
+  color: #fff;
+  border-radius: 6px;
+  font-size: 1.1em;
+  text-decoration: none;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.github-login-btn:hover {
+  background: #171a1d;
+}
+
+.github-login-logo {
+  height: 20px;
+  margin-right: 10px;
+  margin-left: 0;
+  vertical-align: middle;
+  display: inline-block;
+}
