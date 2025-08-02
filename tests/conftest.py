@@ -12,10 +12,10 @@ def flask_app():
     """Start the Flask application for testing."""
     # Start the Flask app using pipenv
     process = subprocess.Popen([
-        "pipenv", "run", "flask", "--app", "api.index", "run", 
+        "pipenv", "run", "flask", "--app", "api.index", "run",
         "--host", "localhost", "--port", "5000"
     ], cwd="/home/guy/workspace/text2sql")
-    
+
     # Wait for the app to start
     max_retries = 30
     for _ in range(max_retries):
@@ -28,9 +28,9 @@ def flask_app():
     else:
         process.terminate()
         raise RuntimeError("Flask app failed to start")
-    
+
     yield "http://localhost:5000"
-    
+
     # Cleanup
     process.terminate()
     process.wait()

@@ -12,7 +12,7 @@ permissions:
 jobs:
   e2e-tests:
     runs-on: ubuntu-latest
-    
+
     services:
       falkordb:
         image: falkordb/falkordb:latest
@@ -26,26 +26,26 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
-    
+
     - name: Install pipenv
       run: |
         python -m pip install --upgrade pip
         pip install pipenv
-    
+
     - name: Install dependencies
       run: |
         pipenv sync --dev
-    
+
     - name: Install Playwright browsers
       run: |
         pipenv run playwright install chromium
         pipenv run playwright install-deps
-    
+
     - name: Create test environment file
       run: |
         cp .env.example .env
@@ -53,20 +53,20 @@ jobs:
         echo "FALKORDB_PORT=6379" >> .env
         echo "FLASK_SECRET_KEY=test-secret-key-for-ci" >> .env
         echo "FLASK_DEBUG=False" >> .env
-    
+
     - name: Wait for FalkorDB
       run: |
         until docker exec $(docker ps -q --filter ancestor=falkordb/falkordb:latest) redis-cli ping; do
           echo "Waiting for FalkorDB..."
           sleep 2
         done
-    
+
     - name: Run E2E tests
       run: |
         pipenv run pytest tests/e2e/ --browser chromium --headed=false --video=on --screenshot=on
       env:
         CI: true
-    
+
     - name: Upload test artifacts
       uses: actions/upload-artifact@v4
       if: failure()
@@ -76,7 +76,7 @@ jobs:
           test-results/
           playwright-report/
         retention-days: 30
-    
+
     - name: Upload screenshots
       uses: actions/upload-artifact@v4
       if: failure()

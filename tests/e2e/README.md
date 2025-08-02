@@ -200,7 +200,7 @@ from tests.e2e.pages.base_page import BasePage
 
 class NewPage(BasePage):
     BUTTON_SELECTOR = "#my-button"
-    
+
     def click_button(self):
         self.page.click(self.BUTTON_SELECTOR)
 ```
