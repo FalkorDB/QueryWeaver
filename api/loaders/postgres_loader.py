@@ -45,10 +45,10 @@ class PostgresLoader(BaseLoader):
     def _serialize_value(value):
         """
         Convert non-JSON serializable values to JSON serializable format.
-        
+
         Args:
             value: The value to serialize
-            
+
         Returns:
             JSON serializable version of the value
         """
@@ -67,11 +67,11 @@ class PostgresLoader(BaseLoader):
     def load(prefix: str, connection_url: str) -> Tuple[bool, str]:
         """
         Load the graph data from a PostgreSQL database into the graph database.
-        
+
         Args:
             connection_url: PostgreSQL connection URL in format:
                           postgresql://username:password@host:port/database
-        
+
         Returns:
             Tuple[bool, str]: Success status and message
         """
@@ -111,10 +111,10 @@ class PostgresLoader(BaseLoader):
     def extract_tables_info(cursor) -> Dict[str, Any]:
         """
         Extract table and column information from PostgreSQL database.
-        
+
         Args:
             cursor: Database cursor
-            
+
         Returns:
             Dict containing table information
         """
@@ -131,7 +131,7 @@ class PostgresLoader(BaseLoader):
                 JOIN pg_description pd ON pd.objoid = pc.oid AND pd.objsubid = 0
                 WHERE pt.schemaname = 'public'
             ) tc ON tc.tablename = t.table_name
-            WHERE t.table_schema = 'public' 
+            WHERE t.table_schema = 'public'
             AND t.table_type = 'BASE TABLE'
             ORDER BY t.table_name;
         """)
@@ -166,21 +166,21 @@ class PostgresLoader(BaseLoader):
     def extract_columns_info(cursor, table_name: str) -> Dict[str, Any]:
         """
         Extract column information for a specific table.
-        
+
         Args:
             cursor: Database cursor
             table_name: Name of the table
-            
+
         Returns:
             Dict containing column information
         """
         cursor.execute("""
-            SELECT 
+            SELECT
                 c.column_name,
                 c.data_type,
                 c.is_nullable,
                 c.column_default,
-                CASE 
+                CASE
                     WHEN pk.column_name IS NOT NULL THEN 'PRIMARY KEY'
                     WHEN fk.column_name IS NOT NULL THEN 'FOREIGN KEY'
                     ELSE 'NONE'
@@ -190,17 +190,17 @@ class PostgresLoader(BaseLoader):
             LEFT JOIN (
                 SELECT ku.column_name
                 FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage ku 
+                JOIN information_schema.key_column_usage ku
                     ON tc.constraint_name = ku.constraint_name
-                WHERE tc.table_name = %s 
+                WHERE tc.table_name = %s
                 AND tc.constraint_type = 'PRIMARY KEY'
             ) pk ON pk.column_name = c.column_name
             LEFT JOIN (
                 SELECT ku.column_name
                 FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage ku 
+                JOIN information_schema.key_column_usage ku
                     ON tc.constraint_name = ku.constraint_name
-                WHERE tc.table_name = %s 
+                WHERE tc.table_name = %s
                 AND tc.constraint_type = 'FOREIGN KEY'
             ) fk ON fk.column_name = c.column_name
             LEFT JOIN pg_class pc ON pc.relname = c.table_name
@@ -247,28 +247,28 @@ class PostgresLoader(BaseLoader):
     def extract_foreign_keys(cursor, table_name: str) -> List[Dict[str, str]]:
         """
         Extract foreign key information for a specific table.
-        
+
         Args:
             cursor: Database cursor
             table_name: Name of the table
-            
+
         Returns:
             List of foreign key dictionaries
         """
         cursor.execute("""
-            SELECT 
+            SELECT
                 tc.constraint_name,
                 kcu.column_name,
                 ccu.table_name AS foreign_table_name,
                 ccu.column_name AS foreign_column_name
-            FROM information_schema.table_constraints AS tc 
+            FROM information_schema.table_constraints AS tc
             JOIN information_schema.key_column_usage AS kcu
                 ON tc.constraint_name = kcu.constraint_name
                 AND tc.table_schema = kcu.table_schema
             JOIN information_schema.constraint_column_usage AS ccu
                 ON ccu.constraint_name = tc.constraint_name
                 AND ccu.table_schema = tc.table_schema
-            WHERE tc.constraint_type = 'FOREIGN KEY' 
+            WHERE tc.constraint_type = 'FOREIGN KEY'
             AND tc.table_name = %s
             AND tc.table_schema = 'public';
         """, (table_name,))
@@ -288,28 +288,28 @@ class PostgresLoader(BaseLoader):
     def extract_relationships(cursor) -> Dict[str, List[Dict[str, str]]]:
         """
         Extract all relationship information from the database.
-        
+
         Args:
             cursor: Database cursor
-            
+
         Returns:
             Dict containing relationship information
         """
         cursor.execute("""
-            SELECT 
+            SELECT
                 tc.table_name,
                 tc.constraint_name,
                 kcu.column_name,
                 ccu.table_name AS foreign_table_name,
                 ccu.column_name AS foreign_column_name
-            FROM information_schema.table_constraints AS tc 
+            FROM information_schema.table_constraints AS tc
             JOIN information_schema.key_column_usage AS kcu
                 ON tc.constraint_name = kcu.constraint_name
                 AND tc.table_schema = kcu.table_schema
             JOIN information_schema.constraint_column_usage AS ccu
                 ON ccu.constraint_name = tc.constraint_name
                 AND ccu.table_schema = tc.table_schema
-            WHERE tc.constraint_type = 'FOREIGN KEY' 
+            WHERE tc.constraint_type = 'FOREIGN KEY'
             AND tc.table_schema = 'public'
             ORDER BY tc.table_name, tc.constraint_name;
         """)
@@ -337,10 +337,10 @@ class PostgresLoader(BaseLoader):
     def is_schema_modifying_query(sql_query: str) -> Tuple[bool, str]:
         """
         Check if a SQL query modifies the database schema.
-        
+
         Args:
             sql_query: The SQL query to check
-            
+
         Returns:
             Tuple of (is_schema_modifying, operation_type)
         """
@@ -368,11 +368,11 @@ class PostgresLoader(BaseLoader):
     def refresh_graph_schema(graph_id: str, db_url: str) -> Tuple[bool, str]:
         """
         Refresh the graph schema by clearing existing data and reloading from the database.
-        
+
         Args:
             graph_id: The graph ID to refresh
             db_url: Database connection URL
-            
+
         Returns:
             Tuple of (success, message)
         """
@@ -417,12 +417,12 @@ class PostgresLoader(BaseLoader):
     def execute_sql_query(sql_query: str, db_url: str) -> List[Dict[str, Any]]:
         """
         Execute a SQL query on the PostgreSQL database and return the results.
-        
+
         Args:
             sql_query: The SQL query to execute
             db_url: PostgreSQL connection URL in format:
                     postgresql://username:password@host:port/database
-            
+
         Returns:
             List of dictionaries containing the query results
         """

@@ -195,7 +195,7 @@ def query_graph(graph_id: str):
                     ) + MESSAGE_DELIMITER
                     return
 
-            logging.info("Calling to analysis agent with query: %s",  
+            logging.info("Calling to analysis agent with query: %s",
                          sanitize_query(queries_history[-1]))
 
             answer_an = agent_an.get_analysis(
@@ -473,7 +473,7 @@ def refresh_graph_schema(graph_id: str):
 
         if not db_url or db_url == "No URL available for this database.":
             return jsonify({
-                "success": False, 
+                "success": False,
                 "error": "No database URL found for this graph"
             }), 400
 

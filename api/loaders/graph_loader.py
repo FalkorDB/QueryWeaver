@@ -35,7 +35,7 @@ def load_to_graph(
         # Create vector indices
         graph.query(
             """
-            CREATE VECTOR INDEX FOR (t:Table) ON (t.embedding) 
+            CREATE VECTOR INDEX FOR (t:Table) ON (t.embedding)
             OPTIONS {dimension:$size, similarityFunction:'euclidean'}
         """,
             {"size": vec_len},
@@ -43,7 +43,7 @@ def load_to_graph(
 
         graph.query(
             """
-            CREATE VECTOR INDEX FOR (c:Column) ON (c.embedding) 
+            CREATE VECTOR INDEX FOR (c:Column) ON (c.embedding)
             OPTIONS {dimension:$size, similarityFunction:'euclidean'}
         """,
             {"size": vec_len},
@@ -73,7 +73,7 @@ def load_to_graph(
         graph.query(
             """
             CREATE (t:Table {
-                name: $table_name, 
+                name: $table_name,
                 description: $description,
                 embedding: vecf32($embedding),
                 foreign_keys: $foreign_keys

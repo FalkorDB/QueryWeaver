@@ -9,7 +9,7 @@ from .utils import parse_response
 
 __all__ = [
     "AnalysisAgent",
-    "RelevancyAgent", 
+    "RelevancyAgent",
     "FollowUpAgent",
     "TaxonomyAgent",
     "ResponseFormatterAgent",

@@ -7,10 +7,10 @@ VALID_NULL_VALUES = {"YES", "NO"}
 def validate_table_schema(schema):
     """
     Validate a table schema structure.
-    
+
     Args:
         schema (dict): The schema dictionary to validate
-        
+
     Returns:
         list: List of validation errors found
     """

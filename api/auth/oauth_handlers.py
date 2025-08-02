@@ -14,7 +14,7 @@ from .user_management import ensure_user_in_organizations
 
 def setup_oauth_handlers(google_bp, github_bp):
     """Set up OAuth signal handlers for both Google and GitHub blueprints."""
-    
+
     @oauth_authorized.connect_via(google_bp)
     def google_logged_in(blueprint, token):  # pylint: disable=unused-argument
         """Handle Google OAuth authorization callback."""

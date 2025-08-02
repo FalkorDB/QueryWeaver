@@ -49,13 +49,13 @@ class ResponseFormatterAgent:
                        query_results: List[Dict], db_description: str = "") -> str:
         """
         Generate a user-readable response based on the SQL query results.
-        
+
         Args:
             user_query: The original user question
             sql_query: The SQL query that was executed
             query_results: The results from the SQL query execution
             db_description: Description of the database context
-            
+
         Returns:
             A formatted, user-readable response string
         """

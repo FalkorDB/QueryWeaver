@@ -166,10 +166,10 @@ class AnalysisAgent:
 
             - Analyze the query's translatability into SQL according to the instructions.
             - Apply the instructions explicitly.
-            - If you CANNOT apply instructions in the SQL, explain why under 
+            - If you CANNOT apply instructions in the SQL, explain why under
               "instructions_comments", "explanation" and reduce your confidence.
             - Penalize confidence appropriately if any part of the instructions is unmet.
-            - When there several tables that can be used to answer the question, 
+            - When there several tables that can be used to answer the question,
               you can combine them in a single SQL query.
 
             Provide your output ONLY in the following JSON structure:
