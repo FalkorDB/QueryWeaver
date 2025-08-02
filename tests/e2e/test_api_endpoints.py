@@ -23,11 +23,11 @@ class TestAPIEndpoints:
         """Test that static files are served correctly."""
         # Test favicon
         response = requests.get(f"{app_url}/static/favicon.ico", timeout=10)
-        assert response.status_code in [200, 404]  # 404 is acceptable if no favicon
+        assert response.status_code in [200]  # 404 is acceptable if no favicon
 
         # Test CSS files (if any)
         response = requests.get(f"{app_url}/static/css/", timeout=10)
-        assert response.status_code in [200, 404, 403]  # Various acceptable responses
+        assert response.status_code in [404, 403]  # Various acceptable responses
 
     def test_login_endpoints(self, app_url):
         """Test login endpoints."""

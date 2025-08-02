@@ -4,7 +4,8 @@ import logging
 import os
 
 from dotenv import load_dotenv
-from flask import Flask, redirect, url_for
+from flask import Flask, redirect, url_for, request, abort
+from werkzeug.exceptions import HTTPException
 from flask_dance.contrib.google import make_google_blueprint
 from flask_dance.contrib.github import make_github_blueprint
 from flask_dance.consumer.storage.session import SessionStorage
@@ -71,7 +72,21 @@ def create_app():
             session.clear()
             return redirect(url_for("auth.home"))
 
+        # If it's an HTTPException (like abort(403)), re-raise so Flask handles it properly
+        if isinstance(error, HTTPException):
+            return error
+
         # For other errors, let them bubble up
         raise error
+
+    @app.before_request
+    def block_static_directories():
+        if request.path.startswith('/static/'):
+            # Remove /static/ prefix to get the actual path
+            filename = request.path[8:]  # len('/static/') = 8
+            file_path = os.path.join(app.static_folder, filename)
+
+            if os.path.isdir(file_path):
+                abort(403)
 
     return app

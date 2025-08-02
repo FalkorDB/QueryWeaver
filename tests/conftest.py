@@ -40,3 +40,12 @@ def flask_app():
 def app_url(flask_app):
     """Provide the base URL for the application."""
     return flask_app
+
+
+# Playwright fixture: page_with_base_url
+import pytest
+
+@pytest.fixture
+def page_with_base_url(page, app_url):
+    page.goto(app_url)
+    yield page
