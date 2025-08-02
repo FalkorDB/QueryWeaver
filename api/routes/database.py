@@ -31,7 +31,7 @@ def connect_database():
                 # Attempt to connect/load using the loader
                 success, result = PostgresLoader.load(g.user_id, url)
                 if success:
-                    return jsonify({"success": True, 
+                    return jsonify({"success": True,
                                     "message": "Database connected successfully"}), 200
 
                 # Don't return detailed error messages to prevent information exposure

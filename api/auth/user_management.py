@@ -21,21 +21,21 @@ def ensure_user_in_organizations(provider_user_id, email, name, provider, pictur
     """
     # Input validation
     if not provider_user_id or not email or not provider:
-        logging.error("Missing required parameters: provider_user_id=%s, email=%s, provider=%s", 
+        logging.error("Missing required parameters: provider_user_id=%s, email=%s, provider=%s",
                      provider_user_id, email, provider)
         return False, None
-    
+
     # Validate email format (basic check)
     if "@" not in email or "." not in email:
         logging.error("Invalid email format: %s", email)
         return False, None
-        
+
     # Validate provider is in allowed list
     allowed_providers = ["google", "github"]
     if provider not in allowed_providers:
         logging.error("Invalid provider: %s", provider)
         return False, None
-    
+
     try:
         # Select the Organizations graph
         organizations_graph = db.select_graph("Organizations")
@@ -127,16 +127,16 @@ def update_identity_last_login(provider, provider_user_id):
     """Update the last login timestamp for an existing identity"""
     # Input validation
     if not provider or not provider_user_id:
-        logging.error("Missing required parameters: provider=%s, provider_user_id=%s", 
+        logging.error("Missing required parameters: provider=%s, provider_user_id=%s",
                      provider, provider_user_id)
         return
-        
+
     # Validate provider is in allowed list
     allowed_providers = ["google", "github"]
     if provider not in allowed_providers:
         logging.error("Invalid provider: %s", provider)
         return
-    
+
     try:
         organizations_graph = db.select_graph("Organizations")
         update_query = """
@@ -185,7 +185,7 @@ def validate_and_cache_user():
                         logging.warning("Invalid Google user data received")
                         session.clear()
                         return None, False
-                        
+
                     # Normalize user info structure
                     user_info = {
                         "id": str(google_user.get("id")),  # Ensure string type
@@ -208,7 +208,7 @@ def validate_and_cache_user():
                 resp = github.get("/user")
                 if resp.ok:
                     github_user = resp.json()
-                    
+
                     # Validate required fields
                     if not github_user.get("id"):
                         logging.warning("Invalid GitHub user data received")
@@ -229,7 +229,7 @@ def validate_and_cache_user():
                         # If no primary email found, use the first one
                         if not email and emails:
                             email = emails[0].get("email")
-                    
+
                     if not email:
                         logging.warning("No email found for GitHub user")
                         session.clear()
@@ -253,7 +253,7 @@ def validate_and_cache_user():
         # If no valid authentication found, clear session
         session.clear()
         return None, False
-        
+
     except Exception as e:
         logging.error("Unexpected error in validate_and_cache_user: %s", e)
         session.clear()

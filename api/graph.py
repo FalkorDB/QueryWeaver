@@ -192,8 +192,8 @@ def _find_tables_by_columns(graph, descriptions: List[ColumnDescription]) -> Lis
                         vecf32($embedding)
                     ) YIELD node, score
                     MATCH (node)-[:BELONGS_TO]-(table)-[:BELONGS_TO]-(columns)
-                    RETURN 
-                    table.name, 
+                    RETURN
+                    table.name,
                     table.description,
                     table.foreign_keys,
                     collect({
@@ -256,17 +256,17 @@ def find_connecting_tables(graph, table_names: List[str]) -> Tuple[List[dict], L
     MATCH p = allShortestPaths((a)-[*..9]-(b))
     UNWIND nodes(p) AS path_node
     WITH DISTINCT path_node
-    WHERE 'Table' IN labels(path_node) OR 
+    WHERE 'Table' IN labels(path_node) OR
             ('Column' IN labels(path_node) AND path_node.key_type = 'PRI')
     WITH path_node,
             'Table' IN labels(path_node) AS is_table,
             'Column' IN labels(path_node) AND path_node.key_type = 'PRI' AS is_pri_column
     OPTIONAL MATCH (path_node)-[:BELONGS_TO]->(parent_table:Table)
     WHERE is_pri_column
-    WITH CASE 
-            WHEN is_table THEN path_node 
-            WHEN is_pri_column THEN parent_table 
-            ELSE null 
+    WITH CASE
+            WHEN is_table THEN path_node
+            WHEN is_pri_column THEN parent_table
+            ELSE null
             END AS target_table
     WHERE target_table IS NOT NULL
     WITH DISTINCT target_table
@@ -279,7 +279,7 @@ def find_connecting_tables(graph, table_names: List[str]) -> Tuple[List[dict], L
                 keyType: col.key,
                 nullable: col.nullable
             }) AS columns
-    
+
     RETURN target_table.name AS table_name,
             target_table.description AS description,
             target_table.foreign_keys AS foreign_keys,

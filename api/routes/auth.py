@@ -35,13 +35,13 @@ def login_google():
         resp = google.get("/oauth2/v2/userinfo")
         if resp.ok:
             google_user = resp.json()
-            
+
             # Validate required fields
             if not google_user.get("id") or not google_user.get("email"):
                 logging.error("Invalid Google user data received during login")
                 session.clear()
                 return redirect(url_for("google.login"))
-                
+
             # Normalize user info structure
             user_info = {
                 "id": str(google_user.get("id")),  # Ensure string type

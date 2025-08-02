@@ -294,7 +294,7 @@ def get_table_prompt(
     table_context = get_table_context(table_name, related_tables)
     keys = json.dumps(topology["tables"][table_name])
     prompt = f"""
-You are an expert database architect specializing in CRM systems. Create a detailed 
+You are an expert database architect specializing in CRM systems. Create a detailed
 JSON schema for the '{table_name}' table in our CRM database.
 
 CONTEXT ABOUT THIS TABLE:
@@ -311,7 +311,7 @@ The primary Key and the foreign keys (topology) for this table should include th
 Your response must include:
 1. A comprehensive description of the table's purpose
 2. All relevant columns with:
-   - Detailed descriptions 
+   - Detailed descriptions
    - Appropriate MySQL data types
    - NULL/NOT NULL constraints
    - Key designations (PRI, UNI, MUL, etc.)
@@ -661,7 +661,7 @@ def generate_keys(tables) -> Dict[str, Any]:
         "user_id": "FK",
         "lead_id": "FK"
       }},
-    
+
 
     Only generate the primery key and the foreign keys based on you knowledge on crm databases in the above schema.
     Your output for the table '{table_name}':
