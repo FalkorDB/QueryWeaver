@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "431b6b8f62c6dfccf070cb3229a784823e14115fafaccf2c874abedc83877396"
+            "sha256": "d59ed116ece4cc6a274aaf55585dd77a5879507b54b9807e6357a888a612ba0d"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -638,11 +638,11 @@
                 "bedrock"
             ],
             "hashes": [
-                "sha256:3c3fb31e9e6e51d8d0eb2da4df1538a3924c2d8e1201775358678f79b1625966",
-                "sha256:8cd23db10463a02bb5a64fb69b243d97879ecf4075fe38740f8c4b93f3f770a6"
+                "sha256:0e6029314a235dbce5d03376a48f7504a221b2e1e8b24f0b090ff3580a6e78be",
+                "sha256:39aad802d7aa3eabb1678552017d705fe76ba09fdeab8122206a24781ddc4248"
             ],
             "markers": "python_version not in '2.7, 3.0, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7' and python_version >= '3.8'",
-            "version": "==1.67.6"
+            "version": "==1.74.14"
         },
         "markupsafe": {
             "hashes": [
@@ -837,11 +837,11 @@
         },
         "openai": {
             "hashes": [
-                "sha256:fb3ea907efbdb1bcfd0c44507ad9c961afd7dce3147292b54505ecfd17be8fd1",
-                "sha256:fe6f932d2ded3b429ff67cc9ad118c71327db32eb9d32dd723de3acfca337125"
+                "sha256:3ee0fcc50ae95267fd22bd1ad095ba5402098f3df2162592e68109999f685427",
+                "sha256:b99b794ef92196829120e2df37647722104772d2a74d08305df9ced5f26eae34"
             ],
             "markers": "python_version >= '3.8'",
-            "version": "==1.75.0"
+            "version": "==1.98.0"
         },
         "packaging": {
             "hashes": [
