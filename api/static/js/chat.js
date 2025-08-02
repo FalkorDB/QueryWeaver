@@ -608,7 +608,13 @@ document.addEventListener("DOMContentLoaded", function () {
     const chatMessages = document.getElementById("chat-messages");
     const graphSelect = document.getElementById("graph-select");
 
-    // Fetch available graphs
+    // Only fetch available graphs if user is authenticated
+    const isAuthenticated = window.isAuthenticated !== undefined ? window.isAuthenticated : false;
+    if (!isAuthenticated) {
+        return; // Don't fetch graphs if not authenticated
+    }
+
+    // Fetch available graphs (only if authenticated)
     fetch("/graphs")
         .then(response => {
             if (!response.ok) {
