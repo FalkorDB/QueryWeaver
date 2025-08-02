@@ -63,7 +63,7 @@ jobs:
 
     - name: Run E2E tests
       run: |
-        pipenv run pytest tests/e2e/ --browser chromium --headed=false --video=on --screenshot=on
+        pipenv run pytest tests/e2e/ --browser chromium --video=on --screenshot=on
       env:
         CI: true
 
