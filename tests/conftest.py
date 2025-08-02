@@ -10,11 +10,17 @@ import requests
 @pytest.fixture(scope="session")
 def flask_app():
     """Start the Flask application for testing."""
+    import os
+
+    # Get the project root directory (parent of tests directory)
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(current_dir)
+
     # Start the Flask app using pipenv
     process = subprocess.Popen([
         "pipenv", "run", "flask", "--app", "api.index", "run",
         "--host", "localhost", "--port", "5000"
-    ], cwd="/home/guy/workspace/text2sql")
+    ], cwd=project_root)
 
     # Wait for the app to start
     max_retries = 30
