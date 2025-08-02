@@ -18,16 +18,16 @@ export function setupAuthenticationModal() {
     }
 }
 
-function setLoadingState(isLoading) {
-    const connectText = connectPgModalBtn.querySelector('.pg-modal-connect-text');
-    const loadingSpinner = connectPgModalBtn.querySelector('.pg-modal-loading-spinner');
+function setLoadingState(isLoading, connectBtn, urlInput) {
+    const connectText = connectBtn.querySelector('.pg-modal-connect-text');
+    const loadingSpinner = connectBtn.querySelector('.pg-modal-loading-spinner');
     const cancelBtn = document.getElementById('pg-modal-cancel');
     
     connectText.style.display = isLoading ? 'none' : 'inline';
     loadingSpinner.style.display = isLoading ? 'flex' : 'none';
-    connectPgModalBtn.disabled = isLoading;
+    connectBtn.disabled = isLoading;
     cancelBtn.disabled = isLoading;
-    pgUrlInput.disabled = isLoading;
+    urlInput.disabled = isLoading;
 }
 
 export function setupPostgresModal() {
@@ -79,7 +79,7 @@ export function setupPostgresModal() {
             }
             
             // Show loading state
-            setLoadingState(true);
+            setLoadingState(true, connectPgModalBtn, pgUrlInput);
             
             fetch('/database', {
                 method: 'POST',
@@ -91,7 +91,7 @@ export function setupPostgresModal() {
             .then(response => response.json())
             .then(data => {
                 // Reset loading state
-                setLoadingState(false);
+                setLoadingState(false, connectPgModalBtn, pgUrlInput);
 
                 if (data.success) {
                     pgModal.style.display = 'none'; // Close modal on success
@@ -103,7 +103,7 @@ export function setupPostgresModal() {
             })
             .catch(error => {
                 // Reset loading state on error
-                setLoadingState(false);
+                setLoadingState(false, connectPgModalBtn, pgUrlInput);
                 
                 alert('Error connecting to database: ' + error.message);
             });
