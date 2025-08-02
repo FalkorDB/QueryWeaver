@@ -42,10 +42,10 @@ def app_url(flask_app):
     return flask_app
 
 
-# Playwright fixture: page_with_base_url
-import pytest
-
 @pytest.fixture
 def page_with_base_url(page, app_url):
+    """Provide a page with app_url attribute set."""
+    # Attach app_url to the page object for test code that expects it
+    page.app_url = app_url
     page.goto(app_url)
     yield page

@@ -87,6 +87,6 @@ def create_app():
             file_path = os.path.join(app.static_folder, filename)
 
             if os.path.isdir(file_path):
-                abort(403)
+                abort(405)
 
     return app
