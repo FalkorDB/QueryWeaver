@@ -1,0 +1,49 @@
+/* CSS Reset and Base Styles */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+@font-face {
+  font-family: 'Fira Code';
+  src: url('../public/fonts/fira_code.ttf');
+}
+
+body {
+  font-family: 'Fira Code', monospace;
+  background-color: var(--falkor-secondary);
+  height: 100dvh;
+  width: 100dvw;
+  display: flex;
+  flex-direction: column;
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+/* Ensure all form elements inherit the consistent font */
+button, input, select, textarea {
+  font-family: inherit;
+}
+
+/* Scrollbar Styles */
+::-webkit-scrollbar {
+  width: 20px;
+  height: 20px;
+}
+
+::-webkit-scrollbar-corner {
+  background-color: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #d6dee1;
+  border-radius: 20px;
+  border: 6px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #a8bbbf;
+}

@@ -1,14 +1,4 @@
-/**
- * CSS Variables and Theme System
- * Contains all CSS custom properties for theming
- */
-
-/* CSS Reset */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+/* CSS Custom Properties and Theme Variables */
 
 :root {
   /* Professional color palette - muted and business-appropriate */

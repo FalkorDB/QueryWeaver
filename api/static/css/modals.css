@@ -1,7 +1,4 @@
-/**
- * Modal Dialogs and Popups
- * Login modals, postgres modal, and other popup dialogs
- */
+/* Modal and Popup Components */
 
 .pg-modal {
   display: none;
@@ -25,15 +22,6 @@
   min-width: 680px;
 }
 
-/* Mobile responsive modal */
-@media (max-width: 768px) {
-  .pg-modal-content {
-    padding: 1.5em 2em;
-    min-width: 90vw;
-    margin: 0 5vw;
-  }
-}
-
 .pg-modal-title {
   margin-bottom: 1em;
   color: var(--text-primary);
@@ -48,6 +36,12 @@
   margin-bottom: 1.5em;
   color: var(--text-primary);
   background: var(--falkor-quaternary);
+}
+
+.pg-modal-input:disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: not-allowed;
 }
 
 .pg-modal-actions {
@@ -97,11 +91,6 @@
   animation: spin 1s linear infinite;
 }
 
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
 .pg-modal-cancel {
   background: var(--bg-tertiary);
   color: var(--text-primary);
@@ -117,12 +106,6 @@
   color: var(--text-secondary);
   cursor: not-allowed;
   border: 1px solid var(--text-secondary);
-}
-
-.pg-modal-input:disabled {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  cursor: not-allowed;
 }
 
 .google-login-modal {
@@ -159,57 +142,112 @@
   font-size: 1em;
 }
 
-.google-login-btn {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 10px;
-  margin-top: 1em;
-  padding: 0.7em 2em;
-  background: #4285F4;
-  color: #fff;
+/* User Profile Dropdown */
+.user-profile-dropdown {
+  position: fixed;
+  top: 80px;
+  right: 30px;
+  z-index: 1999;
+  background: var(--falkor-secondary);
+  border: 1px solid var(--falkor-border-primary);
   border-radius: 6px;
-  font-size: 1.1em;
-  text-decoration: none;
-  font-weight: 500;
-  transition: background 0.2s;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  min-width: 200px;
+  display: none;
 }
 
-.google-login-btn:hover {
-  background: #3367d6;
+.user-profile-dropdown.show {
+  display: block;
 }
 
-.google-login-logo {
-  height: 20px;
-  margin-right: 10px;
-  margin-left: 0;
-  vertical-align: middle;
-  display: inline-block;
+.user-profile-info {
+  padding: 15px;
+  border-bottom: 1px solid var(--falkor-quaternary);
 }
 
-.github-login-btn {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 10px;
-  padding: 0.7em 2em;
-  background: #24292f;
-  color: #fff;
+.user-profile-name {
+  color: var(--text-primary);
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.user-profile-email {
+  color: var(--text-secondary);
+  font-size: 0.9em;
+}
+
+.user-profile-actions {
+  padding: 10px;
+}
+
+/* Destructive Confirmation Styles */
+.destructive-confirmation-container {
+  transition: all 0.3s ease;
+}
+
+.destructive-confirmation-message {
+  border: 1px solid #D32F2F;
   border-radius: 6px;
-  font-size: 1.1em;
-  text-decoration: none;
-  font-weight: 500;
-  transition: background 0.2s;
+  background: linear-gradient(135deg, var(--bg-tertiary), var(--falkor-quaternary));
 }
 
-.github-login-btn:hover {
-  background: #171a1d;
+.destructive-confirmation {
+  padding: 20px;
+  transition: all 0.3s ease;
 }
 
-.github-login-logo {
-  height: 20px;
-  margin-right: 10px;
-  margin-left: 0;
-  vertical-align: middle;
-  display: inline-block;
+.confirmation-text {
+  margin-bottom: 20px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.confirmation-text strong {
+  color: var(--text-primary);
+  font-weight: bold;
+}
+
+.confirmation-buttons {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+/* Reset Confirmation Modal */
+.reset-confirmation-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0,0,0,0.6);
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+}
+
+.reset-confirmation-modal-content {
+  background: var(--falkor-secondary);
+  padding: 2em 3em;
+  border-radius: 10px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.2);
+  text-align: center;
+  color: var(--text-primary);
+  min-width: 400px;
+}
+
+.reset-confirmation-modal-content h3 {
+  color: var(--text-primary);
+  margin-bottom: 0.5em;
+  font-size: 1.3em;
+}
+
+.reset-confirmation-modal-content p {
+  color: var(--text-secondary);
+  margin-bottom: 1.5em;
+  font-size: 1em;
+  line-height: 1.5;
 }

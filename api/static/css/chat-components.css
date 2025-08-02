@@ -1,7 +1,32 @@
-/**
- * Chat Messages and Message Containers
- * All message styling including user, bot, and special message types
- */
+/* Chat Components Styles */
+
+.chat-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  background: var(--falkor-secondary);
+  color: var(--text-primary);
+  padding: 16px 20px;
+  text-align: center;
+  position: relative;
+}
+
+.chat-header h1 {
+  font-weight: 600;
+  font-size: 22px;
+}
+
+.chat-messages {
+  flex-grow: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  background-color: var(--falkor-secondary);
+}
 
 .message-container {
   display: flex;
@@ -102,27 +127,6 @@
   overflow-x: auto;
 }
 
-/* Mobile responsive messages */
-@media (max-width: 768px) {
-  .message {
-    max-width: 85%;
-    padding: 10px 12px;
-    font-size: 14px;
-  }
-  
-  .chat-header h1 {
-    font-size: 18px;
-  }
-  
-  #message-input {
-    font-size: 16px !important;
-  }
-  
-  #message-input::placeholder {
-    font-size: 16px !important;
-  }
-}
-
 /* Styles for formatted text blocks */
 .sql-line, .array-line, .plain-line {
   word-wrap: break-word;
@@ -148,4 +152,69 @@
 .final-result-message {
   background: color-mix(in srgb, var(--accent-green) 15%, transparent);
   border-left: 3px solid var(--accent-green);
+}
+
+.chat-input {
+  display: flex;
+  padding: 16px 20px;
+  background: var(--falkor-secondary);
+  gap: 20px;
+}
+
+.input-container {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+  flex-grow: 1;
+  padding: 10px;
+  border-radius: 6px;
+  box-shadow: 0 0 8px 1px var(--falkor-primary);
+  border: 1px solid var(--border-color);
+}
+
+.input-container.loading {
+  animation: shadow-fade 1.2s infinite ease-in-out;
+}
+
+#message-input {
+  color: var(--text-primary);
+  flex-grow: 1;
+  background-color: transparent;
+  border: none;
+  font-size: 18px !important;
+  font-weight: 500 !important;
+}
+
+#message-input:focus {
+  outline: none;
+}
+
+#message-input::placeholder {
+  font-size: 18px !important;
+  font-weight: 500 !important;
+  color: var(--text-primary);
+  opacity: 0.7;
+}
+
+#pause-button {
+  display: none;
+}
+
+#reset-button {
+  position: absolute;
+  right: -60px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+#reset-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+#reset-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

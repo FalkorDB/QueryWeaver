@@ -1,0 +1,189 @@
+/* Menu and Navigation Components */
+
+#menu-container {
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 20px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  background: var(--falkor-quaternary);
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), padding 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1;
+  position: relative;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+#menu-container.open {
+  width: 30dvw;
+  padding: 20px;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+#menu-header {
+  display: flex;
+  flex-direction: row;
+}
+
+#menu-content {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+#side-menu-button {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+}
+
+#menu-button img {
+  rotate: 180deg;
+  filter: brightness(0) invert(1);
+}
+
+/* Menu user image styling */
+.menu-user-img {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+}
+
+.menu-item {
+  overflow: hidden;
+  flex: 1 1 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#conf-container {
+  flex-grow: 0;
+  height: fit-content;
+  flex-direction: row;
+  justify-content: space-between;
+  width: 100%;
+  gap: 16px;
+}
+
+.menu-value {
+  flex: 1 1 0;
+  border: 1px solid var(--falkor-border-primary);
+  width: 100%;
+  background: var(--falkor-secondary);
+  padding: 4px;
+  border-radius: 6px;
+  color: var(--text-primary);
+  overflow-y: auto;
+}
+
+#conf-value {
+  flex: 0 0 auto;
+  overflow: hidden;
+  min-height: 0;
+  width: fit-content;
+  min-width: 50px;
+  padding: 8px;
+}
+
+#info-value,
+#amb-value {
+  border-color: var(--falkor-border-secondary);
+}
+
+#instructions-textarea {
+  resize: none;
+}
+
+#instructions-textarea:focus {
+  outline: none;
+  border: 1px solid var(--falkor-border-tertiary);
+}
+
+.button-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+#graph-select {
+  height: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--text-primary);
+  font-size: 14px;
+  background-color: var(--falkor-secondary);
+  color: var(--text-primary);
+  transition: border-color 0.2s;
+  min-width: 180px;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+    linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
+  background-position: calc(100% - 20px) center, calc(100% - 15px) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+#graph-select:focus {
+  outline: none;
+  border-color: var(--falkor-border-primary);
+}
+
+#custom-file-upload {
+  height: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--text-primary);
+  font-size: 14px;
+  background-color: var(--falkor-secondary);
+  color: var(--text-primary);
+  transition: border-color 0.2s;
+  min-width: 180px;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+    linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
+  background-position: calc(100% - 20px) center, calc(100% - 15px) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+#open-pg-modal {
+  height: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--text-primary);
+  font-size: 14px;
+  background-color: var(--falkor-secondary);
+  color: var(--text-primary);
+  transition: border-color 0.2s;
+  min-width: 180px;
+  appearance: none;
+  background-position: calc(100% - 20px) center, calc(100% - 15px) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+  display: inline-block;
+  margin-bottom: 0;
+  margin-right: 0;
+  margin-left: 0;
+}
+
+#schema-upload:disabled+label {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#custom-file-upload:focus {
+  outline: none;
+  border-color: var(--falkor-border-primary);
+}

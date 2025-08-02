@@ -1,0 +1,176 @@
+/* Mobile Responsive Styles */
+
+/* Layout Responsive */
+@media (max-width: 768px) {
+  .chat-container {
+    padding-right: 10px;
+    padding-left: 10px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+}
+
+/* Mobile: Menu overlays content (no pushing) */
+@media (max-width: 768px) {
+  #menu-container.open~#chat-container {
+    margin-left: 0;
+  }
+}
+
+/* Menu Responsive */
+@media (max-width: 768px) {
+  #menu-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 999;
+  }
+  
+  #menu-container.open {
+    width: 80vw;
+    padding: 15px;
+  }
+}
+
+/* Side Menu Button Responsive */
+@media (max-width: 768px) {
+  #side-menu-button {
+    top: 15px;
+    left: 15px;
+  }
+}
+
+/* Chat Messages Responsive */
+@media (max-width: 768px) {
+  .message {
+    max-width: 85%;
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+  
+  .chat-header h1 {
+    font-size: 18px;
+  }
+  
+  #message-input {
+    font-size: 16px !important;
+  }
+  
+  #message-input::placeholder {
+    font-size: 16px !important;
+  }
+}
+
+/* Button Container Responsive */
+@media (max-width: 768px) {
+  .button-container {
+    flex-direction: row;
+    gap: 8px;
+  }
+}
+
+/* Select Elements Responsive */
+@media (max-width: 768px) {
+  #graph-select,
+  #custom-file-upload,
+  #open-pg-modal {
+    min-width: 120px;
+    width: auto;
+    padding: 8px 10px;
+    font-size: 14px;
+    flex: 1;
+  }
+}
+
+/* Input Button Responsive */
+@media (max-width: 768px) {
+  .input-button {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* Reset Button Responsive */
+@media (max-width: 768px) {
+  #reset-button {
+    position: relative;
+    right: auto;
+    top: auto;
+    transform: none;
+    margin-left: 10px;
+  }
+  
+  #reset-button svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .chat-input {
+    padding: 12px 16px;
+    gap: 12px;
+  }
+}
+
+/* Action Buttons Responsive */
+@media (max-width: 768px) {
+  .action-button {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* User Profile and Navigation Responsive */
+@media (max-width: 768px) {
+  .user-profile-btn {
+    top: 15px;
+    right: 15px;
+    width: 40px;
+    height: 40px;
+  }
+  
+  #theme-toggle-btn {
+    top: 15px;
+    right: 80px;
+  }
+  
+  #github-link-btn {
+    top: 15px;
+    right: 135px;
+    padding: 6px 8px;
+    font-size: 12px;
+    height: 40px;
+  }
+  
+  .theme-icon {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* User Profile Dropdown Responsive */
+@media (max-width: 768px) {
+  .user-profile-dropdown {
+    top: 65px;
+    right: 15px;
+    min-width: 180px;
+  }
+}
+
+/* Modal Responsive */
+@media (max-width: 768px) {
+  .pg-modal-content {
+    padding: 1.5em 2em;
+    min-width: 90vw;
+    margin: 0 5vw;
+  }
+}
+
+/* Reset Modal Responsive */
+@media (max-width: 768px) {
+  .reset-confirmation-modal-content {
+    padding: 1.5em 2em;
+    min-width: 90vw;
+    margin: 0 5vw;
+  }
+}
