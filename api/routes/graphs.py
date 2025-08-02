@@ -111,9 +111,11 @@ def load_graph():
 
     # ✅ Return the final response
     if success:
-        return jsonify({"message": result, "graph_id": graph_id})
+        return jsonify({"message": "Graph loaded successfully", "graph_id": graph_id})
 
-    return jsonify({"error": result}), 400
+    # Log detailed error but return generic message to user
+    logging.error("Graph loading failed: %s", str(result)[:100])
+    return jsonify({"error": "Failed to load graph data"}), 400
 
 
 @graphs_bp.route("/<string:graph_id>", methods=["POST"])
@@ -481,7 +483,7 @@ def refresh_graph_schema(graph_id: str):
         if success:
             return jsonify({
                 "success": True,
-                "message": f"Graph schema refreshed successfully. {message}"
+                "message": "Graph schema refreshed successfully"
             }), 200
 
         logging.error("Schema refresh failed for graph %s: %s", graph_id, message)

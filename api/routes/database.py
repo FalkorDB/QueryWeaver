@@ -31,10 +31,12 @@ def connect_database():
                 # Attempt to connect/load using the loader
                 success, result = PostgresLoader.load(g.user_id, url)
                 if success:
-                    return jsonify({"success": True, "message": result}), 200
+                    return jsonify({"success": True, 
+                                    "message": "Database connected successfully"}), 200
 
-                # result from PostgresLoader should be safe to return
-                return jsonify({"success": False, "error": result}), 400
+                # Don't return detailed error messages to prevent information exposure
+                logging.error("PostgresLoader failed: %s", result)
+                return jsonify({"success": False, "error": "Failed to load database schema"}), 400
             except (ValueError, ConnectionError) as e:
                 logging.error("Database connection error: %s", str(e))
                 return jsonify({"success": False, "error": "Failed to connect to database"}), 500
