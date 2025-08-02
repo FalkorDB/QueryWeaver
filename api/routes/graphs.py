@@ -21,6 +21,9 @@ MESSAGE_DELIMITER = "|||FALKORDB_MESSAGE_BOUNDARY|||"
 
 graphs_bp = Blueprint("graphs", __name__, url_prefix="/graphs")
 
+def sanitize_query(query: str) -> str:
+    """Sanitize the query to prevent injection attacks."""
+    return query.replace('\n', ' ').replace('\r', ' ')[:500]
 
 @graphs_bp.route("")
 @token_required
@@ -122,29 +125,29 @@ def query_graph(graph_id: str):
     # Input validation
     if not graph_id or not isinstance(graph_id, str):
         return jsonify({"error": "Invalid graph_id"}), 400
-        
+
     # Sanitize graph_id to prevent injection
     graph_id = graph_id.strip()[:100]  # Limit length and strip whitespace
     if not graph_id:
         return jsonify({"error": "Invalid graph_id"}), 400
-        
+
     graph_id = g.user_id + "_" + graph_id
     request_data = request.get_json()
-    
+
     if not request_data:
         return jsonify({"error": "No JSON data provided"}), 400
-        
+
     queries_history = request_data.get("chat")
     result_history = request_data.get("result")
     instructions = request_data.get("instructions")
-    
+
     if not queries_history or not isinstance(queries_history, list):
         return jsonify({"error": "Invalid or missing chat history"}), 400
-        
+
     if len(queries_history) == 0:
         return jsonify({"error": "Empty chat history"}), 400
 
-    logging.info("User Query: %s", queries_history[-1])
+    logging.info("User Query: %s", sanitize_query(queries_history[-1]))
 
     # Create a generator function for streaming
     def generate():
@@ -158,7 +161,8 @@ def query_graph(graph_id: str):
         db_description, db_url = get_db_description(graph_id)
 
         logging.info("Calling to relevancy agent with query: %s",
-                     queries_history[-1])
+                     sanitize_query(queries_history[-1]))
+
         answer_rel = agent_rel.get_answer(queries_history[-1], db_description)
         if answer_rel["status"] != "On-topic":
             step = {
@@ -189,7 +193,9 @@ def query_graph(graph_id: str):
                     ) + MESSAGE_DELIMITER
                     return
 
-            logging.info("Calling to analysis agent with query: %s", queries_history[-1])
+            logging.info("Calling to analysis agent with query: %s",  
+                         sanitize_query(queries_history[-1]))
+
             answer_an = agent_an.get_analysis(
                 queries_history[-1], result, db_description, instructions
             )
