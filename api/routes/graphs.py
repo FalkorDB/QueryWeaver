@@ -477,15 +477,16 @@ def refresh_graph_schema(graph_id: str):
                 "success": True,
                 "message": f"Graph schema refreshed successfully. {message}"
             }), 200
-        else:
-            return jsonify({
-                "success": False,
-                "error": f"Failed to refresh schema: {message}"
-            }), 500
+
+        logging.error("Schema refresh failed for graph %s: %s", graph_id, message)
+        return jsonify({
+            "success": False,
+            "error": "Failed to refresh schema"
+        }), 500
 
     except Exception as e:
         logging.error("Error in manual schema refresh: %s", e)
         return jsonify({
             "success": False,
-            "error": f"Error refreshing schema: {str(e)}"
+            "error": "Error refreshing schema"
         }), 500
