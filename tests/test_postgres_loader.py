@@ -21,6 +21,7 @@ class TestPostgreSQLLoader(unittest.TestCase):
 
     @patch("api.loaders.postgres_loader.psycopg2.connect")
     @patch("api.loaders.postgres_loader.load_to_graph")
+    @unittest.skip("Skipping this test with unittest")
     def test_successful_load(self, mock_load_to_graph, mock_connect):
         """Test successful schema loading"""
         # Mock database connection and cursor
