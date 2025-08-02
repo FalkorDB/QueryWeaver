@@ -32,3 +32,6 @@ CVSS
 falkordb
 pipenv
 Pipenv
+README
+md
+UI

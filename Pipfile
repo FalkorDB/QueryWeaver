@@ -4,7 +4,7 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-litellm = {extras = ["bedrock"], version = "~=1.67.0"}
+litellm = {extras = ["bedrock"], version = "~=1.74.14"}
 falkordb = "~=1.0.10"
 flask = "~=3.1.0"
 jsonschema = "~=4.23.0"
@@ -16,6 +16,9 @@ flask-dance = "~=7.1.0"
 [dev-packages]
 pytest = "~=8.2.0"
 pylint = "~=3.3.4"
+playwright = "~=1.47.0"
+pytest-playwright = "~=0.5.2"
+pytest-asyncio = "~=0.24.0"
 
 [requires]
 python_version = "3.12"

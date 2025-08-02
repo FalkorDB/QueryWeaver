@@ -5,3 +5,13 @@
 *_conf*
 .ruff_code/
 .vercel/
+
+# Test artifacts
+test-results/
+playwright-report/
+tests/e2e/screenshots/*.png
+.pytest_cache/
+
+# Temporary test files
+*.tmp
+tmp_*

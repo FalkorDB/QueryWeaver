@@ -7,6 +7,7 @@ from .utils import parse_response
 
 
 class AnalysisAgent:
+    # pylint: disable=too-few-public-methods
     """Agent for analyzing user queries and generating database analysis."""
 
     def __init__(self, queries_history: list, result_history: list):
