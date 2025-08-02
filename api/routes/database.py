@@ -1,5 +1,5 @@
 """Database connection routes for the text2sql API."""
-
+import logging
 from flask import Blueprint, jsonify, request, g
 
 from api.auth.user_management import token_required
@@ -19,11 +19,11 @@ def connect_database():
     url = data.get("url") if data else None
     if not url:
         return jsonify({"success": False, "error": "No URL provided"}), 400
-        
+
     # Validate URL format
     if not isinstance(url, str) or len(url.strip()) == 0:
         return jsonify({"success": False, "error": "Invalid URL format"}), 400
-        
+
     try:
         # Check for Postgres URL
         if url.startswith("postgres://") or url.startswith("postgresql://"):
@@ -33,10 +33,13 @@ def connect_database():
                 if success:
                     return jsonify({"success": True, "message": result}), 200
 
+                # result from PostgresLoader should be safe to return
                 return jsonify({"success": False, "error": result}), 400
             except (ValueError, ConnectionError) as e:
-                return jsonify({"success": False, "error": str(e)}), 500
+                logging.error("Database connection error: %s", str(e))
+                return jsonify({"success": False, "error": "Failed to connect to database"}), 500
 
         return jsonify({"success": False, "error": "Invalid Postgres URL"}), 400
     except (ValueError, TypeError) as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        logging.error("Unexpected error in database connection: %s", str(e))
+        return jsonify({"success": False, "error": "Internal server error"}), 500
