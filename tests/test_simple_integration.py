@@ -28,4 +28,4 @@ class TestSimpleIntegration:
         # Try to access static directory
         response = requests.get(f"{app_url}/static/", timeout=10)
         # Should either return content or various error codes, but app should respond
-        assert response.status_code in [200, 403, 404, 500]  # 500 acceptable due to error handler
+        assert response.status_code in [405]
