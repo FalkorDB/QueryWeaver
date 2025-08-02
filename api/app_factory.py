@@ -84,8 +84,11 @@ def create_app():
         if request.path.startswith('/static/'):
             # Remove /static/ prefix to get the actual path
             filename = request.path[8:]  # len('/static/') = 8
-            file_path = os.path.join(app.static_folder, filename)
-
+            # Normalize and ensure the path stays within static_folder
+            static_folder = os.path.abspath(app.static_folder)
+            file_path = os.path.normpath(os.path.join(static_folder, filename))
+            if not file_path.startswith(static_folder):
+                abort(400)  # Bad request, attempted traversal
             if os.path.isdir(file_path):
                 abort(405)
 
