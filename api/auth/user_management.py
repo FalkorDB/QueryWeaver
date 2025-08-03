@@ -17,6 +17,7 @@ def ensure_user_in_organizations(provider_user_id, email, name, provider, pictur
     Check if identity exists in Organizations graph, create if not.
     Creates separate Identity and User nodes with proper relationships.
     Uses MERGE for atomic operations and better performance.
+    Now includes organization management based on email domain.
     Returns (is_new_user, user_info)
     """
     # Input validation
@@ -40,6 +41,16 @@ def ensure_user_in_organizations(provider_user_id, email, name, provider, pictur
         # Select the Organizations graph
         organizations_graph = db.select_graph("Organizations")
 
+        # Extract domain and check/create organization
+        from api.auth.organization_management import (
+            check_or_create_organization, 
+            link_user_to_organization, 
+            extract_email_domain
+        )
+
+        domain = extract_email_domain(email)
+        is_new_org, _ = check_or_create_organization(email)
+
         # Extract first and last name
         name_parts = (name or "").split(" ", 1) if name else ["", ""]
         first_name = name_parts[0] if len(name_parts) > 0 else ""
@@ -52,6 +63,7 @@ def ensure_user_in_organizations(provider_user_id, email, name, provider, pictur
         ON CREATE SET
             user.first_name = $first_name,
             user.last_name = $last_name,
+            user.role = 'user',
             user.created_at = timestamp()
 
         // Then, merge identity and link to user
@@ -95,6 +107,24 @@ def ensure_user_in_organizations(provider_user_id, email, name, provider, pictur
             is_new_identity = result.result_set[0][2]
             had_other_identities = result.result_set[0][3]
 
+            # Handle organization membership and role assignment
+            if is_new_org:
+                # User is first in their domain, make them admin
+                success = link_user_to_organization(email, domain, is_admin=True, is_pending=False)
+                if success:
+                    # Update user role to admin in the User node
+                    from api.auth.organization_management import update_user_role_direct
+                    update_user_role_direct(email, "admin")
+                    logging.info("User %s created organization %s and assigned as admin", 
+                                 email, domain)
+            else:
+                # Organization exists, check if user needs to be linked
+                # For existing organizations, new users are pending until approved
+                success = link_user_to_organization(email, domain, is_admin=False, is_pending=True)
+                if success:
+                    logging.info("User %s added to existing organization %s as pending", 
+                                 email, domain)
+
             # Determine the type of operation for logging
             if is_new_identity and not had_other_identities:
                 # Brand new user (first identity)
@@ -117,9 +147,6 @@ def ensure_user_in_organizations(provider_user_id, email, name, provider, pictur
 
     except (AttributeError, ValueError, KeyError) as e:
         logging.error("Error managing user in Organizations graph: %s", e)
-        return False, None
-    except Exception as e:
-        logging.error("Unexpected error managing user in Organizations graph: %s", e)
         return False, None
 
 

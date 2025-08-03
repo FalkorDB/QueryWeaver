@@ -1,0 +1,551 @@
+{# Organization management component #}
+<div id="organization-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Organization Management</h2>
+            <span class="close" onclick="closeOrganizationModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div id="organization-content">
+                <div class="loading">Loading organization information...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Organization Management Functions
+let organizationData = null;
+
+function openOrganizationModal() {
+    document.getElementById('organization-modal').style.display = 'block';
+    loadOrganizationStatus();
+}
+
+function closeOrganizationModal() {
+    document.getElementById('organization-modal').style.display = 'none';
+}
+
+async function loadOrganizationStatus() {
+    try {
+        const response = await fetch('/api/organization/status');
+        const data = await response.json();
+        
+        if (response.ok) {
+            organizationData = data;
+            renderOrganizationContent(data);
+        } else {
+            showError(data.error || 'Failed to load organization status');
+        }
+    } catch (error) {
+        console.error('Error loading organization status:', error);
+        showError('Failed to load organization information');
+    }
+}
+
+function renderOrganizationContent(data) {
+    const content = document.getElementById('organization-content');
+    
+    if (!data.has_organization) {
+        content.innerHTML = `
+            <div class="organization-info">
+                <p>You are not part of any organization yet. Organizations are automatically created based on your email domain when you log in.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    const org = data.organization;
+    const role = data.user_role;
+    
+    let html = `
+        <div class="organization-info">
+            <h3>${org.name}</h3>
+            <p><strong>Domain:</strong> ${org.domain}</p>
+            <p><strong>Your Role:</strong> ${role.is_admin ? 'Administrator' : (role.role ? role.role.charAt(0).toUpperCase() + role.role.slice(1) : 'Member')}</p>
+            ${role.is_pending ? '<p class="warning">⚠️ Your membership is pending admin approval</p>' : ''}
+        </div>
+    `;
+    
+    if (role.is_admin && !role.is_pending) {
+        html += `
+            <div class="admin-section">
+                <h4>Admin Controls</h4>
+                <div class="admin-actions">
+                    <button onclick="loadOrganizationUsers()" class="btn btn-primary">View Members</button>
+                    <button onclick="loadPendingUsers()" class="btn btn-secondary">View Pending Users</button>
+                    <button onclick="showAddUserForm()" class="btn btn-success">Add User</button>
+                </div>
+                <div id="admin-content"></div>
+            </div>
+        `;
+    }
+    
+    content.innerHTML = html;
+}
+
+async function loadOrganizationUsers() {
+    try {
+        const response = await fetch('/api/organization/users');
+        const data = await response.json();
+        
+        if (response.ok) {
+            renderUsersList(data.users, 'Organization Members');
+        } else {
+            showError(data.error || 'Failed to load organization users');
+        }
+    } catch (error) {
+        console.error('Error loading organization users:', error);
+        showError('Failed to load organization users');
+    }
+}
+
+async function loadPendingUsers() {
+    try {
+        const response = await fetch('/api/organization/pending');
+        const data = await response.json();
+        
+        if (response.ok) {
+            renderPendingUsersList(data.pending_users);
+        } else {
+            showError(data.error || 'Failed to load pending users');
+        }
+    } catch (error) {
+        console.error('Error loading pending users:', error);
+        showError('Failed to load pending users');
+    }
+}
+
+function renderUsersList(users, title) {
+    const adminContent = document.getElementById('admin-content');
+    
+    let html = `<h5>${title}</h5>`;
+    
+    if (users.length === 0) {
+        html += '<p>No users found.</p>';
+    } else {
+        html += '<div class="users-list">';
+        users.forEach(user => {
+            const roleDisplay = user.is_admin ? 'Admin' : (user.role || 'Member');
+            html += `
+                <div class="user-item">
+                    <div class="user-info">
+                        <strong>${user.first_name} ${user.last_name}</strong>
+                        <br>
+                        <span class="user-email">${user.email}</span>
+                        <br>
+                        <span class="user-role">${roleDisplay}</span>
+                        ${user.is_pending ? ' (Pending)' : ''}
+                    </div>
+                    ${organizationData.user_role.is_admin && !user.is_pending ? `
+                        <div class="user-actions">
+                            <select onchange="updateUserRole('${user.email}', this.value)" class="role-select">
+                                <option value="">Change Role...</option>
+                                <option value="user">User</option>
+                                <option value="admin">Admin</option>
+                                <option value="analyst">Analyst</option>
+                                <option value="viewer">Viewer</option>
+                                <option value="manager">Manager</option>
+                            </select>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        });
+        html += '</div>';
+    }
+    
+    adminContent.innerHTML = html;
+}
+
+function renderPendingUsersList(pendingUsers) {
+    const adminContent = document.getElementById('admin-content');
+    
+    let html = '<h5>Pending Users</h5>';
+    
+    if (pendingUsers.length === 0) {
+        html += '<p>No pending users.</p>';
+    } else {
+        html += '<div class="users-list">';
+        pendingUsers.forEach(user => {
+            html += `
+                <div class="user-item">
+                    <div class="user-info">
+                        <strong>${user.first_name} ${user.last_name}</strong>
+                        <br>
+                        <span class="user-email">${user.email}</span>
+                        <br>
+                        <small>Invited by: ${user.invited_by}</small>
+                    </div>
+                    <div class="user-actions">
+                        <button onclick="approveUser('${user.email}')" class="btn btn-sm btn-success">Approve</button>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+    }
+    
+    adminContent.innerHTML = html;
+}
+
+function showAddUserForm() {
+    const adminContent = document.getElementById('admin-content');
+    
+    const html = `
+        <h5>Add User to Organization</h5>
+        <div class="add-user-form">
+            <input type="email" id="new-user-email" placeholder="Enter user email" required>
+            <button onclick="addUserToOrganization()" class="btn btn-primary">Add User</button>
+            <button onclick="loadOrganizationUsers()" class="btn btn-secondary">Cancel</button>
+        </div>
+        <p class="help-text">User must have an email address with your organization's domain.</p>
+    `;
+    
+    adminContent.innerHTML = html;
+}
+
+async function addUserToOrganization() {
+    const email = document.getElementById('new-user-email').value.trim();
+    
+    if (!email) {
+        showError('Please enter a valid email address');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/organization/add-user', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ email: email })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            showSuccess(data.message);
+            loadOrganizationUsers(); // Refresh the users list
+        } else {
+            showError(data.error || 'Failed to add user');
+        }
+    } catch (error) {
+        console.error('Error adding user:', error);
+        showError('Failed to add user to organization');
+    }
+}
+
+async function approveUser(email) {
+    try {
+        const response = await fetch('/api/organization/approve-user', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ email: email })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            showSuccess(data.message);
+            loadPendingUsers(); // Refresh the pending users list
+        } else {
+            showError(data.error || 'Failed to approve user');
+        }
+    } catch (error) {
+        console.error('Error approving user:', error);
+        showError('Failed to approve user');
+    }
+}
+
+async function updateUserRole(email, newRole) {
+    if (!newRole) return; // No role selected
+    
+    try {
+        const response = await fetch('/api/organization/update-role', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                target_email: email,
+                new_role: newRole
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            showSuccess(data.message);
+            loadOrganizationUsers(); // Refresh the users list
+        } else {
+            showError(data.error || 'Failed to update user role');
+        }
+    } catch (error) {
+        console.error('Error updating user role:', error);
+        showError('Failed to update user role');
+    }
+}
+
+function showError(message) {
+    // You can customize this based on your existing error handling
+    alert('Error: ' + message);
+}
+
+function showSuccess(message) {
+    // You can customize this based on your existing success handling
+    alert('Success: ' + message);
+}
+
+// Close modal when clicking outside of it
+window.onclick = function(event) {
+    const modal = document.getElementById('organization-modal');
+    if (event.target === modal) {
+        closeOrganizationModal();
+    }
+}
+</script>
+
+<style>
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+}
+
+.modal-content {
+    background-color: #fefefe;
+    margin: 5% auto;
+    padding: 0;
+    border: none;
+    border-radius: 8px;
+    width: 80%;
+    max-width: 800px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal-header {
+    padding: 20px;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    border-radius: 8px 8px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h2 {
+    margin: 0;
+    color: #333;
+}
+
+.close {
+    color: #aaa;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.close:hover {
+    color: #333;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.organization-info {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+}
+
+.organization-info h3 {
+    margin-top: 0;
+    color: #333;
+}
+
+.warning {
+    color: #856404;
+    background-color: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 4px;
+    padding: 10px;
+    margin: 10px 0;
+}
+
+.admin-section {
+    border-top: 1px solid #dee2e6;
+    padding-top: 20px;
+    margin-top: 20px;
+}
+
+.admin-actions {
+    margin: 15px 0;
+}
+
+.admin-actions button {
+    margin-right: 10px;
+    margin-bottom: 10px;
+}
+
+.users-list {
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    margin: 15px 0;
+}
+
+.user-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.user-item:last-child {
+    border-bottom: none;
+}
+
+.user-info {
+    flex-grow: 1;
+}
+
+.user-email {
+    color: #6c757d;
+    font-size: 14px;
+}
+
+.user-role {
+    color: #495057;
+    font-size: 12px;
+    text-transform: uppercase;
+    font-weight: bold;
+}
+
+.user-actions {
+    margin-left: 15px;
+}
+
+.add-user-form {
+    display: flex;
+    gap: 10px;
+    margin: 15px 0;
+    flex-wrap: wrap;
+}
+
+.add-user-form input {
+    flex: 1;
+    min-width: 250px;
+    padding: 8px 12px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.help-text {
+    color: #6c757d;
+    font-size: 14px;
+    font-style: italic;
+}
+
+.btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s;
+}
+
+.btn-primary {
+    background-color: #007bff;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #0056b3;
+}
+
+.btn-secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background-color: #545b62;
+}
+
+.btn-success {
+    background-color: #28a745;
+    color: white;
+}
+
+.btn-success:hover {
+    background-color: #1e7e34;
+}
+
+.btn-sm {
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+.loading {
+    text-align: center;
+    padding: 20px;
+    color: #6c757d;
+}
+
+.user-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.role-select {
+    padding: 4px 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 12px;
+    background-color: white;
+    cursor: pointer;
+}
+
+.role-select:hover {
+    border-color: #007bff;
+}
+</style>
+
+.user-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.role-select {
+    padding: 4px 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 12px;
+    background-color: white;
+    cursor: pointer;
+}
+
+.role-select:hover {
+    border-color: #007bff;
+}
+
+.role-select:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+</style>

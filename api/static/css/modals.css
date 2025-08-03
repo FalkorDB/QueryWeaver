@@ -176,8 +176,20 @@
   font-size: 0.9em;
 }
 
-.user-profile-actions {
+.user-profile-action {
+  width: 100%;
   padding: 10px;
+  background: var(--falkor-quaternary);
+  color: var(--text-primary);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background 0.2s;
+}
+
+.user-profile-action:hover {
+  background: var(--falkor-accent);
 }
 
 /* Destructive Confirmation Styles */
