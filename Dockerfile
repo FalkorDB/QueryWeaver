@@ -23,7 +23,7 @@ RUN python3 -m pip install --no-cache-dir --break-system-packages pipenv
 COPY Pipfile Pipfile.lock ./
 
 # Install Python dependencies from Pipfile
-RUN pipenv sync --system --deploy
+RUN pipenv sync --system
 
 # Copy application code
 COPY . .
