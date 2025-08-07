@@ -15,7 +15,7 @@ import {
     setupThemeToggle,
     handleWindowResize
 } from './modules/ui.js';
-import { setupAuthenticationModal, setupPostgresModal } from './modules/modals.js';
+import { setupAuthenticationModal, setupDatabaseModal } from './modules/modals.js';
 
 // Initialize the application
 function initializeApp() {
@@ -77,7 +77,7 @@ function setupUIComponents() {
     setupUserProfileDropdown();
     setupThemeToggle();
     setupAuthenticationModal();
-    setupPostgresModal();
+    setupDatabaseModal();
 }
 
 function loadInitialData() {

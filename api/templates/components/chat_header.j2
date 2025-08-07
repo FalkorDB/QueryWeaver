@@ -12,8 +12,15 @@
             Upload Schema
         </label>
         <div class="vertical-separator"></div>
-        <button type="button" id="open-pg-modal">
-            Connect Postgres
-        </button>
+        <div class="dropdown-container">
+            <select id="database-type-select" title="Select Database Type">
+                <option value="">Select Database</option>
+                <option value="postgresql">PostgreSQL</option>
+                <option value="mysql">MySQL</option>
+            </select>
+            <button type="button" id="open-db-modal" disabled>
+                Connect
+            </button>
+        </div>
     </div>
 </div>

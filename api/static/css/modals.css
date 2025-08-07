@@ -1,6 +1,6 @@
 /* Modal and Popup Components */
 
-.pg-modal {
+.db-modal {
   display: none;
   position: fixed;
   top: 0;
@@ -13,7 +13,7 @@
   justify-content: center;
 }
 
-.pg-modal-content {
+.db-modal-content {
   background: var(--falkor-secondary);
   padding: 2em 5em;
   border-radius: 10px;
@@ -22,12 +22,12 @@
   min-width: 680px;
 }
 
-.pg-modal-title {
+.db-modal-title {
   margin-bottom: 1em;
   color: var(--text-primary);
 }
 
-.pg-modal-input {
+.db-modal-input {
   width: 100%;
   padding: 0.6em;
   font-size: 1em;
@@ -38,19 +38,19 @@
   background: var(--falkor-quaternary);
 }
 
-.pg-modal-input:disabled {
+.db-modal-input:disabled {
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   cursor: not-allowed;
 }
 
-.pg-modal-actions {
+.db-modal-actions {
   display: flex;
   justify-content: space-between;
   gap: 1em;
 }
 
-.pg-modal-btn {
+.db-modal-btn {
   flex: 1;
   padding: 0.5em 0;
   border: none;
@@ -61,21 +61,21 @@
   transition: background 0.2s;
 }
 
-.pg-modal-connect {
+.db-modal-connect {
   background: #4285F4;
   color: #fff;
 }
 
-.pg-modal-connect:hover {
+.db-modal-connect:hover {
   background: #3367d6;
 }
 
-.pg-modal-connect:disabled {
+.db-modal-connect:disabled {
   background: #6c8db8;
   cursor: not-allowed;
 }
 
-.pg-modal-loading-spinner {
+.db-modal-loading-spinner {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -91,17 +91,17 @@
   animation: spin 1s linear infinite;
 }
 
-.pg-modal-cancel {
+.db-modal-cancel {
   background: var(--bg-tertiary);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
 }
 
-.pg-modal-cancel:hover {
+.db-modal-cancel:hover {
   background: var(--border-color);
 }
 
-.pg-modal-cancel:disabled {
+.db-modal-cancel:disabled {
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   cursor: not-allowed;
