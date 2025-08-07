@@ -69,11 +69,11 @@ class MySQLLoader(BaseLoader):
     def _parse_mysql_url(connection_url: str) -> Dict[str, str]:
         """
         Parse MySQL connection URL into components.
-        
+
         Args:
             connection_url: MySQL connection URL in format:
                           mysql://username:password@host:port/database
-                          
+
         Returns:
             Dict with connection parameters
         """
@@ -82,35 +82,35 @@ class MySQLLoader(BaseLoader):
             url = connection_url[8:]
         else:
             raise ValueError("Invalid MySQL URL format. Expected mysql://username:password@host:port/database")
-            
+
         # Parse components
         if '@' not in url:
             raise ValueError("MySQL URL must include username and host")
-            
+
         credentials, host_db = url.split('@', 1)
-        
+
         if ':' in credentials:
             username, password = credentials.split(':', 1)
         else:
             username = credentials
             password = ""
-            
+
         if '/' not in host_db:
             raise ValueError("MySQL URL must include database name")
-            
+
         host_port, database = host_db.split('/', 1)
-        
+
         # Handle query parameters
         if '?' in database:
             database = database.split('?')[0]
-            
+
         if ':' in host_port:
             host, port = host_port.split(':', 1)
             port = int(port)
         else:
             host = host_port
             port = 3306
-            
+
         return {
             'host': host,
             'port': port,
@@ -134,7 +134,7 @@ class MySQLLoader(BaseLoader):
         try:
             # Parse connection URL
             conn_params = MySQLLoader._parse_mysql_url(connection_url)
-            
+
             # Connect to MySQL database
             conn = mysql.connector.connect(**conn_params)
             cursor = conn.cursor(dictionary=True)
@@ -463,7 +463,7 @@ class MySQLLoader(BaseLoader):
         try:
             # Parse connection URL
             conn_params = MySQLLoader._parse_mysql_url(db_url)
-            
+
             # Connect to MySQL database
             conn = mysql.connector.connect(**conn_params)
             cursor = conn.cursor(dictionary=True)
@@ -517,11 +517,11 @@ class MySQLLoader(BaseLoader):
                 conn.rollback()
                 cursor.close()
                 conn.close()
-            raise Exception(f"MySQL query execution error: {str(e)}")
+            raise Exception(f"MySQL query execution error: {str(e)}") from e
         except Exception as e:
             # Rollback in case of error
             if 'conn' in locals():
                 conn.rollback()
                 cursor.close()
                 conn.close()
-            raise Exception(f"Error executing SQL query: {str(e)}")
+            raise Exception(f"Error executing SQL query: {str(e)}") from e
