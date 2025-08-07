@@ -181,9 +181,13 @@ def add_user_to_organization():
                 "error": f"Email domain {target_domain} does not match organization domain {organization_domain}"
             }), 400
 
-        # Add user to organization
+
+        # Pass first_name and last_name if present
+        first_name = data.get("first_name", "")
+        last_name = data.get("last_name", "")
+
         success, message = add_user_to_organization_by_email(
-            admin_email, target_email, organization_domain
+            admin_email, target_email, organization_domain, first_name=first_name, last_name=last_name
         )
 
         if success:

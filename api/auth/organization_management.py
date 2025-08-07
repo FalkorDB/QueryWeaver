@@ -69,8 +69,45 @@ def check_or_create_organization(user_email: str) -> Tuple[bool, Optional[Dict[s
                 return False, None
 
     except Exception as e:
-        logging.error("Error managing organization for domain %s: %s", domain, e)
-        return False, None
+        logging.error("Error updating user %s role to %s: %s", user_email, new_role, e)
+        return False
+
+
+def complete_admin_setup_backend(user_email: str) -> bool:
+    """
+    Complete admin setup for a user who is marked as admin but still pending.
+    This handles cases where the organization creator ended up in pending status.
+    
+    Args:
+        user_email: The admin user's email
+    
+    Returns:
+        bool: Success status
+    """
+    try:
+        organizations_graph = db.select_graph("Organizations")
+        
+        # Update the user's relationship to set is_pending = False
+        query = """
+        MATCH (user:User {email: $user_email})-[r:BELONGS_TO]->(org:Organization)
+        WHERE r.is_admin = true AND r.is_pending = true
+        SET r.is_pending = false,
+            r.setup_completed_at = timestamp()
+        RETURN user, org, r
+        """
+        
+        result = organizations_graph.query(query, {"user_email": user_email})
+        
+        if result.result_set:
+            logging.info("Completed admin setup for user %s", user_email)
+            return True
+        else:
+            logging.warning("No pending admin relationship found for user %s", user_email)
+            return False
+            
+    except Exception as e:
+        logging.error("Error completing admin setup for user %s: %s", user_email, e)
+        return False
 
 
 def link_user_to_organization(user_email: str, organization_domain: str, is_admin: bool = False, is_pending: bool = False) -> bool:
@@ -216,7 +253,7 @@ def get_organization_users(organization_domain: str) -> list:
         return []
 
 
-def add_user_to_organization_by_email(admin_email: str, target_email: str, organization_domain: str) -> Tuple[bool, str]:
+def add_user_to_organization_by_email(admin_email: str, target_email: str, organization_domain: str, first_name: str = "", last_name: str = "") -> Tuple[bool, str]:
     """
     Add a user to organization by email (admin function).
     Creates a pending user entry that will be activated when they log in.
@@ -245,11 +282,14 @@ def add_user_to_organization_by_email(admin_email: str, target_email: str, organ
 
         organizations_graph = db.select_graph("Organizations")
 
-        # Create or update user with pending organization relationship
+        # first_name and last_name are now passed as arguments from the route
+
+        # Create or update user with pending organization relationship, set names if provided
         query = """
         MATCH (org:Organization {domain: $domain})
         MERGE (user:User {email: $target_email})
-        ON CREATE SET user.created_at = timestamp(), user.role = 'user'
+        ON CREATE SET user.created_at = timestamp(), user.role = 'user', user.first_name = $first_name, user.last_name = $last_name
+        ON MATCH SET user.first_name = CASE WHEN $first_name <> '' THEN $first_name ELSE user.first_name END, user.last_name = CASE WHEN $last_name <> '' THEN $last_name ELSE user.last_name END
         MERGE (user)-[r:BELONGS_TO]->(org)
         SET r.is_admin = false,
             r.is_pending = true,
@@ -261,7 +301,9 @@ def add_user_to_organization_by_email(admin_email: str, target_email: str, organ
         result = organizations_graph.query(query, {
             "domain": organization_domain,
             "target_email": target_email,
-            "admin_email": admin_email
+            "admin_email": admin_email,
+            "first_name": first_name,
+            "last_name": last_name
         })
 
         if result.result_set:
@@ -511,4 +553,41 @@ def update_user_role_direct(user_email: str, new_role: str) -> bool:
 
     except Exception as e:
         logging.error("Error updating role for user %s to %s: %s", user_email, new_role, e)
+        return False
+
+
+def complete_admin_setup_backend(user_email: str) -> bool:
+    """
+    Complete admin setup for a user who is marked as admin but still pending.
+    This handles cases where the organization creator ended up in pending status.
+    
+    Args:
+        user_email: The admin user's email
+    
+    Returns:
+        bool: Success status
+    """
+    try:
+        organizations_graph = db.select_graph("Organizations")
+        
+        # Update the user's relationship to set is_pending = False
+        query = """
+        MATCH (user:User {email: $user_email})-[r:BELONGS_TO]->(org:Organization)
+        WHERE r.is_admin = true AND r.is_pending = true
+        SET r.is_pending = false,
+            r.setup_completed_at = timestamp()
+        RETURN user, org, r
+        """
+        
+        result = organizations_graph.query(query, {"user_email": user_email})
+        
+        if result.result_set:
+            logging.info("Completed admin setup for user %s", user_email)
+            return True
+        else:
+            logging.warning("No pending admin relationship found for user %s", user_email)
+            return False
+            
+    except Exception as e:
+        logging.error("Error completing admin setup for user %s: %s", user_email, e)
         return False
