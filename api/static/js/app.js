@@ -16,6 +16,7 @@ import {
     handleWindowResize
 } from './modules/ui.js';
 import { setupAuthenticationModal, setupPostgresModal } from './modules/modals.js';
+import { openOrganizationModal, closeOrganizationModal } from './modules/organization.js';
 
 // Initialize the application
 function initializeApp() {
@@ -78,6 +79,10 @@ function setupUIComponents() {
     setupThemeToggle();
     setupAuthenticationModal();
     setupPostgresModal();
+    
+    // Make organization functions available globally for onclick handlers
+    window.openOrganizationModal = openOrganizationModal;
+    window.closeOrganizationModal = closeOrganizationModal;
 }
 
 function loadInitialData() {

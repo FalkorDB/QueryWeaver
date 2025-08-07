@@ -13,9 +13,10 @@ from flask_dance.contrib.github import make_github_blueprint
 from flask_dance.consumer.storage.session import SessionStorage
 
 from api.auth.oauth_handlers import setup_oauth_handlers
-from api.routes.auth import auth_bp
+from api.routes.main import main_bp
 from api.routes.graphs import graphs_bp
 from api.routes.database import database_bp
+from api.routes.organization import organization_bp
 
 # Load environment variables from .env file
 load_dotenv()
@@ -59,9 +60,10 @@ def create_app():
     setup_oauth_handlers(google_bp, github_bp)
 
     # Register blueprints
-    app.register_blueprint(auth_bp)
+    app.register_blueprint(main_bp)
     app.register_blueprint(graphs_bp)
     app.register_blueprint(database_bp)
+    app.register_blueprint(organization_bp)
 
     @app.errorhandler(Exception)
     def handle_oauth_error(error):
@@ -70,7 +72,7 @@ def create_app():
         if "token" in str(error).lower() or "oauth" in str(error).lower():
             logging.warning("OAuth error occurred: %s", error)
             session.clear()
-            return redirect(url_for("auth.home"))
+            return redirect(url_for("main.home"))
 
         # If it's an HTTPException (like abort(403)), re-raise so Flask handles it properly
         if isinstance(error, HTTPException):
