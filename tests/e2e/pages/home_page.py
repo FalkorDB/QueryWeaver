@@ -1,6 +1,7 @@
 """
 Home Page Object for QueryWeaver application.
 """
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from tests.e2e.pages.base_page import BasePage
 
 
@@ -27,7 +28,7 @@ class HomePage(BasePage):
         try:
             self.page.wait_for_selector(self.LOGIN_BUTTON, timeout=2000)
             return False
-        except Exception:
+        except PlaywrightTimeoutError:
             return True
 
     def click_login(self):
@@ -39,7 +40,7 @@ class HomePage(BasePage):
         try:
             self.page.wait_for_selector(self.CHAT_CONTAINER, timeout=5000)
             return True
-        except Exception:
+        except PlaywrightTimeoutError:
             return False
 
     def type_message(self, message):
@@ -63,7 +64,7 @@ class HomePage(BasePage):
         # Wait for loading indicator to disappear
         try:
             self.page.wait_for_selector(self.LOADING_INDICATOR, state="hidden", timeout=timeout)
-        except Exception:
+        except PlaywrightTimeoutError:
             pass  # Loading indicator might not be present
 
     def get_chat_messages(self):

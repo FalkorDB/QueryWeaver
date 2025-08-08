@@ -101,18 +101,16 @@ def ensure_user_in_organizations(provider_user_id, email, name, provider, pictur
                 logging.info("NEW USER CREATED: provider=%s, provider_user_id=%s, "
                            "email=%s, name=%s", provider, provider_user_id, email, name)
                 return True, {"identity": identity, "user": user}
-            elif is_new_identity and had_other_identities:
+            if is_new_identity and had_other_identities:
                 # New identity for existing user (cross-provider linking)
                 logging.info("NEW IDENTITY LINKED TO EXISTING USER: provider=%s, "
                            "provider_user_id=%s, email=%s, name=%s",
                            provider, provider_user_id, email, name)
                 return True, {"identity": identity, "user": user}
-            else:
-                # Existing identity login
-                logging.info("Existing identity found: provider=%s, email=%s", provider, email)
-                return False, {"identity": identity, "user": user}
-        else:
-            logging.error("Failed to create/update identity and user: email=%s", email)
+            # Existing identity login
+            logging.info("Existing identity found: provider=%s, email=%s", provider, email)
+            return False, {"identity": identity, "user": user}
+        logging.error("Failed to create/update identity and user: email=%s", email)
             return False, None
 
     except (AttributeError, ValueError, KeyError) as e:
