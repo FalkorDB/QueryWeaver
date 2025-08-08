@@ -4,7 +4,7 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-litellm = {extras = ["bedrock"], version = "~=1.74.14"}
+litellm = {extras = ["bedrock"], version = "~=1.75.2"}
 falkordb = "~=1.2.0"
 flask = "~=3.1.0"
 jsonschema = "~=4.25.0"
