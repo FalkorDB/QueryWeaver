@@ -16,14 +16,11 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Install pipenv
-RUN python3 -m pip install --no-cache-dir --break-system-packages pipenv
+# Copy requirements.txt
+COPY requirements.txt ./
 
-# Copy Pipfile and Pipfile.lock
-COPY Pipfile Pipfile.lock ./
-
-# Install Python dependencies from Pipfile
-RUN PIP_BREAK_SYSTEM_PACKAGES=1 pipenv sync --system
+# Install Python dependencies from requirements.txt
+RUN python3 -m pip install --no-cache-dir --break-system-packages --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org -r requirements.txt
 
 # Copy application code
 COPY . .
