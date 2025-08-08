@@ -17,10 +17,9 @@ John Doe,30,New York
 Jane Smith,25,Los Angeles
 Bob Johnson,35,Chicago"""
 
-        temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False)
-        temp_file.write(csv_content)
-        temp_file.close()
-        return temp_file.name
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as temp_file:
+            temp_file.write(csv_content)
+            return temp_file.name
 
     @staticmethod
     def create_sample_json():
@@ -32,10 +31,9 @@ Bob Johnson,35,Chicago"""
             ]
         }
 
-        temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
-        json.dump(json_data, temp_file, indent=2)
-        temp_file.close()
-        return temp_file.name
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
+            json.dump(json_data, temp_file, indent=2)
+            return temp_file.name
 
     @staticmethod
     def cleanup_temp_file(file_path):

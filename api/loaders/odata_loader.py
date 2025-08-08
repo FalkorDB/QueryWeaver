@@ -1,3 +1,5 @@
+"""OData loader for schema extraction."""
+
 import re
 import xml.etree.ElementTree as ET
 from typing import Tuple

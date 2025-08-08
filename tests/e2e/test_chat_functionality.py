@@ -86,7 +86,10 @@ class TestChatFunctionality:
         long_text = "a" * 1000
 
         # Try to find any visible and enabled text input
-        enabled_inputs = page.locator("input[type='text']:not([disabled]):visible, textarea:not([disabled]):visible").all()
+        enabled_inputs = page.locator(
+            "input[type='text']:not([disabled]):visible, "
+            "textarea:not([disabled]):visible"
+        ).all()
 
         if enabled_inputs:
             # Get the first enabled input element

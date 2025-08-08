@@ -57,7 +57,7 @@ class TestBasicFunctionality:
 
         # This test would require authentication
         # Placeholder for when auth is set up
-        pass
+        # TODO: Implement authentication flow test
 
     def test_responsive_design(self, page_with_base_url):
         """Test responsive design at different screen sizes."""
@@ -90,5 +90,7 @@ class TestBasicFunctionality:
 
         # Should handle 404 gracefully
         # Could be 404 page or redirect to home
-        response_status = page.evaluate("() => window.fetch('/nonexistent-route').then(r => r.status)")
+        response_status = page.evaluate(
+            "() => window.fetch('/nonexistent-route').then(r => r.status)"
+        )
         assert response_status in [404, 302, 200]  # Various valid responses
