@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "97e968e5f14f5a1a2fea9b86ca0a491b15355ee551aaa2c25ac98075c3b0eb59"
+            "sha256": "d1a9fb9f105e85c1b6f84789fc7b220e0cb4bdb53b2662e39b59c0e85f680bfd"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -497,11 +497,11 @@
         },
         "huggingface-hub": {
             "hashes": [
-                "sha256:5444550099e2d86e68b2898b09e85878fbd788fc2957b506c6a79ce060e39492",
-                "sha256:d58130fd5aa7408480681475491c0abd7e835442082fbc3ef4d45b6c39f83853"
+                "sha256:9b365d781739c93ff90c359844221beef048403f1bc1f1c123c191257c3c890a",
+                "sha256:a4228daa6fb001be3f4f4bdaf9a0db00e1739235702848df00885c9b5742c85c"
             ],
             "markers": "python_full_version >= '3.8.0'",
-            "version": "==0.34.3"
+            "version": "==0.34.4"
         },
         "idna": {
             "hashes": [
@@ -644,14 +644,13 @@
             "version": "==2025.4.1"
         },
         "litellm": {
-            "extras": [
-                "bedrock"
-            ],
             "hashes": [
-                "sha256:8c0f73f89f15603afebbc912cb30ba6f18439eb12249f16a37646752fb76825e"
+                "sha256:786eccb101ea8f860b26f290670f8bb6fd598e2a4812ead281ab42485726c9a4",
+                "sha256:e375cfa2e6f7f90f93220c1bfd04f46f6cc309ea2ca2849ea730e7d990e82a5a"
             ],
+            "index": "pypi",
             "markers": "python_version not in '2.7, 3.0, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7' and python_version >= '3.8'",
-            "version": "==1.74.15.post1"
+            "version": "==1.75.2"
         },
         "markupsafe": {
             "hashes": [
