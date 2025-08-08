@@ -31,7 +31,7 @@ def ensure_user_in_organizations(provider_user_id, email, name, provider, pictur
         return False, None
 
     # Validate provider is in allowed list
-    allowed_providers = ["google", "github"]
+    allowed_providers = ["google", "github", "email"]
     if provider not in allowed_providers:
         logging.error("Invalid provider: %s", provider)
         return False, None
@@ -132,7 +132,7 @@ def update_identity_last_login(provider, provider_user_id):
         return
 
     # Validate provider is in allowed list
-    allowed_providers = ["google", "github"]
+    allowed_providers = ["google", "github", "email"]
     if provider not in allowed_providers:
         logging.error("Invalid provider: %s", provider)
         return
@@ -162,10 +162,10 @@ def validate_and_cache_user():
     """
     Helper function to validate OAuth token and cache user info.
     Returns (user_info, is_authenticated) tuple.
-    Supports both Google and GitHub OAuth.
+    Supports Google OAuth, GitHub OAuth, and email/password authentication.
     """
     try:
-        # Check for cached user info from either provider
+        # Check for cached user info from any provider
         user_info = session.get("user_info")
         token_validated_at = session.get("token_validated_at", 0)
         current_time = time.time()
@@ -174,7 +174,14 @@ def validate_and_cache_user():
         if user_info and (current_time - token_validated_at) < 900:  # 15 minutes
             return user_info, True
 
-        # Check Google OAuth first
+        # Check email authentication first (no external API calls needed)
+        if user_info and user_info.get("provider") == "email":
+            # Email authentication doesn't need revalidation like OAuth
+            # Just refresh the timestamp
+            session["token_validated_at"] = current_time
+            return user_info, True
+
+        # Check Google OAuth
         if google.authorized:
             try:
                 resp = google.get("/oauth2/v2/userinfo")

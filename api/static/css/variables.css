@@ -4,6 +4,10 @@
   /* Professional color palette - muted and business-appropriate */
   --falkor-primary: #5B6BC0;
   /* Muted indigo - professional primary */
+  --falkor-primary-dark: #3F4F9F;
+  /* Darker shade for hover states */
+  --falkor-primary-rgb: 91, 107, 192;
+  /* RGB values for alpha usage */
   --falkor-secondary: #1A1A1A;
   /* Dark charcoal - main background */
   --falkor-tertiary: #B39DDB;
@@ -32,6 +36,8 @@
   /* Professional green */
   --icon-filter: invert(1);
   /* Dark theme - invert icons for white appearance */
+  --bg-primary: #2E2E2E;
+  /* Professional dark gray */
   --bg-tertiary: #2E2E2E;
   /* Professional dark gray */
   --border-color: #616161;
@@ -41,6 +47,8 @@
 /* Light theme variables */
 [data-theme="light"] {
   --falkor-primary: #5B6BC0;
+  --falkor-primary-dark: #3F4F9F;
+  --falkor-primary-rgb: 91, 107, 192;
   --falkor-secondary: #FAFAFA;
   --falkor-tertiary: #B39DDB;
   --falkor-quaternary: #F5F5F5;
@@ -57,6 +65,8 @@
   /* Professional dark green for light theme */
   --icon-filter: invert(0);
   /* Light theme - no inversion for dark icons */
+  --bg-primary: #FFFFFF;
+  /* White background for light theme */
   --bg-tertiary: #F8F8F8;
   /* Very light gray background */
   --border-color: #E0E0E0;
@@ -67,6 +77,8 @@
 @media (prefers-color-scheme: light) {
   [data-theme="system"] {
     --falkor-primary: #5B6BC0;
+    --falkor-primary-dark: #3F4F9F;
+    --falkor-primary-rgb: 91, 107, 192;
     --falkor-secondary: #FAFAFA;
     --falkor-tertiary: #B39DDB;
     --falkor-quaternary: #F5F5F5;
@@ -83,6 +95,8 @@
     /* Professional dark green for light theme */
     --icon-filter: invert(0);
     /* Light theme - no inversion for dark icons */
+    --bg-primary: #FFFFFF;
+    /* White background for light theme */
     --bg-tertiary: #F8F8F8;
     /* Very light gray background */
     --border-color: #E0E0E0;
