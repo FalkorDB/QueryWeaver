@@ -18,7 +18,7 @@ async-timeout = "~=4.0.3"
 pytest = "~=8.4.1"
 pylint = "~=3.3.4"
 playwright = "~=1.47.0"
-pytest-playwright = "~=0.5.2"
+pytest-playwright = "~=0.7.0"
 pytest-asyncio = "~=0.24.0"
 
 [requires]
