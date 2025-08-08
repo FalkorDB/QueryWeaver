@@ -132,6 +132,14 @@
             "markers": "python_version >= '3.8'",
             "version": "==0.7.0"
         },
+        "async-timeout": {
+            "hashes": [
+                "sha256:7405140ff1230c310e51dc27b3145b9092d659ce68ff733fb0cefe3ee42be028"
+            ],
+            "index": "pypi",
+            "markers": "python_version >= '3.7'",
+            "version": "==4.0.3"
+        },
         "anyio": {
             "hashes": [
                 "sha256:673c0c244e15788651a4ff38710fea9675823028a6f08a5eda409e0c9840a028",
