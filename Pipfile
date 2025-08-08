@@ -7,7 +7,7 @@ name = "pypi"
 litellm = {extras = ["bedrock"], version = "~=1.74.14"}
 falkordb = "~=1.0.10"
 flask = "~=3.1.0"
-jsonschema = "~=4.23.0"
+jsonschema = "~=4.25.0"
 tqdm = "~=4.67.1"
 boto3 = "~=1.37.29"
 psycopg2-binary = "~=2.9.9"
