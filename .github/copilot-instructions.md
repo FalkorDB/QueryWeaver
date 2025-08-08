@@ -75,6 +75,7 @@ make lint
 ```
 
 ### 5. Running the Application
+
 ```bash
 # Development server with debug mode
 make run-dev
@@ -83,6 +84,30 @@ make run-dev
 # Production mode
 make run-prod
 # OR manually: pipenv run flask --app api.index run
+```
+
+### 5a. Running with Docker
+
+You can run QueryWeaver using Docker without installing Python dependencies locally:
+
+```bash
+docker run -p 5000:5000 -it falkordb/queryweaver
+```
+
+#### Passing Environment Variables
+
+You can pass environment variables individually using `-e` flags, or provide a full environment file using `--env-file`:
+
+```bash
+docker run -p 5000:5000 --env-file .env falkordb/queryweaver
+```
+
+Use the provided `.env.example` as a template:
+
+```bash
+cp .env.example .env
+# Edit .env with your values, then run:
+docker run -p 5000:5000 --env-file .env falkordb/queryweaver
 ```
 
 ### 6. Cleanup
