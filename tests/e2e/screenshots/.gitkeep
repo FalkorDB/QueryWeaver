@@ -1,5 +1,0 @@
-# Screenshots folder
-
-This folder stores screenshots captured during E2E test failures for debugging purposes.
-
-Files in this directory are automatically generated and should not be committed to version control.
