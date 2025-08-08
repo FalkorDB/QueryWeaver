@@ -118,30 +118,23 @@ def find(graph_id: str, queries_history: List[str],
         temperature=0,
     )
 
-    json_str = completion_result.choices[0].message.content
-
     # Parse JSON string and convert to Pydantic model
-    json_data = json.loads(json_str)
-    descriptions = Descriptions(**json_data)
+    descriptions = Descriptions(**json.loads(completion_result.choices[0].message.content))
     
     # Get tables from descriptions
     tables_des, tables_by_columns_des = _get_tables_from_completion(graph, descriptions)
 
-    # table names for sphere and route extraction
-    base_tables_names = [table[0] for table in tables_des]
+    # Get additional tables by sphere and connecting routes
+    tables_by_sphere, tables_by_route = _get_additional_tables(
+        graph, [table[0] for table in tables_des]
+    )
     
-    # Get additional tables
-    tables_by_sphere, tables_by_route = _get_additional_tables(graph, base_tables_names)
-    
+    all_tables_lists = [tables_des, tables_by_columns_des, tables_by_route, tables_by_sphere]
     combined_tables = _get_unique_tables(
         tables_des + tables_by_columns_des + tables_by_route + tables_by_sphere
     )
 
-    return (
-        True,
-        combined_tables,
-        [tables_des, tables_by_columns_des, tables_by_route, tables_by_sphere],
-    )
+    return True, combined_tables, all_tables_lists
 
 
 def _find_tables(graph, descriptions: List[TableDescription]) -> List[dict]:
@@ -255,7 +248,7 @@ def _get_unique_tables(tables_list):
                 table_info[3] = [dict(od) for od in table_info[3]]
                 table_info[2] = "Foreign keys: " + table_info[2]
                 unique_tables[table_name] = table_info
-        except Exception as e:
+        except (IndexError, TypeError, AttributeError) as e:
             print(f"Error: {table_info}, Exception: {e}")
 
     # Return the values (the unique table info lists)
