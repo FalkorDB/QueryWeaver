@@ -60,6 +60,33 @@ pipenv run flask --app api.index run
 
 The application will be available at `http://localhost:5000`.
 
+### Running with Docker
+
+You can run QueryWeaver using Docker without installing Python dependencies locally:
+
+```bash
+docker run -p 5000:5000 -it falkordb/queryweaver
+```
+
+The application will be available at `http://localhost:5000`.
+
+#### Configuring with Environment Variables
+
+To configure the application, pass environment variables using the `-e` flag. You can copy the variables from `.env.example` and set them as needed:
+
+```bash
+docker run -p 5000:5000 -it \
+  -e FLASK_SECRET_KEY=your_super_secret_key_here \
+  -e GOOGLE_CLIENT_ID=your_google_client_id \
+  -e GOOGLE_CLIENT_SECRET=your_google_client_secret \
+  -e GITHUB_CLIENT_ID=your_github_client_id \
+  -e GITHUB_CLIENT_SECRET=your_github_client_secret \
+  -e AZURE_API_KEY=your_azure_api_key \
+  falkordb/queryweaver
+```
+
+For a complete list of available configuration options, see the `.env.example` file in the repository.
+
 ## Testing
 
 QueryWeaver includes a comprehensive test suite with both unit and End-to-End (E2E) tests.
