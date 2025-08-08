@@ -31,6 +31,5 @@ RUN chmod +x /start.sh
 
 EXPOSE 5000 6379 3000
 
-
 # Use start.sh as entrypoint
 ENTRYPOINT ["/start.sh"]
