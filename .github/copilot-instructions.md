@@ -135,6 +135,10 @@ GOOGLE_CLIENT_SECRET=your_google_client_secret
 GITHUB_CLIENT_ID=your_github_client_id
 GITHUB_CLIENT_SECRET=your_github_client_secret
 
+# OPTIONAL: Email/password authentication
+# Set to 'true', '1', 'yes', or 'on' to enable email/password authentication
+# EMAIL_AUTH_ENABLED=true
+
 # OPTIONAL: AI model configuration (defaults in api/config.py)
 # AZURE_API_KEY=your_azure_api_key
 # OPENAI_API_KEY=your_openai_api_key

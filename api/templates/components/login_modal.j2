@@ -17,8 +17,8 @@
         </a>
         {% endif %}
         
-        {# Show divider only if OAuth is available #}
-        {% if oauth_config.google_enabled or oauth_config.github_enabled %}
+        {# Show divider only if OAuth is available and email auth is enabled #}
+        {% if (oauth_config.google_enabled or oauth_config.github_enabled) and oauth_config.email_enabled %}
         <div class="auth-divider">
             <hr class="divider-line">
             <span class="divider-text">or</span>
@@ -26,6 +26,8 @@
         </div>
         {% endif %}
         
+        {# Email authentication form - only show if enabled #}
+        {% if oauth_config.email_enabled %}
         <form id="email-login-form" class="email-auth-form">
             <input type="email" id="login-email" class="auth-input" placeholder="Email" required>
             <input type="password" id="login-password" class="auth-input" placeholder="Password" required>
@@ -35,6 +37,7 @@
         <div class="signup-link">
             <p>Don't have an account? <a href="#" id="show-signup">Sign up</a></p>
         </div>
+        {% endif %}
     </div>
 </div>
 
@@ -57,8 +60,8 @@
         </a>
         {% endif %}
         
-        {# Show divider only if OAuth is available #}
-        {% if oauth_config.google_enabled or oauth_config.github_enabled %}
+        {# Show divider only if OAuth is available and email auth is enabled #}
+        {% if (oauth_config.google_enabled or oauth_config.github_enabled) and oauth_config.email_enabled %}
         <div class="auth-divider">
             <hr class="divider-line">
             <span class="divider-text">or</span>
@@ -66,6 +69,8 @@
         </div>
         {% endif %}
         
+        {# Email signup form - only show if enabled #}
+        {% if oauth_config.email_enabled %}
         <form id="email-signup-form" class="email-auth-form">
             <input type="text" id="signup-firstname" class="auth-input" placeholder="First Name" required>
             <input type="text" id="signup-lastname" class="auth-input" placeholder="Last Name" required>
@@ -78,5 +83,6 @@
         <div class="signin-link">
             <p>Already have an account? <a href="#" id="show-signin">Sign in</a></p>
         </div>
+        {% endif %}
     </div>
 </div>

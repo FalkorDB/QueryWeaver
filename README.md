@@ -81,6 +81,7 @@ docker run -p 5000:5000 -it \
   -e GOOGLE_CLIENT_SECRET=your_google_client_secret \
   -e GITHUB_CLIENT_ID=your_github_client_id \
   -e GITHUB_CLIENT_SECRET=your_github_client_secret \
+  -e EMAIL_AUTH_ENABLED=true \
   -e AZURE_API_KEY=your_azure_api_key \
   falkordb/queryweaver
 ```
