@@ -72,7 +72,7 @@ The application will be available at `http://localhost:5000`.
 
 #### Configuring with Environment Variables
 
-To configure the application, pass environment variables using the `-e` flag. You can copy the variables from `.env.example` and set them as needed:
+You can configure the application by passing environment variables using the `-e` flag. You can copy the variables from `.env.example` and set them as needed:
 
 ```bash
 docker run -p 5000:5000 -it \
@@ -83,6 +83,22 @@ docker run -p 5000:5000 -it \
   -e GITHUB_CLIENT_SECRET=your_github_client_secret \
   -e AZURE_API_KEY=your_azure_api_key \
   falkordb/queryweaver
+```
+
+##### Using a .env File
+
+You can also pass a full environment file to Docker using the `--env-file` option. This is the easiest way to provide all required configuration at once:
+
+```bash
+docker run -p 5000:5000 --env-file .env falkordb/queryweaver
+```
+
+You can use the provided `.env.example` file as a template:
+
+```bash
+cp .env.example .env
+# Edit .env with your values, then run:
+docker run -p 5000:5000 --env-file .env falkordb/queryweaver
 ```
 
 For a complete list of available configuration options, see the `.env.example` file in the repository.
