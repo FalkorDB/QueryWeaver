@@ -7,7 +7,7 @@
             <option value="">Loading...</option>
         </select>
         <div class="vertical-separator"></div>
-        <input title="Upload Schema" id="schema-upload" type="file" accept=".json" style="display: none;" tabindex="-1" />
+        <input title="Upload Schema" id="schema-upload" type="file" accept=".json" style="display: none;" tabindex="-1" disabled/>
         <label for="schema-upload" id="custom-file-upload">
             Upload Schema
         </label>
@@ -18,9 +18,6 @@
                 <option value="postgresql">PostgreSQL</option>
                 <option value="mysql">MySQL</option>
             </select>
-            <button type="button" id="open-db-modal" disabled>
-                Connect
-            </button>
         </div>
     </div>
 </div>

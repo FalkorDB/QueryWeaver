@@ -32,7 +32,6 @@ function setLoadingState(isLoading, connectBtn, urlInput) {
 
 export function setupDatabaseModal() {
     var dbModal = document.getElementById('db-modal');
-    var openDbModalBtn = document.getElementById('open-db-modal');
     var cancelDbModalBtn = document.getElementById('db-modal-cancel');
     var connectDbModalBtn = document.getElementById('db-modal-connect');
     var dbUrlInput = document.getElementById('db-url-input');
@@ -54,45 +53,29 @@ export function setupDatabaseModal() {
     };
 
     // Handle database type selection
-    if (dbTypeSelect) {
-        dbTypeSelect.addEventListener('change', function() {
-            const selectedType = this.value;
-            if (selectedType && databaseConfig[selectedType]) {
-                // Enable the connect button and URL input
-                openDbModalBtn.disabled = false;
-                dbUrlInput.disabled = false;
-                dbUrlInput.placeholder = databaseConfig[selectedType].placeholder;
-                
-                // Update modal title when opened
-                if (dbModal && dbModal.style.display === 'flex') {
-                    dbModalTitle.textContent = databaseConfig[selectedType].title;
-                }
-            } else {
-                // Disable if no valid selection
-                openDbModalBtn.disabled = true;
-                dbUrlInput.disabled = true;
-                dbUrlInput.placeholder = 'Select database type first...';
+    dbTypeSelect.addEventListener('change', function() {
+        const selectedType = this.value;
+        if (selectedType && databaseConfig[selectedType]) {
+            dbUrlInput.disabled = false;
+            dbUrlInput.placeholder = databaseConfig[selectedType].placeholder;
+            
+            dbModal.style.display = 'flex';
+            dbModalTitle.textContent = databaseConfig[selectedType].title;
+            dbUrlInput.placeholder = databaseConfig[selectedType].placeholder;
+            
+            // Focus the input field when modal opens
+            if (dbUrlInput) {
+                setTimeout(() => {
+                    dbUrlInput.focus();
+                }, 100);
             }
-        });
-    }
-    
-    if (openDbModalBtn && dbModal) {
-        openDbModalBtn.addEventListener('click', function() {
-            const selectedType = dbTypeSelect.value;
-            if (selectedType && databaseConfig[selectedType]) {
-                dbModal.style.display = 'flex';
-                dbModalTitle.textContent = databaseConfig[selectedType].title;
-                dbUrlInput.placeholder = databaseConfig[selectedType].placeholder;
-                
-                // Focus the input field when modal opens
-                if (dbUrlInput) {
-                    setTimeout(() => {
-                        dbUrlInput.focus();
-                    }, 100);
-                }
-            }
-        });
-    }
+
+        } else {
+            // Disable if no valid selection
+            dbUrlInput.disabled = true;
+            dbUrlInput.placeholder = 'Select database type first...';
+        }
+    });
     
     if (cancelDbModalBtn && dbModal) {
         cancelDbModalBtn.addEventListener('click', function() {
