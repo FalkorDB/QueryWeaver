@@ -1,6 +1,8 @@
 """
 Test API endpoints functionality.
 """
+import time
+
 import pytest
 import requests
 
@@ -73,8 +75,6 @@ class TestAPIEndpoints:
 
     def test_response_times(self, app_url):
         """Test that response times are reasonable."""
-        import time
-
         start_time = time.time()
         response = requests.get(app_url, timeout=10)
         end_time = time.time()

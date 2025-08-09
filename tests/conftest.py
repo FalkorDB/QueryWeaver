@@ -1,17 +1,17 @@
 """
 Playwright configuration for E2E tests.
 """
-import pytest
+import os
 import subprocess
 import time
+
+import pytest
 import requests
 
 
 @pytest.fixture(scope="session")
 def flask_app():
     """Start the Flask application for testing."""
-    import os
-
     # Get the project root directory (parent of tests directory)
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(current_dir)

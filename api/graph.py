@@ -53,6 +53,48 @@ def get_db_description(graph_id: str) -> (str, str):
             query_result.result_set[0][1])  # Return the first result's description
 
 
+def _prepare_completion_messages(db_description: str, previous_queries: List[str], 
+                                user_query: str) -> List[dict]:
+    """Prepare messages for the completion API."""
+    return [
+        {
+            "content": Config.FIND_SYSTEM_PROMPT.format(db_description=db_description),
+            "role": "system",
+        },
+        {
+            "content": json.dumps(
+                {
+                    "previous_user_queries:": previous_queries,
+                    "user_query": user_query,
+                }
+            ),
+            "role": "user",
+        },
+    ]
+
+
+def _get_tables_from_completion(graph, descriptions: Descriptions) -> tuple:
+    """Extract tables based on completion results."""
+    logging.info("Find tables based on: %s", descriptions.tables_descriptions)
+    tables_des = _find_tables(graph, descriptions.tables_descriptions)
+    
+    logging.info("Find tables based on columns: %s", descriptions.columns_descriptions)
+    tables_by_columns_des = _find_tables_by_columns(graph, descriptions.columns_descriptions)
+    
+    return tables_des, tables_by_columns_des
+
+
+def _get_additional_tables(graph, base_tables_names: List[str]) -> tuple:
+    """Get additional tables by sphere and connecting routes."""
+    logging.info("Extracting tables by sphere")
+    tables_by_sphere = _find_tables_sphere(graph, base_tables_names)
+    
+    logging.info("Extracting tables by connecting routes %s", base_tables_names)
+    tables_by_route, _ = find_connecting_tables(graph, base_tables_names)
+    
+    return tables_by_sphere, tables_by_route
+
+
 def find(graph_id: str, queries_history: List[str],
          db_description: str = None) -> Tuple[bool, List[dict]]:
     """Find the tables and columns relevant to the user's query."""
@@ -65,55 +107,34 @@ def find(graph_id: str, queries_history: List[str],
         "Calling to an LLM to find relevant tables and columns for the query: %s",
         user_query
     )
-    # Call the completion model to get the relevant Cypher queries to retrieve
-    # from the Graph that represent the Database schema.
-    # The completion model will generate a set of Cypher query to retrieve the relevant nodes.
+
+    messages = _prepare_completion_messages(db_description, previous_queries, user_query)
+    
+    # Call the completion model to get the relevant Cypher queries
     completion_result = completion(
         model=Config.COMPLETION_MODEL,
         response_format=Descriptions,
-        messages=[
-            {
-                "content": Config.FIND_SYSTEM_PROMPT.format(db_description=db_description),
-                "role": "system",
-            },
-            {
-                "content": json.dumps(
-                    {
-                        "previous_user_queries:": previous_queries,
-                        "user_query": user_query,
-                    }
-                ),
-                "role": "user",
-            },
-        ],
+        messages=messages,
         temperature=0,
     )
 
-    json_str = completion_result.choices[0].message.content
-
     # Parse JSON string and convert to Pydantic model
-    json_data = json.loads(json_str)
-    descriptions = Descriptions(**json_data)
-    logging.info("Find tables based on: %s", descriptions.tables_descriptions)
-    tables_des = _find_tables(graph, descriptions.tables_descriptions)
-    logging.info("Find tables based on columns: %s", descriptions.columns_descriptions)
-    tables_by_columns_des = _find_tables_by_columns(graph, descriptions.columns_descriptions)
+    descriptions = Descriptions(**json.loads(completion_result.choices[0].message.content))
+    
+    # Get tables from descriptions
+    tables_des, tables_by_columns_des = _get_tables_from_completion(graph, descriptions)
 
-    # table names for sphere and route extraction
-    base_tables_names = [table[0] for table in tables_des]
-    logging.info("Extracting tables by sphere")
-    tables_by_sphere = _find_tables_sphere(graph, base_tables_names)
-    logging.info("Extracting tables by connecting routes %s", base_tables_names)
-    tables_by_route, _ = find_connecting_tables(graph, base_tables_names)
+    # Get additional tables by sphere and connecting routes
+    tables_by_sphere, tables_by_route = _get_additional_tables(
+        graph, [table[0] for table in tables_des]
+    )
+    
+    all_tables_lists = [tables_des, tables_by_columns_des, tables_by_route, tables_by_sphere]
     combined_tables = _get_unique_tables(
         tables_des + tables_by_columns_des + tables_by_route + tables_by_sphere
     )
 
-    return (
-        True,
-        combined_tables,
-        [tables_des, tables_by_columns_des, tables_by_route, tables_by_sphere],
-    )
+    return True, combined_tables, all_tables_lists
 
 
 def _find_tables(graph, descriptions: List[TableDescription]) -> List[dict]:
@@ -227,7 +248,7 @@ def _get_unique_tables(tables_list):
                 table_info[3] = [dict(od) for od in table_info[3]]
                 table_info[2] = "Foreign keys: " + table_info[2]
                 unique_tables[table_name] = table_info
-        except Exception as e:
+        except (IndexError, TypeError, AttributeError) as e:
             print(f"Error: {table_info}, Exception: {e}")
 
     # Return the values (the unique table info lists)

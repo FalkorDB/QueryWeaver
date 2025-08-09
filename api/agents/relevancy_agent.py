@@ -4,6 +4,7 @@ import json
 from litellm import completion
 from api.config import Config
 from .utils import parse_response
+from .base_agent import BaseAgent
 
 
 RELEVANCY_PROMPT = """
@@ -54,19 +55,9 @@ Ensure your response is concise, polite, and helpful.
 """
 
 
-class RelevancyAgent:
+class RelevancyAgent(BaseAgent):
     # pylint: disable=too-few-public-methods
     """Agent for determining relevancy of queries to database schema."""
-
-    def __init__(self, queries_history: list, result_history: list):
-        """Initialize the relevancy agent with query and result history."""
-        if result_history is None:
-            self.messages = []
-        else:
-            self.messages = []
-            for query, result in zip(queries_history[:-1], result_history):
-                self.messages.append({"role": "user", "content": query})
-                self.messages.append({"role": "assistant", "content": result})
 
     def get_answer(self, user_question: str, database_desc: dict) -> dict:
         """Get relevancy assessment for user question against database description."""
