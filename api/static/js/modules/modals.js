@@ -58,18 +58,18 @@ export function setupDatabaseModal() {
         if (selectedType && databaseConfig[selectedType]) {
             dbUrlInput.disabled = false;
             dbUrlInput.placeholder = databaseConfig[selectedType].placeholder;
-            
             dbModal.style.display = 'flex';
             dbModalTitle.textContent = databaseConfig[selectedType].title;
             dbUrlInput.placeholder = databaseConfig[selectedType].placeholder;
-            
             // Focus the input field when modal opens
             if (dbUrlInput) {
                 setTimeout(() => {
                     dbUrlInput.focus();
+
+                    // Reset dropdown to 'Select Database' after opening modal
+                    dbTypeSelect.selectedIndex = 0;
                 }, 100);
             }
-
         } else {
             // Disable if no valid selection
             dbUrlInput.disabled = true;
