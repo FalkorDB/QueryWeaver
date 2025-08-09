@@ -15,7 +15,13 @@
     
     {% block modals %}{% endblock %}
     
-    {% block scripts %}
+</body>
+<footer id="powered-by-falkordb">
+  Powered by <a href="https://falkordb.com" target="_blank" rel="noopener">
+    <img src="{{ url_for('static', filename='public/icons/logo.svg') }}" alt="FalkorDB Logo" style="height:1.5em;vertical-align:middle;" />
+  </a>
+</footer>
+{% block scripts %}
     {# Set authentication state for JS #}
     <script>
       window.isAuthenticated = {{ 'true' if is_authenticated else 'false' }};
@@ -29,6 +35,6 @@
       window.currentUser = null;
       {% endif %}
     </script>
-    {% endblock %}
+{% endblock %}
 </body>
 </html>

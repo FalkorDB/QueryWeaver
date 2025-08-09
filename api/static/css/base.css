@@ -47,3 +47,21 @@ button, input, select, textarea {
 ::-webkit-scrollbar-thumb:hover {
   background-color: #a8bbbf;
 }
+
+/* Powered by FalkorDB footer */
+#powered-by-falkordb {
+  width: 100vw;
+  text-align: center;
+  padding: 0.5em 0;
+  font-size: 1em;
+  background: var(--color-bg-secondary, #222);
+  color: var(--color-text-secondary, #fff);
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  z-index: 1000;
+}
+#powered-by-falkordb a {
+  color: inherit;
+  text-decoration: underline;
+}
