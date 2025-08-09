@@ -5,6 +5,7 @@
 export function setupAuthenticationModal() {
     var isAuthenticated = window.isAuthenticated !== undefined ? window.isAuthenticated : false;
     var googleLoginModal = document.getElementById('google-login-modal');
+    var signupModal = document.getElementById('signup-modal');
     var container = document.getElementById('container');
     
     if (googleLoginModal && container) {
@@ -16,6 +17,156 @@ export function setupAuthenticationModal() {
             container.style.filter = '';
         }
     }
+    
+    // Setup modal switching
+    setupModalSwitching();
+    // Setup email authentication forms
+    setupEmailAuthentication();
+}
+
+function setupModalSwitching() {
+    const showSignupLink = document.getElementById('show-signup');
+    const showSigninLink = document.getElementById('show-signin');
+    const loginModal = document.getElementById('google-login-modal');
+    const signupModal = document.getElementById('signup-modal');
+    
+    if (showSignupLink && signupModal && loginModal) {
+        showSignupLink.addEventListener('click', function(e) {
+            e.preventDefault();
+            loginModal.style.display = 'none';
+            signupModal.style.display = 'flex';
+        });
+    }
+    
+    if (showSigninLink && loginModal && signupModal) {
+        showSigninLink.addEventListener('click', function(e) {
+            e.preventDefault();
+            signupModal.style.display = 'none';
+            loginModal.style.display = 'flex';
+        });
+    }
+}
+
+function setupEmailAuthentication() {
+    // Setup login form
+    const loginForm = document.getElementById('email-login-form');
+    if (loginForm) {
+        loginForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            handleEmailLogin(loginForm);
+        });
+    }
+    
+    // Setup signup form
+    const signupForm = document.getElementById('email-signup-form');
+    if (signupForm) {
+        signupForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            handleEmailSignup(signupForm);
+        });
+    }
+}
+
+async function handleEmailLogin(form) {
+    const email = form.querySelector('#login-email').value.trim();
+    const password = form.querySelector('#login-password').value.trim();
+    const submitBtn = form.querySelector('.email-login-btn');
+
+    if (!email || !password) {
+        alert('Please fill in all fields');
+        return;
+    }
+
+    // Set loading state
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Signing in...';
+    
+    fetch('/email-login', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            email: email,
+            password: password
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert(data.error || 'Login failed');
+        }
+    })
+    .catch(error => {
+        alert('Error during login: ' + error.message);
+    })
+    .finally(() => {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Sign in with Email';
+    });
+}
+
+function handleEmailSignup(form) {
+    const firstName = form.querySelector('#signup-firstname').value.trim();
+    const lastName = form.querySelector('#signup-lastname').value.trim();
+    const email = form.querySelector('#signup-email').value.trim();
+    const password = form.querySelector('#signup-password').value.trim();
+    const confirmPassword = form.querySelector('#signup-confirm-password').value.trim();
+
+    const submitBtn = form.querySelector('.email-signup-btn');
+
+    if (!firstName || !lastName || !email || !password || !confirmPassword) {
+        alert('Please fill in all fields');
+        return;
+    }
+    
+    if (password !== confirmPassword) {
+        alert('Passwords do not match');
+        return;
+    }
+    if (password.length < 8) {
+        alert('Password must be at least 8 characters long');
+        return;
+    }
+
+    // Set loading state
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating account...';
+    
+    fetch('/email-signup', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            firstName: firstName,
+            lastName: lastName,
+            email: email,
+            password: password
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Account created successfully! Please sign in.');
+            // Switch back to login modal
+            document.getElementById('signup-modal').style.display = 'none';
+            document.getElementById('google-login-modal').style.display = 'flex';
+            // Clear signup form
+            document.getElementById('email-signup-form').reset();
+        } else {
+            alert(data.error || 'Signup failed');
+        }
+    })
+    .catch(error => {
+        alert('Error during signup: ' + error.message);
+    })
+    .finally(() => {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Sign up';
+    });
 }
 
 function setLoadingState(isLoading, connectBtn, urlInput) {

@@ -3,11 +3,86 @@
     <div class="google-login-modal-content">
         <h2>Welcome to QueryWeaver</h2>
         <p>Please login to continue</p>
+        
+        {# OAuth buttons - only show if configured #}
+        {% if oauth_config.google_enabled %}
         <a href="{{ url_for('google.login') }}" class="google-login-btn">
             <img src="{{ url_for('static', filename='public/icons/google.svg') }}"  alt="Google logo" class="google-login-logo">Sign in with Google
         </a>
+        {% endif %}
+        
+        {% if oauth_config.github_enabled %}
         <a href="{{ url_for('github.login') }}" class="github-login-btn" style="margin-top: 0.5em;">
             <img src="{{ url_for('static', filename='public/icons/github.svg') }}" alt="GitHub logo" class="github-login-logo">Sign in with GitHub
         </a>
+        {% endif %}
+        
+        {# Show divider only if OAuth is available and email auth is enabled #}
+        {% if (oauth_config.google_enabled or oauth_config.github_enabled) and oauth_config.email_enabled %}
+        <div class="auth-divider">
+            <hr class="divider-line">
+            <span class="divider-text">or</span>
+            <hr class="divider-line">
+        </div>
+        {% endif %}
+        
+        {# Email authentication form - only show if enabled #}
+        {% if oauth_config.email_enabled %}
+        <form id="email-login-form" class="email-auth-form">
+            <input type="email" id="login-email" class="auth-input" placeholder="Email" required>
+            <input type="password" id="login-password" class="auth-input" placeholder="Password" required>
+            <button type="submit" class="email-login-btn">Sign in with Email</button>
+        </form>
+        
+        <div class="signup-link">
+            <p>Don't have an account? <a href="#" id="show-signup">Sign up</a></p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{# Signup modal for registration #}
+<div id="signup-modal" class="google-login-modal">
+    <div class="google-login-modal-content">
+        <h2>Create Account</h2>
+        <p>Join QueryWeaver today</p>
+        
+        {# OAuth buttons for signup - only show if configured #}
+        {% if oauth_config.google_enabled %}
+        <a href="{{ url_for('google.login') }}" class="google-login-btn">
+            <img src="{{ url_for('static', filename='public/icons/google.svg') }}" alt="Google logo" class="google-login-logo">Sign up with Google
+        </a>
+        {% endif %}
+        
+        {% if oauth_config.github_enabled %}
+        <a href="{{ url_for('github.login') }}" class="github-login-btn" style="margin-top: 0.5em;">
+            <img src="{{ url_for('static', filename='public/icons/github.svg') }}" alt="GitHub logo" class="github-login-logo">Sign up with GitHub
+        </a>
+        {% endif %}
+        
+        {# Show divider only if OAuth is available and email auth is enabled #}
+        {% if (oauth_config.google_enabled or oauth_config.github_enabled) and oauth_config.email_enabled %}
+        <div class="auth-divider">
+            <hr class="divider-line">
+            <span class="divider-text">or</span>
+            <hr class="divider-line">
+        </div>
+        {% endif %}
+        
+        {# Email signup form - only show if enabled #}
+        {% if oauth_config.email_enabled %}
+        <form id="email-signup-form" class="email-auth-form">
+            <input type="text" id="signup-firstname" class="auth-input" placeholder="First Name" required>
+            <input type="text" id="signup-lastname" class="auth-input" placeholder="Last Name" required>
+            <input type="email" id="signup-email" class="auth-input" placeholder="Email" required>
+            <input type="password" id="signup-password" class="auth-input" placeholder="Password" required>
+            <input type="password" id="signup-confirm-password" class="auth-input" placeholder="Repeat Password" required>
+            <button type="submit" class="email-signup-btn">Sign up</button>
+        </form>
+        
+        <div class="signin-link">
+            <p>Already have an account? <a href="#" id="show-signin">Sign in</a></p>
+        </div>
+        {% endif %}
     </div>
 </div>

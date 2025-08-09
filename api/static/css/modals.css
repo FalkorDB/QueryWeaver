@@ -251,3 +251,108 @@
   font-size: 1em;
   line-height: 1.5;
 }
+
+/* Auth Divider */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  margin: 1.5em 0;
+  gap: 10px;
+}
+
+.divider-line {
+  flex: 1;
+  height: 1px;
+  border: none;
+  background: var(--border-color);
+}
+
+.divider-text {
+  color: var(--text-secondary);
+  font-size: 0.9em;
+  padding: 0 10px;
+}
+
+/* Email Authentication Forms */
+.email-auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-top: 1em;
+}
+
+.auth-input {
+  padding: 12px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 1em;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.auth-input:focus {
+  outline: none;
+  border-color: var(--falkor-primary);
+  box-shadow: 0 0 0 2px rgba(var(--falkor-primary-rgb), 0.2);
+}
+
+.auth-input::placeholder {
+  color: var(--text-secondary);
+}
+
+.email-login-btn,
+.email-signup-btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  background: var(--falkor-primary);
+  color: white;
+  font-size: 1.1em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-top: 0.5em;
+}
+
+.email-login-btn:hover,
+.email-signup-btn:hover {
+  background: var(--falkor-primary-dark);
+}
+
+.email-login-btn:disabled,
+.email-signup-btn:disabled {
+  background: var(--text-secondary);
+  cursor: not-allowed;
+}
+
+/* Signup and Signin Links */
+.signup-link,
+.signin-link {
+  margin-top: 1.5em;
+  text-align: center;
+}
+
+.signup-link p,
+.signin-link p {
+  color: var(--text-secondary);
+  font-size: 0.9em;
+  margin: 0;
+}
+
+.signup-link a,
+.signin-link a {
+  color: var(--falkor-primary);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.signup-link a:hover,
+.signin-link a:hover {
+  text-decoration: underline;
+}
+
+/* Signup Modal */
+#signup-modal {
+  display: none;
+}
