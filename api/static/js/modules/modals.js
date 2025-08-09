@@ -61,25 +61,29 @@ export function setupDatabaseModal() {
             dbModal.style.display = 'flex';
             dbModalTitle.textContent = databaseConfig[selectedType].title;
             dbUrlInput.placeholder = databaseConfig[selectedType].placeholder;
+            // Enable Connect button when modal opens
+            connectDbModalBtn.disabled = false;
             // Focus the input field when modal opens
             if (dbUrlInput) {
                 setTimeout(() => {
                     dbUrlInput.focus();
-
-                    // Reset dropdown to 'Select Database' after opening modal
-                    dbTypeSelect.selectedIndex = 0;
                 }, 100);
             }
         } else {
             // Disable if no valid selection
             dbUrlInput.disabled = true;
             dbUrlInput.placeholder = 'Select database type first...';
+            connectDbModalBtn.disabled = true;
         }
     });
     
     if (cancelDbModalBtn && dbModal) {
         cancelDbModalBtn.addEventListener('click', function() {
             dbModal.style.display = 'none';
+            // Reset dropdown to 'Select Database' after closing modal
+            dbTypeSelect.selectedIndex = 0;
+            // Reset Connect button state
+            connectDbModalBtn.disabled = true;
         });
     }
     
@@ -91,68 +95,71 @@ export function setupDatabaseModal() {
     });
 
     // Handle Connect button for database modal
-    if (connectDbModalBtn && dbUrlInput && dbModal && dbTypeSelect) {
-        // Add Enter key support for the input field
-        dbUrlInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                connectDbModalBtn.click();
-            }
-        });
 
-        connectDbModalBtn.addEventListener('click', function() {
-            const dbUrl = dbUrlInput.value.trim();
-            const selectedType = dbTypeSelect.value;
-            
-            if (!selectedType) {
-                alert('Please select a database type.');
-                return;
-            }
-            
-            if (!dbUrl) {
-                alert('Please enter a database URL.');
-                return;
-            }
-            
-            // Validate URL format based on selected type
-            const config = databaseConfig[selectedType];
-            if (selectedType === 'postgresql' && !dbUrl.startsWith('postgresql://') && !dbUrl.startsWith('postgres://')) {
-                alert('PostgreSQL URL must start with postgresql:// or postgres://');
-                return;
-            }
-            if (selectedType === 'mysql' && !dbUrl.startsWith('mysql://')) {
-                alert('MySQL URL must start with mysql://');
-                return;
-            }
-            
-            // Show loading state
-            setLoadingState(true, connectDbModalBtn, dbUrlInput);
-            
-            fetch('/database', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ url: dbUrl })
-            })
-            .then(response => response.json())
-            .then(data => {
-                // Reset loading state
-                setLoadingState(false, connectDbModalBtn, dbUrlInput);
+    // Add Enter key support for the input field
+    dbUrlInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            connectDbModalBtn.click();
+        }
+    });
 
-                if (data.success) {
-                    dbModal.style.display = 'none'; // Close modal on success
-                    // Refresh the graph list to show the new database
-                    location.reload();
-                } else {
-                    alert('Failed to connect: ' + (data.error || 'Unknown error'));
-                }
-            })
-            .catch(error => {
-                // Reset loading state on error
-                setLoadingState(false, connectDbModalBtn, dbUrlInput);
-                
-                alert('Error connecting to database: ' + error.message);
-            });
+    connectDbModalBtn.addEventListener('click', function() {
+        const dbUrl = dbUrlInput.value.trim();
+        const selectedType = dbTypeSelect.value;
+        
+        if (!selectedType) {
+            alert('Please select a database type.');
+            return;
+        }
+        
+        if (!dbUrl) {
+            alert('Please enter a database URL.');
+            return;
+        }
+        
+        // Validate URL format based on selected type
+        const config = databaseConfig[selectedType];
+        if (selectedType === 'postgresql' && !dbUrl.startsWith('postgresql://') && !dbUrl.startsWith('postgres://')) {
+            alert('PostgreSQL URL must start with postgresql:// or postgres://');
+            return;
+        }
+        if (selectedType === 'mysql' && !dbUrl.startsWith('mysql://')) {
+            alert('MySQL URL must start with mysql://');
+            return;
+        }
+        
+        // Show loading state
+        setLoadingState(true, connectDbModalBtn, dbUrlInput);
+        
+        fetch('/database', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ url: dbUrl })
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Reset loading state
+            setLoadingState(false, connectDbModalBtn, dbUrlInput);
+
+            if (data.success) {
+                dbModal.style.display = 'none'; // Close modal on success
+                // Reset dropdown to 'Select Database' after closing modal
+                dbTypeSelect.selectedIndex = 0;
+                // Reset Connect button state
+                connectDbModalBtn.disabled = true;
+                // Refresh the graph list to show the new database
+                location.reload();
+            } else {
+                alert('Failed to connect: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            // Reset loading state on error
+            setLoadingState(false, connectDbModalBtn, dbUrlInput);
+            
+            alert('Error connecting to database: ' + error.message);
         });
-    }
+    });
 }
