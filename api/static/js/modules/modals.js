@@ -53,7 +53,7 @@ function setupEmailAuthentication() {
     if (loginForm) {
         loginForm.addEventListener('submit', function(e) {
             e.preventDefault();
-            handleEmailLogin();
+            handleEmailLogin(loginForm);
         });
     }
     
@@ -62,21 +62,21 @@ function setupEmailAuthentication() {
     if (signupForm) {
         signupForm.addEventListener('submit', function(e) {
             e.preventDefault();
-            handleEmailSignup();
+            handleEmailSignup(signupForm);
         });
     }
 }
 
-function handleEmailLogin() {
-    const email = document.getElementById('login-email').value;
-    const password = document.getElementById('login-password').value;
-    const submitBtn = document.querySelector('.email-login-btn');
-    
+async function handleEmailLogin(form) {
+    const email = form.querySelector('#login-email').value.trim();
+    const password = form.querySelector('#login-password').value.trim();
+    const submitBtn = form.querySelector('.email-login-btn');
+
     if (!email || !password) {
         alert('Please fill in all fields');
         return;
     }
-    
+
     // Set loading state
     submitBtn.disabled = true;
     submitBtn.textContent = 'Signing in...';
@@ -108,14 +108,15 @@ function handleEmailLogin() {
     });
 }
 
-function handleEmailSignup() {
-    const firstName = document.getElementById('signup-firstname').value;
-    const lastName = document.getElementById('signup-lastname').value;
-    const email = document.getElementById('signup-email').value;
-    const password = document.getElementById('signup-password').value;
-    const confirmPassword = document.getElementById('signup-confirm-password').value;
-    const submitBtn = document.querySelector('.email-signup-btn');
-    
+function handleEmailSignup(form) {
+    const firstName = form.querySelector('#signup-firstname').value.trim();
+    const lastName = form.querySelector('#signup-lastname').value.trim();
+    const email = form.querySelector('#signup-email').value.trim();
+    const password = form.querySelector('#signup-password').value.trim();
+    const confirmPassword = form.querySelector('#signup-confirm-password').value.trim();
+
+    const submitBtn = form.querySelector('.email-signup-btn');
+
     if (!firstName || !lastName || !email || !password || !confirmPassword) {
         alert('Please fill in all fields');
         return;
@@ -125,12 +126,11 @@ function handleEmailSignup() {
         alert('Passwords do not match');
         return;
     }
-    
     if (password.length < 8) {
         alert('Password must be at least 8 characters long');
         return;
     }
-    
+
     // Set loading state
     submitBtn.disabled = true;
     submitBtn.textContent = 'Creating account...';
