@@ -47,7 +47,6 @@ button, input, select, textarea {
 
 /* Powered by FalkorDB footer */
 #powered-by-falkordb {
-  width: 100vw;
   text-align: center;
   padding: 0.5em 0;
   font-size: 1em;
@@ -56,6 +55,7 @@ button, input, select, textarea {
   position: fixed;
   bottom: 0;
   left: 0;
+  right: 0; /* avoid 100vw-induced horizontal scrollbars */
   z-index: 1000;
 }
 #powered-by-falkordb a {
