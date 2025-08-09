@@ -190,8 +190,8 @@ class MySQLLoader(BaseLoader):
         tables = cursor.fetchall()
 
         for table_info in tqdm.tqdm(tables, desc="Extracting table information"):
-            table_name = table_info['table_name']
-            table_comment = table_info['table_comment']
+            table_name = table_info['TABLE_NAME']
+            table_comment = table_info['TABLE_COMMENT']
 
             # Get column information for this table
             columns_info = MySQLLoader.extract_columns_info(cursor, db_name, table_name)
@@ -245,12 +245,12 @@ class MySQLLoader(BaseLoader):
         columns_info = {}
 
         for col_info in columns:
-            col_name = col_info['column_name']
-            data_type = col_info['data_type']
-            is_nullable = col_info['is_nullable']
-            column_default = col_info['column_default']
-            column_key = col_info['column_key']
-            column_comment = col_info['column_comment']
+            col_name = col_info['COLUMN_NAME']
+            data_type = col_info['DATA_TYPE']
+            is_nullable = col_info['IS_NULLABLE']
+            column_default = col_info['COLUMN_DEFAULT']
+            column_key = col_info['COLUMN_KEY']
+            column_comment = col_info['COLUMN_COMMENT']
 
             # Determine key type
             if column_key == 'PRI':
@@ -317,10 +317,10 @@ class MySQLLoader(BaseLoader):
         foreign_keys = []
         for fk_info in cursor.fetchall():
             foreign_keys.append({
-                'constraint_name': fk_info['constraint_name'],
-                'column': fk_info['column_name'],
-                'referenced_table': fk_info['referenced_table_name'],
-                'referenced_column': fk_info['referenced_column_name']
+                'constraint_name': fk_info['CONSTRAINT_NAME'],
+                'column': fk_info['COLUMN_NAME'],
+                'referenced_table': fk_info['REFERENCED_TABLE_NAME'],
+                'referenced_column': fk_info['REFERENCED_COLUMN_NAME']
             })
 
         return foreign_keys
@@ -352,16 +352,16 @@ class MySQLLoader(BaseLoader):
 
         relationships = {}
         for rel_info in cursor.fetchall():
-            constraint_name = rel_info['constraint_name']
+            constraint_name = rel_info['CONSTRAINT_NAME']
 
             if constraint_name not in relationships:
                 relationships[constraint_name] = []
 
             relationships[constraint_name].append({
-                'from': rel_info['table_name'],
-                'to': rel_info['referenced_table_name'],
-                'source_column': rel_info['column_name'],
-                'target_column': rel_info['referenced_column_name'],
+                'from': rel_info['TABLE_NAME'],
+                'to': rel_info['REFERENCED_TABLE_NAME'],
+                'source_column': rel_info['COLUMN_NAME'],
+                'target_column': rel_info['REFERENCED_COLUMN_NAME'],
                 'note': f'Foreign key constraint: {constraint_name}'
             })
 
