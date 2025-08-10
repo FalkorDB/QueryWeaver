@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "1088741ee2a28aaccabf027084ab0298c7421830824b4d9ebcef6f181cd26a7d"
+            "sha256": "4d3a52395f16cbd71ce0a3b35fc4503767f909e24ec07f844733fb0ae2ccf128"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -631,14 +631,13 @@
             "version": "==2025.4.1"
         },
         "litellm": {
-            "extras": [
-                "bedrock"
-            ],
             "hashes": [
-                "sha256:8eddb1c8a6a5a7048f8ba16e652aba23d6ca996dd87cb853c874ba375aa32479"
+                "sha256:6df8e8c35ae0fb64d8f42902b4571a6868351beeaf3aee7e50f4c103448bce02",
+                "sha256:a6036fab12498e6ee8c32ae1a0bccb5aa9a0b77877b78b1845de209a7b4533f9"
             ],
+            "index": "pypi",
             "markers": "python_version not in '2.7, 3.0, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7' and python_version >= '3.8'",
-            "version": "==1.74.15.post2"
+            "version": "==1.75.4"
         },
         "markupsafe": {
             "hashes": [
