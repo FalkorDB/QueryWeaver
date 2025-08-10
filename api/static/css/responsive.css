@@ -8,6 +8,11 @@
     padding-top: 10px;
     padding-bottom: 10px;
   }
+  
+  /* Fix logo size to prevent overlap with toolbar buttons */
+  .logo {
+    height: 40px;
+  }
 }
 
 /* Mobile: Menu overlays content (no pushing) */
@@ -50,7 +55,7 @@
   }
   
   .chat-header h1 {
-    font-size: 18px;
+    font-size: 16px;
   }
   
   #message-input {
@@ -59,6 +64,22 @@
   
   #message-input::placeholder {
     font-size: 16px !important;
+  }
+  
+  /* Fix avatar circle font size to fit in one line */
+  .user-message-container::after,
+  .bot-message-container::before,
+  .followup-message-container::before,
+  .final-result-message-container::before {
+    font-size: 12px;
+    width: 28px;
+    height: 28px;
+  }
+  
+  .user-message-avatar {
+    width: 32px;
+    height: 32px;
+    font-size: 12px;
   }
 }
 
@@ -75,11 +96,29 @@
   #graph-select,
   #custom-file-upload,
   #open-pg-modal {
-    min-width: 120px;
+    min-width: 100px;
     width: auto;
-    padding: 8px 10px;
-    font-size: 14px;
+    padding: 6px 8px;
+    font-size: 12px;
     flex: 1;
+  }
+  
+  /* Make dropdown container responsive */
+  .dropdown-container select {
+    min-width: 100px;
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+  
+  /* Ensure button container fits mobile screen */
+  .button-container {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  
+  /* Reduce separators on mobile */
+  .vertical-separator {
+    display: none;
   }
 }
 
