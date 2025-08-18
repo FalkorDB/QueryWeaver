@@ -39,11 +39,10 @@ def get_database_type_and_loader(db_url: str):
 
     if db_url_lower.startswith('postgresql://') or db_url_lower.startswith('postgres://'):
         return 'postgresql', PostgresLoader
-    elif db_url_lower.startswith('mysql://'):
+    if db_url_lower.startswith('mysql://'):
         return 'mysql', MySQLLoader
-    else:
-        # Default to PostgresLoader for backward compatibility
-        return 'postgresql', PostgresLoader
+    # Default to PostgresLoader for backward compatibility
+    return 'postgresql', PostgresLoader
 
 def sanitize_query(query: str) -> str:
     """Sanitize the query to prevent injection attacks."""
@@ -187,7 +186,7 @@ def query_graph(graph_id: str):
         db_description, db_url = get_db_description(graph_id)
 
         # Determine database type and get appropriate loader
-        db_type, loader_class = get_database_type_and_loader(db_url)
+        _, loader_class = get_database_type_and_loader(db_url)
 
         if not loader_class:
             yield json.dumps({
@@ -407,7 +406,7 @@ def confirm_destructive_operation(graph_id: str):
                 db_description, db_url = get_db_description(graph_id)
 
                 # Determine database type and get appropriate loader
-                db_type, loader_class = get_database_type_and_loader(db_url)
+                _, loader_class = get_database_type_and_loader(db_url)
 
                 if not loader_class:
                     yield json.dumps({

@@ -1,4 +1,4 @@
-# Authentication module for text2sql API
+"""Authentication module for QueryWeaver application."""
 
 from .user_management import (
     ensure_user_in_organizations,

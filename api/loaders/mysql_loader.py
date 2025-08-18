@@ -60,10 +60,9 @@ class MySQLLoader(BaseLoader):
             return value.isoformat()
         if isinstance(value, decimal.Decimal):
             return float(value)
-        elif value is None:
+        if value is None:
             return None
-        else:
-            return value
+        return value
 
     @staticmethod
     def _parse_mysql_url(connection_url: str) -> Dict[str, str]:
@@ -81,7 +80,10 @@ class MySQLLoader(BaseLoader):
         if connection_url.startswith('mysql://'):
             url = connection_url[8:]
         else:
-            raise ValueError("Invalid MySQL URL format. Expected mysql://username:password@host:port/database")
+            raise ValueError(
+                "Invalid MySQL URL format. "
+                "Expected mysql://username:password@host:port/database"
+            )
 
         # Parse components
         if '@' not in url:
@@ -517,11 +519,11 @@ class MySQLLoader(BaseLoader):
                 conn.rollback()
                 cursor.close()
                 conn.close()
-            raise Exception(f"MySQL query execution error: {str(e)}") from e
+            raise mysql.connector.Error(f"MySQL query execution error: {str(e)}") from e
         except Exception as e:
             # Rollback in case of error
             if 'conn' in locals():
                 conn.rollback()
                 cursor.close()
                 conn.close()
-            raise Exception(f"Error executing SQL query: {str(e)}") from e
+            raise RuntimeError(f"Error executing SQL query: {str(e)}") from e

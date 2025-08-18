@@ -1,7 +1,8 @@
 """Tests for MySQL loader functionality."""
+from unittest.mock import patch, MagicMock
 
 import pytest
-from unittest.mock import patch, MagicMock
+
 from api.loaders.mysql_loader import MySQLLoader
 
 
@@ -88,8 +89,10 @@ class TestMySQLLoader:
         # Schema-modifying queries
         assert MySQLLoader.is_schema_modifying_query("CREATE TABLE test (id INT)")[0] is True
         assert MySQLLoader.is_schema_modifying_query("DROP TABLE test")[0] is True
-        assert MySQLLoader.is_schema_modifying_query("ALTER TABLE test ADD COLUMN name VARCHAR(50)")[0] is True
-        assert MySQLLoader.is_schema_modifying_query("  CREATE INDEX idx_name ON test(name)")[0] is True
+        query = "ALTER TABLE test ADD COLUMN name VARCHAR(50)"
+        assert MySQLLoader.is_schema_modifying_query(query)[0] is True
+        query = "  CREATE INDEX idx_name ON test(name)"
+        assert MySQLLoader.is_schema_modifying_query(query)[0] is True
 
         # Non-schema-modifying queries
         assert MySQLLoader.is_schema_modifying_query("SELECT * FROM test")[0] is False
@@ -126,9 +129,12 @@ class TestMySQLLoader:
         mock_connect.return_value = mock_conn
 
         # Mock the extract methods to return minimal data
-        with patch.object(MySQLLoader, 'extract_tables_info', return_value={'users': {'description': 'User table'}}):
+        table_info = {'users': {'description': 'User table'}}
+        with patch.object(MySQLLoader, 'extract_tables_info', return_value=table_info):
             with patch.object(MySQLLoader, 'extract_relationships', return_value={}):
-                success, message = MySQLLoader.load("test_prefix", "mysql://user:pass@localhost:3306/testdb")
+                success, message = MySQLLoader.load(
+                    "test_prefix", "mysql://user:pass@localhost:3306/testdb"
+                )
 
         assert success is True
         assert "MySQL schema loaded successfully" in message

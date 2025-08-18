@@ -58,10 +58,9 @@ class PostgresLoader(BaseLoader):
             return value.isoformat()
         if isinstance(value, decimal.Decimal):
             return float(value)
-        elif value is None:
+        if value is None:
             return None
-        else:
-            return value
+        return value
 
     @staticmethod
     def load(prefix: str, connection_url: str) -> Tuple[bool, str]:
@@ -481,11 +480,11 @@ class PostgresLoader(BaseLoader):
                 conn.rollback()
                 cursor.close()
                 conn.close()
-            raise Exception(f"PostgreSQL query execution error: {str(e)}")
+            raise psycopg2.Error(f"PostgreSQL query execution error: {str(e)}") from e
         except Exception as e:
             # Rollback in case of error
             if 'conn' in locals():
                 conn.rollback()
                 cursor.close()
                 conn.close()
-            raise Exception(f"Error executing SQL query: {str(e)}")
+            raise RuntimeError(f"Error executing SQL query: {str(e)}") from e

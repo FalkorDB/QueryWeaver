@@ -1,9 +1,10 @@
 """
 Playwright configuration for E2E tests.
 """
-import pytest
 import subprocess
 import time
+
+import pytest
 import requests
 
 

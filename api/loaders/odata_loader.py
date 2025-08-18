@@ -1,3 +1,4 @@
+"""OData loader for QueryWeaver application."""
 import re
 import xml.etree.ElementTree as ET
 from typing import Tuple
@@ -68,7 +69,7 @@ class ODataLoader(BaseLoader):
                                 )
                         entities[entity_name]["col_descriptions"].append(col_des)
                         entities[entity_name]["columns"][prop_name]["description"] = col_des
-                except Exception as e:
+                except Exception:
                     print(f"Error parsing property {prop_name} for entity {entity_name}")
                     continue
 
@@ -86,7 +87,7 @@ class ODataLoader(BaseLoader):
                         + " with Primery key: "
                         + entity_type.find("edm:Key/edm:PropertyRef", namespaces).attrib["Name"]
                     )
-                except:
+                except (AttributeError, KeyError):
                     print(f"Error parsing description for entity {entity_name}")
                     entities[entity_name]["description"] = entity_name
 
@@ -107,7 +108,6 @@ class ODataLoader(BaseLoader):
                 target_entity = match.group(1) if match else "UNKNOWN"
 
                 source_entity = entity_name
-                target_entity = target_entity
                 source_fields = entities.get(entity_name, {})["columns"]
                 target_fields = entities.get(target_entity, {})["columns"]
 
@@ -138,6 +138,16 @@ class ODataLoader(BaseLoader):
 # TODO: this funtion is for demonstration purposes only, it should be \
 # replaced with a more robust method
 def guess_relationship_columns(source_fields, target_fields):
+    """
+    Guess relationship columns between source and target fields.
+    
+    Args:
+        source_fields: Source field metadata
+        target_fields: Target field metadata
+        
+    Returns:
+        Relationship information if found
+    """
     for src_key, src_meta in source_fields.items():
         if src_key == "description":
             continue

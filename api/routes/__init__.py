@@ -1,4 +1,4 @@
-# Routes module for text2sql API
+"""Routes module for text2sql API."""
 
 from .auth import auth_bp
 from .graphs import graphs_bp

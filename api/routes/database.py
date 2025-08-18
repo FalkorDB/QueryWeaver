@@ -29,7 +29,7 @@ def connect_database():
     try:
         success = False
         result = ""
-        
+
         # Check for PostgreSQL URL
         if url.startswith("postgres://") or url.startswith("postgresql://"):
             try:
@@ -37,8 +37,11 @@ def connect_database():
                 success, result = PostgresLoader.load(g.user_id, url)
             except (ValueError, ConnectionError) as e:
                 logging.error("PostgreSQL connection error: %s", str(e))
-                return jsonify({"success": False, "error": "Failed to connect to PostgreSQL database"}), 500
-        
+                return jsonify({
+                    "success": False,
+                    "error": "Failed to connect to PostgreSQL database"
+                }), 500
+
         # Check for MySQL URL
         elif url.startswith("mysql://"):
             try:
@@ -46,10 +49,15 @@ def connect_database():
                 success, result = MySQLLoader.load(g.user_id, url)
             except (ValueError, ConnectionError) as e:
                 logging.error("MySQL connection error: %s", str(e))
-                return jsonify({"success": False, "error": "Failed to connect to MySQL database"}), 500
-        
+                return jsonify({
+                    "success": False,
+                    "error": "Failed to connect to MySQL database"
+                }), 500
+
         else:
-            return jsonify({"success": False, "error": "Invalid database URL. Supported formats: postgresql:// or mysql://"}), 400
+            error_msg = ("Invalid database URL. Supported formats: "
+                        "postgresql:// or mysql://")
+            return jsonify({"success": False, "error": error_msg}), 400
 
         if success:
             return jsonify({"success": True,
@@ -58,7 +66,7 @@ def connect_database():
         # Don't return detailed error messages to prevent information exposure
         logging.error("Database loader failed: %s", result)
         return jsonify({"success": False, "error": "Failed to load database schema"}), 400
-        
+
     except (ValueError, TypeError) as e:
         logging.error("Unexpected error in database connection: %s", str(e))
         return jsonify({"success": False, "error": "Internal server error"}), 500
