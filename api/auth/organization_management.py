@@ -13,7 +13,7 @@ def extract_email_domain(email: str) -> str:
     return email.split("@")[-1].lower()
 
 
-def check_or_create_organization(user_email: str) -> Tuple[bool, Optional[Dict[str, Any]]]:
+def check_or_create_organization(user_email: str) -> Tuple[bool, str]:
     """
     Check if organization exists for email domain, create if not.
     Returns (is_new_organization, organization_info)
@@ -36,9 +36,8 @@ def check_or_create_organization(user_email: str) -> Tuple[bool, Optional[Dict[s
 
         if result.result_set:
             # Organization exists
-            organization = result.result_set[0][0]
             logging.info("Found existing organization for domain: %s", domain)
-            return False, organization
+            return False, domain
         else:
             # Create new organization with first user as admin
             create_query = """
@@ -61,16 +60,15 @@ def check_or_create_organization(user_email: str) -> Tuple[bool, Optional[Dict[s
             })
 
             if result.result_set:
-                organization = result.result_set[0][0]
                 logging.info("Created new organization for domain: %s", domain)
-                return True, organization
+                return True, domain
             else:
                 logging.error("Failed to create organization for domain: %s", domain)
                 return False, None
 
     except Exception as e:
-        logging.error("Error updating user %s role to %s: %s", user_email, new_role, e)
-        return False
+        logging.error("Error updating user %s: %s", user_email, e)
+        return False, None
 
 
 def complete_admin_setup_backend(user_email: str) -> bool:
@@ -95,16 +93,16 @@ def complete_admin_setup_backend(user_email: str) -> bool:
             r.setup_completed_at = timestamp()
         RETURN user, org, r
         """
-        
+
         result = organizations_graph.query(query, {"user_email": user_email})
-        
+
         if result.result_set:
             logging.info("Completed admin setup for user %s", user_email)
             return True
         else:
             logging.warning("No pending admin relationship found for user %s", user_email)
             return False
-            
+
     except Exception as e:
         logging.error("Error completing admin setup for user %s: %s", user_email, e)
         return False
@@ -112,7 +110,7 @@ def complete_admin_setup_backend(user_email: str) -> bool:
 
 def link_user_to_organization(user_email: str, organization_domain: str, is_admin: bool = False, is_pending: bool = False) -> bool:
     """
-    Link a user to an organization.
+    Link a user to an organization if not linked already
     
     Args:
         user_email: The user's email
@@ -131,7 +129,8 @@ def link_user_to_organization(user_email: str, organization_domain: str, is_admi
         MATCH (user:User {email: $user_email})
         MATCH (org:Organization {domain: $domain})
         MERGE (user)-[r:BELONGS_TO]->(org)
-        SET r.is_admin = $is_admin,
+        ON CREATE SET  
+            r.is_admin = $is_admin,
             r.is_pending = $is_pending,
             r.joined_at = timestamp()
         RETURN user, org, r

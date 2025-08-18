@@ -4,7 +4,8 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-litellm = {extras = ["bedrock"], version = "~=1.74.14"}
+litellm = "~=1.75.8"
+openai = "~=1.99.9"
 falkordb = "~=1.0.10"
 flask = "~=3.1.0"
 jsonschema = "~=4.23.0"
@@ -13,6 +14,7 @@ boto3 = "~=1.37.29"
 psycopg2-binary = "~=2.9.9"
 flask-dance = "~=7.1.0"
 disposable-email-domains = "~=0.0.129"
+email-validator = "~=2.2.0"
 
 [dev-packages]
 pytest = "~=8.2.0"

@@ -8,6 +8,7 @@ import requests
 from flask import g, session, jsonify
 from flask_dance.contrib.google import google
 from flask_dance.contrib.github import github
+from email_validator import validate_email, EmailNotValidError
 
 from api.extensions import db
 
@@ -26,8 +27,10 @@ def ensure_user_in_organizations(provider_user_id, email, name, provider, pictur
                      provider_user_id, email, provider)
         return False, None
 
-    # Validate email format (basic check)
-    if "@" not in email or "." not in email:
+    # Validate and normalizepipenv install email format using email_validator
+    try:
+        email = validate_email(email).normalized
+    except EmailNotValidError:
         logging.error("Invalid email format: %s", email)
         return False, None
 
@@ -45,11 +48,9 @@ def ensure_user_in_organizations(provider_user_id, email, name, provider, pictur
         from api.auth.organization_management import (
             check_or_create_organization, 
             link_user_to_organization, 
-            extract_email_domain
         )
 
-        domain = extract_email_domain(email)
-        is_new_org, _ = check_or_create_organization(email)
+        is_new_org, domain = check_or_create_organization(email)
 
         # Extract first and last name
         name_parts = (name or "").split(" ", 1) if name else ["", ""]
@@ -115,14 +116,14 @@ def ensure_user_in_organizations(provider_user_id, email, name, provider, pictur
                     # Update user role to admin in the User node
                     from api.auth.organization_management import update_user_role_direct
                     update_user_role_direct(email, "admin")
-                    logging.info("User %s created organization %s and assigned as admin", 
+                    logging.info("User %s created organization %s and assigned as admin",
                                  email, domain)
             else:
                 # Organization exists, check if user needs to be linked
                 # For existing organizations, new users are pending until approved
                 success = link_user_to_organization(email, domain, is_admin=False, is_pending=True)
                 if success:
-                    logging.info("User %s added to existing organization %s as pending", 
+                    logging.info("User %s added to existing organization %s as pending",
                                  email, domain)
 
             # Determine the type of operation for logging
