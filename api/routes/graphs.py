@@ -58,7 +58,7 @@ def list_graphs():
     """
     user_id = g.user_id
     try:
-        user_graphs = run_async(db.list_graphs())
+        user_graphs = run_async(db.list_graphs)
     except Exception as e:
         logging.error("Error listing graphs for user %s: %s", user_id, e)
         return jsonify({"error": "Failed to list graphs"}), 500

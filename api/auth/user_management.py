@@ -88,7 +88,7 @@ def ensure_user_in_organizations(provider_user_id, email, name, provider, pictur
             "picture": picture,
             "first_name": first_name,
             "last_name": last_name
-        }))
+        }, timeout=30))
 
         if result.result_set:
             identity = result.result_set[0][0]
@@ -148,7 +148,7 @@ def update_identity_last_login(provider, provider_user_id):
         run_async(organizations_graph.query(update_query, {
             "provider": provider,
             "provider_user_id": provider_user_id
-        }))
+        }, timeout=30))
         logging.info("Updated last login for identity: provider=%s, provider_user_id=%s",
                     provider, provider_user_id)
     except (AttributeError, ValueError, KeyError) as e:

@@ -234,6 +234,9 @@ async def _find_connecting_tables(
         List of connecting table information.
     """
     pairs = [list(pair) for pair in combinations(table_names, 2)]
+    if not pairs:
+        return []
+    
     query = """
     UNWIND $pairs AS pair
     MATCH (a:Table {name: pair[0]})
