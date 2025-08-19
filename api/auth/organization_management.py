@@ -178,7 +178,7 @@ def get_user_organization_status(user_email: str) -> Optional[Dict[str, Any]]:
             is_admin = result.result_set[0][1]
             is_pending = result.result_set[0][2]
             joined_at = result.result_set[0][3]
-            
+
             # Convert Node object to dictionary
             org_dict = {}
             if hasattr(org_data, 'properties'):
@@ -452,7 +452,6 @@ def update_user_role(admin_email: str, target_email: str, new_role: str, organiz
         # Update user's role
         query = """
         MATCH (user:User {email: $target_email})-[r:BELONGS_TO]->(org:Organization {domain: $domain})
-        WHERE r.is_pending = false
         SET user.role = $new_role,
             user.role_updated_by = $admin_email,
             user.role_updated_at = timestamp()
