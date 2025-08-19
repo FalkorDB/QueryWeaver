@@ -11,6 +11,7 @@ from api.agents import AnalysisAgent, RelevancyAgent, ResponseFormatterAgent
 from api.auth.user_management import token_required
 from api.extensions import db
 from api.graph import find, get_db_description
+from api.helpers.async_utils import run_async
 from api.loaders.csv_loader import CSVLoader
 from api.loaders.json_loader import JSONLoader
 from api.loaders.postgres_loader import PostgresLoader
@@ -56,7 +57,12 @@ def list_graphs():
     This route is used to list all the graphs that are available in the database.
     """
     user_id = g.user_id
-    user_graphs = db.list_graphs()
+    try:
+        user_graphs = run_async(db.list_graphs())
+    except Exception as e:
+        logging.error("Error listing graphs for user %s: %s", user_id, e)
+        return jsonify({"error": "Failed to list graphs"}), 500
+
     # Only include graphs that start with user_id + '_', and strip the prefix
     filtered_graphs = [graph[len(f"{user_id}_"):]
                        for graph in user_graphs if graph.startswith(f"{user_id}_")]
@@ -208,26 +214,7 @@ def query_graph(graph_id: str):
             logging.info("SQL Fail reason: %s", answer_rel["reason"])
             yield json.dumps(step) + MESSAGE_DELIMITER
         else:
-            # Use a thread pool to enforce timeout
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(find, graph_id, queries_history, db_description)
-                try:
-                    _, result, _ = future.result(timeout=120)
-                except FuturesTimeoutError:
-                    yield json.dumps(
-                        {
-                            "type": "error",
-                            "message": ("Timeout error while finding tables relevant to "
-                                       "your request."),
-                        }
-                    ) + MESSAGE_DELIMITER
-                    return
-                except Exception as e:
-                    logging.info("Error in find function: %s", e)
-                    yield json.dumps(
-                        {"type": "error", "message": "Error in find function"}
-                    ) + MESSAGE_DELIMITER
-                    return
+            result = run_async(find(graph_id, queries_history, db_description))
 
             logging.info("Calling to analysis agent with query: %s",
                          sanitize_query(queries_history[-1]))

@@ -2,7 +2,7 @@
 
 import os
 
-from falkordb import FalkorDB
+from falkordb.asyncio import FalkorDB
 
 # Connect to FalkorDB
 url = os.getenv("FALKORDB_URL", None)

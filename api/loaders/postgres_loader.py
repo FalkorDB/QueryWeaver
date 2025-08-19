@@ -11,6 +11,7 @@ import tqdm
 
 from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
+from api.helpers.async_utils import run_async
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -385,7 +386,7 @@ class PostgresLoader(BaseLoader):
             # Clear existing graph data
             # Drop current graph before reloading
             graph = db.select_graph(graph_id)
-            graph.delete()
+            run_async(graph.delete())
 
             # Extract prefix from graph_id (remove database name part)
             # graph_id format is typically "prefix_database_name"

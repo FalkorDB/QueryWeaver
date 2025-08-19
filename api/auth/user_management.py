@@ -8,6 +8,7 @@ import requests
 from flask import g, session, jsonify
 from flask_dance.contrib.google import google
 from flask_dance.contrib.github import github
+from api.helpers.async_utils import run_async
 
 from api.extensions import db
 
@@ -79,7 +80,7 @@ def ensure_user_in_organizations(provider_user_id, email, name, provider, pictur
             EXISTS((user)<-[:AUTHENTICATES]-(:Identity)) AS had_other_identities
         """
 
-        result = organizations_graph.query(merge_query, {
+        result = run_async(organizations_graph.query(merge_query, {
             "provider": provider,
             "provider_user_id": provider_user_id,
             "email": email,
@@ -87,7 +88,7 @@ def ensure_user_in_organizations(provider_user_id, email, name, provider, pictur
             "picture": picture,
             "first_name": first_name,
             "last_name": last_name
-        })
+        }))
 
         if result.result_set:
             identity = result.result_set[0][0]
@@ -144,10 +145,10 @@ def update_identity_last_login(provider, provider_user_id):
         SET identity.last_login = timestamp()
         RETURN identity
         """
-        organizations_graph.query(update_query, {
+        run_async(organizations_graph.query(update_query, {
             "provider": provider,
             "provider_user_id": provider_user_id
-        })
+        }))
         logging.info("Updated last login for identity: provider=%s, provider_user_id=%s",
                     provider, provider_user_id)
     except (AttributeError, ValueError, KeyError) as e:

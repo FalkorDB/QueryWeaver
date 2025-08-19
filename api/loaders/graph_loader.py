@@ -7,6 +7,7 @@ import tqdm
 from api.config import Config
 from api.extensions import db
 from api.utils import generate_db_description
+from api.helpers.async_utils import run_async
 
 
 def load_to_graph(
@@ -33,27 +34,27 @@ def load_to_graph(
 
     try:
         # Create vector indices
-        graph.query(
+        run_async(graph.query(
             """
             CREATE VECTOR INDEX FOR (t:Table) ON (t.embedding)
             OPTIONS {dimension:$size, similarityFunction:'euclidean'}
         """,
             {"size": vec_len},
-        )
+        ))
 
-        graph.query(
+        run_async(graph.query(
             """
             CREATE VECTOR INDEX FOR (c:Column) ON (c.embedding)
             OPTIONS {dimension:$size, similarityFunction:'euclidean'}
         """,
             {"size": vec_len},
-        )
-        graph.query("CREATE INDEX FOR (p:Table) ON (p.name)")
+        ))
+        run_async(graph.query("CREATE INDEX FOR (p:Table) ON (p.name)"))
     except Exception as e:
         print(f"Error creating vector indices: {str(e)}")
 
     db_des = generate_db_description(db_name=db_name, table_names=list(entities.keys()))
-    graph.query(
+    run_async(graph.query(
         """
         CREATE (d:Database {
             name: $db_name,
@@ -62,7 +63,7 @@ def load_to_graph(
         })
         """,
         {"db_name": db_name, "description": db_des, "url": db_url},
-    )
+    ))
 
     for table_name, table_info in tqdm.tqdm(entities.items(), desc="Creating Graph Table Nodes"):
         table_desc = table_info["description"]
@@ -70,7 +71,7 @@ def load_to_graph(
         fk = json.dumps(table_info.get("foreign_keys", []))
 
         # Create table node
-        graph.query(
+        run_async(graph.query(
             """
             CREATE (t:Table {
                 name: $table_name,
@@ -85,7 +86,7 @@ def load_to_graph(
                 "embedding": embedding_result[0],
                 "foreign_keys": fk,
             },
-        )
+        ))
 
         # Batch embeddings for table columns
         # TODO: Check if the embedding model and description are correct \
@@ -123,7 +124,7 @@ def load_to_graph(
                 embed_columns.extend(embedding_result)
                 idx = 0
 
-            graph.query(
+            run_async(graph.query(
                 """
                 MATCH (t:Table {name: $table_name})
                 CREATE (c:Column {
@@ -144,7 +145,7 @@ def load_to_graph(
                     "description": col_info["description"],
                     "embedding": embed_columns[idx],
                 },
-            )
+            ))
 
     # Create relationships
     for rel_name, table_info in tqdm.tqdm(
@@ -159,7 +160,7 @@ def load_to_graph(
 
             # Create relationship if both tables and columns exist
             try:
-                graph.query(
+                run_async(graph.query(
                     """
                     MATCH (src:Column {name: $source_col})
                         -[:BELONGS_TO]->(source:Table {name: $source_table})
@@ -178,7 +179,7 @@ def load_to_graph(
                         "rel_name": rel_name,
                         "note": note,
                     },
-                )
+                ))
             except Exception as e:
                 print(f"Warning: Could not create relationship: {str(e)}")
                 continue
