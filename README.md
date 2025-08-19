@@ -27,6 +27,17 @@ QueryWeaver is an open-source Text2SQL tool that transforms natural language int
    ```bash
    cp .env.example .env
    ```
+   
+   **Required Configuration:**
+   - `FLASK_SECRET_KEY`: A secure secret key for Flask sessions
+   - `GOOGLE_CLIENT_ID` & `GOOGLE_CLIENT_SECRET`: For Google OAuth authentication
+   - `GITHUB_CLIENT_ID` & `GITHUB_CLIENT_SECRET`: For GitHub OAuth authentication
+   - `FALKORDB_HOST` & `FALKORDB_PORT`: FalkorDB connection settings
+   
+   **Optional Configuration:**
+   - Email settings (for organization invitations): `MAIL_*` variables
+   - AI/LLM settings: `AZURE_API_KEY`, `OPENAI_API_KEY`, etc.
+   - Analytics: `GOOGLE_TAG_MANAGER_ID`
 
 ### OAuth Configuration
 
@@ -51,6 +62,72 @@ This application supports authentication via Google and GitHub OAuth. You'll nee
    - Homepage URL: `http://localhost:5000`
    - Authorization callback URL: `http://localhost:5000/login/github/authorized`
 4. Copy the Client ID and Client Secret to your `.env` file
+
+### Email Configuration (Optional)
+
+QueryWeaver supports sending invitation emails when administrators add new users to their organization. This feature is optional but recommended for better user experience.
+
+#### Email Service Setup
+
+QueryWeaver uses Flask-Mail for email functionality. You can configure it with any SMTP provider:
+
+##### SMTP Configuration Examples
+
+**Gmail:**
+
+1. Enable 2-factor authentication on your Gmail account
+2. Generate an App Password:
+   - Go to Google Account settings → Security → App passwords
+   - Generate a new app password for "Mail"
+3. Add the following to your `.env` file:
+
+```bash
+# Email Configuration
+MAIL_SERVER=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USE_TLS=True
+MAIL_USE_SSL=False
+MAIL_USERNAME=your-email@gmail.com
+MAIL_PASSWORD=your-app-password-here
+MAIL_DEFAULT_SENDER=your-email@gmail.com
+APP_URL=https://your-domain.com
+```
+
+**SMTP Providers:**
+
+For other email providers, update the SMTP settings accordingly:
+
+```bash
+# Example for Outlook/Hotmail
+MAIL_SERVER=smtp.live.com
+MAIL_PORT=587
+
+# Example for Yahoo
+MAIL_SERVER=smtp.mail.yahoo.com
+MAIL_PORT=587
+
+# Example for custom SMTP
+MAIL_SERVER=mail.your-domain.com
+MAIL_PORT=465
+MAIL_USE_SSL=True
+MAIL_USE_TLS=False
+```
+
+#### Email Features
+
+When email is properly configured:
+
+- **Invitation Emails**: Automatically sent when an admin adds a new user to their organization
+- **Approval Notifications**: Sent when a pending user is approved by an admin
+- **Professional Templates**: HTML and plain text email templates with organization branding
+- **Graceful Fallback**: Application continues to work normally if email is not configured
+
+#### Email Security Notes
+
+- Always use App Passwords instead of your main account password
+- Keep your email credentials secure and never commit them to version control
+- Consider using environment-specific email settings for development vs. production
+- The `APP_URL` should point to your actual application domain for production
 
 ### Running the Application
 
@@ -102,6 +179,35 @@ docker run -p 5000:5000 --env-file .env falkordb/queryweaver
 ```
 
 For a complete list of available configuration options, see the `.env.example` file in the repository.
+
+## Organization Management
+
+QueryWeaver includes comprehensive organization management features that allow teams to collaborate effectively:
+
+### Features
+
+- **Domain-based Organizations**: Users are automatically grouped by their email domain
+- **Admin Controls**: Organization admins can manage users and permissions
+- **User Invitations**: Admins can invite new users with automatic email notifications
+- **Role Management**: Support for different user roles within organizations
+- **Approval Workflow**: Pending users can be approved by organization admins
+
+### Email Notifications
+
+When email is configured, QueryWeaver automatically sends:
+
+- **Invitation emails** when admins add new users to their organization
+- **Approval notifications** when pending users are approved
+- **Professional HTML templates** with organization branding and clear instructions
+
+### Getting Started with Organizations
+
+1. **Create an Organization**: The first user from a domain becomes the admin
+2. **Invite Team Members**: Admins can add users by email address
+3. **Manage Permissions**: Set roles and approve pending users
+4. **Collaborate**: All organization members can access shared databases and queries
+
+For email functionality, make sure to configure the email settings in your `.env` file as described in the Email Configuration section above.
 
 ## Testing
 
