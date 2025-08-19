@@ -17,6 +17,7 @@ disposable-email-domains = "~=0.0.129"
 email-validator = "~=2.2.0"
 async-timeout = "~=4.0.3"
 mysql-connector-python = "~=9.4.0"
+flask-mail = "*"
 
 [dev-packages]
 pytest = "~=8.4.1"

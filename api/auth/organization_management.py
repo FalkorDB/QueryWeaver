@@ -256,11 +256,14 @@ def add_user_to_organization_by_email(admin_email: str, target_email: str, organ
     """
     Add a user to organization by email (admin function).
     Creates a pending user entry that will be activated when they log in.
+    Sends an invitation email to the user.
     
     Args:
         admin_email: The admin user's email
         target_email: The email of user to add
         organization_domain: The organization domain
+        first_name: First name of the user (optional)
+        last_name: Last name of the user (optional)
     
     Returns:
         Tuple[bool, str]: (success, message)
@@ -281,8 +284,6 @@ def add_user_to_organization_by_email(admin_email: str, target_email: str, organ
 
         organizations_graph = db.select_graph("Organizations")
 
-        # first_name and last_name are now passed as arguments from the route
-
         # Create or update user with pending organization relationship, set names if provided
         query = """
         MATCH (org:Organization {domain: $domain})
@@ -294,7 +295,7 @@ def add_user_to_organization_by_email(admin_email: str, target_email: str, organ
             r.is_pending = true,
             r.invited_by = $admin_email,
             r.invited_at = timestamp()
-        RETURN user, r
+        RETURN user, r, org
         """
 
         result = organizations_graph.query(query, {
@@ -306,9 +307,54 @@ def add_user_to_organization_by_email(admin_email: str, target_email: str, organ
         })
 
         if result.result_set:
-            logging.info("Admin %s added user %s to organization %s (pending)", 
-                        admin_email, target_email, organization_domain)
-            return True, f"User {target_email} has been added to organization and will be activated when they log in"
+            # Get admin user info for the email
+            admin_info_query = """
+            MATCH (admin:User {email: $admin_email})
+            RETURN admin.first_name as first_name, admin.last_name as last_name
+            """
+            admin_result = organizations_graph.query(admin_info_query, {"admin_email": admin_email})
+
+            admin_first_name = ""
+            admin_last_name = ""
+            if admin_result.result_set:
+                admin_record = admin_result.result_set[0]
+                admin_first_name = admin_record[0] if admin_record[0] else ""
+                admin_last_name = admin_record[1] if admin_record[1] else ""
+
+            # Format admin name for email
+            admin_name = f"{admin_first_name} {admin_last_name}".strip()
+            if not admin_name:
+                admin_name = admin_email
+
+            # Get organization name
+            org_record = result.result_set[0]
+            org_data = org_record[2]  # org object from query
+            organization_name = org_data.properties.get("name", organization_domain)
+
+            # Send invitation email
+            try:
+                from api.helpers.email_service import send_organization_invitation
+                email_success, email_message = send_organization_invitation(
+                    recipient_email=target_email,
+                    organization_name=organization_name,
+                    organization_domain=organization_domain,
+                    admin_name=admin_name,
+                    admin_email=admin_email
+                )
+
+                if email_success:
+                    logging.info("Admin %s added user %s to organization %s (pending) and sent invitation email", 
+                                admin_email, target_email, organization_domain)
+                    return True, f"User {target_email} has been added to organization and an invitation email has been sent"
+                else:
+                    logging.warning("Admin %s added user %s to organization %s (pending) but failed to send email: %s", 
+                                  admin_email, target_email, organization_domain, email_message)
+                    return True, f"User {target_email} has been added to organization but invitation email could not be sent: {email_message}"
+
+            except ImportError:
+                logging.info("Admin %s added user %s to organization %s (pending) - email service not available", 
+                            admin_email, target_email, organization_domain)
+                return True, f"User {target_email} has been added to organization (email service not configured)"
         else:
             return False, "Failed to add user to organization"
 
@@ -360,9 +406,40 @@ def approve_pending_user(admin_email: str, target_email: str, organization_domai
         if result.result_set:
             # Also ensure the user has the correct default role
             update_user_role_direct(target_email, "user")
-            logging.info("Admin %s approved user %s in organization %s", 
-                        admin_email, target_email, organization_domain)
-            return True, f"User {target_email} has been approved"
+
+            # Send approval notification email
+            try:
+                from api.helpers.email_service import send_organization_approval_notification
+
+                # Get organization name
+                org_info_query = """
+                MATCH (org:Organization {domain: $domain})
+                RETURN org.name as name
+                """
+                org_result = organizations_graph.query(org_info_query, {"domain": organization_domain})
+                organization_name = organization_domain  # fallback
+                if org_result.result_set:
+                    organization_name = org_result.result_set[0][0] or organization_domain
+
+                email_success, email_message = send_organization_approval_notification(
+                    recipient_email=target_email,
+                    organization_name=organization_name,
+                    organization_domain=organization_domain
+                )
+
+                if email_success:
+                    logging.info("Admin %s approved user %s in organization %s and sent notification email", 
+                                admin_email, target_email, organization_domain)
+                    return True, f"User {target_email} has been approved and notified via email"
+                else:
+                    logging.warning("Admin %s approved user %s in organization %s but failed to send notification: %s", 
+                                  admin_email, target_email, organization_domain, email_message)
+                    return True, f"User {target_email} has been approved but notification email could not be sent: {email_message}"
+
+            except ImportError:
+                logging.info("Admin %s approved user %s in organization %s - email service not available", 
+                            admin_email, target_email, organization_domain)
+                return True, f"User {target_email} has been approved (email service not configured)"
         else:
             return False, "User not found or not pending approval"
 
@@ -551,41 +628,4 @@ def update_user_role_direct(user_email: str, new_role: str) -> bool:
 
     except Exception as e:
         logging.error("Error updating role for user %s to %s: %s", user_email, new_role, e)
-        return False
-
-
-def complete_admin_setup_backend(user_email: str) -> bool:
-    """
-    Complete admin setup for a user who is marked as admin but still pending.
-    This handles cases where the organization creator ended up in pending status.
-    
-    Args:
-        user_email: The admin user's email
-    
-    Returns:
-        bool: Success status
-    """
-    try:
-        organizations_graph = db.select_graph("Organizations")
-        
-        # Update the user's relationship to set is_pending = False
-        query = """
-        MATCH (user:User {email: $user_email})-[r:BELONGS_TO]->(org:Organization)
-        WHERE r.is_admin = true AND r.is_pending = true
-        SET r.is_pending = false,
-            r.setup_completed_at = timestamp()
-        RETURN user, org, r
-        """
-        
-        result = organizations_graph.query(query, {"user_email": user_email})
-        
-        if result.result_set:
-            logging.info("Completed admin setup for user %s", user_email)
-            return True
-        else:
-            logging.warning("No pending admin relationship found for user %s", user_email)
-            return False
-            
-    except Exception as e:
-        logging.error("Error completing admin setup for user %s: %s", user_email, e)
         return False

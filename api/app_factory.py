@@ -13,6 +13,7 @@ from flask_dance.contrib.github import make_github_blueprint
 from flask_dance.consumer.storage.session import SessionStorage
 
 from api.auth.oauth_handlers import setup_oauth_handlers
+from api.helpers.email_service import init_mail
 from api.routes.main import main_bp
 from api.routes.graphs import graphs_bp
 from api.routes.database import database_bp
@@ -58,6 +59,9 @@ def create_app():
 
     # Set up OAuth signal handlers
     setup_oauth_handlers(google_bp, github_bp)
+
+    # Initialize email service
+    init_mail(app)
 
     # Register blueprints
     app.register_blueprint(main_bp)
