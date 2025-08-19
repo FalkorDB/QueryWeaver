@@ -12,7 +12,7 @@ tqdm = "~=4.67.1"
 boto3 = "~=1.40.11"
 psycopg2-binary = "~=2.9.9"
 flask-dance = "~=7.1.0"
-async-timeout = "~=4.0.3"
+async-timeout = "~=5.0.1"
 mysql-connector-python = "~=9.4.0"
 
 [dev-packages]
