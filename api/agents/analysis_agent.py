@@ -3,22 +3,13 @@
 from typing import List
 from litellm import completion
 from api.config import Config
-from .utils import parse_response
+from .utils import BaseAgent, parse_response
 
 
-class AnalysisAgent:
+class AnalysisAgent(BaseAgent):
     # pylint: disable=too-few-public-methods
     """Agent for analyzing user queries and generating database analysis."""
 
-    def __init__(self, queries_history: list, result_history: list):
-        """Initialize the analysis agent with query and result history."""
-        if result_history is None:
-            self.messages = []
-        else:
-            self.messages = []
-            for query, result in zip(queries_history[:-1], result_history):
-                self.messages.append({"role": "user", "content": query})
-                self.messages.append({"role": "assistant", "content": result})
 
     def get_analysis(
         self,

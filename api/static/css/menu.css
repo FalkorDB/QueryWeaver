@@ -114,6 +114,58 @@
   gap: 10px;
 }
 
+.dropdown-container {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dropdown-container select {
+  height: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 14px;
+  background: var(--falkor-quaternary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dropdown-container select:hover {
+  border-color: var(--falkor-primary);
+}
+
+.dropdown-container select:focus {
+  outline: none;
+  border-color: var(--falkor-primary);
+  box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
+}
+
+.dropdown-container button {
+  height: 100%;
+  padding: 8px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 14px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dropdown-container button:hover:not(:disabled) {
+  background: var(--falkor-primary);
+  color: white;
+}
+
+.dropdown-container button:disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+  border-color: var(--text-secondary);
+}
+
 #graph-select {
   height: 100%;
   padding: 8px 12px;

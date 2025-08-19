@@ -92,4 +92,11 @@ def create_app():
             if os.path.isdir(file_path):
                 abort(405)
 
+    @app.context_processor
+    def inject_google_tag_manager():
+        """Inject Google Tag Manager ID into template context."""
+        return {
+            'google_tag_manager_id': os.getenv("GOOGLE_TAG_MANAGER_ID")
+        }
+
     return app
