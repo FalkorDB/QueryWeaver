@@ -3,7 +3,7 @@
 import json
 from litellm import completion
 from api.config import Config
-from .utils import parse_response
+from .utils import BaseAgent, parse_response
 
 
 RELEVANCY_PROMPT = """
@@ -54,7 +54,7 @@ Ensure your response is concise, polite, and helpful.
 """
 
 
-class RelevancyAgent:
+class RelevancyAgent(BaseAgent):
     # pylint: disable=too-few-public-methods
     """Agent for determining relevancy of queries to database schema."""
 

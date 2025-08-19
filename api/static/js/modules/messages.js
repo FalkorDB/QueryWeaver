@@ -135,7 +135,7 @@ export function initChat() {
     if (DOM.graphSelect && DOM.graphSelect.options.length > 0 && DOM.graphSelect.options[0].value) {
         addMessage('Hello! How can I help you today?', false);
     } else {
-        addMessage('Hello! Please select a graph from the dropdown above or upload a schema to get started.', false);
+        addMessage('Hello! Please select a graph from the dropdown above, upload a schema or connect to a database to get started.', false);
     }
     
     state.questions_history = [];
