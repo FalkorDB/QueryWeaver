@@ -25,12 +25,11 @@
         {% include 'components/chat_input.j2' %}
     </div>
 </div>
-<div id="gradient"></div>
 {% endblock %}
 
 {% block modals %}
     {% include 'components/login_modal.j2' %}
-    {% include 'components/postgres_modal.j2' %}
+    {% include 'components/database_modal.j2' %}
     {% include 'components/reset_modal.j2' %}
     {% if is_authenticated %}
         {% include 'components/organization_modal.j2' %}

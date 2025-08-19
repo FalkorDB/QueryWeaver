@@ -1,0 +1,17 @@
+{# Database connection modal #}
+<div id="db-modal" class="db-modal">
+    <div class="db-modal-content">
+        <h2 class="db-modal-title" id="db-modal-title">Connect to Database</h2>
+        <input type="text" id="db-url-input" class="db-modal-input" placeholder="Select database type first..." disabled />
+        <div class="db-modal-actions">
+            <button id="db-modal-connect" class="db-modal-btn db-modal-connect" disabled>
+                <span class="db-modal-connect-text">Connect</span>
+                <span class="db-modal-loading-spinner" style="display: none;">
+                    <span class="spinner"></span>
+                    Loading Schema...
+                </span>
+            </button>
+            <button id="db-modal-cancel" class="db-modal-btn db-modal-cancel">Cancel</button>
+        </div>
+    </div>
+</div>

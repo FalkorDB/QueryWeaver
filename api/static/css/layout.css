@@ -8,12 +8,6 @@
   position: relative;
 }
 
-#gradient {
-  width: 100%;
-  height: 2%;
-  background: linear-gradient(to right, var(--falkor-primary), var(--falkor-accent));
-}
-
 .logo {
   height: 60px;
   width: auto;

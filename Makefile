@@ -17,17 +17,21 @@ setup-dev: install ## Set up development environment
 
 test: test-unit test-e2e ## Run all tests
 
+
 test-unit: ## Run unit tests only
-	pipenv run pytest tests/ -k "not e2e" --verbose
+	pipenv run python -m pytest tests/ -k "not e2e" --verbose
+
 
 test-e2e: ## Run E2E tests headless
-	pipenv run pytest tests/e2e/ --browser chromium
+	pipenv run python -m pytest tests/e2e/ --browser chromium
+
 
 test-e2e-headed: ## Run E2E tests with browser visible
-	pipenv run pytest tests/e2e/ --browser chromium --headed
+	pipenv run python -m pytest tests/e2e/ --browser chromium --headed
+
 
 test-e2e-debug: ## Run E2E tests with debugging enabled
-	pipenv run pytest tests/e2e/ --browser chromium --slowmo=1000
+	pipenv run python -m pytest tests/e2e/ --browser chromium --slowmo=1000
 
 lint: ## Run linting
 	pipenv run pylint $(shell git ls-files '*.py')
@@ -44,10 +48,10 @@ clean: ## Clean up test artifacts
 	find . -name "*.pyo" -delete
 
 run-dev: ## Run development server
-	pipenv run flask --app api.index run --debug
+	pipenv run python -m flask --app api.index run --debug
 
 run-prod: ## Run production server
-	pipenv run flask --app api.index run
+	pipenv run python -m flask --app api.index run
 
 docker-falkordb: ## Start FalkorDB in Docker for testing
 	docker run -d --name falkordb-test -p 6379:6379 falkordb/falkordb:latest

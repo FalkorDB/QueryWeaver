@@ -14,12 +14,36 @@ from api.graph import find, get_db_description
 from api.loaders.csv_loader import CSVLoader
 from api.loaders.json_loader import JSONLoader
 from api.loaders.postgres_loader import PostgresLoader
+from api.loaders.mysql_loader import MySQLLoader
 from api.loaders.odata_loader import ODataLoader
 
 # Use the same delimiter as in the JavaScript
 MESSAGE_DELIMITER = "|||FALKORDB_MESSAGE_BOUNDARY|||"
 
 graphs_bp = Blueprint("graphs", __name__, url_prefix="/graphs")
+
+def get_database_type_and_loader(db_url: str):
+    """
+    Determine the database type from URL and return appropriate loader class.
+    
+    Args:
+        db_url: Database connection URL
+        
+    Returns:
+        tuple: (database_type, loader_class)
+    """
+    if not db_url or db_url == "No URL available for this database.":
+        return None, None
+
+    db_url_lower = db_url.lower()
+
+    if db_url_lower.startswith('postgresql://') or db_url_lower.startswith('postgres://'):
+        return 'postgresql', PostgresLoader
+    elif db_url_lower.startswith('mysql://'):
+        return 'mysql', MySQLLoader
+    else:
+        # Default to PostgresLoader for backward compatibility
+        return 'postgresql', PostgresLoader
 
 def sanitize_query(query: str) -> str:
     """Sanitize the query to prevent injection attacks."""
@@ -162,6 +186,16 @@ def query_graph(graph_id: str):
         # Ensure the database description is loaded
         db_description, db_url = get_db_description(graph_id)
 
+        # Determine database type and get appropriate loader
+        db_type, loader_class = get_database_type_and_loader(db_url)
+
+        if not loader_class:
+            yield json.dumps({
+                "type": "error", 
+                "message": "Unable to determine database type"
+            }) + MESSAGE_DELIMITER
+            return
+
         logging.info("Calling to relevancy agent with query: %s",
                      sanitize_query(queries_history[-1]))
 
@@ -273,12 +307,12 @@ What this will do:
                     step = {"type": "reasoning_step", "message": "Step 2: Executing SQL query"}
                     yield json.dumps(step) + MESSAGE_DELIMITER
 
-                    # Check if this query modifies the database schema
+                    # Check if this query modifies the database schema using the appropriate loader
                     is_schema_modifying, operation_type = (
-                        PostgresLoader.is_schema_modifying_query(sql_query)
+                        loader_class.is_schema_modifying_query(sql_query)
                     )
 
-                    query_results = PostgresLoader.execute_sql_query(answer_an["sql_query"], db_url)
+                    query_results = loader_class.execute_sql_query(answer_an["sql_query"], db_url)
                     yield json.dumps(
                         {
                             "type": "query_result",
@@ -286,14 +320,14 @@ What this will do:
                         }
                     ) + MESSAGE_DELIMITER
 
-                    # If schema was modified, refresh the graph
+                    # If schema was modified, refresh the graph using the appropriate loader
                     if is_schema_modifying:
                         step = {"type": "reasoning_step",
                                "message": ("Step 3: Schema change detected - "
                                          "refreshing graph...")}
                         yield json.dumps(step) + MESSAGE_DELIMITER
 
-                        refresh_result = PostgresLoader.refresh_graph_schema(
+                        refresh_result = loader_class.refresh_graph_schema(
                             graph_id, db_url)
                         refresh_success, refresh_message = refresh_result
 
@@ -372,16 +406,26 @@ def confirm_destructive_operation(graph_id: str):
             try:
                 db_description, db_url = get_db_description(graph_id)
 
+                # Determine database type and get appropriate loader
+                db_type, loader_class = get_database_type_and_loader(db_url)
+
+                if not loader_class:
+                    yield json.dumps({
+                        "type": "error", 
+                        "message": "Unable to determine database type"
+                    }) + MESSAGE_DELIMITER
+                    return
+
                 step = {"type": "reasoning_step",
                        "message": "Step 2: Executing confirmed SQL query"}
                 yield json.dumps(step) + MESSAGE_DELIMITER
 
-                # Check if this query modifies the database schema
+                # Check if this query modifies the database schema using appropriate loader
                 is_schema_modifying, operation_type = (
-                    PostgresLoader.is_schema_modifying_query(sql_query)
+                    loader_class.is_schema_modifying_query(sql_query)
                 )
 
-                query_results = PostgresLoader.execute_sql_query(sql_query, db_url)
+                query_results = loader_class.execute_sql_query(sql_query, db_url)
                 yield json.dumps(
                     {
                         "type": "query_result",
@@ -396,7 +440,7 @@ def confirm_destructive_operation(graph_id: str):
                     yield json.dumps(step) + MESSAGE_DELIMITER
 
                     refresh_success, refresh_message = (
-                        PostgresLoader.refresh_graph_schema(graph_id, db_url)
+                        loader_class.refresh_graph_schema(graph_id, db_url)
                     )
 
                     if refresh_success:
@@ -477,13 +521,22 @@ def refresh_graph_schema(graph_id: str):
                 "error": "No database URL found for this graph"
             }), 400
 
-        # Perform schema refresh
-        success, message = PostgresLoader.refresh_graph_schema(graph_id, db_url)
+        # Determine database type and get appropriate loader
+        db_type, loader_class = get_database_type_and_loader(db_url)
+
+        if not loader_class:
+            return jsonify({
+                "success": False,
+                "error": "Unable to determine database type"
+            }), 400
+
+        # Perform schema refresh using the appropriate loader
+        success, message = loader_class.refresh_graph_schema(graph_id, db_url)
 
         if success:
             return jsonify({
                 "success": True,
-                "message": "Graph schema refreshed successfully"
+                "message": f"Graph schema refreshed successfully using {db_type}"
             }), 200
 
         logging.error("Schema refresh failed for graph %s: %s", graph_id, message)

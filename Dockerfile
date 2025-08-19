@@ -16,9 +16,14 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN python3 -m pip install --no-cache-dir --break-system-packages -r requirements.txt
+# Install pipenv
+RUN python3 -m pip install --no-cache-dir --break-system-packages pipenv
+
+# Copy Pipfile and Pipfile.lock
+COPY Pipfile Pipfile.lock ./
+
+# Install Python dependencies from Pipfile
+RUN PIP_BREAK_SYSTEM_PACKAGES=1 pipenv sync --system
 
 # Copy application code
 COPY . .
