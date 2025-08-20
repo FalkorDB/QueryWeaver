@@ -1,6 +1,6 @@
 """Database connection routes for the text2sql API."""
 import logging
-from flask import Blueprint, jsonify, request, g
+from quart import Blueprint, jsonify, request, g
 
 from api.auth.user_management import token_required
 from api.loaders.postgres_loader import PostgresLoader
@@ -11,13 +11,13 @@ database_bp = Blueprint("database", __name__)
 
 @database_bp.route("/database", methods=["POST"])
 @token_required
-def connect_database():
+async def connect_database():
     """
     Accepts a JSON payload with a database URL and attempts to connect.
     Supports both PostgreSQL and MySQL databases.
     Returns success or error message.
     """
-    data = request.get_json()
+    data = await request.get_json()
     url = data.get("url") if data else None
     if not url:
         return jsonify({"success": False, "error": "No URL provided"}), 400
@@ -34,7 +34,7 @@ def connect_database():
         if url.startswith("postgres://") or url.startswith("postgresql://"):
             try:
                 # Attempt to connect/load using the PostgreSQL loader
-                success, result = PostgresLoader.load(g.user_id, url)
+                success, result = await PostgresLoader.load(g.user_id, url)
             except (ValueError, ConnectionError) as e:
                 logging.error("PostgreSQL connection error: %s", str(e))
                 return jsonify({"success": False, "error": "Failed to connect to PostgreSQL database"}), 500
@@ -43,7 +43,7 @@ def connect_database():
         elif url.startswith("mysql://"):
             try:
                 # Attempt to connect/load using the MySQL loader
-                success, result = MySQLLoader.load(g.user_id, url)
+                success, result = await MySQLLoader.load(g.user_id, url)
             except (ValueError, ConnectionError) as e:
                 logging.error("MySQL connection error: %s", str(e))
                 return jsonify({"success": False, "error": "Failed to connect to MySQL database"}), 500

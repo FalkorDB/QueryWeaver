@@ -14,7 +14,7 @@ class ODataLoader(BaseLoader):
     """
 
     @staticmethod
-    def load(graph_id: str, data) -> Tuple[bool, str]:
+    async def load(graph_id: str, data) -> Tuple[bool, str]:
         """Load XML ODATA schema into a Graph."""
 
         try:
@@ -23,7 +23,7 @@ class ODataLoader(BaseLoader):
         except ET.ParseError:
             return False, "Invalid XML content"
 
-        load_to_graph(graph_id, entities, relationships, db_name="ERP system")
+        await load_to_graph(graph_id, entities, relationships, db_name="ERP system")
 
         return True, "Graph loaded successfully"
 

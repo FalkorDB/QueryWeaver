@@ -11,7 +11,6 @@ import tqdm
 
 from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
-from api.helpers.async_utils import run_async
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -121,7 +120,7 @@ class MySQLLoader(BaseLoader):
         }
 
     @staticmethod
-    def load(prefix: str, connection_url: str) -> Tuple[bool, str]:
+    async def load(prefix: str, connection_url: str) -> Tuple[bool, str]:
         """
         Load the graph data from a MySQL database into the graph database.
 
@@ -154,7 +153,7 @@ class MySQLLoader(BaseLoader):
             conn.close()
 
             # Load data into graph
-            load_to_graph(prefix + "_" + db_name, entities, relationships,
+            await load_to_graph(prefix + "_" + db_name, entities, relationships,
                          db_name=db_name, db_url=connection_url)
 
             return True, (f"MySQL schema loaded successfully. "
@@ -400,7 +399,7 @@ class MySQLLoader(BaseLoader):
         return False, ""
 
     @staticmethod
-    def refresh_graph_schema(graph_id: str, db_url: str) -> Tuple[bool, str]:
+    async def refresh_graph_schema(graph_id: str, db_url: str) -> Tuple[bool, str]:
         """
         Refresh the graph schema by clearing existing data and reloading from the database.
 
@@ -420,7 +419,7 @@ class MySQLLoader(BaseLoader):
             # Clear existing graph data
             # Drop current graph before reloading
             graph = db.select_graph(graph_id)
-            run_async(graph.delete())
+            await graph.delete()
 
             # Extract prefix from graph_id (remove database name part)
             # graph_id format is typically "prefix_database_name"
@@ -432,7 +431,7 @@ class MySQLLoader(BaseLoader):
                 prefix = graph_id
 
             # Reuse the existing load method to reload the schema
-            success, message = MySQLLoader.load(prefix, db_url)
+            success, message = await MySQLLoader.load(prefix, db_url)
 
             if success:
                 logging.info("Graph schema refreshed successfully.")

@@ -11,7 +11,6 @@ from pydantic import BaseModel
 
 from api.config import Config
 from api.extensions import db
-from api.helpers.async_utils import run_async
 
 
 logging.basicConfig(
@@ -41,7 +40,7 @@ class Descriptions(BaseModel):
     columns_descriptions: List[ColumnDescription]
 
 
-def get_db_description(graph_id: str) -> Tuple[str, str]:
+async def get_db_description(graph_id: str) -> Tuple[str, str]:
     """
     Get the database description from the graph.
     
@@ -52,12 +51,12 @@ def get_db_description(graph_id: str) -> Tuple[str, str]:
         A tuple containing the database description and URL.
     """
     graph = db.select_graph(graph_id)
-    query_result = run_async(graph.query(
+    query_result = await graph.query(
         """
         MATCH (d:Database)
         RETURN d.description, d.url
         """
-    ))
+    )
 
     if not query_result.result_set:
         return (

@@ -47,11 +47,11 @@ clean: ## Clean up test artifacts
 	find . -name "*.pyc" -delete
 	find . -name "*.pyo" -delete
 
-run-dev: ## Run development server
-	pipenv run python -m flask --app api.index run --debug
+run-dev: ## Run development server (Quart)
+	pipenv run quart --app api.index:app run --reload --port 5000
 
-run-prod: ## Run production server
-	pipenv run python -m flask --app api.index run
+run-prod: ## Run production server (Hypercorn)
+	pipenv run hypercorn api.index:app --bind 0.0.0.0:5000
 
 docker-falkordb: ## Start FalkorDB in Docker for testing
 	docker run -d --name falkordb-test -p 6379:6379 falkordb/falkordb:latest

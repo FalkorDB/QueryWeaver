@@ -1,18 +1,25 @@
-"""Application factory for the text2sql Flask app."""
+"""Application factory for creating Quart application instances."""
 
-import logging
 import os
+import logging
 import secrets
-
-from dotenv import load_dotenv
-from flask import Flask, redirect, url_for, request, abort, session
+from datetime import timedelta
+from quart import Quart, request, jsonify, session, redirect, url_for, abort
+from quart_cors import cors
 from werkzeug.exceptions import HTTPException
 from werkzeug.utils import secure_filename
-from flask_dance.contrib.google import make_google_blueprint
-from flask_dance.contrib.github import make_github_blueprint
-from flask_dance.consumer.storage.session import SessionStorage
+from dotenv import load_dotenv
 
-from api.auth.oauth_handlers import setup_oauth_handlers
+# Import OAuth setup
+from api.auth.quart_oauth import init_oauth_providers
+
+# Import routes
+from api.routes.auth import auth_bp
+from api.routes.graphs import graphs_bp
+from api.routes.database import database_bp
+
+load_dotenv()
+
 from api.routes.auth import auth_bp
 from api.routes.graphs import graphs_bp
 from api.routes.database import database_bp
@@ -23,48 +30,32 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 
 def create_app():
-    """Create and configure the Flask application."""
-    app = Flask(__name__)
-    app.secret_key = os.getenv("FLASK_SECRET_KEY")
+    """Create and configure the Quart application."""
+    app = Quart(__name__)
+    
+    # Load configuration from environment variables
+    app.config['FLASK_SECRET_KEY'] = os.getenv("FLASK_SECRET_KEY")
+    app.config['GOOGLE_CLIENT_ID'] = os.getenv("GOOGLE_CLIENT_ID")
+    app.config['GOOGLE_CLIENT_SECRET'] = os.getenv("GOOGLE_CLIENT_SECRET")
+    app.config['GITHUB_CLIENT_ID'] = os.getenv("GITHUB_CLIENT_ID")
+    app.config['GITHUB_CLIENT_SECRET'] = os.getenv("GITHUB_CLIENT_SECRET")
+    
+    # Set secret key
+    app.secret_key = app.config['FLASK_SECRET_KEY']
     if not app.secret_key:
         app.secret_key = secrets.token_hex(32)
         logging.warning("FLASK_SECRET_KEY not set, using generated key. Set this in production!")
 
-    # Google OAuth setup
-    google_client_id = os.getenv("GOOGLE_CLIENT_ID")
-    google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
-    google_bp = make_google_blueprint(
-        client_id=google_client_id,
-        client_secret=google_client_secret,
-        scope=[
-            "https://www.googleapis.com/auth/userinfo.email",
-            "https://www.googleapis.com/auth/userinfo.profile",
-            "openid"
-        ]
-    )
-    app.register_blueprint(google_bp, url_prefix="/login")
+    # Configure OAuth using our custom implementation
+    init_oauth_providers(app)
 
-    # GitHub OAuth setup
-    github_client_id = os.getenv("GITHUB_CLIENT_ID")
-    github_client_secret = os.getenv("GITHUB_CLIENT_SECRET")
-    github_bp = make_github_blueprint(
-        client_id=github_client_id,
-        client_secret=github_client_secret,
-        scope="user:email",
-        storage=SessionStorage()
-    )
-    app.register_blueprint(github_bp, url_prefix="/login")
-
-    # Set up OAuth signal handlers
-    setup_oauth_handlers(google_bp, github_bp)
-
-    # Register blueprints
+    # Register application blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(graphs_bp)
     app.register_blueprint(database_bp)
 
     @app.errorhandler(Exception)
-    def handle_oauth_error(error):
+    async def handle_oauth_error(error):
         """Handle OAuth-related errors gracefully"""
         # Check if it's an OAuth-related error
         if "token" in str(error).lower() or "oauth" in str(error).lower():
@@ -72,7 +63,7 @@ def create_app():
             session.clear()
             return redirect(url_for("auth.home"))
 
-        # If it's an HTTPException (like abort(403)), re-raise so Flask handles it properly
+        # If it's an HTTPException (like abort(403)), re-raise so Quart handles it properly
         if isinstance(error, HTTPException):
             return error
 
@@ -80,7 +71,7 @@ def create_app():
         raise error
 
     @app.before_request
-    def block_static_directories():
+    async def block_static_directories():
         if request.path.startswith('/static/'):
             # Remove /static/ prefix to get the actual path
             filename = secure_filename(request.path[8:])

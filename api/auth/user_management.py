@@ -1,19 +1,36 @@
 """User management and authentication functions for text2sql API."""
 
+import asyncio
 import logging
 import time
 from functools import wraps
 
 import requests
-from flask import g, session, jsonify
-from flask_dance.contrib.google import google
-from flask_dance.contrib.github import github
-from api.helpers.async_utils import run_async
+from quart import g, session, jsonify
 
 from api.extensions import db
 
 
-def ensure_user_in_organizations(provider_user_id, email, name, provider, picture=None):
+class User:
+    """User class for OAuth authentication."""
+    
+    def __init__(self, email, name, picture=None, provider=None):
+        self.email = email
+        self.name = name
+        self.picture = picture or ""
+        self.provider = provider or "unknown"
+    
+    def to_dict(self):
+        """Convert user to dictionary for session storage."""
+        return {
+            'email': self.email,
+            'name': self.name,
+            'picture': self.picture,
+            'provider': self.provider
+        }
+
+
+async def ensure_user_in_organizations(provider_user_id, email, name, provider, picture=None):
     """
     Check if identity exists in Organizations graph, create if not.
     Creates separate Identity and User nodes with proper relationships.
@@ -80,7 +97,7 @@ def ensure_user_in_organizations(provider_user_id, email, name, provider, pictur
             EXISTS((user)<-[:AUTHENTICATES]-(:Identity)) AS had_other_identities
         """
 
-        result = run_async(organizations_graph.query(merge_query, {
+        result = await organizations_graph.query(merge_query, {
             "provider": provider,
             "provider_user_id": provider_user_id,
             "email": email,
@@ -88,7 +105,7 @@ def ensure_user_in_organizations(provider_user_id, email, name, provider, pictur
             "picture": picture,
             "first_name": first_name,
             "last_name": last_name
-        }, timeout=30))
+        }, timeout=30)
 
         if result.result_set:
             identity = result.result_set[0][0]
@@ -124,7 +141,7 @@ def ensure_user_in_organizations(provider_user_id, email, name, provider, pictur
         return False, None
 
 
-def update_identity_last_login(provider, provider_user_id):
+async def update_identity_last_login(provider, provider_user_id):
     """Update the last login timestamp for an existing identity"""
     # Input validation
     if not provider or not provider_user_id:
@@ -145,10 +162,10 @@ def update_identity_last_login(provider, provider_user_id):
         SET identity.last_login = timestamp()
         RETURN identity
         """
-        run_async(organizations_graph.query(update_query, {
+        await organizations_graph.query(update_query, {
             "provider": provider,
             "provider_user_id": provider_user_id
-        }, timeout=30))
+        }, timeout=30)
         logging.info("Updated last login for identity: provider=%s, provider_user_id=%s",
                     provider, provider_user_id)
     except (AttributeError, ValueError, KeyError) as e:
@@ -161,126 +178,50 @@ def update_identity_last_login(provider, provider_user_id):
 
 def validate_and_cache_user():
     """
-    Helper function to validate OAuth token and cache user info.
-    Returns (user_info, is_authenticated) tuple.
-    Supports both Google and GitHub OAuth.
+    Validate and return cached user information from session.
+    For the Quart/Authlib implementation, we rely on session data
+    set during OAuth callbacks.
+    
+    Returns:
+        tuple: (user_info dict or None, is_authenticated bool)
     """
-    try:
-        # Check for cached user info from either provider
-        user_info = session.get("user_info")
-        token_validated_at = session.get("token_validated_at", 0)
-        current_time = time.time()
-
-        # Use cached user info if it's less than 15 minutes old
-        if user_info and (current_time - token_validated_at) < 900:  # 15 minutes
-            return user_info, True
-
-        # Check Google OAuth first
-        if google.authorized:
-            try:
-                resp = google.get("/oauth2/v2/userinfo")
-                if resp.ok:
-                    google_user = resp.json()
-                    # Validate required fields
-                    if not google_user.get("id") or not google_user.get("email"):
-                        logging.warning("Invalid Google user data received")
-                        session.clear()
-                        return None, False
-
-                    # Normalize user info structure
-                    user_info = {
-                        "id": str(google_user.get("id")),  # Ensure string type
-                        "name": google_user.get("name", ""),
-                        "email": google_user.get("email"),
-                        "picture": google_user.get("picture", ""),
-                        "provider": "google"
-                    }
-                    session["user_info"] = user_info
-                    session["token_validated_at"] = current_time
-                    return user_info, True
-            except (requests.RequestException, KeyError, ValueError) as e:
-                logging.warning("Google OAuth validation error: %s", e)
-                session.clear()
-
-        # Check GitHub OAuth
-        if github.authorized:
-            try:
-                # Get user profile
-                resp = github.get("/user")
-                if resp.ok:
-                    github_user = resp.json()
-
-                    # Validate required fields
-                    if not github_user.get("id"):
-                        logging.warning("Invalid GitHub user data received")
-                        session.clear()
-                        return None, False
-
-                    # Get user email (GitHub may require separate call for email)
-                    email_resp = github.get("/user/emails")
-                    email = None
-                    if email_resp.ok:
-                        emails = email_resp.json()
-                        # Find primary email
-                        for email_obj in emails:
-                            if email_obj.get("primary", False):
-                                email = email_obj.get("email")
-                                break
-
-                        # If no primary email found, use the first one
-                        if not email and emails:
-                            email = emails[0].get("email")
-
-                    if not email:
-                        logging.warning("No email found for GitHub user")
-                        session.clear()
-                        return None, False
-
-                    # Normalize user info structure
-                    user_info = {
-                        "id": str(github_user.get("id")),  # Convert to string for consistency
-                        "name": github_user.get("name") or github_user.get("login", ""),
-                        "email": email,
-                        "picture": github_user.get("avatar_url", ""),
-                        "provider": "github"
-                    }
-                    session["user_info"] = user_info
-                    session["token_validated_at"] = current_time
-                    return user_info, True
-            except (requests.RequestException, KeyError, ValueError) as e:
-                logging.warning("GitHub OAuth validation error: %s", e)
-                session.clear()
-
-        # If no valid authentication found, clear session
-        session.clear()
+    user_info = session.get("user_info")
+    token_validated_at = session.get("token_validated_at", 0)
+    
+    if not user_info:
         return None, False
-
-    except Exception as e:
-        logging.error("Unexpected error in validate_and_cache_user: %s", e)
-        session.clear()
-        return None, False
+        
+    current_time = time.time()
+    
+    # Use cached user info if it's less than 15 minutes old
+    if user_info and (current_time - token_validated_at) < 900:  # 15 minutes
+        return user_info, True
+    
+    # If token is older than 15 minutes, consider it expired for security
+    # In a production app, you might want to refresh the token instead
+    session.clear()
+    return None, False
 
 
 def token_required(f):
-    """Decorator to protect routes with token authentication"""
-
     @wraps(f)
-    def decorated_function(*args, **kwargs):
+    async def decorated_function(*args, **kwargs):
         try:
             user_info, is_authenticated = validate_and_cache_user()
 
             if not is_authenticated:
-                return jsonify(message="Unauthorized - Please log in"), 401
+                return jsonify({"message": "Unauthorized - Please log in"}), 401
 
             g.user_id = user_info.get("id")
             if not g.user_id:
-                session.clear()
-                return jsonify(message="Unauthorized - Invalid user"), 401
+                return jsonify({"message": "Unauthorized - Invalid user"}), 401
 
-            return f(*args, **kwargs)
         except Exception as e:
-            logging.error("Unexpected error in token_required: %s", e)
-            session.clear()
-            return jsonify(message="Unauthorized - Authentication error"), 401
+            return jsonify({"message": str(e)}), 401
+
+        result = f(*args, **kwargs)
+        if asyncio.iscoroutine(result):
+            return await result
+        return result
 
     return decorated_function

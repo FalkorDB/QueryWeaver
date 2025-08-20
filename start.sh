@@ -17,5 +17,5 @@ while ! nc -z "$FALKORDB_HOST" "$FALKORDB_PORT"; do
 done
 
 
-echo "FalkorDB is up - launching Flask..."
-exec python3 -m flask --app api.index run --host=0.0.0.0 --port=5000
+echo "FalkorDB is up - launching Quart..."
+exec python3 -m hypercorn api.index:app --bind 0.0.0.0:5000

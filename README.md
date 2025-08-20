@@ -54,8 +54,14 @@ This application supports authentication via Google and GitHub OAuth. You'll nee
 
 ### Running the Application
 
+#### Development Mode (with hot reload)
 ```bash
-pipenv run flask --app api.index run
+pipenv run quart --app api.index:app run --reload --port 5000
+```
+
+#### Production Mode (using Hypercorn)
+```bash
+pipenv run hypercorn api.index:app --bind 0.0.0.0:5000
 ```
 
 The application will be available at `http://localhost:5000`.

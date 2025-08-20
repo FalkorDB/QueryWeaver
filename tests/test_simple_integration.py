@@ -8,7 +8,7 @@ class TestSimpleIntegration:
     """Simple integration tests using requests."""
 
     def test_app_starts_successfully(self, app_url):
-        """Test that the Flask application starts and responds."""
+        """Test that the Quart application starts and responds."""
         response = requests.get(app_url, timeout=10)
         assert response.status_code == 200
 

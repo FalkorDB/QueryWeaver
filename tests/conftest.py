@@ -8,18 +8,18 @@ import requests
 
 
 @pytest.fixture(scope="session")
-def flask_app():
-    """Start the Flask application for testing."""
+def quart_app():
+    """Start the Quart application for testing."""
     import os
 
     # Get the project root directory (parent of tests directory)
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(current_dir)
 
-    # Start the Flask app using pipenv
+    # Start the Quart app using pipenv and hypercorn
     process = subprocess.Popen([
-        "pipenv", "run", "flask", "--app", "api.index", "run",
-        "--host", "localhost", "--port", "5000"
+        "pipenv", "run", "hypercorn", "api.index:app",
+        "--bind", "localhost:5000"
     ], cwd=project_root)
 
     # Wait for the app to start
@@ -33,7 +33,7 @@ def flask_app():
             time.sleep(1)
     else:
         process.terminate()
-        raise RuntimeError("Flask app failed to start")
+        raise RuntimeError("Quart app failed to start")
 
     yield "http://localhost:5000"
 
@@ -43,9 +43,9 @@ def flask_app():
 
 
 @pytest.fixture
-def app_url(flask_app):
+def app_url(quart_app):
     """Provide the base URL for the application."""
-    return flask_app
+    return quart_app
 
 
 @pytest.fixture

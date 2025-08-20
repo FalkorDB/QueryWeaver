@@ -24,7 +24,7 @@ class JSONLoader(BaseLoader):
     """JSON schema loader for loading database schemas from JSON files."""
 
     @staticmethod
-    def load(graph_id: str, data) -> Tuple[bool, str]:
+    async def load(graph_id: str, data) -> Tuple[bool, str]:
         """
         Load the graph data into the database.
         It gets the Graph name as an argument and expects
@@ -66,6 +66,6 @@ class JSONLoader(BaseLoader):
                         "note": fk_name,
                     }
                 )
-        load_to_graph(graph_id, data["tables"], relationships, db_name=data["database"])
+        await load_to_graph(graph_id, data["tables"], relationships, db_name=data["database"])
 
         return True, "Graph loaded successfully"
