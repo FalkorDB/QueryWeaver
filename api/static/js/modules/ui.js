@@ -148,3 +148,65 @@ export function handleWindowResize() {
         DOM.chatContainer.style.paddingLeft = '20%';
     }
 }
+
+// Custom dropdown functionality
+export function setupCustomDropdown() {
+    const dropdown = document.getElementById('database-type-dropdown');
+    const selected = dropdown?.querySelector('.dropdown-selected');
+    const options = dropdown?.querySelector('.dropdown-options');
+    const hiddenInput = document.getElementById('database-type-select');
+    
+    if (!dropdown || !selected || !options || !hiddenInput) return;
+    
+    // Toggle dropdown
+    selected.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdown.classList.toggle('open');
+        selected.classList.toggle('active');
+    });
+    
+    // Handle option selection
+    options.addEventListener('click', (e) => {
+        const option = e.target.closest('.dropdown-option');
+        if (!option) return;
+        
+        const value = option.dataset.value;
+        const text = option.querySelector('span').textContent;
+        const icon = option.querySelector('.db-icon')?.cloneNode(true);
+        
+        // Update selected display
+        const dropdownText = selected.querySelector('.dropdown-text');
+        dropdownText.innerHTML = '';
+        if (icon) {
+            dropdownText.appendChild(icon);
+        }
+        dropdownText.appendChild(document.createTextNode(text));
+        
+        // Update hidden input value
+        hiddenInput.value = value;
+        
+        // Close dropdown
+        dropdown.classList.remove('open');
+        selected.classList.remove('active');
+        
+        // Trigger change event for compatibility with existing code
+        const changeEvent = new Event('change', { bubbles: true });
+        hiddenInput.dispatchEvent(changeEvent);
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!dropdown.contains(e.target)) {
+            dropdown.classList.remove('open');
+            selected.classList.remove('active');
+        }
+    });
+    
+    // Close dropdown on escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && dropdown.classList.contains('open')) {
+            dropdown.classList.remove('open');
+            selected.classList.remove('active');
+        }
+    });
+}

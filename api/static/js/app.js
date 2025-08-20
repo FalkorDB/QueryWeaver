@@ -13,7 +13,8 @@ import {
     handleResetConfirmation,
     setupUserProfileDropdown,
     setupThemeToggle,
-    handleWindowResize
+    handleWindowResize,
+    setupCustomDropdown
 } from './modules/ui.js';
 import { setupAuthenticationModal, setupDatabaseModal } from './modules/modals.js';
 
@@ -78,6 +79,7 @@ function setupUIComponents() {
     setupThemeToggle();
     setupAuthenticationModal();
     setupDatabaseModal();
+    setupCustomDropdown();
 }
 
 function loadInitialData() {
