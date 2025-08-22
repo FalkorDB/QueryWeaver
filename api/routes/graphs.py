@@ -19,6 +19,7 @@ from api.loaders.json_loader import JSONLoader
 from api.loaders.postgres_loader import PostgresLoader
 from api.loaders.mysql_loader import MySQLLoader
 from api.loaders.odata_loader import ODataLoader
+from api.rate_limiter import rate_limiter
 
 # Use the same delimiter as in the JavaScript
 MESSAGE_DELIMITER = "|||FALKORDB_MESSAGE_BOUNDARY|||"
@@ -270,6 +271,9 @@ async def query_graph(request: Request, graph_id: str, chat_data: ChatRequest):
     """
     text2sql
     """
+    # Check rate limit for the authenticated user
+    await rate_limiter.check_and_increment_rate_limit(request.state.user_id)
+    
     # Input validation
     if not graph_id or not isinstance(graph_id, str):
         raise HTTPException(status_code=400, detail="Invalid graph_id")
