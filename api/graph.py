@@ -1,17 +1,16 @@
 """Module to handle the graph data loading into the database."""
 
 import json
-import logging
 from itertools import combinations
 from typing import List, Tuple
 
 from litellm import completion
 from pydantic import BaseModel
 
+from api.logging_config import get_logger
 from api.config import Config
 from api.extensions import db
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = get_logger(__name__)
 
 
 class TableDescription(BaseModel):
@@ -61,10 +60,7 @@ def find(graph_id: str, queries_history: List[str],
     user_query = queries_history[-1]
     previous_queries = queries_history[:-1]
 
-    logging.info(
-        "Calling to an LLM to find relevant tables and columns for the query: %s",
-        user_query
-    )
+    logger.info("LLM: find relevant tables/columns", query=user_query)
     # Call the completion model to get the relevant Cypher queries to retrieve
     # from the Graph that represent the Database schema.
     # The completion model will generate a set of Cypher query to retrieve the relevant nodes.
@@ -94,16 +90,22 @@ def find(graph_id: str, queries_history: List[str],
     # Parse JSON string and convert to Pydantic model
     json_data = json.loads(json_str)
     descriptions = Descriptions(**json_data)
-    logging.info("Find tables based on: %s", descriptions.tables_descriptions)
+    logger.info(
+        "Find tables based on tables descriptions",
+        tables=descriptions.tables_descriptions,
+    )
     tables_des = _find_tables(graph, descriptions.tables_descriptions)
-    logging.info("Find tables based on columns: %s", descriptions.columns_descriptions)
+    logger.info(
+        "Find tables based on columns descriptions",
+        columns=descriptions.columns_descriptions,
+    )
     tables_by_columns_des = _find_tables_by_columns(graph, descriptions.columns_descriptions)
 
     # table names for sphere and route extraction
     base_tables_names = [table[0] for table in tables_des]
-    logging.info("Extracting tables by sphere")
+    logger.info("Extracting tables by sphere")
     tables_by_sphere = _find_tables_sphere(graph, base_tables_names)
-    logging.info("Extracting tables by connecting routes %s", base_tables_names)
+    logger.info("Extracting tables by connecting routes", tables=base_tables_names)
     tables_by_route, _ = find_connecting_tables(graph, base_tables_names)
     combined_tables = _get_unique_tables(
         tables_des + tables_by_columns_des + tables_by_route + tables_by_sphere

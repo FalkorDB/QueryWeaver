@@ -1,6 +1,5 @@
 """Application factory for the text2sql FastAPI app."""
 
-import logging
 import os
 import secrets
 
@@ -11,13 +10,14 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from api.logging_config import get_logger
 from api.routes.auth import auth_router, init_auth
 from api.routes.graphs import graphs_router
 from api.routes.database import database_router
 
 # Load environment variables from .env file
 load_dotenv()
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = get_logger(__name__)
 
 
 class SecurityMiddleware(BaseHTTPMiddleware):
@@ -55,7 +55,7 @@ def create_app():
     secret_key = os.getenv("FASTAPI_SECRET_KEY")
     if not secret_key:
         secret_key = secrets.token_hex(32)
-        logging.warning("FASTAPI_SECRET_KEY not set, using generated key. Set this in production!")
+        logger.warning("FASTAPI_SECRET_KEY not set, using generated key. Set this in production!")
 
     # Add session middleware with explicit settings to ensure OAuth state persists
     app.add_middleware(
@@ -87,8 +87,10 @@ def create_app():
     async def handle_oauth_error(request: Request, exc: Exception):
         """Handle OAuth-related errors gracefully"""
         # Check if it's an OAuth-related error
-        if "token" in str(exc).lower() or "oauth" in str(exc).lower():
-            logging.warning("OAuth error occurred: %s", exc)
+        exc_text = str(exc)
+        exc_text_lower = exc_text.lower()
+        if "token" in exc_text_lower or "oauth" in exc_text_lower:
+            logger.warning("OAuth error occurred", error=exc_text)
             request.session.clear()
             return RedirectResponse(url="/", status_code=302)
 

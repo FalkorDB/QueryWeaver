@@ -4,13 +4,15 @@ Lightweight handlers are stored on the FastAPI app state so route
 callbacks can invoke them when processing OAuth responses.
 """
 
-import logging
 from typing import Dict, Any
 
 from fastapi import FastAPI, Request
 from authlib.integrations.starlette_client import OAuth
 
+from api.logging_config import get_logger
 from .user_management import ensure_user_in_organizations
+
+logger = get_logger(__name__)
 
 
 def setup_oauth_handlers(app: FastAPI, oauth: OAuth):
@@ -30,7 +32,7 @@ def setup_oauth_handlers(app: FastAPI, oauth: OAuth):
 
             # Validate required fields
             if not user_id or not email:
-                logging.error("Missing required fields from Google OAuth response")
+                logger.error("Missing required fields from Google OAuth response")
                 return False
 
             # Check if identity exists in Organizations graph, create if new
@@ -44,7 +46,7 @@ def setup_oauth_handlers(app: FastAPI, oauth: OAuth):
 
             return True
         except Exception as exc:  # capture exception for logging
-            logging.error("Error handling Google OAuth callback: %s", exc)
+            logger.error("Error handling Google OAuth callback", error=str(exc))
             return False
 
     async def handle_github_callback(_request: Request,
@@ -58,7 +60,7 @@ def setup_oauth_handlers(app: FastAPI, oauth: OAuth):
 
             # Validate required fields
             if not user_id or not email:
-                logging.error("Missing required fields from GitHub OAuth response")
+                logger.error("Missing required fields from GitHub OAuth response")
                 return False
 
             # Check if identity exists in Organizations graph, create if new
@@ -72,7 +74,7 @@ def setup_oauth_handlers(app: FastAPI, oauth: OAuth):
 
             return True
         except Exception as exc:  # capture exception for logging
-            logging.error("Error handling GitHub OAuth callback: %s", exc)
+            logger.error("Error handling GitHub OAuth callback", error=str(exc))
             return False
 
     # Store handlers in app state for use in route callbacks

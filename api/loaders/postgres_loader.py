@@ -2,17 +2,16 @@
 
 import datetime
 import decimal
-import logging
 import re
 from typing import Tuple, Dict, Any, List
 
 import psycopg2
 import tqdm
 
+from api.logging_config import get_logger
 from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = get_logger(__name__)
 
 
 class PostgresLoader(BaseLoader):
@@ -377,7 +376,10 @@ class PostgresLoader(BaseLoader):
             Tuple of (success, message)
         """
         try:
-            logging.info("Schema modification detected. Refreshing graph schema for: %s", graph_id)
+            logger.info(
+                "Schema modification detected. Refreshing graph schema for",
+                graph_id=graph_id,
+            )
 
             # Import here to avoid circular imports
             from api.extensions import db
@@ -400,17 +402,16 @@ class PostgresLoader(BaseLoader):
             success, message = PostgresLoader.load(prefix, db_url)
 
             if success:
-                logging.info("Graph schema refreshed successfully.")
+                logger.info("Graph schema refreshed successfully.")
                 return True, message
-
-            logging.error("Schema refresh failed for graph %s: %s", graph_id, message)
+            logger.error("Schema refresh failed for graph", graph_id=graph_id, error=message)
             return False, "Failed to reload schema"
 
         except Exception as e:
             # Log the error and return failure
-            logging.error("Error refreshing graph schema: %s", str(e))
+            logger.error("Error refreshing graph schema", error=str(e))
             error_msg = "Error refreshing graph schema"
-            logging.error(error_msg)
+            logger.error(error_msg)
             return False, error_msg
 
     @staticmethod

@@ -1,15 +1,16 @@
 """Database connection routes for the text2sql API."""
-import logging
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from api.auth.user_management import token_required
 from api.loaders.postgres_loader import PostgresLoader
 from api.loaders.mysql_loader import MySQLLoader
+from api.auth.user_management import token_required
+from api.logging_config import get_logger
 
 database_router = APIRouter()
+logger = get_logger(__name__)
 
 
 class DatabaseConnectionRequest(BaseModel):
@@ -47,7 +48,7 @@ async def connect_database(request: Request, db_request: DatabaseConnectionReque
                 # Attempt to connect/load using the PostgreSQL loader
                 success, result = PostgresLoader.load(request.state.user_id, url)
             except (ValueError, ConnectionError) as e:
-                logging.error("PostgreSQL connection error: %s", str(e))
+                logger.error("PostgreSQL connection error", error=str(e))
                 raise HTTPException(
                     status_code=500,
                     detail="Failed to connect to PostgreSQL database",
@@ -59,7 +60,7 @@ async def connect_database(request: Request, db_request: DatabaseConnectionReque
                 # Attempt to connect/load using the MySQL loader
                 success, result = MySQLLoader.load(request.state.user_id, url)
             except (ValueError, ConnectionError) as e:
-                logging.error("MySQL connection error: %s", str(e))
+                logger.error("MySQL connection error", error=str(e))
                 raise HTTPException(
                     status_code=500, detail="Failed to connect to MySQL database"
                 )
@@ -80,9 +81,9 @@ async def connect_database(request: Request, db_request: DatabaseConnectionReque
             })
 
         # Don't return detailed error messages to prevent information exposure
-        logging.error("Database loader failed: %s", result)
+        logger.error("Database loader failed", error=str(result))
         raise HTTPException(status_code=400, detail="Failed to load database schema")
 
     except (ValueError, TypeError) as e:
-        logging.error("Unexpected error in database connection: %s", str(e))
+        logger.error("Unexpected error in database connection", error=str(e))
         raise HTTPException(status_code=500, detail="Internal server error")

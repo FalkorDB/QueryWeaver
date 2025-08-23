@@ -1,6 +1,5 @@
 """Authentication routes for the text2sql API."""
 
-import logging
 import os
 import time
 from pathlib import Path
@@ -13,12 +12,14 @@ from fastapi.templating import Jinja2Templates
 from authlib.common.errors import AuthlibBaseError
 from starlette.config import Config
 
+from api.logging_config import get_logger
 from api.auth.user_management import validate_and_cache_user
 
 # Router
 auth_router = APIRouter()
 TEMPLATES_DIR = str((Path(__file__).resolve().parents[1] / "../app/templates").resolve())
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
+logger = get_logger(__name__)
 
 # ---- Helpers ----
 def _get_provider_client(request: Request, provider: str):
@@ -104,10 +105,9 @@ async def login_google(request: Request) -> RedirectResponse:
 
     # Helpful hint if localhost vs 127.0.0.1 mismatch is likely
     if not os.getenv("OAUTH_BASE_URL") and "127.0.0.1" in str(request.base_url):
-        logging.warning(
-            "OAUTH_BASE_URL not set and base URL is 127.0.0.1; "
-            "if your Google OAuth app uses 'http://localhost:5000', "
-            "set OAUTH_BASE_URL=http://localhost:5000 to avoid redirect_uri mismatch."
+        logger.warning(
+            "OAUTH_BASE_URL not set and base URL is 127.0.0.1; set OAUTH_BASE_URL to"
+            " avoid redirect mismatch."
         )
 
     return await google.authorize_redirect(request, redirect_uri)
@@ -122,13 +122,13 @@ async def google_authorized(request: Request) -> RedirectResponse:
         # Always fetch userinfo explicitly
         resp = await google.get("https://www.googleapis.com/oauth2/v2/userinfo", token=token)
         if resp.status_code != 200:
-            logging.error("Failed to fetch Google user info: %s", resp.text)
+            logger.error("Failed to fetch Google user info", body=resp.text)
             _clear_auth_session(request.session)
             return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
         user_info = resp.json()
         if not user_info.get("email"):
-            logging.error("Invalid Google user data received")
+            logger.error("Invalid Google user data received")
             _clear_auth_session(request.session)
             return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
@@ -146,7 +146,7 @@ async def google_authorized(request: Request) -> RedirectResponse:
         return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
     except AuthlibBaseError as e:
-        logging.error("Google OAuth error: %s", e)
+        logger.error("Google OAuth error", error=str(e))
         _clear_auth_session(request.session)
         return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
@@ -165,7 +165,7 @@ async def login_github(request: Request) -> RedirectResponse:
 
     # Helpful hint if localhost vs 127.0.0.1 mismatch is likely
     if not os.getenv("OAUTH_BASE_URL") and "127.0.0.1" in str(request.base_url):
-        logging.warning(
+        logger.warning(
             "OAUTH_BASE_URL not set and base URL is 127.0.0.1; "
             "if your GitHub OAuth app uses 'http://localhost:5000', "
             "set OAUTH_BASE_URL=http://localhost:5000 to avoid redirect_uri mismatch."
@@ -183,12 +183,11 @@ async def github_authorized(request: Request) -> RedirectResponse:
         # Fetch GitHub user info
         resp = await github.get("https://api.github.com/user", token=token)
         if resp.status_code != 200:
-            logging.error("Failed to fetch GitHub user info: %s", resp.text)
+            logger.error("Failed to fetch GitHub user info", body=resp.text)
             _clear_auth_session(request.session)
             return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
         user_info = resp.json()
-        
         # Get user email if not public
         email = user_info.get("email")
         if not email:
@@ -202,7 +201,7 @@ async def github_authorized(request: Request) -> RedirectResponse:
                         break
 
         if not user_info.get("id") or not email:
-            logging.error("Invalid GitHub user data received")
+            logger.error("Invalid GitHub user data received")
             _clear_auth_session(request.session)
             return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
@@ -220,7 +219,7 @@ async def github_authorized(request: Request) -> RedirectResponse:
         return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
     except AuthlibBaseError as e:
-        logging.error("GitHub OAuth error: %s", e)
+        logger.error("GitHub OAuth error", error=str(e))
         _clear_auth_session(request.session)
         return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
@@ -256,19 +255,19 @@ async def logout(request: Request) -> RedirectResponse:
                             headers={"content-type": "application/x-www-form-urlencoded"},
                         )
                         if resp.status_code != 200:
-                            logging.warning(
-                                "Google token revoke failed (%s): %s",
-                                resp.status_code,
-                                resp.text,
+                            logger.warning(
+                                "Google token revoke failed",
+                                status=resp.status_code,
+                                body=resp.text,
                             )
                         else:
-                            logging.info("Successfully revoked Google token")
+                            logger.info("Successfully revoked Google token")
             except Exception as e:
-                logging.error("Error revoking Google tokens: %s", e)
+                logger.error("Error revoking Google tokens", error=str(e))
 
     # ---- Handle GitHub tokens ----
     if github_token:
-        logging.info("GitHub token found, clearing from session (no remote revoke available).")
+        logger.info("GitHub token found, clearing from session (no remote revoke available).")
         # GitHub logout is local only unless we call the App management API
 
     # ---- Clear session auth keys ----
@@ -287,7 +286,7 @@ def init_auth(app):
     google_client_id = os.getenv("GOOGLE_CLIENT_ID")
     google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
     if not google_client_id or not google_client_secret:
-        logging.warning("Google OAuth env vars not set; login will fail until configured.")
+        logger.warning("Google OAuth env vars not set; login will fail until configured.")
 
     oauth.register(
         name="google",
@@ -300,7 +299,7 @@ def init_auth(app):
     github_client_id = os.getenv("GITHUB_CLIENT_ID")
     github_client_secret = os.getenv("GITHUB_CLIENT_SECRET")
     if not github_client_id or not github_client_secret:
-        logging.warning("GitHub OAuth env vars not set; login will fail until configured.")
+        logger.warning("GitHub OAuth env vars not set; login will fail until configured.")
 
     oauth.register(
         name="github",
