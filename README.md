@@ -54,6 +54,43 @@ This application supports authentication via Google and GitHub OAuth. You'll nee
    - Authorization callback URL: `http://localhost:5000/login/github/authorized`
 4. Copy the Client ID and Client Secret to your `.env` file
 
+### Rate Limiting Configuration
+
+QueryWeaver includes built-in rate limiting to control the number of queries each user can make per day. This helps manage resource usage and ensures fair access for all users.
+
+#### Configuration
+
+Rate limiting is configured via environment variables in your `.env` file:
+
+```bash
+# Rate limiting configuration
+DAILY_QUERY_LIMIT=100  # Maximum number of queries per user per day (default: 100)
+```
+
+#### How it Works
+
+- **Per-User Limits**: Each authenticated user has their own daily query quota
+- **Daily Reset**: Limits reset at UTC midnight each day
+- **Graceful Handling**: If the database is unavailable, requests are allowed to proceed
+- **Clear Feedback**: Users receive clear error messages when limits are exceeded
+
+#### Rate Limit Response
+
+When a user exceeds their daily limit, they'll receive an HTTP 429 response:
+
+```json
+{
+  "detail": "Daily query limit exceeded. You can make 100 queries per day.",
+  "error_code": "RATE_LIMIT_EXCEEDED", 
+  "daily_limit": 100,
+  "reset_time": "UTC midnight"
+}
+```
+
+#### Storage
+
+Query counts are stored in the Organizations graph in FalkorDB as `QueryCount` nodes linked to user accounts. This provides persistent, accurate tracking across application restarts.
+
 ### Running the Application
 
 ```bash
