@@ -233,8 +233,8 @@ async def load_graph(request: Request, data: GraphData = None, file: UploadFile 
                 data = json.loads(content.decode("utf-8"))
                 graph_id = f"{request.state.user_id}_{data.get('database', '')}"
                 success, result = await JSONLoader.load(graph_id, data)
-            except json.JSONDecodeError:
-                raise HTTPException(status_code=400, detail="Invalid JSON file")
+            except json.JSONDecodeError as e:
+                raise HTTPException(status_code=400, detail="Invalid JSON file") from e
 
         # ✅ Check if file is XML
         elif filename.endswith(".xml"):

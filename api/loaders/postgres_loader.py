@@ -480,11 +480,11 @@ class PostgresLoader(BaseLoader):
                 conn.rollback()
                 cursor.close()
                 conn.close()
-            raise Exception(f"PostgreSQL query execution error: {str(e)}")
+            raise Exception(f"PostgreSQL query execution error: {str(e)}") from e
         except Exception as e:
             # Rollback in case of error
             if 'conn' in locals():
                 conn.rollback()
                 cursor.close()
                 conn.close()
-            raise Exception(f"Error executing SQL query: {str(e)}")
+            raise Exception(f"Error executing SQL query: {str(e)}") from e

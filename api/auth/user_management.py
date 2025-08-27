@@ -185,9 +185,9 @@ async def ensure_user_in_organizations(
             # Existing identity login
             logging.info("Existing identity found: provider=%s, email=%s", provider, email)
             return False, {"identity": identity, "user": user}
-        else:
-            logging.error("Failed to create/update identity and user: email=%s", email)
-            return False, None
+
+        logging.error("Failed to create/update identity and user: email=%s", email)
+        return False, None
 
     except (AttributeError, ValueError, KeyError) as e:
         logging.error("Error managing user in Organizations graph: %s", e)
@@ -294,6 +294,6 @@ def token_required(func):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Unauthorized - Authentication error"
-            )
+            ) from e
 
     return wrapper

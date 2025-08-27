@@ -4,7 +4,7 @@ import json
 from typing import Any, Dict
 
 
-class BaseAgent:
+class BaseAgent:  # pylint: disable=too-few-public-methods
     """Base class for agents."""
 
     def __init__(self, queries_history: list, result_history: list):

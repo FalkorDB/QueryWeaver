@@ -51,7 +51,7 @@ async def connect_database(request: Request, db_request: DatabaseConnectionReque
                 raise HTTPException(
                     status_code=500,
                     detail="Failed to connect to PostgreSQL database",
-                )
+                ) from e
 
         # Check for MySQL URL
         elif url.startswith("mysql://"):
@@ -62,7 +62,7 @@ async def connect_database(request: Request, db_request: DatabaseConnectionReque
                 logging.error("MySQL connection error: %s", str(e))
                 raise HTTPException(
                     status_code=500, detail="Failed to connect to MySQL database"
-                )
+                ) from e
 
         else:
             raise HTTPException(
@@ -85,4 +85,4 @@ async def connect_database(request: Request, db_request: DatabaseConnectionReque
 
     except (ValueError, TypeError) as e:
         logging.error("Unexpected error in database connection: %s", str(e))
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from e

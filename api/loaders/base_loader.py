@@ -4,7 +4,7 @@ from abc import ABC
 from typing import Tuple
 
 
-class BaseLoader(ABC):
+class BaseLoader(ABC):  # pylint: disable=too-few-public-methods
     """Abstract base class for data loaders."""
 
     @staticmethod

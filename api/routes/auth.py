@@ -183,7 +183,7 @@ async def google_authorized(request: Request) -> RedirectResponse:
         raise HTTPException(status_code=400, detail="Failed to get user info from Google")
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}") from e
 
 
 @auth_router.get("/login/google/callback", response_class=RedirectResponse)
@@ -269,7 +269,7 @@ async def github_authorized(request: Request) -> RedirectResponse:
         raise HTTPException(status_code=400, detail="Failed to get user info from Github")
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}") from e
 
 
 @auth_router.get("/login/github/callback", response_class=RedirectResponse)

@@ -20,7 +20,7 @@ except json.JSONDecodeError as exc:
     raise ValueError(f"Invalid schema JSON: {str(exc)}") from exc
 
 
-class JSONLoader(BaseLoader):
+class JSONLoader(BaseLoader):  # pylint: disable=too-few-public-methods
     """JSON schema loader for loading database schemas from JSON files."""
 
     @staticmethod

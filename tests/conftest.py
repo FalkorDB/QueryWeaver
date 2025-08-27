@@ -83,20 +83,21 @@ def fastapi_app():
 
 
 @pytest.fixture
-def app_url(fastapi_app):
+def app_url(fast_api_app):
     """Provide the base URL for the application."""
-    return fastapi_app
+    return fast_api_app
 
 
 @pytest.fixture
-def page_with_base_url(page, app_url):
+def page_with_base_url(page, app_url):  # pylint: disable=redefined-outer-name
     """Provide a page with app_url attribute set."""
     # Attach app_url to the page object for test code that expects it
     page.app_url = app_url
     page.goto(app_url)
     yield page
+
 @pytest.fixture
-def authenticated_page(page, app_url):
+def authenticated_page(page, app_url):  # pylint: disable=redefined-outer-name
     """Provide a page with mock authentication for testing authenticated features."""
     # Set a mock authentication cookie
     page.context.add_cookies([{

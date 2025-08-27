@@ -1,3 +1,5 @@
+"""OData loader for loading OData service schemas into FalkorDB graphs."""
+
 import re
 import xml.etree.ElementTree as ET
 from typing import Tuple
@@ -8,7 +10,7 @@ from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
 
 
-class ODataLoader(BaseLoader):
+class ODataLoader(BaseLoader):  # pylint: disable=too-few-public-methods
     """
     This class is responsible for loading OData schemas into a Graph.
     """
@@ -86,8 +88,8 @@ class ODataLoader(BaseLoader):
                         + " with Primery key: "
                         + entity_type.find("edm:Key/edm:PropertyRef", namespaces).attrib["Name"]
                     )
-                except:
-                    print(f"Error parsing description for entity {entity_name}")
+                except (AttributeError, KeyError, TypeError) as e:
+                    print(f"Error parsing description for entity {entity_name}: {e}")
                     entities[entity_name]["description"] = entity_name
 
         for entity_type in tqdm.tqdm(entity_types, "Parsing OData schema - relationships"):
@@ -107,7 +109,6 @@ class ODataLoader(BaseLoader):
                 target_entity = match.group(1) if match else "UNKNOWN"
 
                 source_entity = entity_name
-                target_entity = target_entity
                 source_fields = entities.get(entity_name, {})["columns"]
                 target_fields = entities.get(target_entity, {})["columns"]
 

@@ -10,7 +10,7 @@ from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
 
 
-class CSVLoader(BaseLoader):
+class CSVLoader(BaseLoader):  # pylint: disable=too-few-public-methods
     """CSV data loader for processing CSV files and loading them into graph database."""
 
     @staticmethod

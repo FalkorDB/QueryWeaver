@@ -20,7 +20,7 @@ from api.routes.database import database_router
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-class SecurityMiddleware(BaseHTTPMiddleware):
+class SecurityMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods
     """Middleware for security checks including static file access"""
 
     STATIC_PREFIX = '/static/'
