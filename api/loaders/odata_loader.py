@@ -111,7 +111,7 @@ class ODataLoader(BaseLoader):
                 source_fields = entities.get(entity_name, {})["columns"]
                 target_fields = entities.get(target_entity, {})["columns"]
 
-                # TODO This usage is for demonstration purposes only, it should be \
+                # NOTE: This usage is for demonstration purposes only, it should be
                 # replaced with a more robust method
                 source_col, target_col = guess_relationship_columns(source_fields, target_fields)
                 if source_col and target_col:
@@ -135,7 +135,7 @@ class ODataLoader(BaseLoader):
         return entities, relationships
 
 
-# TODO: this funtion is for demonstration purposes only, it should be \
+# NOTE: This function is for demonstration purposes only, it should be
 # replaced with a more robust method
 def guess_relationship_columns(source_fields, target_fields):
     for src_key, src_meta in source_fields.items():

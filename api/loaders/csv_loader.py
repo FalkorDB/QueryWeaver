@@ -25,10 +25,13 @@ class CSVLoader(BaseLoader):
         Returns:
             Tuple of (success, message)
         """
-        raise NotImplementedError("CSVLoader is not implemented yet")
-        import pandas as pd
-
         try:
+            # Import pandas only when needed
+            try:
+                import pandas as pd
+            except ImportError as exc:
+                return False, "pandas is required for CSV loading but not installed"
+            
             # Parse CSV data using pandas for better handling of large files
             df = pd.read_csv(io.StringIO(data), encoding="utf-8")
 

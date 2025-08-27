@@ -471,7 +471,7 @@ class MySQLLoader(BaseLoader):
 
             # Connect to MySQL database
             conn = pymysql.connect(**conn_params)
-            cursor = conn.cursor(dictionary=True)
+            cursor = conn.cursor(DictCursor)
 
             # Execute the SQL query
             cursor.execute(sql_query)

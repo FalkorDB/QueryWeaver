@@ -59,14 +59,8 @@ class RelevancyAgent(BaseAgent):
     """Agent for determining relevancy of queries to database schema."""
 
     def __init__(self, queries_history: list, result_history: list):
-        """Initialize the relevancy agent with query and result history."""
-        if result_history is None:
-            self.messages = []
-        else:
-            self.messages = []
-            for query, result in zip(queries_history[:-1], result_history):
-                self.messages.append({"role": "user", "content": query})
-                self.messages.append({"role": "assistant", "content": result})
+        """Initialize the relevancy agent."""
+        super().__init__(queries_history, result_history)
 
     async def get_answer(self, user_question: str, database_desc: dict) -> dict:
         """Get relevancy assessment for user question against database description."""

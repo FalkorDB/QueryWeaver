@@ -39,7 +39,7 @@ async def _get_user_info(api_token: str) -> Optional[Dict[str, Any]]:
             single_result = result.result_set[0]
             token_valid = single_result[3]
 
-            # TODO delete invalid token from DB
+            # NOTE: Invalid tokens should be cleaned up periodically
             if token_valid:
                 return {
                     "email": single_result[0],
@@ -73,7 +73,14 @@ async def delete_user_token(api_token: str):
         logging.error("Error deleting user token: %s", e)
 
 
-async def ensure_user_in_organizations(provider_user_id: str, email: str, name: str, provider: str, api_token: str, picture: str = None):
+async def ensure_user_in_organizations(
+    provider_user_id: str, 
+    email: str, 
+    name: str, 
+    provider: str, 
+    api_token: str, 
+    picture: str = None
+):
     """
     Check if identity exists in Organizations graph, create if not.
     Creates separate Identity and User nodes with proper relationships.

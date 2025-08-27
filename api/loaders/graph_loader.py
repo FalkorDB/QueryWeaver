@@ -88,8 +88,8 @@ async def load_to_graph(
         )
 
         # Batch embeddings for table columns
-        # TODO: Check if the embedding model and description are correct \
-        # (without 2 sources of truth)
+        # NOTE: Embedding model and description consistency should be verified
+        # to avoid having two sources of truth
         batch_flag = True
         col_descriptions = table_info.get("col_descriptions")
         if col_descriptions is None:

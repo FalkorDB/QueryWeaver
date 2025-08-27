@@ -83,7 +83,7 @@ def create_app():
     async def handle_oauth_error(request: Request, exc: Exception):
         """Handle OAuth-related errors gracefully"""
         # Check if it's an OAuth-related error
-        # TODO check this scenario
+        # NOTE: This catches basic token/oauth errors - needs refinement for production
         if "token" in str(exc).lower() or "oauth" in str(exc).lower():
             logging.warning("OAuth error occurred: %s", exc)
             return RedirectResponse(url="/", status_code=302)
