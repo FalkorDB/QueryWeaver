@@ -26,7 +26,7 @@ def fastapi_app():
         os.environ['FALKORDB_PORT'] = '6379'
     if not os.getenv('FASTAPI_SECRET_KEY'):
         os.environ['FASTAPI_SECRET_KEY'] = 'test-secret-key-for-e2e-tests'
-    
+
     # Set up mock OAuth credentials for testing
     if not os.getenv('GOOGLE_CLIENT_ID'):
         os.environ['GOOGLE_CLIENT_ID'] = 'test-google-client-id'
@@ -40,7 +40,7 @@ def fastapi_app():
     # Get the project root directory (parent of tests directory)
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(current_dir)
-    
+
     # Use a different port for tests to avoid conflicts
     test_port = 5001
 
@@ -61,7 +61,7 @@ def fastapi_app():
             if response.status_code == 200:
                 app_started = True
                 break
-        except requests.exceptions.RequestException as e:
+        except requests.exceptions.RequestException:
             # Check if process is still running
             if process.poll() is not None:
                 print(f"FastAPI process died early with return code: {process.returncode}")
@@ -69,7 +69,7 @@ def fastapi_app():
             if i % 10 == 0:  # Print progress every 10 retries
                 print(f"Waiting for app to start... attempt {i+1}/{max_retries}")
             time.sleep(1)
-    
+
     if not app_started:
         process.terminate()
         process.wait()
@@ -109,7 +109,7 @@ def authenticated_page(page, app_url):
         'path': '/',
         'httpOnly': True
     }])
-    
+
     page.app_url = app_url
     page.goto(app_url)
     yield page

@@ -63,12 +63,12 @@ class TestAPIEndpoints:
         """Test endpoints that require authentication."""
         # Test with mock authentication token
         headers = {"Authorization": "Bearer test-api-token-for-e2e-tests"}
-        
+
         # Test graphs endpoint with auth header
         response = requests.get(f"{app_url}/graphs", headers=headers, timeout=10)
         # Even with mock token, endpoint should respond (may still be 401 but server should process)
         assert response.status_code in [200, 401, 403, 404]  # Various acceptable responses
-        
+
         # Test that the endpoint responds without crashing
         assert response.text is not None
 

@@ -61,15 +61,17 @@ class TestBasicFunctionality:
 
         # Check if file upload related elements exist in the UI
         # These might be hidden for unauthenticated users, but the structure should be there
-        upload_inputs = page.query_selector_all("input[type='file']")
-        upload_buttons = page.query_selector_all("button[aria-label*='upload'], .upload-btn, [data-testid*='upload']")
-        
+        page.query_selector_all("input[type='file']")
+        upload_buttons = page.query_selector_all(
+            "button[aria-label*='upload'], .upload-btn, [data-testid*='upload']"
+        )
+
         # Test should pass even if no upload elements found (they may require auth)
         # This documents the current UI state for future reference
-        
+
         # Verify the page loaded successfully
         assert "QueryWeaver" in page.title() or page.url.endswith("/")
-        
+
         # Check that the page has some interactive elements
         interactive_elements = page.query_selector_all("button, input, select, textarea")
         # Even unauthenticated pages should have some UI elements
