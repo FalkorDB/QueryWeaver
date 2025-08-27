@@ -43,6 +43,7 @@ def fastapi_app():
     test_port = 5001
 
     # Start the FastAPI app using pipenv, with output visible for debugging
+    # pylint: disable=consider-using-with
     process = subprocess.Popen([
         "pipenv", "run", "uvicorn", "api.index:app",
         "--host", "localhost", "--port", str(test_port)

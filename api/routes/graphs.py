@@ -309,7 +309,7 @@ async def query_graph(request: Request, graph_id: str, chat_data: ChatRequest):
         db_description, db_url = await get_db_description(graph_id)
 
         # Determine database type and get appropriate loader
-        db_type, loader_class = get_database_type_and_loader(db_url)
+        _, loader_class = get_database_type_and_loader(db_url)
 
         if not loader_class:
             overall_elapsed = time.perf_counter() - overall_start
@@ -573,7 +573,7 @@ async def confirm_destructive_operation(
                 db_description, db_url = await get_db_description(graph_id)
 
                 # Determine database type and get appropriate loader
-                db_type, loader_class = get_database_type_and_loader(db_url)
+                _, loader_class = get_database_type_and_loader(db_url)
 
                 if not loader_class:
                     yield json.dumps({

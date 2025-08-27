@@ -518,12 +518,7 @@ class MySQLLoader(BaseLoader):
 
         except pymysql.MySQLError as e:
             # Rollback in case of error
-            if 'conn' in locals():
-                conn.rollback()
-                cursor.close()
-                conn.close()
-        except pymysql.MySQLError as e:
-            # Rollback in case of error
+            logging.error("MySQL error occurred: %s", e)
             if 'conn' in locals():
                 conn.rollback()
                 cursor.close()

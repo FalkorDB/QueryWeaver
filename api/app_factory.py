@@ -80,7 +80,7 @@ def create_app():
     setup_oauth_handlers(app, app.state.oauth)
 
     @app.exception_handler(Exception)
-    async def handle_oauth_error(request: Request, exc: Exception):
+    async def handle_oauth_error(_request: Request, exc: Exception):
         """Handle OAuth-related errors gracefully"""
         # Check if it's an OAuth-related error
         # NOTE: This catches basic token/oauth errors - needs refinement for production

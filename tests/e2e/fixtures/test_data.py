@@ -18,8 +18,8 @@ Jane Smith,25,Los Angeles
 Bob Johnson,35,Chicago"""
 
         temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False)
-        temp_file.write(csv_content)
-        temp_file.close()
+        with temp_file:
+            temp_file.write(csv_content)
         return temp_file.name
 
     @staticmethod
@@ -33,8 +33,8 @@ Bob Johnson,35,Chicago"""
         }
 
         temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
-        json.dump(json_data, temp_file, indent=2)
-        temp_file.close()
+        with temp_file:
+            json.dump(json_data, temp_file, indent=2)
         return temp_file.name
 
     @staticmethod

@@ -69,7 +69,7 @@ class ODataLoader(BaseLoader):
                         entities[entity_name]["col_descriptions"].append(col_des)
                         entities[entity_name]["columns"][prop_name]["description"] = col_des
                 except Exception as e:
-                    print(f"Error parsing property {prop_name} for entity {entity_name}")
+                    print(f"Error parsing property {prop_name} for entity {entity_name}: {e}")
                     continue
 
             #  = {prop.get("Name"): prop.get("Type") \
@@ -138,6 +138,16 @@ class ODataLoader(BaseLoader):
 # NOTE: This function is for demonstration purposes only, it should be
 # replaced with a more robust method
 def guess_relationship_columns(source_fields, target_fields):
+    """
+    Guess relationship columns between two entities based on type and name similarity.
+    
+    Args:
+        source_fields: Dictionary of source entity fields
+        target_fields: Dictionary of target entity fields
+        
+    Returns:
+        tuple: (source_column, target_column) or (None, None) if no match found
+    """
     for src_key, src_meta in source_fields.items():
         if src_key == "description":
             continue

@@ -2,7 +2,6 @@
 
 import base64
 import logging
-from math import log
 import os
 import secrets
 from functools import wraps
@@ -74,11 +73,11 @@ async def delete_user_token(api_token: str):
 
 
 async def ensure_user_in_organizations(
-    provider_user_id: str, 
-    email: str, 
-    name: str, 
-    provider: str, 
-    api_token: str, 
+    provider_user_id: str,
+    email: str,
+    name: str,
+    provider: str,
+    api_token: str,
     picture: str = None
 ):
     """
@@ -138,7 +137,7 @@ async def ensure_user_in_organizations(
 
         // Ensure relationship exists
         MERGE (identity)-[:AUTHENTICATES]->(user)
-        
+
         // Then, create a session linked to the Identity and store the API_Token
         MERGE (token:Token {id: $api_token})
         ON CREATE SET
