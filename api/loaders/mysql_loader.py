@@ -62,10 +62,9 @@ class MySQLLoader(BaseLoader):
             return value.isoformat()
         if isinstance(value, decimal.Decimal):
             return float(value)
-        elif value is None:
+        if value is None:
             return None
-        else:
-            return value
+        return value
 
     @staticmethod
     def _parse_mysql_url(connection_url: str) -> Dict[str, str]:

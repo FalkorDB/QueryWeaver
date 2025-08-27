@@ -58,10 +58,9 @@ class PostgresLoader(BaseLoader):
             return value.isoformat()
         if isinstance(value, decimal.Decimal):
             return float(value)
-        elif value is None:
+        if value is None:
             return None
-        else:
-            return value
+        return value
 
     @staticmethod
     async def load(prefix: str, connection_url: str) -> Tuple[bool, str]:

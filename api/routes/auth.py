@@ -108,6 +108,7 @@ async def home(request: Request) -> HTMLResponse:
 
 @auth_router.get("/login", response_class=RedirectResponse)
 async def login_page(_: Request) -> RedirectResponse:
+    """Redirect login requests to Google OAuth login."""
     return RedirectResponse(url="/login/google", status_code=status.HTTP_302_FOUND)
 
 
@@ -187,6 +188,7 @@ async def google_authorized(request: Request) -> RedirectResponse:
 
 @auth_router.get("/login/google/callback", response_class=RedirectResponse)
 async def google_callback_compat(request: Request) -> RedirectResponse:
+    """Handle Google OAuth callback compatibility endpoint."""
     qs = f"?{request.url.query}" if request.url.query else ""
     redirect = f"/login/google/authorized{qs}"
     return RedirectResponse(url=redirect, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
@@ -194,6 +196,7 @@ async def google_callback_compat(request: Request) -> RedirectResponse:
 
 @auth_router.get("/login/github",  name="github.login", response_class=RedirectResponse)
 async def login_github(request: Request) -> RedirectResponse:
+    """Initiate GitHub OAuth login flow."""
     github = _get_provider_client(request, "github")
     redirect_uri = _build_callback_url(request, "login/github/authorized")
 
@@ -210,6 +213,7 @@ async def login_github(request: Request) -> RedirectResponse:
 
 @auth_router.get("/login/github/authorized", response_class=RedirectResponse)
 async def github_authorized(request: Request) -> RedirectResponse:
+    """Handle GitHub OAuth callback authorization."""
     try:
         github = _get_provider_client(request, "github")
         token = await github.authorize_access_token(request)
@@ -270,6 +274,7 @@ async def github_authorized(request: Request) -> RedirectResponse:
 
 @auth_router.get("/login/github/callback", response_class=RedirectResponse)
 async def github_callback_compat(request: Request) -> RedirectResponse:
+    """Handle GitHub OAuth callback compatibility endpoint."""
     qs = f"?{request.url.query}" if request.url.query else ""
     redirect = f"/login/github/authorized{qs}"
     return RedirectResponse(url=redirect, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
