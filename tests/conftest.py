@@ -13,12 +13,10 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "e2e: mark test as end-to-end test"
     )
-
-
 @pytest.fixture(scope="session")
 def fastapi_app():
     """Start the FastAPI application for testing."""
-    
+
     # Ensure required environment variables are set for testing
     if not os.getenv('FALKORDB_HOST'):
         os.environ['FALKORDB_HOST'] = 'localhost'
@@ -54,7 +52,7 @@ def fastapi_app():
     max_retries = 30
     app_started = False
     base_url = f"http://localhost:{test_port}"
-    
+
     for i in range(max_retries):
         try:
             response = requests.get(base_url, timeout=2)
@@ -96,8 +94,6 @@ def page_with_base_url(page, app_url):
     page.app_url = app_url
     page.goto(app_url)
     yield page
-
-
 @pytest.fixture
 def authenticated_page(page, app_url):
     """Provide a page with mock authentication for testing authenticated features."""

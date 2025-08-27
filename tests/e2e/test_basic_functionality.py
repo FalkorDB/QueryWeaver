@@ -62,7 +62,7 @@ class TestBasicFunctionality:
         # Check if file upload related elements exist in the UI
         # These might be hidden for unauthenticated users, but the structure should be there
         page.query_selector_all("input[type='file']")
-        upload_buttons = page.query_selector_all(
+        page.query_selector_all(
             "button[aria-label*='upload'], .upload-btn, [data-testid*='upload']"
         )
 
