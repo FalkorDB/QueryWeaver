@@ -38,11 +38,11 @@ def setup_oauth_handlers(app: FastAPI, oauth: OAuth):
                 name,
                 provider,
                 api_token,
-                user_info.get("picture"),
+                picture=user_info.get("picture"),
             )
 
             return True
-        except Exception as exc:  # capture exception for logging
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logging.error("Error handling %s OAuth callback: %s", provider, exc)
             return False
 

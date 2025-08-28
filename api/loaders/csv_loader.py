@@ -28,7 +28,7 @@ class CSVLoader(BaseLoader):  # pylint: disable=too-few-public-methods
         try:
             # Import pandas only when needed
             try:
-                import pandas as pd
+                import pandas as pd  # pylint: disable=import-outside-toplevel
             except ImportError:
                 return False, "pandas is required for CSV loading but not installed"
 

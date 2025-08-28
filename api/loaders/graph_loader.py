@@ -9,10 +9,11 @@ from api.extensions import db
 from api.utils import generate_db_description
 
 
-async def load_to_graph(
+async def load_to_graph(  # pylint: disable=too-many-arguments
     graph_id: str,
     entities: dict,
     relationships: dict,
+    *,
     batch_size: int = 100,
     db_name: str = "TBD",
     db_url: str = "",

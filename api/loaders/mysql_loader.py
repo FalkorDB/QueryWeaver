@@ -14,6 +14,14 @@ from pymysql.cursors import DictCursor
 from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
 
+
+class MySQLQueryError(Exception):
+    """Custom exception for MySQL query execution errors."""
+
+
+class MySQLConnectionError(Exception):
+    """Custom exception for MySQL connection errors."""
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
@@ -23,6 +31,7 @@ class MySQLLoader(BaseLoader):
     """
 
     # DDL operations that modify database schema
+    # pylint: disable=duplicate-code  # Similar patterns needed in PostgreSQL loader
     SCHEMA_MODIFYING_OPERATIONS = {
         'CREATE', 'ALTER', 'DROP', 'RENAME', 'TRUNCATE'
     }
@@ -46,7 +55,7 @@ class MySQLLoader(BaseLoader):
     ]
 
     @staticmethod
-    def _serialize_value(value):
+    def serialize_value(value):
         """
         Convert non-JSON serializable values to JSON serializable format.
 
@@ -67,7 +76,7 @@ class MySQLLoader(BaseLoader):
         return value
 
     @staticmethod
-    def _parse_mysql_url(connection_url: str) -> Dict[str, str]:
+    def parse_mysql_url(connection_url: str) -> Dict[str, str]:
         """
         Parse MySQL connection URL into components.
 
@@ -137,7 +146,7 @@ class MySQLLoader(BaseLoader):
         """
         try:
             # Parse connection URL
-            conn_params = MySQLLoader._parse_mysql_url(connection_url)
+            conn_params = MySQLLoader.parse_mysql_url(connection_url)
 
             # Connect to MySQL database
             conn = pymysql.connect(**conn_params)
@@ -418,7 +427,7 @@ class MySQLLoader(BaseLoader):
             logging.info("Schema modification detected. Refreshing graph schema for: %s", graph_id)
 
             # Import here to avoid circular imports
-            from api.extensions import db
+            from api.extensions import db  # pylint: disable=import-outside-toplevel
 
             # Clear existing graph data
             # Drop current graph before reloading
@@ -466,7 +475,7 @@ class MySQLLoader(BaseLoader):
         """
         try:
             # Parse connection URL
-            conn_params = MySQLLoader._parse_mysql_url(db_url)
+            conn_params = MySQLLoader.parse_mysql_url(db_url)
 
             # Connect to MySQL database
             conn = pymysql.connect(**conn_params)
@@ -483,7 +492,7 @@ class MySQLLoader(BaseLoader):
                 for row in results:
                     # Serialize each value to ensure JSON compatibility
                     serialized_row = {
-                        key: MySQLLoader._serialize_value(value)
+                        key: MySQLLoader.serialize_value(value)
                         for key, value in row.items()
                     }
                     result_list.append(serialized_row)
@@ -522,11 +531,11 @@ class MySQLLoader(BaseLoader):
                 conn.rollback()
                 cursor.close()
                 conn.close()
-            raise Exception(f"MySQL query execution error: {str(e)}") from e
+            raise MySQLQueryError(f"MySQL query execution error: {str(e)}") from e
         except Exception as e:
             # Rollback in case of error
             if 'conn' in locals():
                 conn.rollback()
                 cursor.close()
                 conn.close()
-            raise Exception(f"Error executing SQL query: {str(e)}") from e
+            raise MySQLConnectionError(f"Error executing SQL query: {str(e)}") from e

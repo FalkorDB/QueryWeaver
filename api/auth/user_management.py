@@ -47,7 +47,7 @@ async def _get_user_info(api_token: str) -> Optional[Dict[str, Any]]:
                 }
 
         return None
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logging.error("Error fetching user info: %s", e)
         return None
 
@@ -68,7 +68,7 @@ async def delete_user_token(api_token: str):
             "api_token": api_token,
         })
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logging.error("Error deleting user token: %s", e)
 
 
@@ -78,6 +78,7 @@ async def ensure_user_in_organizations(
     name: str,
     provider: str,
     api_token: str,
+    *,
     picture: str = None
 ):
     """

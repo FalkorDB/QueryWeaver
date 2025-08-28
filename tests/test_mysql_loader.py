@@ -16,7 +16,7 @@ class TestMySQLLoader:
     def test_parse_mysql_url_valid(self):
         """Test parsing a valid MySQL URL."""
         url = "mysql://testuser:testpass@localhost:3306/testdb"
-        result = MySQLLoader._parse_mysql_url(url)
+        result = MySQLLoader.parse_mysql_url(url)
         expected = {
             'host': 'localhost',
             'port': 3306,
@@ -29,63 +29,63 @@ class TestMySQLLoader:
     def test_parse_mysql_url_default_port(self):
         """Test parsing MySQL URL without port (should default to 3306)."""
         url = "mysql://testuser:testpass@localhost/testdb"
-        result = MySQLLoader._parse_mysql_url(url)
+        result = MySQLLoader.parse_mysql_url(url)
         assert result['port'] == 3306
         assert result['host'] == 'localhost'
 
     def test_parse_mysql_url_no_password(self):
         """Test parsing MySQL URL without password."""
         url = "mysql://testuser@localhost:3306/testdb"
-        result = MySQLLoader._parse_mysql_url(url)
+        result = MySQLLoader.parse_mysql_url(url)
         assert result['password'] == ""
         assert result['user'] == 'testuser'
 
     def test_parse_mysql_url_with_query_params(self):
         """Test parsing MySQL URL with query parameters."""
         url = "mysql://testuser:testpass@localhost:3306/testdb?charset=utf8"
-        result = MySQLLoader._parse_mysql_url(url)
+        result = MySQLLoader.parse_mysql_url(url)
         assert result['database'] == 'testdb'  # Should strip query params
 
     def test_parse_mysql_url_invalid_format(self):
         """Test parsing invalid MySQL URL format."""
         with pytest.raises(ValueError, match="Invalid MySQL URL format"):
-            MySQLLoader._parse_mysql_url("postgresql://user@host/db")
+            MySQLLoader.parse_mysql_url("postgresql://user@host/db")
 
     def test_parse_mysql_url_missing_host(self):
         """Test parsing MySQL URL without host."""
         with pytest.raises(ValueError, match="MySQL URL must include username and host"):
-            MySQLLoader._parse_mysql_url("mysql://")
+            MySQLLoader.parse_mysql_url("mysql://")
 
     def test_parse_mysql_url_missing_database(self):
         """Test parsing MySQL URL without database."""
         with pytest.raises(ValueError, match="MySQL URL must include database name"):
-            MySQLLoader._parse_mysql_url("mysql://user@host")
+            MySQLLoader.parse_mysql_url("mysql://user@host")
 
     def test_serialize_value(self):
         """Test value serialization for JSON compatibility."""
         # Test datetime
         dt = datetime.datetime(2023, 1, 1, 12, 0, 0)
-        assert MySQLLoader._serialize_value(dt) == "2023-01-01T12:00:00"
+        assert MySQLLoader.serialize_value(dt) == "2023-01-01T12:00:00"
 
         # Test date
         d = datetime.date(2023, 1, 1)
-        assert MySQLLoader._serialize_value(d) == "2023-01-01"
+        assert MySQLLoader.serialize_value(d) == "2023-01-01"
 
         # Test time
         t = datetime.time(12, 0, 0)
-        assert MySQLLoader._serialize_value(t) == "12:00:00"
+        assert MySQLLoader.serialize_value(t) == "12:00:00"
 
         # Test decimal
         dec = decimal.Decimal("123.45")
-        assert MySQLLoader._serialize_value(dec) == 123.45
+        assert MySQLLoader.serialize_value(dec) == 123.45
 
         # Test None
-        assert MySQLLoader._serialize_value(None) is None
+        assert MySQLLoader.serialize_value(None) is None
 
         # Test regular value
-        assert MySQLLoader._serialize_value("test") == "test"
+        assert MySQLLoader.serialize_value("test") == "test"
 
-    def test_is_schema_modifying_query(self):
+    def test__is_schema_modifying_query(self):
         """Test detection of schema-modifying queries."""
         # Schema-modifying queries
         assert MySQLLoader.is_schema_modifying_query("CREATE TABLE test (id INT)")[0] is True
@@ -106,7 +106,7 @@ class TestMySQLLoader:
         assert MySQLLoader.is_schema_modifying_query("")[0] is False
 
     @patch('pymysql.connect')
-    def test_connection_error(self, mock_connect):
+    def test__connection_error(self, mock_connect):
         """Test handling of MySQL connection errors."""
         # Mock connection failure
         mock_connect.side_effect = Exception("Connection failed")
@@ -120,7 +120,7 @@ class TestMySQLLoader:
 
     @patch('pymysql.connect')
     @patch('api.loaders.mysql_loader.load_to_graph')
-    def test_successful_load(self, mock_load_to_graph, mock_connect):
+    def test__successful_load(self, mock_load_to_graph, mock_connect):
         """Test successful MySQL schema loading."""
         # Mock database connection and cursor
         mock_conn = MagicMock()

@@ -12,6 +12,14 @@ import tqdm
 from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
 
+
+class PostgreSQLQueryError(Exception):
+    """Custom exception for PostgreSQL query execution errors."""
+
+
+class PostgreSQLConnectionError(Exception):
+    """Custom exception for PostgreSQL connection errors."""
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
@@ -21,6 +29,7 @@ class PostgresLoader(BaseLoader):
     """
 
     # DDL operations that modify database schema
+    # pylint: disable=duplicate-code  # Similar patterns needed in MySQL loader
     SCHEMA_MODIFYING_OPERATIONS = {
         'CREATE', 'ALTER', 'DROP', 'RENAME', 'TRUNCATE'
     }
@@ -379,7 +388,7 @@ class PostgresLoader(BaseLoader):
             logging.info("Schema modification detected. Refreshing graph schema for: %s", graph_id)
 
             # Import here to avoid circular imports
-            from api.extensions import db
+            from api.extensions import db  # pylint: disable=import-outside-toplevel
 
             # Clear existing graph data
             # Drop current graph before reloading
@@ -480,11 +489,11 @@ class PostgresLoader(BaseLoader):
                 conn.rollback()
                 cursor.close()
                 conn.close()
-            raise Exception(f"PostgreSQL query execution error: {str(e)}") from e
+            raise PostgreSQLQueryError(f"PostgreSQL query execution error: {str(e)}") from e
         except Exception as e:
             # Rollback in case of error
             if 'conn' in locals():
                 conn.rollback()
                 cursor.close()
                 conn.close()
-            raise Exception(f"Error executing SQL query: {str(e)}") from e
+            raise PostgreSQLQueryError(f"Error executing SQL query: {str(e)}") from e
