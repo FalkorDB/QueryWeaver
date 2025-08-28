@@ -1,0 +1,93 @@
+# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
+# More GitHub Actions for Azure: https://github.com/Azure/actions
+# More info on Python, GitHub Actions, and Azure App Service: https://aka.ms/python-webapps-actions
+
+name: Build and deploy Python app to Azure Web App - queryweaver
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read #This is required for actions/checkout
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python version
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pipenv
+        run: pip install pipenv
+
+      - name: Install dependencies using make
+        run: make install
+
+      - name: Build production assets
+        run: make build-prod
+
+      - name: Generate requirements.txt for production
+        run: pipenv requirements > requirements.txt
+
+      - name: Upload artifact for deployment jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-app
+          path: |
+            .
+            !venv/
+            !node_modules/
+            !.git/
+            !test-results/
+            !playwright-report/
+            !tests/e2e/screenshots/
+            !__pycache__/
+            !Pipfile
+            !Pipfile.lock
+            !Makefile
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      id-token: write #This is required for requesting the JWT
+      contents: read #This is required for actions/checkout
+
+    steps:
+      - name: Download artifact from build job
+        uses: actions/download-artifact@v4
+        with:
+          name: python-app
+
+      - name: Set up Python version
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_5A92CE0E3729470284DEBEC07BD71572 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_1EB63FFB73BB453DA5FC60781960C9E5 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_5288D7A76CF3435AAEF4F034A1024F79 }}
+
+      - name: 'Deploy to Azure Web App'
+        uses: azure/webapps-deploy@v3
+        id: deploy-to-webapp
+        with:
+          app-name: 'queryweaver'
+          slot-name: 'production'
+          startup-command: 'python -m uvicorn api.index:app --host 0.0.0.0 --port $PORT'
+

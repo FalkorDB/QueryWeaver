@@ -10,6 +10,8 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
 from api.auth.oauth_handlers import setup_oauth_handlers
 from api.auth.user_management import SECRET_KEY
 from api.routes.auth import auth_router, init_auth
@@ -49,7 +51,10 @@ def create_app():
             "Text2SQL with "
             "Graph-Powered Schema Understanding"
         ),
-    )
+    )    
+    
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+
 
     # Add session middleware with explicit settings to ensure OAuth state persists
     app.add_middleware(

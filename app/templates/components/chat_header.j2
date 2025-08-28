@@ -1,6 +1,6 @@
 {# Chat header with logo, title, and action buttons #}
 <div class="chat-header">
-    <img src="{{ url_for('static', path='icons/queryweaver.webp') }}" alt="Chat Logo" class="logo">
+    <img src="/static/icons/queryweaver.webp" alt="Chat Logo" class="logo">
     <h1>Natural Language to SQL Generator</h1>
     <div class="button-container">
         <select title="Select Database" id="graph-select">
@@ -20,11 +20,11 @@
                 </div>
                 <div class="dropdown-options" id="database-dropdown-options">
                     <div class="dropdown-option" data-value="postgresql">
-                        <img src="{{ url_for('static', path='icons/postgresql.svg') }}" alt="PostgreSQL" class="db-icon">
+                        <img src="/static/icons/postgresql.svg" alt="PostgreSQL" class="db-icon">
                         <span>PostgreSQL</span>
                     </div>
                     <div class="dropdown-option" data-value="mysql">
-                        <img src="{{ url_for('static', path='icons/mysql.svg') }}" alt="MySQL" class="db-icon">
+                        <img src="/static/icons/mysql.svg" alt="MySQL" class="db-icon">
                         <span>MySQL</span>
                     </div>
                 </div>
