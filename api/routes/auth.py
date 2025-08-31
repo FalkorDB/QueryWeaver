@@ -103,9 +103,6 @@ async def home(request: Request) -> HTMLResponse:
     )
 
 
-
-
-
 @auth_router.get("/login", response_class=RedirectResponse)
 async def login_page(_: Request) -> RedirectResponse:
     """Redirect login requests to Google OAuth login."""
