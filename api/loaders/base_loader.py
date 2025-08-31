@@ -1,7 +1,7 @@
 """Base loader module providing abstract base class for data loaders."""
 
 from abc import ABC, abstractmethod
-from typing import AsyncGenerator, List, Any, Tuple
+from typing import AsyncGenerator, List, Any, Tuple, TYPE_CHECKING
 from api.config import Config
 
 
@@ -9,12 +9,18 @@ class BaseLoader(ABC):  # pylint: disable=too-few-public-methods
     """Abstract base class for data loaders."""
 
     @staticmethod
+    @abstractmethod
     async def load(_graph_id: str, _data) -> AsyncGenerator[tuple[bool, str], None]:
         """
         Load the graph data into the database.
         This method must be implemented by any subclass.
         """
-        return False, "Not implemented"
+        # This method is intended to be implemented by subclasses as an
+        # async generator (using `yield`). Including a `yield` inside a
+        # `if TYPE_CHECKING` block makes the function an async generator
+        # for static type checkers (mypy) while having no runtime effect.
+        if TYPE_CHECKING:  # pragma: no cover - only for type checking
+            yield True, ""
 
     @staticmethod
     @abstractmethod
@@ -30,7 +36,6 @@ class BaseLoader(ABC):  # pylint: disable=too-few-public-methods
         Returns:
             Tuple of (total_count, distinct_count)
         """
-        pass
 
     @staticmethod
     @abstractmethod
@@ -46,7 +51,6 @@ class BaseLoader(ABC):  # pylint: disable=too-few-public-methods
         Returns:
             List of distinct values
         """
-        pass
 
     @classmethod
     def extract_distinct_values_for_column(cls, cursor, table_name: str, col_name: str) -> List[str]:
@@ -69,13 +73,13 @@ class BaseLoader(ABC):  # pylint: disable=too-few-public-methods
 
         if (0 < distinct_count < max_distinct
             and distinct_count < (uniqueness_threshold * rows_count)):
-                # Get distinct values using database-specific implementation
-                distinct_values = cls._execute_distinct_query(cursor, table_name, col_name)
-                
-                if distinct_values:
-                    # Check first value type to avoid objects like dict/bytes
-                    first_val = distinct_values[0]
-                    if isinstance(first_val, (str, int)):
-                        return [f"(Optional values: {', '.join(f'({str(v)})' for v in distinct_values)})"]
+            # Get distinct values using database-specific implementation
+            distinct_values = cls._execute_distinct_query(cursor, table_name, col_name)
+
+            if distinct_values:
+                # Check first value type to avoid objects like dict/bytes
+                first_val = distinct_values[0]
+                if isinstance(first_val, (str, int)):
+                    return [f"(Optional values: {', '.join(f'({str(v)})' for v in distinct_values)})"]
         
         return []

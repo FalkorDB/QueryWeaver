@@ -1,73 +1,82 @@
-"""Follow-up agent for handling follow-up questions and conversational context."""
+"""Follow-up agent for generating helpful questions when queries fail or are off-topic."""
 
-import json
 from litellm import completion
 from api.config import Config
+from .utils import BaseAgent
 
 
-FOLLOW_UP_PROMPT = """You are an expert assistant that receives two inputs:
+FOLLOW_UP_GENERATION_PROMPT = """
+You are a helpful database expert. A colleague asked a question, but their query can’t run correctly.
 
-1. The user's question: {QUESTION}
-2. The history of his questions: {HISTORY}
-3. A detected database schema (all relevant tables, columns, and their descriptions): {SCHEMA}
+Context:
+- Question: "{QUESTION}"
+- Translatability: {IS_TRANSLATABLE}
+- Missing info: {MISSING_INFO}
+- Ambiguities: {AMBIGUITIES}
+- Analysis: {EXPLANATION}
 
-Your primary goal is to decide if the user's questions can be addressed using the existing schema or if new or additional data is required.
-Any thing that can be calculated from the provided tables is define the status Data-focused.
-Please follow these steps:
+Your task:
+- Write a **very short response (max 2 sentences, under 40 words total)**.
+- Sentence 1: Acknowledge warmly and show willingness to help, without being technical.
+- Sentence 2: Ask for the specific missing information in natural, conversational language.
+- **If the query uses "I", "my", or "me" → always ask who they are (name, employee ID, or username).**
+- Use warm, natural wording like “I need to know who you are” instead of “provide your ID.”
+- Keep the tone friendly, encouraging, and solution-focused — like a helpful colleague, not a system.
 
-1. Understand the user's question in the context of the provided schema.
-• Determine whether the question directly relates to the tables, columns, or concepts in the schema or needed more information about the filtering.
-
-2. If the question relates to the existing schema:
-• Provide a concise JSON response indicating:
-{{
-"status": "Data-focused",
-"reason": "Brief explanation why this question is answerable with the given schema."
-"followUpQuestion": ""
-}}
-• If relevant, note any additional observations or suggested follow-up.
-
-3. If the question cannot be answered solely with the given schema or if there seems to be missing context:
-• Ask clarifying questions to confirm the user's intent or to gather any necessary information.
-• Use a JSON format such as:
-{{
-"status": "Needs more data",
-"reason": "Reason why the current schema is insufficient.",
-"followUpQuestion": "Single question to clarify user intent or additional data needed, can be a specific value..."
-
-}}
-
-4. Ensure your response is concise, polite, and helpful. When asking clarifying
-   questions, be specific and guide the user toward providing the missing details
-   so you can effectively address their query."""
+Example responses (personal queries):
+- "I'd love to help find your employees! What's your name or employee ID so I can look up who reports to you?"
+- "Happy to help with your data! Who should I look up — what's your username or employee ID?"
+- "I can definitely help! Could you tell me your name or ID so I know which records are yours?"
+"""
 
 
-class FollowUpAgent:
-    # pylint: disable=too-few-public-methods
-    """Agent for handling follow-up questions and conversational context."""
+class FollowUpAgent(BaseAgent):
+    """Agent for generating helpful follow-up questions when queries fail or are off-topic."""
 
-    def __init__(self):
-        """Initialize the follow-up agent."""
-
-    def get_answer(
-        self, user_question: str, conversation_hist: list, database_schema: dict
-    ) -> dict:
-        """Get answer for follow-up questions using conversation history."""
-        completion_result = completion(
-            model=Config.COMPLETION_MODEL,
-            messages=[
-                {
-                    "content": FOLLOW_UP_PROMPT.format(
-                        QUESTION=user_question,
-                        HISTORY=conversation_hist,
-                        SCHEMA=json.dumps(database_schema),
-                    ),
-                    "role": "user",
-                }
-            ],
-            response_format={"type": "json_object"},
-            temperature=0,
+    def generate_follow_up_question(
+        self, 
+        user_question: str,
+        analysis_result: dict,
+        found_tables: list = None
+    ) -> str:
+        """
+        Generate helpful follow-up questions based on failed SQL translation.
+        
+        Args:
+            user_question: The original user question
+            analysis_result: Output from analysis agent 
+            schema_info: Database schema information
+            found_tables: Tables found by the find function
+            
+        Returns:
+            str: Conversational follow-up response
+        """
+        
+        # Extract key information from analysis result
+        is_translatable = analysis_result.get("is_sql_translatable", False) if analysis_result else False
+        missing_info = analysis_result.get("missing_information", []) if analysis_result else []
+        ambiguities = analysis_result.get("ambiguities", []) if analysis_result else []
+        explanation = analysis_result.get("explanation", "No detailed explanation available") if analysis_result else "No analysis result available"
+        
+        # Prepare the prompt
+        prompt = FOLLOW_UP_GENERATION_PROMPT.format(
+            QUESTION=user_question,
+            IS_TRANSLATABLE=is_translatable,
+            MISSING_INFO=missing_info,
+            AMBIGUITIES=ambiguities,
+            EXPLANATION=explanation
         )
-
-        answer = completion_result.choices[0].message.content
-        return json.loads(answer)
+        
+        try:
+            completion_result = completion(
+                model=Config.COMPLETION_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.9
+            )
+            
+            response = completion_result.choices[0].message.content.strip()
+            return response
+            
+        except Exception as e:
+            # Fallback response if LLM call fails
+            return "I'm having trouble generating a follow-up question right now. Could you try rephrasing your question or providing more specific details about what you're looking for?"

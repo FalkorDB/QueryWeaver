@@ -60,11 +60,13 @@ class MySQLLoader(BaseLoader):
         Execute query to get total count and distinct count for a column.
         MySQL implementation returning counts from dictionary-style results.
         """
-        cursor.execute("""
+        query = f"""
             SELECT COUNT(*) AS total_count,
-                   COUNT(DISTINCT %s) AS distinct_count
-            FROM %s;
-        """, (col_name, table_name))
+                COUNT(DISTINCT `{col_name}`) AS distinct_count
+            FROM `{table_name}`;
+        """
+
+        cursor.execute(query)
         output = cursor.fetchall()
         first_result = output[0]
         return first_result['total_count'], first_result['distinct_count']
@@ -75,7 +77,9 @@ class MySQLLoader(BaseLoader):
         Execute query to get distinct values for a column.
         MySQL implementation handling dictionary-style results.
         """
-        cursor.execute("SELECT DISTINCT %s FROM %s;", (col_name, table_name))
+        query = f"SELECT DISTINCT `{col_name}` FROM `{table_name}`;"
+        cursor.execute(query)
+
         distinct_results = cursor.fetchall()
         return [row[col_name] for row in distinct_results if row[col_name] is not None]
 
@@ -612,15 +616,16 @@ class MySQLLoader(BaseLoader):
             conn.close()
 
             return result_list
-
+          
         except pymysql.MySQLError as e:
-            # Rollback in case of error
-            logging.error("MySQL error occurred: %s", e)
-            if 'conn' in locals():
-                conn.rollback()
-                cursor.close()
-                conn.close()
-            raise MySQLQueryError(f"MySQL query execution error: {str(e)}") from e
+          # Rollback in case of error
+          logging.error("MySQL error occurred: %s", e)
+          if 'conn' in locals():
+              conn.rollback()
+              cursor.close()
+              conn.close()
+          raise MySQLQueryError(f"MySQL query execution error: {str(e)}") from e
+
         except Exception as e:
             # Rollback in case of error
             if 'conn' in locals():

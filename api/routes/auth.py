@@ -172,11 +172,6 @@ async def google_authorized(request: Request) -> RedirectResponse:
                 # call the registered handler (await if async)
                 await handler('google', user_data, api_token)
 
-                # Persist minimal session data so SessionMiddleware will
-                # set the `qw_session` cookie on the response. This ensures
-                # the OAuth state/session is tracked across the redirect.
-                request.session["user_id"] = user_data.get("id")
-
                 redirect = RedirectResponse(url="/chat", status_code=302)
                 redirect.set_cookie(
                     key="api_token",
@@ -265,10 +260,6 @@ async def github_authorized(request: Request) -> RedirectResponse:
                 # call the registered handler (await if async)
                 await handler('github', user_data, api_token)
 
-                # Persist minimal session data so SessionMiddleware will
-                # set the `qw_session` cookie on the response. This ensures
-                # the OAuth state/session is tracked across the redirect.
-                request.session["user_id"] = user_data.get("id")
                 redirect = RedirectResponse(url="/chat", status_code=302)
                 redirect.set_cookie(
                     key="api_token",
@@ -304,9 +295,7 @@ async def logout(request: Request) -> RedirectResponse:
     if api_token:
         resp.delete_cookie("api_token")
         await delete_user_token(api_token)
-
-    request.session.pop("user_id", None)
-
+        
     return resp
 
 # ---- Hook for app factory ----

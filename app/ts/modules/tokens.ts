@@ -147,7 +147,7 @@ export function setupTokenManagement() {
 
 async function loadTokens(): Promise<void> {
     try {
-        const response = await fetch('/api/tokens/list', {
+        const response = await fetch('/tokens/list', {
             method: 'GET',
             credentials: 'include',
             headers: {
@@ -218,7 +218,7 @@ async function generateToken(): Promise<void> {
         generateBtn.disabled = true;
         generateBtn.textContent = 'Generating...';
 
-        const response = await fetch('/api/tokens/generate', {
+        const response = await fetch('/tokens/generate', {
             method: 'POST',
             credentials: 'include',
             headers: {
@@ -285,7 +285,7 @@ async function deleteToken(tokenId: string): Promise<void> {
         confirmBtn.disabled = true;
         confirmBtn.textContent = 'Deleting...';
 
-        const response = await fetch(`/api/tokens/${tokenId}`, {
+        const response = await fetch(`/tokens/${tokenId}`, {
             method: 'DELETE',
             credentials: 'include',
             headers: {

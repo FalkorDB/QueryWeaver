@@ -7,6 +7,7 @@ import logging
 from typing import AsyncGenerator, Tuple, Dict, Any, List
 
 import psycopg2
+from psycopg2 import sql
 import tqdm
 
 from api.loaders.base_loader import BaseLoader
@@ -56,11 +57,15 @@ class PostgresLoader(BaseLoader):
         Execute query to get total count and distinct count for a column.
         PostgreSQL implementation returning counts from tuple-style results.
         """
-        cursor.execute("""
+        query = sql.SQL("""
             SELECT COUNT(*) AS total_count,
-                   COUNT(DISTINCT %s) AS distinct_count
-            FROM %s;
-        """, (col_name, table_name))
+                   COUNT(DISTINCT {col}) AS distinct_count
+            FROM {table};
+        """).format(
+            col=sql.Identifier(col_name),
+            table=sql.Identifier(table_name)
+        )
+        cursor.execute(query)
         output = cursor.fetchall()
         first_result = output[0]
         return first_result[0], first_result[1]
@@ -71,7 +76,11 @@ class PostgresLoader(BaseLoader):
         Execute query to get distinct values for a column.
         PostgreSQL implementation handling tuple-style results.
         """
-        cursor.execute("SELECT DISTINCT %s FROM %s;", (col_name, table_name))
+        query = sql.SQL("SELECT DISTINCT {col} FROM {table};").format(
+            col=sql.Identifier(col_name),
+            table=sql.Identifier(table_name)
+        )
+        cursor.execute(query)
         distinct_results = cursor.fetchall()
         return [row[0] for row in distinct_results if row[0] is not None]
 

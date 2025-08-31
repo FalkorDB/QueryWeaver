@@ -10,8 +10,9 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from redis import ResponseError
 
-from api.agents import AnalysisAgent, RelevancyAgent, ResponseFormatterAgent
+from api.agents import AnalysisAgent, RelevancyAgent, ResponseFormatterAgent, FollowUpAgent
 from api.auth.user_management import token_required
+from api.config import Config
 from api.extensions import db
 from api.graph import find, get_db_description
 from api.loaders.csv_loader import CSVLoader
@@ -19,6 +20,7 @@ from api.loaders.json_loader import JSONLoader
 from api.loaders.postgres_loader import PostgresLoader
 from api.loaders.mysql_loader import MySQLLoader
 from api.loaders.odata_loader import ODataLoader
+from api.memory.graphiti_tool import MemoryTool
 
 # Use the same delimiter as in the JavaScript
 MESSAGE_DELIMITER = "|||FALKORDB_MESSAGE_BOUNDARY|||"
@@ -298,7 +300,20 @@ async def query_graph(request: Request, graph_id: str, chat_data: ChatRequest):
     if len(queries_history) == 0:
         raise HTTPException(status_code=400, detail="Empty chat history")
 
+    # Truncate history to keep only the last N questions maximum (configured in Config)
+    if len(queries_history) > Config.SHORT_MEMORY_LENGTH:
+        queries_history = queries_history[-Config.SHORT_MEMORY_LENGTH:]
+        # Keep corresponding results (one less than queries since current query has no result yet)
+        if result_history and len(result_history) > 0:
+            max_results = Config.SHORT_MEMORY_LENGTH - 1
+            if max_results > 0:
+                result_history = result_history[-max_results:]
+            else:
+                result_history = []
+
     logging.info("User Query: %s", sanitize_query(queries_history[-1]))
+
+    memory_tool_task = asyncio.create_task(MemoryTool.create(request.state.user_id, graph_id))
 
     # Create a generator function for streaming
     async def generate():
@@ -309,8 +324,10 @@ async def query_graph(request: Request, graph_id: str, chat_data: ChatRequest):
 
         agent_rel = RelevancyAgent(queries_history, result_history)
         agent_an = AnalysisAgent(queries_history, result_history)
+        follow_up_agent = FollowUpAgent(queries_history, result_history)
 
         step = {"type": "reasoning_step",
+                "final_response": False,
                 "message": "Step 1: Analyzing user query and generating SQL..."}
         yield json.dumps(step) + MESSAGE_DELIMITER
         # Ensure the database description is loaded
@@ -325,6 +342,7 @@ async def query_graph(request: Request, graph_id: str, chat_data: ChatRequest):
                          overall_elapsed)
             yield json.dumps({
                 "type": "error",
+                "final_response": True,
                 "message": "Unable to determine database type"
             }) + MESSAGE_DELIMITER
             return
@@ -351,6 +369,7 @@ async def query_graph(request: Request, graph_id: str, chat_data: ChatRequest):
 
             step = {
                 "type": "followup_questions",
+                "final_response": True,
                 "message": "Off topic question: " + answer_rel["reason"],
             }
             logging.info("SQL Fail reason: %s", answer_rel["reason"])
@@ -365,11 +384,20 @@ async def query_graph(request: Request, graph_id: str, chat_data: ChatRequest):
 
             logging.info("Calling to analysis agent with query: %s",
                          sanitize_query(queries_history[-1]))
+            memory_tool = await memory_tool_task
+            memory_context = await memory_tool.search_memories(
+                query=queries_history[-1]
+            )
 
             logging.info("Starting SQL generation with analysis agent")
             answer_an = agent_an.get_analysis(
-                queries_history[-1], result, db_description, instructions
+                queries_history[-1], result, db_description, instructions, memory_context
             )
+
+            # Initialize response variables
+            user_readable_response = ""
+            follow_up_result = ""
+            execution_error = False
 
             logging.info("Generated SQL query: %s", answer_an['sql_query'])
             yield json.dumps(
@@ -381,6 +409,7 @@ async def query_graph(request: Request, graph_id: str, chat_data: ChatRequest):
                     "amb": answer_an["ambiguities"],
                     "exp": answer_an["explanation"],
                     "is_valid": answer_an["is_sql_translatable"],
+                    "final_response": False,
                 }
             ) + MESSAGE_DELIMITER
 
@@ -433,7 +462,8 @@ What this will do:
                             "type": "destructive_confirmation",
                             "message": confirmation_message,
                             "sql_query": sql_query,
-                            "operation_type": sql_type
+                            "operation_type": sql_type,
+                            "final_response": False,
                         }
                     ) + MESSAGE_DELIMITER
                     # Log end-to-end time for destructive operation that requires confirmation
@@ -445,7 +475,7 @@ What this will do:
                     return  # Stop here and wait for user confirmation
 
                 try:
-                    step = {"type": "reasoning_step", "message": "Step 2: Executing SQL query"}
+                    step = {"type": "reasoning_step", "final_response": False, "message": "Step 2: Executing SQL query"}
                     yield json.dumps(step) + MESSAGE_DELIMITER
 
                     # Check if this query modifies the database schema using the appropriate loader
@@ -459,14 +489,16 @@ What this will do:
                         {
                             "type": "query_result",
                             "data": query_results,
+                            "final_response": False
                         }
                     ) + MESSAGE_DELIMITER
 
                     # If schema was modified, refresh the graph using the appropriate loader
                     if is_schema_modifying:
                         step = {"type": "reasoning_step",
-                               "message": ("Step 3: Schema change detected - "
-                                         "refreshing graph...")}
+                                "final_response": False,
+                                "message": ("Step 3: Schema change detected - "
+                                            "refreshing graph...")}
                         yield json.dumps(step) + MESSAGE_DELIMITER
 
                         refresh_result = await loader_class.refresh_graph_schema(
@@ -482,6 +514,7 @@ What this will do:
                             yield json.dumps(
                                 {
                                     "type": "schema_refresh",
+                                    "final_response": False,
                                     "message": refresh_msg,
                                     "refresh_status": "success"
                                 }
@@ -492,6 +525,7 @@ What this will do:
                             yield json.dumps(
                                 {
                                     "type": "schema_refresh",
+                                    "final_response": False,
                                     "message": failure_msg,
                                     "refresh_status": "failed"
                                 }
@@ -500,6 +534,7 @@ What this will do:
                     # Generate user-readable response using AI
                     step_num = "4" if is_schema_modifying else "3"
                     step = {"type": "reasoning_step",
+                            "final_response": False,
                            "message": f"Step {step_num}: Generating user-friendly response"}
                     yield json.dumps(step) + MESSAGE_DELIMITER
 
@@ -514,6 +549,7 @@ What this will do:
                     yield json.dumps(
                         {
                             "type": "ai_response",
+                            "final_response": True,
                             "message": user_readable_response,
                         }
                     ) + MESSAGE_DELIMITER
@@ -526,6 +562,7 @@ What this will do:
                     )
 
                 except Exception as e:
+                    execution_error = str(e)
                     overall_elapsed = time.perf_counter() - overall_start
                     logging.error("Error executing SQL query: %s", str(e))
                     logging.info(
@@ -533,15 +570,77 @@ What this will do:
                         overall_elapsed
                     )
                     yield json.dumps(
-                        {"type": "error", "message": "Error executing SQL query"}
+                        {"type": "error", "final_response": True, "message": "Error executing SQL query"}
                     ) + MESSAGE_DELIMITER
             else:
-                # SQL query is not valid/translatable
+                execution_error = "Missing information"
+                # SQL query is not valid/translatable - generate follow-up questions
+                follow_up_result = follow_up_agent.generate_follow_up_question(
+                    user_question=queries_history[-1],
+                    analysis_result=answer_an,
+                    found_tables=result
+                )
+
+                # Send follow-up questions to help the user
+                yield json.dumps({
+                    "type": "followup_questions",
+                    "final_response": True,
+                    "message": follow_up_result,
+                    "missing_information": answer_an.get("missing_information", ""),
+                    "ambiguities": answer_an.get("ambiguities", "")
+                }) + MESSAGE_DELIMITER
+
                 overall_elapsed = time.perf_counter() - overall_start
                 logging.info(
                     "Query processing completed (non-translatable SQL) - Total time: %.2f seconds",
                     overall_elapsed
                 )
+
+            # Save conversation to memory (only for on-topic queries)
+            # Determine the final answer based on which path was taken
+            final_answer = user_readable_response if user_readable_response else follow_up_result
+
+            # Build comprehensive response for memory
+            full_response = {
+                "question": queries_history[-1],
+                "generated_sql": answer_an.get('sql_query', ""),
+                "answer": final_answer
+            }
+            
+            # Add error information if SQL execution failed
+            if execution_error:
+                full_response["error"] = execution_error
+                full_response["success"] = False
+            else:
+                full_response["success"] = True
+
+            
+            # Save query to memory
+            save_query_task = asyncio.create_task(
+                memory_tool.save_query_memory(
+                    query=queries_history[-1],
+                    sql_query=answer_an["sql_query"],
+                    success=full_response["success"],
+                    error=execution_error
+                )
+            )
+            save_query_task.add_done_callback(
+                lambda t: logging.error(f"Query memory save failed: {t.exception()}") 
+                if t.exception() else logging.info("Query memory saved successfully")
+            )
+            
+            # Save conversation with memory tool (run in background)
+            save_task = asyncio.create_task(memory_tool.add_new_memory(full_response))
+            # Add error handling callback to prevent silent failures
+            save_task.add_done_callback(lambda t: logging.error(f"Memory save failed: {t.exception()}") if t.exception() else logging.info("Conversation saved to memory tool"))
+            logging.info("Conversation save task started in background")
+            
+            # Clean old memory in background (once per week cleanup)
+            clean_memory_task = asyncio.create_task(memory_tool.clean_memory())
+            clean_memory_task.add_done_callback(
+                lambda t: logging.error(f"Memory cleanup failed: {t.exception()}") 
+                if t.exception() else logging.info("Memory cleanup completed successfully")
+            )
 
         # Log timing summary at the end of processing
         overall_elapsed = time.perf_counter() - overall_start
@@ -577,6 +676,9 @@ async def confirm_destructive_operation(
 
     # Create a generator function for streaming the confirmation response
     async def generate_confirmation():
+        # Create memory tool for saving query results
+        memory_tool = await MemoryTool.create(request.state.user_id, graph_id)
+        
         if confirmation == "CONFIRM":
             try:
                 db_description, db_url = await get_db_description(graph_id)
@@ -658,8 +760,37 @@ async def confirm_destructive_operation(
                     }
                 ) + MESSAGE_DELIMITER
 
+                # Save successful confirmed query to memory
+                save_query_task = asyncio.create_task(
+                    memory_tool.save_query_memory(
+                        query=queries_history[-1] if queries_history else "Destructive operation confirmation",
+                        sql_query=sql_query,
+                        success=True,
+                        error=""
+                    )
+                )
+                save_query_task.add_done_callback(
+                    lambda t: logging.error(f"Confirmed query memory save failed: {t.exception()}") 
+                    if t.exception() else logging.info("Confirmed query memory saved successfully")
+                )
+
             except Exception as e:
                 logging.error("Error executing confirmed SQL query: %s", str(e))
+                
+                # Save failed confirmed query to memory
+                save_query_task = asyncio.create_task(
+                    memory_tool.save_query_memory(
+                        query=queries_history[-1] if queries_history else "Destructive operation confirmation",
+                        sql_query=sql_query,
+                        success=False,
+                        error=str(e)
+                    )
+                )
+                save_query_task.add_done_callback(
+                    lambda t: logging.error(f"Failed confirmed query memory save failed: {t.exception()}") 
+                    if t.exception() else logging.info("Failed confirmed query memory saved successfully")
+                )
+                
                 yield json.dumps(
                     {"type": "error", "message": "Error executing query"}
                 ) + MESSAGE_DELIMITER

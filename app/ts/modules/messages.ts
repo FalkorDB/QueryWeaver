@@ -39,7 +39,6 @@ export function addMessage(
 
         state.questions_history.push(message);
     } else if (isFinalResult) {
-        state.result_history.push(message);
         messageDivContainer.className += ' final-result-message-container';
         messageDiv.className += ' final-result-message';
     } else {

@@ -10,6 +10,14 @@ import pytest
 from api.loaders.mysql_loader import MySQLLoader
 
 
+async def _consume_loader(loader_gen):
+    """Consume an async generator loader and return the final result."""
+    last_success, last_message = False, ""
+    async for success, message in loader_gen:
+        last_success, last_message = success, message
+    return last_success, last_message
+
+
 class TestMySQLLoader:
     """Test cases for MySQLLoader class."""
 
@@ -112,7 +120,7 @@ class TestMySQLLoader:
         mock_connect.side_effect = Exception("Connection failed")
 
         success, message = asyncio.run(
-            MySQLLoader.load("test_prefix", "mysql://user:pass@host:3306/db")
+            _consume_loader(MySQLLoader.load("test_prefix", "mysql://user:pass@host:3306/db"))
         )
 
         assert success is False
@@ -135,9 +143,9 @@ class TestMySQLLoader:
         with patch.object(MySQLLoader, 'extract_tables_info',
                           return_value={'users': {'description': 'User table'}}):
             with patch.object(MySQLLoader, 'extract_relationships', return_value={}):
-                success, message = asyncio.run(MySQLLoader.load(
+                success, message = asyncio.run(_consume_loader(MySQLLoader.load(
                     "test_prefix", "mysql://user:pass@localhost:3306/testdb"
-                ))
+                )))
 
         assert success is True
         assert "MySQL schema loaded successfully" in message

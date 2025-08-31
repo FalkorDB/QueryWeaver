@@ -64,9 +64,9 @@ class Config:
     # VERCEL_OIDC_TOKEN = os.getenv("VERCEL_OIDC_TOKEN")
     # AWS_SECRET_TOKEN = os.getenv("SECRET_TOKEN")
     # aws_session_name = "text2sql"
+    SHORT_MEMORY_LENGTH = 5  # Maximum number of questions to keep in short-term memory
     config = {}
-    # config["aws_region_name"] = AWS_REGION
-    # config["aws_profile_name"] = AWS_PROFILE
+
 
     EMBEDDING_MODEL = EmbeddingsModel(model_name=EMBEDDING_MODEL_NAME, config=config)
 

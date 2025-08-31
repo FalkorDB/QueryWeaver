@@ -16,9 +16,9 @@ The token management system allows authenticated users to:
 ### Backend Components
 
 #### 1. Token Routes (`api/routes/tokens.py`)
-- **POST `/api/tokens/generate`** - Generate a new token
-- **GET `/api/tokens/list`** - List user's tokens
-- **DELETE `/api/tokens/{token_id}`** - Delete a specific token
+- **POST `/tokens/generate`** - Generate a new token
+- **GET `/tokens/list`** - List user's tokens
+- **DELETE `/tokens/{token_id}`** - Delete a specific token
 
 #### 2. Authentication Enhancement (`api/auth/user_management.py`)
 - Enhanced `token_required` decorator to support both OAuth and API token authentication
@@ -76,7 +76,7 @@ Tokens are stored as nodes in the Organizations graph with the following structu
 ### 1. Generate a Token
 ```bash
 # Must be authenticated via OAuth session
-curl -X POST http://localhost:5000/api/tokens/generate \
+curl -X POST http://localhost:5000/tokens/generate \
   -H "Content-Type: application/json" \
   --cookie "session_cookie=..."
 ```
@@ -93,7 +93,7 @@ Response:
 
 ### 2. List Tokens
 ```bash
-curl -X GET http://localhost:5000/api/tokens/list \
+curl -X GET http://localhost:5000/tokens/list \
   -H "Authorization: Bearer 6SxwdQ3vZeEE6xCVwTmD3AbKvWZY2eR_quUCP7eewEA"
 ```
 
@@ -112,7 +112,7 @@ Response:
 
 ### 3. Delete a Token
 ```bash
-curl -X DELETE http://localhost:5000/api/tokens/G13pqOpPohhs2rnou56A2w \
+curl -X DELETE http://localhost:5000/tokens/G13pqOpPohhs2rnou56A2w \
   -H "Authorization: Bearer 6SxwdQ3vZeEE6xCVwTmD3AbKvWZY2eR_quUCP7eewEA"
 ```
 

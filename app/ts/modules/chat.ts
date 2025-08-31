@@ -109,6 +109,11 @@ async function processStreamingResponse(response: Response) {
 }
 
 function handleStreamMessage(step: any) {
+    // Save to result_history if this is a final response, regardless of step type
+    if (step.final_response === true) {
+        state.result_history.push(step.message);
+    }
+    
     if (step.type === 'reasoning_step') {
         addMessage(step.message, false);
         moveLoadingMessageToBottom();

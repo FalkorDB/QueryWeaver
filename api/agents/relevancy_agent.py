@@ -7,41 +7,53 @@ from .utils import BaseAgent, parse_response
 
 
 RELEVANCY_PROMPT = """
-You are an expert assistant tasked with determining whether the user's question aligns with a given database description and whether the question is appropriate. You receive two inputs:
+You are an expert assistant tasked with determining whether the user's question is relevant (translatable into a database query). 
+You are given:
+- The user's latest question: {QUESTION_PLACEHOLDER}
+- The database description: {DB_PLACEHOLDER}
+- The conversation history (previous questions and answers) is also provided in this chat.
 
-The user's question: {QUESTION_PLACEHOLDER}
-The database description: {DB_PLACEHOLDER}
-Please follow these instructions:
+Guidelines:
 
-Understand the question in the context of the database.
-• Ask yourself: "Does this question relate to the data or concepts described in the database description?"
-• Common tables that can be found in most of the systems considered "On-topic" even if it not explict in the database description.
-• Don't answer questions that related to yourself.
-• Don't answer questions that related to personal information unless it related to data in the schemas.
-• Questions about the user's (first person) defined as "personal" and is Off-topic.
-• Questions about yourself defined as "personal" and is Off-topic.
+1. **Always use the full conversation context** when deciding relevance, not just the latest question.
+   - If earlier in the chat the system asked for missing information (e.g., "What's your name or ID?") and the user provided it, then the current question should be treated as valid and on-topic.
+   - Consider whether ambiguities have already been resolved in prior turns.
 
-Determine if the question is:
+2. **Focus on actionable intent for database querying.**
+   - Ask yourself: "Can this request, given the conversation so far, be answered by querying the database?"
+   - Personal pronouns ("I", "my", "me") are on-topic if the user has identified themselves or if the intent clearly maps to database data.
+   - Conversational or casual phrasing is fine as long as the underlying request is for data.
+
+3. **On-topic cases include:**
+   - Questions that can be translated into database queries (directly or with previously provided clarifications).
+   - Personal queries where the user provided their identity after being asked.
+   - Questions about data, database structure, reports, metrics, or insights.
+
+4. **Off-topic cases include:**
+   - Completely unrelated to data/business information,
+   - Questions about the AI/system itself,
+   - Requests for private information about people outside the database,
+   - Offensive, illegal, or guideline-violating content.
+
+Output format:
+
 • On-topic and appropriate:
-– If so, provide a JSON response in the following format:
 {{
 "status": "On-topic",
-"reason": "Brief explanation of why it is on-topic and appropriate."
+"reason": "Brief explanation of why it can be translated to a database query.",
 "suggestions": []
 }}
 
 • Off-topic:
-– If the question does not align with the data or use cases implied by the schema, provide a JSON response:
 {{
 "status": "Off-topic",
-"reason": "Short reason explaining why it is off-topic.",
+"reason": "Short reason why it cannot be translated to a database query.",
 "suggestions": [
 "An alternative, high-level question about the schema..."
 ]
 }}
 
 • Inappropriate:
-– If the question is offensive, illegal, or otherwise violates content guidelines, provide a JSON response:
 {{
 "status": "Inappropriate",
 "reason": "Short reason why it is inappropriate.",
@@ -50,7 +62,7 @@ Determine if the question is:
 ]
 }}
 
-Ensure your response is concise, polite, and helpful.
+Remember: **Prioritize the conversation’s actionable data intent over phrasing style. If missing info (like identity) was provided earlier in the chat, treat the question as on-topic.**
 """
 
 

@@ -12,6 +12,14 @@ from unittest.mock import Mock, patch
 from api.loaders.postgres_loader import PostgresLoader
 
 
+async def _consume_loader(loader_gen):
+    """Consume an async generator loader and return the final result."""
+    last_success, last_message = False, ""
+    async for success, message in loader_gen:
+        last_success, last_message = success, message
+    return last_success, last_message
+
+
 class TestPostgreSQLLoader(unittest.TestCase):
     """Test cases for PostgreSQL Loader"""
 
@@ -42,7 +50,7 @@ class TestPostgreSQLLoader(unittest.TestCase):
 
         # Test the loader
         success, message = asyncio.run(
-            PostgresLoader.load(self.test_graph_id, self.test_connection_url)
+            _consume_loader(PostgresLoader.load(self.test_graph_id, self.test_connection_url))
         )
 
         # Assertions
@@ -59,7 +67,7 @@ class TestPostgreSQLLoader(unittest.TestCase):
 
         # Test the loader
         success, message = asyncio.run(
-            PostgresLoader.load(self.test_graph_id, self.test_connection_url)
+            _consume_loader(PostgresLoader.load(self.test_graph_id, self.test_connection_url))
         )
 
         # Assertions
