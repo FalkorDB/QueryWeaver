@@ -183,7 +183,9 @@ async def google_authorized(request: Request) -> RedirectResponse:
         raise HTTPException(status_code=400, detail="Failed to get user info from Google")
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}") from e
+        logging.error("Google OAuth authentication failed: %s", str(e))
+        # pylint: disable=raise-missing-from
+        raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}")
 
 
 @auth_router.get("/login/google/callback", response_class=RedirectResponse)
@@ -269,7 +271,9 @@ async def github_authorized(request: Request) -> RedirectResponse:
         raise HTTPException(status_code=400, detail="Failed to get user info from Github")
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}") from e
+        logging.error("GitHub OAuth authentication failed: %s", str(e))
+        # pylint: disable=raise-missing-from
+        raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}")  # pylint: disable=raise-missing-from
 
 
 @auth_router.get("/login/github/callback", response_class=RedirectResponse)
