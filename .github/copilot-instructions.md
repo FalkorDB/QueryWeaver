@@ -18,18 +18,27 @@ QueryWeaver is an open-source Text2SQL tool that transforms natural language int
 
 ## Essential Build & Validation Commands
 
-**CRITICAL**: Always run these commands in the exact order specified. Many commands will fail if prerequisites are not met.
+Follow this order for a reliable local setup; if you customize the steps, ensure each prerequisite (dependencies, `.env`, Playwright) is completed.
 
-### 1. Initial Setup (Required for all operations)
+### 1. Initial Setup (recommended for new contributors)
 ```bash
 # Install pipenv if not available
 pip install pipenv
 
-# Install all dependencies (ALWAYS run this first)
+# Install dependencies (backend + frontend) and prepare dev tools
+# Recommended: use the Make helper which installs Python deps and frontend deps
 make install
-# OR manually: pipenv sync --dev
 
-# Set up environment file (REQUIRED)
+# Prepare the full development environment (installs Playwright browsers too)
+# This runs `make install` then Playwright install steps.
+make setup-dev
+
+# OR manual steps if you prefer more granular control:
+# pipenv sync --dev
+# pipenv run playwright install chromium
+# pipenv run playwright install-deps
+
+# Set up environment file
 cp .env.example .env
 # Edit .env with required values (see Environment Setup section)
 ```
@@ -50,7 +59,7 @@ pipenv run playwright install-deps
 ### 3. Testing Commands
 ```bash
 # IMPORTANT: Unit tests require FalkorDB running or will fail with connection errors
-# Start FalkorDB for testing (requires Docker)
+# You can start a local test FalkorDB using the included Make helper
 make docker-falkordb
 
 # Run unit tests only (safer, doesn't require browser)
@@ -122,22 +131,28 @@ make clean
 
 ## Environment Setup Requirements
 
-**CRITICAL**: Create `.env` file from `.env.example` and configure these essential variables:
+Create `.env` file from `.env.example` and configure these essential variables:
 
 ```bash
 # REQUIRED for FastAPI to start
 FASTAPI_SECRET_KEY=your_super_secret_key_here
-FASTAPI_DEBUG=False
 
-# REQUIRED for database connection (most functionality)
-FALKORDB_HOST=localhost
-FALKORDB_PORT=6379
+# Optional: set application environment (development, staging, production)
+# Default: development (affects session cookie security for OAuth)
+APP_ENV=development
 
-# REQUIRED for full functionality (OAuth)
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
-GITHUB_CLIENT_ID=your_github_client_id
-GITHUB_CLIENT_SECRET=your_github_client_secret
+# REQUIRED for database connection (preferred)
+# Use a single connection string if possible. Example:
+# FALKORDB_URL=redis://localhost:6379/0
+
+# Optional: enable debug/reload when running the app directly
+# FASTAPI_DEBUG=False
+
+# REQUIRED for full functionality (OAuth, only if you use login flows)
+# GOOGLE_CLIENT_ID=your_google_client_id
+# GOOGLE_CLIENT_SECRET=your_google_client_secret
+# GITHUB_CLIENT_ID=your_github_client_id
+# GITHUB_CLIENT_SECRET=your_github_client_secret
 
 # OPTIONAL: AI model configuration (defaults in api/config.py)
 # AZURE_API_KEY=your_azure_api_key
@@ -147,6 +162,7 @@ GITHUB_CLIENT_SECRET=your_github_client_secret
 **For testing in CI/development**, minimal `.env` setup:
 ```bash
 FASTAPI_SECRET_KEY=test-secret-key
+APP_ENV=development
 FASTAPI_DEBUG=False
 FALKORDB_HOST=localhost
 FALKORDB_PORT=6379
@@ -267,7 +283,7 @@ All workflows follow this pattern:
 - Python 3.12 setup
 - pipenv installation
 - pipenv sync --dev
-- .env file creation with test values
+- .env file creation with test values (use FALKORDB_URL in CI)
 - FalkorDB service startup (for tests requiring DB)
 - Playwright browser installation (for E2E tests)
 ```
@@ -306,6 +322,45 @@ Before submitting any changes, run these validation steps:
 - `tests/conftest.py`: Pytest fixtures and test configuration
 - `tests/e2e/README.md`: Comprehensive E2E testing documentation
 - `setup_e2e_tests.sh`: Automated test environment setup script
+
+### MCP (Model Context Protocol)
+
+QueryWeaver optionally exposes an MCP HTTP surface (mounted at `/mcp`) to allow external MCP clients to call QueryWeaver's Text2SQL operations. Key points for coding agents and reviewers:
+
+- Runtime toggle: the built-in MCP endpoints can be disabled with the env var `DISABLE_MCP=true`. Default behavior is enabled.
+- Client config: consumers typically use an `mcp.json` (or client-specific config) that points to the MCP URL, for example:
+
+```json
+{
+   "servers": {
+      "queryweaver": { 
+         "type": "http", 
+         "url": "http://127.0.0.1:5000/mcp", 
+         "headers": { 
+            "Authorization": "Bearer your_token_here" 
+         } 
+      }
+   },
+   "inputs": []
+}
+```
+
+- Tools and examples: projects like GitMCP show common client configurations for Cursor, VSCode, and other MCP-capable tools; use those patterns for guidance when writing docs or adding examples in this repo.
+- Security: avoid embedding bearer tokens in repo files. Prefer runtime injection via env files or secret managers. If you need to demonstrate a token in tests, use mocked tokens and don't commit them.
+
+Example: generate `mcp.json` from an environment token (pseudo):
+
+```bash
+export MQW_TOKEN="secret-token"
+cat > mcp.json <<EOF
+{
+   "servers": {"queryweaver": {"type":"http","url":"http://127.0.0.1:5000/mcp","headers":{"Authorization":"Bearer ${MQW_TOKEN}"}}},
+   "inputs": []
+}
+EOF
+```
+
+If you change MCP wiring or add integrations, update `README.md` and `.env.example` accordingly and add tests that run with MCP enabled/disabled to cover both code paths.
 
 ## Trust These Instructions
 

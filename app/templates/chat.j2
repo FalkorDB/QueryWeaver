@@ -28,6 +28,9 @@
     {% include 'components/login_modal.j2' %}
     {% include 'components/database_modal.j2' %}
     {% include 'components/reset_modal.j2' %}
+    {% if is_authenticated %}
+        {% include 'components/token_modal.j2' %}
+    {% endif %}
 {% endblock %}
 
 {% block scripts %}

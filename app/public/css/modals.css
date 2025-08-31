@@ -251,3 +251,279 @@
   font-size: 1em;
   line-height: 1.5;
 }
+
+/* Token Management Modal */
+.modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0,0,0,0.6);
+  z-index: 3000;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal .modal-content {
+  background: var(--falkor-secondary);
+  padding: 0;
+  border-radius: 10px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.2);
+  color: var(--text-primary);
+  min-width: 600px;
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal .modal-header {
+  background: var(--falkor-primary);
+  padding: 1.5em 2em;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal .modal-header h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1.4em;
+}
+
+.modal .close-btn {
+  background: none;
+  border: none;
+  font-size: 3em;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.modal .close-btn:hover {
+  color: var(--text-primary);
+}
+
+.modal .modal-body {
+  padding: 2em;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.tokens-description {
+  color: var(--text-secondary);
+  margin-bottom: 2em;
+  line-height: 1.6;
+}
+
+.tokens-actions {
+  margin-bottom: 2em;
+}
+
+.btn {
+  padding: 0.8em 1.5em;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9em;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  display: inline-block;
+  text-align: center;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent-color);
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--bg-secondary);
+}
+
+.btn-danger {
+  background: #dc3545;
+  color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #c82333;
+}
+
+.btn-sm {
+  padding: 0.5em 1em;
+  font-size: 0.8em;
+}
+
+.token-generation-result {
+  margin-bottom: 2em;
+}
+
+.token-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  width: 100%;
+}
+
+.token-input {
+  flex: 1 1 700px; /* allow input to grow, prefer large width */
+  min-width: 300px;
+  padding: 0.6em 0.8em;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-family: monospace;
+  color: var(--text-primary);
+  background: var(--falkor-quaternary);
+  overflow-x: auto;
+}
+
+/* Styles for incremental database connection steps shown in the connect modal */
+#db-connection-steps {
+  margin: 16px 24px;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+#db-connection-steps-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.db-connection-step {
+  display: flex;
+  align-items: center;
+  margin: 8px 0;
+}
+
+.db-connection-step .step-icon {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+  border-radius: 50%;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.db-connection-step .step-icon.pending { color: #1f6feb; }
+.db-connection-step .step-icon.success { color: #16a34a; }
+.db-connection-step .step-icon.error { color: #dc2626; }
+
+.alert {
+  padding: 1.5em;
+  border-radius: 6px;
+  margin-bottom: 1em;
+}
+
+.alert-success {
+  background: rgba(40, 167, 69, 0.1);
+  border: 1px solid rgba(40, 167, 69, 0.3);
+  color: var(--text-primary);
+}
+
+.alert h4 {
+  margin: 0 0 0.5em 0;
+  color: var(--text-primary);
+  font-size: 1.1em;
+}
+
+.alert p {
+  margin: 0 0 1em 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.token-display {
+  display: flex;
+  gap: 0.5em;
+  align-items: center;
+}
+
+.token-input {
+  flex: 1;
+  padding: 0.8em;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--falkor-quaternary);
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.tokens-list h3 {
+  margin: 0 0 1.5em 0;
+  color: var(--text-primary);
+  font-size: 1.2em;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.5em;
+}
+
+.no-tokens {
+  color: var(--text-secondary);
+  font-style: italic;
+  text-align: center;
+  padding: 2em;
+}
+
+.tokens-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1em;
+}
+
+.tokens-table th,
+.tokens-table td {
+  padding: 1em;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tokens-table th {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+.tokens-table td {
+  color: var(--text-secondary);
+}
+
+.tokens-table tbody tr:hover {
+  background: var(--bg-tertiary);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 1em;
+  justify-content: flex-end;
+  margin-top: 2em;
+}

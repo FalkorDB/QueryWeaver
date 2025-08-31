@@ -19,3 +19,4 @@ tmp_*
 node_modules/
 /app/public/js/*
 .jinja_cache/
+demo_tokens.py

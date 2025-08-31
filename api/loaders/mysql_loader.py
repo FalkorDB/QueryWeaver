@@ -4,7 +4,7 @@ import datetime
 import decimal
 import logging
 import re
-from typing import Tuple, Dict, Any, List
+from typing import AsyncGenerator, Tuple, Dict, Any, List
 
 import tqdm
 import pymysql
@@ -133,7 +133,7 @@ class MySQLLoader(BaseLoader):
         }
 
     @staticmethod
-    async def load(prefix: str, connection_url: str) -> Tuple[bool, str]:
+    async def load(prefix: str, connection_url: str) -> AsyncGenerator[tuple[bool, str], None]:
         """
         Load the graph data from a MySQL database into the graph database.
 
@@ -156,9 +156,11 @@ class MySQLLoader(BaseLoader):
             db_name = conn_params['database']
 
             # Get all table information
+            yield True, "Extracting table information..."
             entities = MySQLLoader.extract_tables_info(cursor, db_name)
 
             # Get all relationship information
+            yield True, "Extracting relationship information..."
             relationships = MySQLLoader.extract_relationships(cursor, db_name)
 
             # Close database connection
@@ -166,16 +168,17 @@ class MySQLLoader(BaseLoader):
             conn.close()
 
             # Load data into graph
+            yield True, "Loading data into graph..."
             await load_to_graph(f"{prefix}_{db_name}", entities, relationships,
                          db_name=db_name, db_url=connection_url)
 
-            return True, (f"MySQL schema loaded successfully. "
+            yield True, (f"MySQL schema loaded successfully. "
                          f"Found {len(entities)} tables.")
 
         except pymysql.MySQLError as e:
-            return False, f"MySQL connection error: {str(e)}"
+            yield False, f"MySQL connection error: {str(e)}"
         except Exception as e:
-            return False, f"Error loading MySQL schema: {str(e)}"
+            yield False, f"Error loading MySQL schema: {str(e)}"
 
     @staticmethod
     def extract_tables_info(cursor, db_name: str) -> Dict[str, Any]:

@@ -331,3 +331,91 @@
   height: 16px;
   flex-shrink: 0;
 }
+
+/* Graph custom dropdown (moved from chat_header.j2 inline styles) */
+.graph-custom-dropdown {
+  position: relative;
+  display: inline-block;
+  width: 180px;
+  margin-left: 8px;
+}
+
+.graph-selected {
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: var(--falkor-quaternary);
+  color: var(--text-primary);
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-width: 160px;
+  box-sizing: border-box;
+  font-size: 14px;
+}
+
+.graph-options {
+  position: absolute;
+  top: calc(100%);
+  left: 0;
+  right: 0;
+  background: var(--falkor-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  max-height: 260px;
+  overflow: auto;
+  display: none;
+  z-index: 50;
+}
+
+.dropdown-option {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 8px 12px;
+  gap: 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.dropdown-option:hover {
+  background: var(--bg-tertiary);
+}
+
+.dropdown-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown-option .delete-btn {
+  background: transparent;
+  border: none;
+  color: #ff6b6b;
+  opacity: 0;
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+}
+
+.dropdown-option:hover .delete-btn {
+  opacity: 1;
+}
+
+.dropdown-option .delete-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.graph-options.open {
+  display: block;
+}

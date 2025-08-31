@@ -3,6 +3,12 @@
     <div class="db-modal-content">
         <h2 class="db-modal-title" id="db-modal-title">Connect to Database</h2>
         <input type="text" id="db-url-input" class="db-modal-input" placeholder="Select database type first..." disabled />
+
+        <!-- Connection progress steps will appear here -->
+        <div id="db-connection-steps">
+            <ul id="db-connection-steps-list"></ul>
+        </div>
+
         <div class="db-modal-actions">
             <button id="db-modal-connect" class="db-modal-btn db-modal-connect" disabled>
                 <span class="db-modal-connect-text">Connect</span>

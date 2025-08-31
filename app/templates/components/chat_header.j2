@@ -3,9 +3,16 @@
     <img src="/static/icons/queryweaver.webp" alt="Chat Logo" class="logo">
     <h1>Natural Language to SQL Generator</h1>
     <div class="button-container">
-        <select title="Select Database" id="graph-select">
-            <option value="">Loading...</option>
-        </select>
+        <!-- Custom dropdown to show per-item delete action on hover -->
+        <div id="graph-custom-dropdown" class="graph-custom-dropdown">
+            <div id="graph-selected" class="graph-selected dropdown-selected" title="Select Database">
+                <span class="dropdown-text">Select Database</span>
+                <span class="dropdown-arrow">▼</span>
+            </div>
+            <div id="graph-options" class="graph-options dropdown-options" aria-hidden="true"></div>
+        </div>
+
+        <!-- styles for the graph dropdown moved to app/public/css/menu.css -->
         <div class="vertical-separator"></div>
         <input title="Upload Schema" id="schema-upload" type="file" accept=".json" style="display: none;" tabindex="-1" disabled/>
         <label for="schema-upload" id="custom-file-upload">
