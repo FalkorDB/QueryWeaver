@@ -244,7 +244,7 @@ async def github_authorized(request: Request) -> RedirectResponse:
 
             user_data = {
                 'id': user_info.get('id'),
-                'email': user_info.get('email'),
+                'email': email,
                 'name': user_info.get('name'),
                 'picture': user_info.get('avatar_url'),
             }
