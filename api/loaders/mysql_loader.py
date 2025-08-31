@@ -11,8 +11,8 @@ import pymysql
 from pymysql.cursors import DictCursor
 
 
-from api.loaders.base_loader import BaseLoader
-from api.loaders.graph_loader import load_to_graph
+from api.loaders.base_loader import BaseLoader  # pylint: disable=import-error
+from api.loaders.graph_loader import load_to_graph  # pylint: disable=import-error
 
 
 class MySQLQueryError(Exception):
@@ -55,7 +55,32 @@ class MySQLLoader(BaseLoader):
     ]
 
     @staticmethod
-    def serialize_value(value):
+    def _execute_count_query(cursor, table_name: str, col_name: str) -> Tuple[int, int]:
+        """
+        Execute query to get total count and distinct count for a column.
+        MySQL implementation returning counts from dictionary-style results.
+        """
+        cursor.execute("""
+            SELECT COUNT(*) AS total_count,
+                   COUNT(DISTINCT %s) AS distinct_count
+            FROM %s;
+        """, (col_name, table_name))
+        output = cursor.fetchall()
+        first_result = output[0]
+        return first_result['total_count'], first_result['distinct_count']
+
+    @staticmethod
+    def _execute_distinct_query(cursor, table_name: str, col_name: str) -> List[Any]:
+        """
+        Execute query to get distinct values for a column.
+        MySQL implementation handling dictionary-style results.
+        """
+        cursor.execute("SELECT DISTINCT %s FROM %s;", (col_name, table_name))
+        distinct_results = cursor.fetchall()
+        return [row[col_name] for row in distinct_results if row[col_name] is not None]
+
+    @staticmethod
+    def _serialize_value(value):
         """
         Convert non-JSON serializable values to JSON serializable format.
 
@@ -74,6 +99,19 @@ class MySQLLoader(BaseLoader):
         if value is None:
             return None
         return value
+
+    @staticmethod
+    def serialize_value(value):
+        """
+        Public method for serializing values. Calls the private _serialize_value method.
+        
+        Args:
+            value: The value to serialize
+
+        Returns:
+            JSON serializable version of the value
+        """
+        return MySQLLoader._serialize_value(value)
 
     @staticmethod
     def parse_mysql_url(connection_url: str) -> Dict[str, str]:
@@ -177,8 +215,10 @@ class MySQLLoader(BaseLoader):
 
         except pymysql.MySQLError as e:
             yield False, f"MySQL connection error: {str(e)}"
-        except Exception as e:
-            yield False, f"Error loading MySQL schema: {str(e)}"
+        except (ValueError, TypeError, KeyError) as e:
+            yield False, f"Configuration error loading MySQL schema: {str(e)}"
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            yield False, f"Unexpected error loading MySQL schema: {str(e)}"
 
     @staticmethod
     def extract_tables_info(cursor, db_name: str) -> Dict[str, Any]:
@@ -294,6 +334,12 @@ class MySQLLoader(BaseLoader):
             if column_default is not None:
                 description_parts.append(f"(Default: {column_default})")
 
+            # Add distinct values if applicable
+            distinct_values_desc = MySQLLoader.extract_distinct_values_for_column(
+                cursor, table_name, col_name
+            )
+            description_parts.extend(distinct_values_desc)
+
             columns_info[col_name] = {
                 'type': data_type,
                 'null': is_nullable,
@@ -303,6 +349,42 @@ class MySQLLoader(BaseLoader):
             }
 
         return columns_info
+
+    @staticmethod
+    def extract_distinct_values_for_column(cursor, table_name: str, col_name: str) -> List[str]:
+        """
+        Extract distinct values for a column to enhance column descriptions.
+        
+        Args:
+            cursor: Database cursor
+            table_name: Name of the table
+            col_name: Name of the column
+            
+        Returns:
+            List of strings describing distinct values
+        """
+        try:
+            total_count, distinct_count = MySQLLoader._execute_count_query(
+                cursor, table_name, col_name
+            )
+
+            # Only include distinct values if the column has a reasonable number of distinct values
+            if distinct_count <= 10 and total_count > 0:
+                distinct_values = MySQLLoader._execute_distinct_query(cursor, table_name, col_name)
+                serialized_values = [MySQLLoader._serialize_value(val) for val in distinct_values]
+                return [f"(Distinct values: {', '.join(map(str, serialized_values))})"]
+            if distinct_count > 10:
+                return [f"({distinct_count} distinct values)"]
+            return []
+        except (pymysql.MySQLError, ValueError) as e:
+            # Log specific database or data conversion errors
+            logging.warning("Error getting distinct values for %s.%s: %s", table_name, col_name, e)
+            return []
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            # Log unexpected errors but don't fail the entire process
+            logging.debug("Unexpected error getting distinct values for %s.%s: %s",
+                         table_name, col_name, e)
+            return []
 
     @staticmethod
     def extract_foreign_keys(cursor, db_name: str, table_name: str) -> List[Dict[str, str]]:
@@ -430,7 +512,7 @@ class MySQLLoader(BaseLoader):
             logging.info("Schema modification detected. Refreshing graph schema for: %s", graph_id)
 
             # Import here to avoid circular imports
-            from api.extensions import db  # pylint: disable=import-outside-toplevel
+            from api.extensions import db  # pylint: disable=import-outside-toplevel,import-error
 
             # Clear existing graph data
             # Drop current graph before reloading
@@ -456,12 +538,16 @@ class MySQLLoader(BaseLoader):
             logging.error("Schema refresh failed for graph %s: %s", graph_id, message)
             return False, "Failed to reload schema"
 
-        except Exception as e:
+        except ImportError as e:
+            logging.error("Failed to import required modules for schema refresh: %s", str(e))
+            return False, "Internal configuration error during schema refresh"
+        except (ValueError, KeyError) as e:
+            logging.error("Configuration error during schema refresh: %s", str(e))
+            return False, "Configuration error during schema refresh"
+        except Exception as e:  # pylint: disable=broad-exception-caught
             # Log the error and return failure
-            logging.error("Error refreshing graph schema: %s", str(e))
-            error_msg = "Error refreshing graph schema"
-            logging.error(error_msg)
-            return False, error_msg
+            logging.error("Unexpected error refreshing graph schema: %s", str(e))
+            return False, "Unexpected error refreshing graph schema"
 
     @staticmethod
     def execute_sql_query(sql_query: str, db_url: str) -> List[Dict[str, Any]]:
