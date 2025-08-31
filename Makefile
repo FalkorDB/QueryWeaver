@@ -8,7 +8,7 @@ help: ## Show this help message
 
 install: ## Install dependencies
 	pipenv sync --dev
-	npm install ./app
+	npm install --prefix ./app
 
 
 setup-dev: install ## Set up development environment
@@ -24,8 +24,6 @@ build-prod:
 	npm --prefix ./app run build
 
 test: build-dev test-unit test-e2e ## Run all tests
-	
-
 
 test-unit: ## Run unit tests only
 	pipenv run python -m pytest tests/ -k "not e2e" --verbose
@@ -63,10 +61,10 @@ clean: ## Clean up test artifacts
 	find . -name "*.pyo" -delete
 
 run-dev: build-dev ## Run development server
-	pipenv run uvicorn api.index:app --host 127.0.0.1 --port $${PORT:-5000} --reload
+	pipenv run uvicorn api.index:app --host $${HOST:-127.0.0.1} --port $${PORT:-5000} --reload
 
 run-prod: build-prod ## Run production server
-	pipenv run uvicorn api.index:app --host 0.0.0.0 --port $${PORT:-5000}
+	pipenv run uvicorn api.index:app --host $${HOST:-0.0.0.0} --port $${PORT:-5000}
 
 docker-falkordb: ## Start FalkorDB in Docker for testing
 	docker run -d --name falkordb-test -p 6379:6379 falkordb/falkordb:latest

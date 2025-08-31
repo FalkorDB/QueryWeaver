@@ -3,6 +3,7 @@
  */
 
 import { DOM, state } from './config';
+import { getSelectedGraph } from './graph_select';
 
 export function addMessage(
     message: string,
@@ -137,7 +138,8 @@ export function initChat() {
         if (element) element.innerHTML = '';
     });
 
-    if (DOM.graphSelect && DOM.graphSelect.options.length > 0 && (DOM.graphSelect.options[0].value || DOM.graphSelect.options.length)) {
+    const selected = getSelectedGraph();
+    if (selected) {
         addMessage('Hello! How can I help you today?', false);
     } else {
         addMessage('Hello! Please select a graph from the dropdown above, upload a schema or connect to a database to get started.', false);

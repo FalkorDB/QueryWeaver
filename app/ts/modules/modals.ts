@@ -53,12 +53,48 @@ export function setupDatabaseModal() {
 
     if (!dbTypeSelect || !dbUrlInput || !connectDbModalBtn || !dbModal || !dbModalTitle) return;
 
+    // Helpers for displaying incremental connection steps in the modal (static elements in template)
+    function addStep(text: string, status: 'pending' | 'success' | 'error' = 'pending') {
+        const list = document.getElementById('db-connection-steps-list') as HTMLUListElement | null;
+        if (!list) return;
+
+        // Mark the previous pending step as completed (✓) when adding a new step
+        const prevLi = list.lastElementChild as HTMLLIElement | null;
+        if (prevLi) {
+            const prevIcon = prevLi.querySelector('.step-icon') as HTMLElement | null;
+            if (prevIcon && prevIcon.classList.contains('pending')) {
+                prevIcon.className = 'step-icon success';
+                prevIcon.textContent = '✓';
+            }
+        }
+
+        const li = document.createElement('li');
+        li.className = 'db-connection-step';
+
+        const icon = document.createElement('span');
+        icon.className = 'step-icon ' + status;
+        if (status === 'pending') icon.textContent = '⭮';
+        else if (status === 'success') icon.textContent = '✓';
+        else icon.textContent = '✕';
+
+        const textNode = document.createElement('span');
+        textNode.textContent = text;
+
+        li.appendChild(icon);
+        li.appendChild(textNode);
+        list.appendChild(li);
+        list.scrollTop = list.scrollHeight;
+    }
+
     dbTypeSelect.addEventListener('change', function(this: HTMLSelectElement) {
         const selectedType = this.value;
         if (selectedType && databaseConfig[selectedType]) {
             dbUrlInput.disabled = false;
             dbUrlInput.placeholder = databaseConfig[selectedType].placeholder;
             dbModal.style.display = 'flex';
+            // clear previous connection steps
+            const existingList = document.getElementById('db-connection-steps-list') as HTMLUListElement | null;
+            if (existingList) existingList.innerHTML = '';
             dbModalTitle.textContent = databaseConfig[selectedType].title;
             connectDbModalBtn.disabled = false;
             setTimeout(() => dbUrlInput.focus(), 100);
@@ -90,7 +126,10 @@ export function setupDatabaseModal() {
     });
 
     connectDbModalBtn.addEventListener('click', function() {
-        const dbUrl = dbUrlInput.value.trim();
+    if (!connectDbModalBtn || !dbUrlInput) return;
+    const connectBtn = connectDbModalBtn as HTMLButtonElement;
+    const urlInput = dbUrlInput as HTMLInputElement;
+    const dbUrl = urlInput.value.trim();
         const selectedType = dbTypeSelect.value;
 
         if (!selectedType) {
@@ -111,26 +150,80 @@ export function setupDatabaseModal() {
             return;
         }
 
-        setLoadingState(true, connectDbModalBtn, dbUrlInput);
+    setLoadingState(true, connectBtn, urlInput);
 
-        fetch('/database', {
+    fetch('/database', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: dbUrl })
-        }).then(response => response.json())
-          .then(data => {
-            setLoadingState(false, connectDbModalBtn, dbUrlInput);
-            if (data.success) {
-                dbModal.style.display = 'none';
-                if (dbTypeSelect) dbTypeSelect.selectedIndex = 0;
-                if (connectDbModalBtn) connectDbModalBtn.disabled = true;
-                location.reload();
-            } else {
-                alert('Failed to connect: ' + (data.error || 'Unknown error'));
+            body: JSON.stringify({ url: dbUrl }),
+        }).then(response => {
+            if (!response.ok) throw new Error(`Network response was not ok (${response.status})`);
+
+            const reader = response.body!.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            const delimiter = '|||FALKORDB_MESSAGE_BOUNDARY|||';
+
+            function processChunk(text: string) {
+                if (!text || !text.trim()) return;
+                let obj: any = null;
+                try {
+                    obj = JSON.parse(text);
+                } catch (e) {
+                    console.error('Failed to parse chunk as JSON', e, text);
+                    return;
+                }
+
+                if (obj.type === 'reasoning_step') {
+                    // show incremental step
+                    addStep(obj.message || 'Working...', 'pending');
+                } else if (obj.type === 'final_result') {
+                    // mark last step as success and finish
+                    addStep(obj.message || 'Completed', obj.success ? 'success' : 'error');
+                    setLoadingState(false, connectBtn, urlInput);
+                    if (obj.success) {
+                        if (dbModal) dbModal.style.display = 'none';
+                        if (dbTypeSelect) dbTypeSelect.selectedIndex = 0;
+                        if (connectBtn) connectBtn.disabled = true;
+                        location.reload();
+                    } else {
+                        alert('Failed to connect: ' + (obj.message || 'Unknown error'));
+                    }
+                } else if (obj.type === 'error') {
+                    addStep(obj.message || 'Error', 'error');
+                    setLoadingState(false, connectBtn, urlInput);
+                    alert('Error connecting to database: ' + (obj.message || 'Unknown error'));
+                } else {
+                    // handle other message types if needed
+                    console.log('Stream message', obj);
+                }
             }
-          }).catch(error => {
-            setLoadingState(false, connectDbModalBtn, dbUrlInput);
+
+            function pump(): Promise<any> {
+                return reader.read().then(({ done, value }) => {
+                    if (done) {
+                        if (buffer.length > 0) {
+                            processChunk(buffer);
+                        }
+                        setLoadingState(false, connectBtn, urlInput);
+                        return;
+                    }
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const parts = buffer.split(delimiter);
+                    // last piece is possibly incomplete
+                    buffer = parts.pop() || '';
+                    for (const part of parts) {
+                        processChunk(part);
+                    }
+                    return pump();
+                });
+            }
+
+            return pump();
+        }).catch(error => {
+            setLoadingState(false, connectBtn, urlInput);
             alert('Error connecting to database: ' + (error as Error).message);
-          });
+        });
     });
 }

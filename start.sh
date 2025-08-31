@@ -27,4 +27,4 @@ else
 fi
 
 echo "FalkorDB is up - launching FastAPI (uvicorn)..."
-exec uvicorn api.index:app --host 0.0.0.0 --port 5000 $RELOAD_FLAG
+exec uvicorn api.index:app --host "${HOST:-0.0.0.0}" --port "${PORT:-5000}" $RELOAD_FLAG

@@ -4,7 +4,7 @@ import datetime
 import decimal
 import logging
 import re
-from typing import Tuple, Dict, Any, List
+from typing import AsyncGenerator, Tuple, Dict, Any, List
 
 import psycopg2
 import tqdm
@@ -72,7 +72,7 @@ class PostgresLoader(BaseLoader):
         return value
 
     @staticmethod
-    async def load(prefix: str, connection_url: str) -> Tuple[bool, str]:
+    async def load(prefix: str, connection_url: str) -> AsyncGenerator[tuple[bool, str], None]:
         """
         Load the graph data from a PostgreSQL database into the graph database.
 
@@ -94,8 +94,10 @@ class PostgresLoader(BaseLoader):
                 db_name = db_name.split('?')[0]
 
             # Get all table information
+            yield True, "Extracting table information..."
             entities = PostgresLoader.extract_tables_info(cursor)
 
+            yield True, "Extracting relationship information..."
             # Get all relationship information
             relationships = PostgresLoader.extract_relationships(cursor)
 
@@ -103,17 +105,18 @@ class PostgresLoader(BaseLoader):
             cursor.close()
             conn.close()
 
+            yield True, "Loading data into graph..."
             # Load data into graph
             await load_to_graph(f"{prefix}_{db_name}", entities, relationships,
                          db_name=db_name, db_url=connection_url)
 
-            return True, (f"PostgreSQL schema loaded successfully. "
+            yield True, (f"PostgreSQL schema loaded successfully. "
                          f"Found {len(entities)} tables.")
 
         except psycopg2.Error as e:
-            return False, f"PostgreSQL connection error: {str(e)}"
+            yield False, f"PostgreSQL connection error: {str(e)}"
         except Exception as e:
-            return False, f"Error loading PostgreSQL schema: {str(e)}"
+            yield False, f"Error loading PostgreSQL schema: {str(e)}"
 
     @staticmethod
     def extract_tables_info(cursor) -> Dict[str, Any]:

@@ -4,12 +4,13 @@
 
 import { DOM, state, MESSAGE_DELIMITER } from './config';
 import { addMessage, removeLoadingMessage, moveLoadingMessageToBottom } from './messages';
+import { getSelectedGraph } from './graph_select';
 
 export async function sendMessage() {
     const message = (DOM.messageInput?.value || '').trim();
     if (!message) return;
 
-    const selectedValue = DOM.graphSelect?.value || '';
+    const selectedValue = getSelectedGraph() || '';
     if (!selectedValue) {
         addMessage('Please select a graph from the dropdown before sending a message.', false, true);
         return;
@@ -257,7 +258,7 @@ export async function handleDestructiveConfirmation(confirmation: string, sqlQue
     }
 
     try {
-        const selectedValue = DOM.graphSelect?.value || '';
+        const selectedValue = getSelectedGraph() || '';
 
         const response = await fetch('/graphs/' + encodeURIComponent(selectedValue) + '/confirm', {
             method: 'POST',

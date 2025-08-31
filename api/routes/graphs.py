@@ -8,6 +8,7 @@ import time
 from fastapi import APIRouter, Request, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
+from redis import ResponseError
 
 from api.agents import AnalysisAgent, RelevancyAgent, ResponseFormatterAgent
 from api.auth.user_management import token_required
@@ -40,8 +41,8 @@ class ChatRequest(BaseModel):
     Args:
         BaseModel (_type_): _description_
     """
-    chat: list
-    result: list = None
+    chat: list[str]
+    result: list[str] = None
     instructions: str = None
 
 
@@ -83,16 +84,31 @@ def sanitize_query(query: str) -> str:
     return query.replace('\n', ' ').replace('\r', ' ')[:500]
 
 def sanitize_log_input(value: str) -> str:
-    """Sanitize input for safe logging (remove newlines and carriage returns)."""
+    """
+    Sanitize input for safe logging—remove newlines, 
+    carriage returns, tabs, and wrap in repr().
+    """
     if not isinstance(value, str):
-        return str(value)
-    return value.replace('\n', ' ').replace('\r', ' ')
+        value = str(value)
 
-@graphs_router.get("")
+    return value.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
+
+def _graph_name(request: Request, graph_id:str) -> str:
+    if not graph_id or not isinstance(graph_id, str):
+        raise HTTPException(status_code=400, detail="Invalid graph_id")
+
+    graph_id = graph_id.strip()[:200]
+    if not graph_id:
+        raise HTTPException(status_code=400,
+                            detail="Invalid graph_id, must be less than 200 characters.")
+
+    return f"{request.state.user_id}_{graph_id}"
+
+@graphs_router.get("", operation_id="list_databases")
 @token_required
 async def list_graphs(request: Request):
     """
-    This route is used to list all the graphs that are available in the database.
+    This route is used to list all the graphs (databases names) that are available in the database.
     """
     user_id = request.state.user_id
     user_graphs = await db.list_graphs()
@@ -101,22 +117,19 @@ async def list_graphs(request: Request):
                        for graph in user_graphs if graph.startswith(f"{user_id}_")]
     return JSONResponse(content=filtered_graphs)
 
-
-@graphs_router.get("/{graph_id}/data")
+@graphs_router.get("/{graph_id}/data", operation_id="database_schema")
 @token_required
 async def get_graph_data(request: Request, graph_id: str):
-    """Return all nodes and edges for the specified graph (namespaced to the user).
+    """Return all nodes and edges for the specified database schema (namespaced to the user).
 
     This endpoint returns a JSON object with two keys: `nodes` and `edges`.
     Nodes contain a minimal set of properties (id, name, labels, props).
     Edges contain source and target node names (or internal ids), type and props.
+    
+        args:
+            graph_id (str): The ID of the graph to query (the database name).
     """
-    if not graph_id or not isinstance(graph_id, str):
-        return JSONResponse(content={"error": "Invalid graph_id"}, status_code=400)
-
-    graph_id = graph_id.strip()[:200]
-    namespaced = f"{request.state.user_id}_{graph_id}"
-
+    namespaced = _graph_name(request, graph_id)
     try:
         graph = db.select_graph(namespaced)
     except Exception as e:
@@ -262,22 +275,17 @@ async def load_graph(request: Request, data: GraphData = None, file: UploadFile 
     raise HTTPException(status_code=400, detail="Failed to load graph data")
 
 
-@graphs_router.post("/{graph_id}")
+@graphs_router.post("/{graph_id}", operation_id="query_database")
 @token_required
 async def query_graph(request: Request, graph_id: str, chat_data: ChatRequest):
     """
-    text2sql
+    Query the Database with the given graph_id and chat_data.
+    
+        Args:
+            graph_id (str): The ID of the graph to query.
+            chat_data (ChatRequest): The chat data containing user queries and context.
     """
-    # Input validation
-    if not graph_id or not isinstance(graph_id, str):
-        raise HTTPException(status_code=400, detail="Invalid graph_id")
-
-    # Sanitize graph_id to prevent injection
-    graph_id = graph_id.strip()[:100]  # Limit length and strip whitespace
-    if not graph_id:
-        raise HTTPException(status_code=400, detail="Invalid graph_id")
-
-    graph_id = f"{request.state.user_id}_{graph_id}"
+    graph_id = _graph_name(request, graph_id)
 
     queries_history = chat_data.chat if hasattr(chat_data, 'chat') else None
     result_history = chat_data.result if hasattr(chat_data, 'result') else None
@@ -552,7 +560,8 @@ async def confirm_destructive_operation(
     """
     Handle user confirmation for destructive SQL operations
     """
-    graph_id = f"{request.state.user_id}_{graph_id.strip()}"
+
+    graph_id = _graph_name(request, graph_id)
 
     if hasattr(confirm_data, 'confirmation'):
         confirmation = confirm_data.confirmation.strip().upper()
@@ -673,7 +682,7 @@ async def refresh_graph_schema(request: Request, graph_id: str):
     This endpoint allows users to manually trigger a schema refresh
     if they suspect the graph is out of sync with the database.
     """
-    graph_id = f"{request.state.user_id}_{graph_id.strip()}"
+    graph_id = _graph_name(request, graph_id)
 
     try:
         # Get database connection details
@@ -715,3 +724,27 @@ async def refresh_graph_schema(request: Request, graph_id: str):
             "success": False,
             "error": "Error refreshing schema"
         }, status_code=500)
+
+@graphs_router.delete("/{graph_id}")
+@token_required
+async def delete_graph(request: Request, graph_id: str):
+    """Delete the specified graph (namespaced to the user).
+
+    This will attempt to delete the FalkorDB graph belonging to the
+    authenticated user. The graph id used by the client is stripped of
+    namespace and will be namespaced using the user's id from the request
+    state.
+    """
+    namespaced = _graph_name(request, graph_id)
+
+    try:
+        # Select and delete the graph using the FalkorDB client API
+        graph = db.select_graph(namespaced)
+        await graph.delete()
+        return JSONResponse(content={"success": True, "graph": graph_id})
+    except ResponseError:
+        return JSONResponse(content={"error": "Failed to delete graph, Graph not found"},
+                            status_code=404)
+    except Exception as e:
+        logging.exception("Failed to delete graph %s: %s", sanitize_log_input(namespaced), e)
+        return JSONResponse(content={"error": "Failed to delete graph"}, status_code=500)

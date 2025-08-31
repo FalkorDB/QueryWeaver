@@ -119,6 +119,7 @@ Key environment variables for testing:
 ```bash
 # Required for FastAPI
 FASTAPI_SECRET_KEY=your-secret-key
+APP_ENV=development
 FASTAPI_DEBUG=False
 
 # Database connection (optional for basic tests)

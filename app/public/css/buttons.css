@@ -119,21 +119,34 @@
   font-size: 22px;
 }
 
-.user-profile-logout {
-  width: 100%;
-  padding: 10px;
+#user-profile-logout {
   background: #D32F2F;
   color: #fff;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: bold;
-  transition: background 0.2s;
 }
 
-.user-profile-logout:hover {
+#user-profile-logout:hover {
   background: #B71C1C;
 }
+
+.user-profile-action {
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  width: 100%;
+  padding: 10px;
+  font-weight: bold;
+  border: none;
+  color: var(--text-primary);
+}
+
+#api-tokens-btn {
+  background: var(--falkor-quaternary);
+}
+
+#api-tokens-btn:hover {
+  background: var(--bg-tertiary);
+}
+
 
 /* Theme Toggle Button Styles */
 #theme-toggle-btn {

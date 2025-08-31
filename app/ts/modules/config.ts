@@ -27,7 +27,6 @@ export const SELECTORS = {
     leftToolbarInner: '#left-toolbar-inner',
     expInstructions: '#instructions-textarea',
     inputContainer: '#input-container',
-    graphSelect: '#graph-select',
     resetConfirmationModal: '#reset-confirmation-modal',
     resetConfirmBtn: '#reset-confirm-btn',
     resetCancelBtn: '#reset-cancel-btn'
@@ -59,7 +58,6 @@ export const DOM = {
     leftToolbarInner: getElement<HTMLElement | null>('left-toolbar-inner'),
     expInstructions: getElement<HTMLTextAreaElement | null>('instructions-textarea'),
     inputContainer: getElement<HTMLElement | null>('input-container'),
-    graphSelect: getElement<HTMLSelectElement | null>('graph-select'),
     resetConfirmationModal: getElement<HTMLElement | null>('reset-confirmation-modal'),
     resetConfirmBtn: getElement<HTMLButtonElement | null>('reset-confirm-btn'),
     resetCancelBtn: getElement<HTMLButtonElement | null>('reset-cancel-btn')

@@ -6,7 +6,7 @@ name = "pypi"
 [packages]
 fastapi = "~=0.116.1"
 uvicorn = "~=0.35.0"
-litellm = "~=1.75.9"
+litellm = "~=1.76.0"
 falkordb = "~=1.2.0"
 psycopg2-binary = "~=2.9.9"
 pymysql = "~=1.1.0"
@@ -16,6 +16,7 @@ jsonschema = "~=4.25.0"
 tqdm = "~=4.67.1"
 python-multipart = "~=0.0.10"
 jinja2 = "~=3.1.4"
+fastapi-mcp = "~=0.4.0"
 
 [dev-packages]
 pytest = "~=8.4.1"

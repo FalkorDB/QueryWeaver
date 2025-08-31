@@ -6,6 +6,7 @@ import { DOM } from './modules/config';
 import { initChat } from './modules/messages';
 import { sendMessage, pauseRequest } from './modules/chat';
 import { loadGraphs, handleFileUpload, onGraphChange } from './modules/graphs';
+import { getSelectedGraph } from './modules/graph_select';
 import {
     toggleContainer,
     showResetConfirmation,
@@ -19,6 +20,7 @@ import {
 } from './modules/ui';
 import { setupAuthenticationModal, setupDatabaseModal } from './modules/modals';
 import { showGraph } from './modules/schema';
+import { setupTokenManagement } from './modules/tokens';
 import { initLeftToolbar } from './modules/left_toolbar';
 
 async function loadAndShowGraph(selected: string | undefined) {
@@ -64,7 +66,7 @@ function setupEventListeners() {
 
     DOM.schemaButton?.addEventListener('click', () => {
         toggleContainer(DOM.schemaContainer as HTMLElement, async () => {
-            const selected = DOM.graphSelect?.value;
+            const selected = getSelectedGraph();
             if (!selected) return;
             await loadAndShowGraph(selected);
         });
@@ -84,9 +86,10 @@ function setupEventListeners() {
         }
     });
 
-    DOM.graphSelect?.addEventListener('change', async () => {
+    // Legacy select is hidden; custom UI will trigger load via graph_select helper
+    document.getElementById('graph-options')?.addEventListener('click', async () => {
         onGraphChange();
-        const selected = DOM.graphSelect?.value;
+        const selected = getSelectedGraph();
         if (!selected) return;
         if (DOM.schemaContainer && DOM.schemaContainer.classList.contains('open')) {
             await loadAndShowGraph(selected);
@@ -102,6 +105,7 @@ function setupUIComponents() {
     setupThemeToggle();
     setupAuthenticationModal();
     setupDatabaseModal();
+    setupTokenManagement();
     setupToolbar();
     // initialize left toolbar behavior (burger, responsive default)
     initLeftToolbar();
