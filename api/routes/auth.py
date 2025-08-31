@@ -151,7 +151,12 @@ async def google_authorized(request: Request) -> RedirectResponse:
     try:
         google = _get_provider_client(request, "google")
         token = await google.authorize_access_token(request)
-        user_info = token.get("userinfo")
+        resp = await google.get("userinfo", token=token)
+        if resp.status_code != 200:
+            logging.warning("Failed to retrieve user info from Google")
+            raise HTTPException(status_code=400, detail="Failed to get user info from Google")
+
+        user_info = resp.json()
 
         if user_info:
 
@@ -169,6 +174,11 @@ async def google_authorized(request: Request) -> RedirectResponse:
 
                 # call the registered handler (await if async)
                 await handler('google', user_data, api_token)
+
+                # Persist minimal session data so SessionMiddleware will
+                # set the `qw_session` cookie on the response. This ensures
+                # the OAuth state/session is tracked across the redirect.
+                request.session["user_id"] = user_data.get("id")
 
                 redirect = RedirectResponse(url="/chat", status_code=302)
                 redirect.set_cookie(
@@ -258,6 +268,10 @@ async def github_authorized(request: Request) -> RedirectResponse:
                 # call the registered handler (await if async)
                 await handler('github', user_data, api_token)
 
+                # Persist minimal session data so SessionMiddleware will
+                # set the `qw_session` cookie on the response. This ensures
+                # the OAuth state/session is tracked across the redirect.
+                request.session["user_id"] = user_data.get("id")
                 redirect = RedirectResponse(url="/chat", status_code=302)
                 redirect.set_cookie(
                     key="api_token",
@@ -294,6 +308,8 @@ async def logout(request: Request) -> RedirectResponse:
         resp.delete_cookie("api_token")
         await delete_user_token(api_token)
 
+    request.session.pop("user_id", None)
+
     return resp
 
 # ---- Hook for app factory ----
@@ -313,6 +329,7 @@ def init_auth(app):
         client_id=google_client_id,
         client_secret=google_client_secret,
         server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        api_base_url="https://openidconnect.googleapis.com/v1/",
         client_kwargs={"scope": "openid email profile"},
     )
 

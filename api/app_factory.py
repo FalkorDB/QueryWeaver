@@ -62,14 +62,16 @@ def create_app():
     app_env = os.getenv("APP_ENV", "").lower()
     if app_env in ("production", "staging"):
         is_https = True
+        same_site = "none"
     else:
         is_https = False
+        same_site = "lax"
 
     app.add_middleware(
         SessionMiddleware,
         secret_key=SECRET_KEY,
         session_cookie="qw_session",
-        same_site="lax",  # allow top-level OAuth GET redirects to send cookies
+        same_site=same_site,  # allow top-level OAuth GET redirects to send cookies
         https_only=is_https,  # True for HTTPS environments (staging/prod), False for HTTP dev
         max_age=60 * 60 * 24 * 14,  # 14 days - measured by seconds
     )

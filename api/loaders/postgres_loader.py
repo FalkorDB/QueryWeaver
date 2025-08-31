@@ -1,9 +1,9 @@
 """PostgreSQL loader for loading database schemas into FalkorDB graphs."""
 
+import re
 import datetime
 import decimal
 import logging
-import re
 from typing import AsyncGenerator, Tuple, Dict, Any, List
 
 import psycopg2
@@ -49,6 +49,31 @@ class PostgresLoader(BaseLoader):
         r'^\s*CREATE\s+SCHEMA',
         r'^\s*DROP\s+SCHEMA',
     ]
+
+    @staticmethod
+    def _execute_count_query(cursor, table_name: str, col_name: str) -> Tuple[int, int]:
+        """
+        Execute query to get total count and distinct count for a column.
+        PostgreSQL implementation returning counts from tuple-style results.
+        """
+        cursor.execute("""
+            SELECT COUNT(*) AS total_count,
+                   COUNT(DISTINCT %s) AS distinct_count
+            FROM %s;
+        """, (col_name, table_name))
+        output = cursor.fetchall()
+        first_result = output[0]
+        return first_result[0], first_result[1]
+
+    @staticmethod
+    def _execute_distinct_query(cursor, table_name: str, col_name: str) -> List[Any]:
+        """
+        Execute query to get distinct values for a column.
+        PostgreSQL implementation handling tuple-style results.
+        """
+        cursor.execute("SELECT DISTINCT %s FROM %s;", (col_name, table_name))
+        distinct_results = cursor.fetchall()
+        return [row[0] for row in distinct_results if row[0] is not None]
 
     @staticmethod
     def _serialize_value(value):
@@ -244,6 +269,12 @@ class PostgresLoader(BaseLoader):
             if column_default:
                 description_parts.append(f"(Default: {column_default})")
 
+            # Add distinct values if applicable
+            distinct_values_desc = PostgresLoader.extract_distinct_values_for_column(
+                cursor, table_name, col_name
+            )
+            description_parts.extend(distinct_values_desc)
+
             columns_info[col_name] = {
                 'type': data_type,
                 'null': is_nullable,
@@ -251,6 +282,7 @@ class PostgresLoader(BaseLoader):
                 'description': ' '.join(description_parts),
                 'default': column_default
             }
+
 
         return columns_info
 

@@ -70,10 +70,19 @@ class TestPostgreSQLLoader(unittest.TestCase):
         """Test column information extraction"""
         # Mock cursor with column data
         mock_cursor = Mock()
-        mock_cursor.fetchall.return_value = [
-            ("id", "integer", "NO", None, "PRIMARY KEY", "User ID"),
-            ("name", "varchar", "NO", None, "NONE", "User name"),
-            ("email", "varchar", "YES", None, "NONE", "User email address"),
+        mock_cursor.fetchall.side_effect = [
+            # First call: column metadata
+            [
+                ("id", "integer", "NO", None, "PRIMARY KEY", "User ID"),
+                ("name", "varchar", "NO", None, "NONE", "User name"),
+                ("email", "varchar", "YES", None, "NONE", "User email address"),
+            ],
+            # Second call: row count for 'id' column
+            [(100, 100)],
+            # Third call: row count for 'name' column  
+            [(100, 50)],
+            # Fourth call: row count for 'email' column
+            [(100, 80)]
         ]
 
         # Test the method
