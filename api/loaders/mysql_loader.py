@@ -108,7 +108,7 @@ class MySQLLoader(BaseLoader):
     def serialize_value(value):
         """
         Public method for serializing values. Calls the private _serialize_value method.
-        
+
         Args:
             value: The value to serialize
 

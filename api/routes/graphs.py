@@ -88,7 +88,7 @@ def sanitize_query(query: str) -> str:
 
 def sanitize_log_input(value: str) -> str:
     """
-    Sanitize input for safe logging—remove newlines, 
+    Sanitize input for safe logging—remove newlines,
     carriage returns, tabs, and wrap in repr().
     """
     if not isinstance(value, str):
@@ -128,7 +128,7 @@ async def get_graph_data(request: Request, graph_id: str):
     This endpoint returns a JSON object with two keys: `nodes` and `edges`.
     Nodes contain a minimal set of properties (id, name, labels, props).
     Edges contain source and target node names (or internal ids), type and props.
-    
+
         args:
             graph_id (str): The ID of the graph to query (the database name).
     """
