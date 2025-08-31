@@ -1,334 +1,630 @@
-"""Authentication routes for the text2sql API."""
+"""MySQL loader for loading database schemas into FalkorDB graphs."""
 
+import datetime
+import decimal
 import logging
-import os
-import secrets
-from pathlib import Path
-from urllib.parse import urljoin
+import re
+from typing import AsyncGenerator, Tuple, Dict, Any, List
 
-from fastapi import APIRouter, Request, HTTPException, status
-from fastapi.responses import RedirectResponse, HTMLResponse
-from fastapi.templating import Jinja2Templates
-from authlib.integrations.starlette_client import OAuth
-from jinja2 import Environment, FileSystemLoader, FileSystemBytecodeCache, select_autoescape
-from starlette.config import Config
+import tqdm
+import pymysql
+from pymysql.cursors import DictCursor
 
-from api.auth.user_management import delete_user_token, validate_user
 
-# Router
-auth_router = APIRouter()
-TEMPLATES_DIR = str((Path(__file__).resolve().parents[1] / "../app/templates").resolve())
+from api.loaders.base_loader import BaseLoader  # pylint: disable=import-error
+from api.loaders.graph_loader import load_to_graph  # pylint: disable=import-error
 
-TEMPLATES_CACHE_DIR = "/tmp/jinja_cache"
-os.makedirs(TEMPLATES_CACHE_DIR, exist_ok=True)  # ✅ ensures the folder exists
 
-templates = Jinja2Templates(
-    env=Environment(
-        loader=FileSystemLoader(TEMPLATES_DIR),
-        bytecode_cache=FileSystemBytecodeCache(
-            directory=TEMPLATES_CACHE_DIR,
-            pattern="%s.cache"
-        ),
-        auto_reload=True,
-        autoescape=select_autoescape(['html', 'xml', 'j2'])
-    )
-)
+class MySQLQueryError(Exception):
+    """Custom exception for MySQL query execution errors."""
 
-templates.env.globals["google_tag_manager_id"] = os.getenv("GOOGLE_TAG_MANAGER_ID")
 
-# ---- Helpers ----
-def _get_provider_client(request: Request, provider: str):
-    """Get an OAuth provider client from app.state.oauth"""
-    oauth = getattr(request.app.state, "oauth", None)
-    if not oauth:
-        raise HTTPException(status_code=500, detail="OAuth not configured")
+class MySQLConnectionError(Exception):
+    """Custom exception for MySQL connection errors."""
 
-    client = getattr(oauth, provider, None)
-    if not client:
-        raise HTTPException(status_code=500, detail=f"OAuth provider {provider} not configured")
-    return client
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-@auth_router.get("/chat", name="auth.chat", response_class=HTMLResponse)
-async def chat(request: Request) -> HTMLResponse:
-    """Explicit chat route (renders main chat UI)."""
-    user_info, is_authenticated = await validate_user(request)
 
-    if not is_authenticated or not user_info:
-        is_authenticated = False
-        user_info = None
-
-    return templates.TemplateResponse(
-        "chat.j2",
-        {
-            "request": request,
-            "is_authenticated": is_authenticated,
-            "user_info": user_info,
-        },
-    )
-
-def _build_callback_url(request: Request, path: str) -> str:
-    """Build absolute callback URL, honoring OAUTH_BASE_URL if provided."""
-    base_override = os.getenv("OAUTH_BASE_URL")
-    base = base_override if base_override else str(request.base_url)
-    if not base.endswith("/"):
-        base += "/"
-    return urljoin(base, path.lstrip("/"))
-
-# ---- Routes ----
-@auth_router.get("/", response_class=HTMLResponse)
-async def home(request: Request) -> HTMLResponse:
+class MySQLLoader(BaseLoader):
     """
-    Handle the home page, rendering the landing page for unauthenticated users 
-    and the chat page for authenticated users.
+    Loader for MySQL databases that connects and extracts schema information.
     """
-    user_info, is_authenticated_flag = await validate_user(request)
 
-    if is_authenticated_flag or user_info:
-        return templates.TemplateResponse(
-            "chat.j2",
-            {
-                "request": request,
-                "is_authenticated": True,
-                "user_info": user_info
-            }
-        )
+    # DDL operations that modify database schema
+    # pylint: disable=duplicate-code  # Similar patterns needed in PostgreSQL loader
+    SCHEMA_MODIFYING_OPERATIONS = {
+        'CREATE', 'ALTER', 'DROP', 'RENAME', 'TRUNCATE'
+    }
 
-    return templates.TemplateResponse(
-        "landing.j2", 
-        {
-            "request": request, 
-            "is_authenticated": False, 
-            "user_info": None
+    # More specific patterns for schema-affecting operations
+    SCHEMA_PATTERNS = [
+        r'^\s*CREATE\s+TABLE',
+        r'^\s*CREATE\s+INDEX',
+        r'^\s*CREATE\s+UNIQUE\s+INDEX',
+        r'^\s*ALTER\s+TABLE',
+        r'^\s*DROP\s+TABLE',
+        r'^\s*DROP\s+INDEX',
+        r'^\s*RENAME\s+TABLE',
+        r'^\s*TRUNCATE\s+TABLE',
+        r'^\s*CREATE\s+VIEW',
+        r'^\s*DROP\s+VIEW',
+        r'^\s*CREATE\s+DATABASE',
+        r'^\s*DROP\s+DATABASE',
+        r'^\s*CREATE\s+SCHEMA',
+        r'^\s*DROP\s+SCHEMA',
+    ]
+
+    @staticmethod
+    def _execute_count_query(cursor, table_name: str, col_name: str) -> Tuple[int, int]:
+        """
+        Execute query to get total count and distinct count for a column.
+        MySQL implementation returning counts from dictionary-style results.
+        """
+        cursor.execute("""
+            SELECT COUNT(*) AS total_count,
+                   COUNT(DISTINCT %s) AS distinct_count
+            FROM %s;
+        """, (col_name, table_name))
+        output = cursor.fetchall()
+        first_result = output[0]
+        return first_result['total_count'], first_result['distinct_count']
+
+    @staticmethod
+    def _execute_distinct_query(cursor, table_name: str, col_name: str) -> List[Any]:
+        """
+        Execute query to get distinct values for a column.
+        MySQL implementation handling dictionary-style results.
+        """
+        cursor.execute("SELECT DISTINCT %s FROM %s;", (col_name, table_name))
+        distinct_results = cursor.fetchall()
+        return [row[col_name] for row in distinct_results if row[col_name] is not None]
+
+    @staticmethod
+    def _serialize_value(value):
+        """
+        Convert non-JSON serializable values to JSON serializable format.
+
+        Args:
+            value: The value to serialize
+
+        Returns:
+            JSON serializable version of the value
+        """
+        if isinstance(value, (datetime.date, datetime.datetime)):
+            return value.isoformat()
+        if isinstance(value, datetime.time):
+            return value.isoformat()
+        if isinstance(value, decimal.Decimal):
+            return float(value)
+        if value is None:
+            return None
+        return value
+
+    @staticmethod
+    def serialize_value(value):
+        """
+        Public method for serializing values. Calls the private _serialize_value method.
+        
+        Args:
+            value: The value to serialize
+
+        Returns:
+            JSON serializable version of the value
+        """
+        return MySQLLoader._serialize_value(value)
+
+    @staticmethod
+    def parse_mysql_url(connection_url: str) -> Dict[str, str]:
+        """
+        Parse MySQL connection URL into components.
+
+        Args:
+            connection_url: MySQL connection URL in format:
+                          mysql://username:password@host:port/database
+
+        Returns:
+            Dict with connection parameters
+        """
+        # Remove mysql:// prefix
+        if connection_url.startswith('mysql://'):
+            url = connection_url[8:]
+        else:
+            raise ValueError(
+                "Invalid MySQL URL format. Expected "
+                "mysql://username:password@host:port/database"
+            )
+
+        # Parse components
+        if '@' not in url:
+            raise ValueError("MySQL URL must include username and host")
+
+        credentials, host_db = url.split('@', 1)
+
+        if ':' in credentials:
+            username, password = credentials.split(':', 1)
+        else:
+            username = credentials
+            password = ""
+
+        if '/' not in host_db:
+            raise ValueError("MySQL URL must include database name")
+
+        host_port, database = host_db.split('/', 1)
+
+        # Handle query parameters
+        if '?' in database:
+            database = database.split('?')[0]
+
+        if ':' in host_port:
+            host, port = host_port.split(':', 1)
+            port = int(port)
+        else:
+            host = host_port
+            port = 3306
+
+        return {
+            'host': host,
+            'port': port,
+            'user': username,
+            'password': password,
+            'database': database
         }
-    )
 
+    @staticmethod
+    async def load(prefix: str, connection_url: str) -> AsyncGenerator[tuple[bool, str], None]:
+        """
+        Load the graph data from a MySQL database into the graph database.
 
+        Args:
+            connection_url: MySQL connection URL in format:
+                          mysql://username:password@host:port/database
 
+        Returns:
+            Tuple[bool, str]: Success status and message
+        """
+        try:
+            # Parse connection URL
+            conn_params = MySQLLoader.parse_mysql_url(connection_url)
 
+            # Connect to MySQL database
+            conn = pymysql.connect(**conn_params)
+            cursor = conn.cursor(DictCursor)
 
-@auth_router.get("/login", response_class=RedirectResponse)
-async def login_page(_: Request) -> RedirectResponse:
-    """Redirect login requests to Google OAuth login."""
-    return RedirectResponse(url="/login/google", status_code=status.HTTP_302_FOUND)
+            # Get database name
+            db_name = conn_params['database']
 
+            # Get all table information
+            yield True, "Extracting table information..."
+            entities = MySQLLoader.extract_tables_info(cursor, db_name)
 
-@auth_router.get("/login/google", name="google.login", response_class=RedirectResponse)
-async def login_google(request: Request) -> RedirectResponse:
-    """Initiate Google OAuth login flow.
+            # Get all relationship information
+            yield True, "Extracting relationship information..."
+            relationships = MySQLLoader.extract_relationships(cursor, db_name)
 
-    Args:
-        request (Request): The incoming request.
+            # Close database connection
+            cursor.close()
+            conn.close()
 
-    Returns:
-        RedirectResponse: The redirect response to the Google OAuth endpoint.
-    """
+            # Load data into graph
+            yield True, "Loading data into graph..."
+            await load_to_graph(f"{prefix}_{db_name}", entities, relationships,
+                         db_name=db_name, db_url=connection_url)
 
-    google = _get_provider_client(request, "google")
-    redirect_uri = _build_callback_url(request, "login/google/authorized")
+            yield True, (f"MySQL schema loaded successfully. "
+                         f"Found {len(entities)} tables.")
 
-    # Helpful hint if localhost vs 127.0.0.1 mismatch is likely
-    if not os.getenv("OAUTH_BASE_URL") and "127.0.0.1" in str(request.base_url):
-        logging.warning(
-            "OAUTH_BASE_URL not set and base URL is 127.0.0.1; "
-            "if your Google OAuth app uses 'http://localhost:5000', "
-            "set OAUTH_BASE_URL=http://localhost:5000 to avoid redirect_uri mismatch."
-        )
+        except pymysql.MySQLError as e:
+            yield False, f"MySQL connection error: {str(e)}"
+        except (ValueError, TypeError, KeyError) as e:
+            yield False, f"Configuration error loading MySQL schema: {str(e)}"
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            yield False, f"Unexpected error loading MySQL schema: {str(e)}"
 
-    return await google.authorize_redirect(request, redirect_uri)
+    @staticmethod
+    def extract_tables_info(cursor, db_name: str) -> Dict[str, Any]:
+        """
+        Extract table and column information from MySQL database.
 
+        Args:
+            cursor: Database cursor
+            db_name: Database name
 
-@auth_router.get("/login/google/authorized", response_class=RedirectResponse)
-async def google_authorized(request: Request) -> RedirectResponse:
-    """Handle Google OAuth callback and user authorization.
+        Returns:
+            Dict containing table information
+        """
+        entities = {}
 
-    Args:
-        request (Request): The incoming request.
+        # Get all tables in the database
+        cursor.execute("""
+            SELECT table_name, table_comment
+            FROM information_schema.tables
+            WHERE table_schema = %s
+            AND table_type = 'BASE TABLE'
+            ORDER BY table_name;
+        """, (db_name,))
 
-    Returns:
-        RedirectResponse: The redirect response after handling the callback.
-    """
+        tables = cursor.fetchall()
 
-    try:
-        google = _get_provider_client(request, "google")
-        token = await google.authorize_access_token(request)
-        user_info = token.get("userinfo")
+        for table_info in tqdm.tqdm(tables, desc="Extracting table information"):
+            table_name = table_info['TABLE_NAME']
+            table_comment = table_info['TABLE_COMMENT']
 
-        if user_info:
+            # Get column information for this table
+            columns_info = MySQLLoader.extract_columns_info(cursor, db_name, table_name)
 
-            user_data = {
-                'id': user_info.get('id') or user_info.get('sub'),
-                'email': user_info.get('email'),
-                'name': user_info.get('name'),
-                'picture': user_info.get('picture'),
+            # Get foreign keys for this table
+            foreign_keys = MySQLLoader.extract_foreign_keys(cursor, db_name, table_name)
+
+            # Generate table description
+            table_description = table_comment if table_comment else f"Table: {table_name}"
+
+            # Get column descriptions for batch embedding
+            col_descriptions = [col_info['description'] for col_info in columns_info.values()]
+
+            entities[table_name] = {
+                'description': table_description,
+                'columns': columns_info,
+                'foreign_keys': foreign_keys,
+                'col_descriptions': col_descriptions
             }
 
-            # Call the registered Google callback handler if it exists to store user data.
-            handler = getattr(request.app.state, "callback_handler", None)
-            if handler:
-                api_token = secrets.token_urlsafe(32)  # ~43 chars, hard to guess
+        return entities
 
-                # call the registered handler (await if async)
-                await handler('google', user_data, api_token)
+    @staticmethod
+    def extract_columns_info(cursor, db_name: str, table_name: str) -> Dict[str, Any]:
+        """
+        Extract column information for a specific table.
 
-                redirect = RedirectResponse(url="/chat", status_code=302)
-                redirect.set_cookie(
-                    key="api_token",
-                    value=api_token,
-                    httponly=True,
-                    secure=True
-                )
+        Args:
+            cursor: Database cursor
+            db_name: Database name
+            table_name: Name of the table
 
-                return redirect
+        Returns:
+            Dict containing column information
+        """
+        cursor.execute("""
+            SELECT
+                column_name,
+                data_type,
+                is_nullable,
+                column_default,
+                column_key,
+                column_comment
+            FROM information_schema.columns
+            WHERE table_schema = %s
+            AND table_name = %s
+            ORDER BY ordinal_position;
+        """, (db_name, table_name))
 
-        raise HTTPException(status_code=400, detail="Failed to get user info from Google")
+        columns = cursor.fetchall()
+        columns_info = {}
 
-    except Exception as e:
-        logging.error("Google OAuth authentication failed: %s", str(e))
-        # pylint: disable=raise-missing-from
-        raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}")
+        for col_info in columns:
+            col_name = col_info['COLUMN_NAME']
+            data_type = col_info['DATA_TYPE']
+            is_nullable = col_info['IS_NULLABLE']
+            column_default = col_info['COLUMN_DEFAULT']
+            column_key = col_info['COLUMN_KEY']
+            column_comment = col_info['COLUMN_COMMENT']
 
+            # Determine key type
+            if column_key == 'PRI':
+                key_type = 'PRIMARY KEY'
+            elif column_key == 'MUL':
+                key_type = 'FOREIGN KEY'
+            elif column_key == 'UNI':
+                key_type = 'UNIQUE KEY'
+            else:
+                key_type = 'NONE'
 
-@auth_router.get("/login/google/callback", response_class=RedirectResponse)
-async def google_callback_compat(request: Request) -> RedirectResponse:
-    """Handle Google OAuth callback compatibility endpoint."""
-    qs = f"?{request.url.query}" if request.url.query else ""
-    redirect = f"/login/google/authorized{qs}"
-    return RedirectResponse(url=redirect, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+            # Generate column description
+            description_parts = []
+            if column_comment:
+                description_parts.append(column_comment)
+            else:
+                description_parts.append(f"Column {col_name} of type {data_type}")
 
+            if key_type != 'NONE':
+                description_parts.append(f"({key_type})")
 
-@auth_router.get("/login/github",  name="github.login", response_class=RedirectResponse)
-async def login_github(request: Request) -> RedirectResponse:
-    """Initiate GitHub OAuth login flow."""
-    github = _get_provider_client(request, "github")
-    redirect_uri = _build_callback_url(request, "login/github/authorized")
+            if is_nullable == 'NO':
+                description_parts.append("(NOT NULL)")
 
-    # Helpful hint if localhost vs 127.0.0.1 mismatch is likely
-    if not os.getenv("OAUTH_BASE_URL") and "127.0.0.1" in str(request.base_url):
-        logging.warning(
-            "OAUTH_BASE_URL not set and base URL is 127.0.0.1; "
-            "if your GitHub OAuth app uses 'http://localhost:5000', "
-            "set OAUTH_BASE_URL=http://localhost:5000 to avoid redirect_uri mismatch."
-        )
+            if column_default is not None:
+                description_parts.append(f"(Default: {column_default})")
 
-    return await github.authorize_redirect(request, redirect_uri)
+            # Add distinct values if applicable
+            distinct_values_desc = MySQLLoader.extract_distinct_values_for_column(
+                cursor, table_name, col_name
+            )
+            description_parts.extend(distinct_values_desc)
 
-
-@auth_router.get("/login/github/authorized", response_class=RedirectResponse)
-async def github_authorized(request: Request) -> RedirectResponse:
-    """Handle GitHub OAuth callback authorization."""
-    try:
-        github = _get_provider_client(request, "github")
-        token = await github.authorize_access_token(request)
-
-        # Fetch GitHub user info
-        resp = await github.get("user", token=token)
-        if resp.status_code != 200:
-            logging.error("Failed to fetch GitHub user info: %s", resp.text)
-            return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
-
-        user_info = resp.json()
-
-        # Get user email if not public
-        email = user_info.get("email")
-        if not email:
-            # Try to get primary email from emails endpoint
-            email_resp = await github.get("user/emails", token=token)
-            if email_resp.status_code == 200:
-                emails = email_resp.json()
-                for email_obj in emails:
-                    if email_obj.get("primary"):
-                        email = email_obj.get("email")
-                        break
-
-        if user_info:
-
-            user_data = {
-                'id': user_info.get('id'),
-                'email': email,
-                'name': user_info.get('name'),
-                'picture': user_info.get('avatar_url'),
+            columns_info[col_name] = {
+                'type': data_type,
+                'null': is_nullable,
+                'key': key_type,
+                'description': ' '.join(description_parts),
+                'default': column_default
             }
 
-            # Call the registered GitHub callback handler if it exists to store user data.
-            handler = getattr(request.app.state, "callback_handler", None)
-            if handler:
+        return columns_info
 
-                api_token = secrets.token_urlsafe(32)  # ~43 chars, hard to guess
+    @staticmethod
+    def extract_distinct_values_for_column(cursor, table_name: str, col_name: str) -> List[str]:
+        """
+        Extract distinct values for a column to enhance column descriptions.
+        
+        Args:
+            cursor: Database cursor
+            table_name: Name of the table
+            col_name: Name of the column
+            
+        Returns:
+            List of strings describing distinct values
+        """
+        try:
+            total_count, distinct_count = MySQLLoader._execute_count_query(
+                cursor, table_name, col_name
+            )
 
-                # call the registered handler (await if async)
-                await handler('github', user_data, api_token)
+            # Only include distinct values if the column has a reasonable number of distinct values
+            if distinct_count <= 10 and total_count > 0:
+                distinct_values = MySQLLoader._execute_distinct_query(cursor, table_name, col_name)
+                serialized_values = [MySQLLoader._serialize_value(val) for val in distinct_values]
+                return [f"(Distinct values: {', '.join(map(str, serialized_values))})"]
+            if distinct_count > 10:
+                return [f"({distinct_count} distinct values)"]
+            return []
+        except (pymysql.MySQLError, ValueError) as e:
+            # Log specific database or data conversion errors
+            logging.warning("Error getting distinct values for %s.%s: %s", table_name, col_name, e)
+            return []
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            # Log unexpected errors but don't fail the entire process
+            logging.debug("Unexpected error getting distinct values for %s.%s: %s",
+                         table_name, col_name, e)
+            return []
 
-                redirect = RedirectResponse(url="/chat", status_code=302)
-                redirect.set_cookie(
-                    key="api_token",
-                    value=api_token,
-                    httponly=True,
-                    secure=True
-                )
+    @staticmethod
+    def extract_foreign_keys(cursor, db_name: str, table_name: str) -> List[Dict[str, str]]:
+        """
+        Extract foreign key information for a specific table.
 
-                return redirect
+        Args:
+            cursor: Database cursor
+            db_name: Database name
+            table_name: Name of the table
 
-        raise HTTPException(status_code=400, detail="Failed to get user info from Github")
+        Returns:
+            List of foreign key dictionaries
+        """
+        cursor.execute("""
+            SELECT
+                constraint_name,
+                column_name,
+                referenced_table_name,
+                referenced_column_name
+            FROM information_schema.key_column_usage
+            WHERE table_schema = %s
+            AND table_name = %s
+            AND referenced_table_name IS NOT NULL
+            ORDER BY constraint_name, ordinal_position;
+        """, (db_name, table_name))
 
-    except Exception as e:
-        logging.error("GitHub OAuth authentication failed: %s", str(e))
-        # pylint: disable=raise-missing-from
-        raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}")  # pylint: disable=raise-missing-from
+        foreign_keys = []
+        for fk_info in cursor.fetchall():
+            foreign_keys.append({
+                'constraint_name': fk_info['CONSTRAINT_NAME'],
+                'column': fk_info['COLUMN_NAME'],
+                'referenced_table': fk_info['REFERENCED_TABLE_NAME'],
+                'referenced_column': fk_info['REFERENCED_COLUMN_NAME']
+            })
 
+        return foreign_keys
 
-@auth_router.get("/login/github/callback", response_class=RedirectResponse)
-async def github_callback_compat(request: Request) -> RedirectResponse:
-    """Handle GitHub OAuth callback compatibility endpoint."""
-    qs = f"?{request.url.query}" if request.url.query else ""
-    redirect = f"/login/github/authorized{qs}"
-    return RedirectResponse(url=redirect, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+    @staticmethod
+    def extract_relationships(cursor, db_name: str) -> Dict[str, List[Dict[str, str]]]:
+        """
+        Extract all relationship information from the database.
 
+        Args:
+            cursor: Database cursor
+            db_name: Database name
 
-@auth_router.get("/logout", response_class=RedirectResponse)
-async def logout(request: Request) -> RedirectResponse:
-    """Handle user logout and delete session cookies."""
-    resp = RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+        Returns:
+            Dict containing relationship information
+        """
+        cursor.execute("""
+            SELECT
+                table_name,
+                constraint_name,
+                column_name,
+                referenced_table_name,
+                referenced_column_name
+            FROM information_schema.key_column_usage
+            WHERE table_schema = %s
+            AND referenced_table_name IS NOT NULL
+            ORDER BY table_name, constraint_name;
+        """, (db_name,))
 
-    api_token = request.cookies.get("api_token")
-    if api_token:
-        resp.delete_cookie("api_token")
-        await delete_user_token(api_token)
+        relationships = {}
+        for rel_info in cursor.fetchall():
+            constraint_name = rel_info['CONSTRAINT_NAME']
 
-    return resp
+            if constraint_name not in relationships:
+                relationships[constraint_name] = []
 
-# ---- Hook for app factory ----
-def init_auth(app):
-    """Initialize OAuth and sessions for the app."""
+            relationships[constraint_name].append({
+                'from': rel_info['TABLE_NAME'],
+                'to': rel_info['REFERENCED_TABLE_NAME'],
+                'source_column': rel_info['COLUMN_NAME'],
+                'target_column': rel_info['REFERENCED_COLUMN_NAME'],
+                'note': f'Foreign key constraint: {constraint_name}'
+            })
 
-    config = Config(environ=os.environ)
-    oauth = OAuth(config)
+        return relationships
 
-    google_client_id = os.getenv("GOOGLE_CLIENT_ID")
-    google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
-    if not google_client_id or not google_client_secret:
-        logging.warning("Google OAuth env vars not set; login will fail until configured.")
+    @staticmethod
+    def is_schema_modifying_query(sql_query: str) -> Tuple[bool, str]:
+        """
+        Check if a SQL query modifies the database schema.
 
-    oauth.register(
-        name="google",
-        client_id=google_client_id,
-        client_secret=google_client_secret,
-        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-        client_kwargs={"scope": "openid email profile"},
-    )
+        Args:
+            sql_query: The SQL query to check
 
-    github_client_id = os.getenv("GITHUB_CLIENT_ID")
-    github_client_secret = os.getenv("GITHUB_CLIENT_SECRET")
-    if not github_client_id or not github_client_secret:
-        logging.warning("GitHub OAuth env vars not set; login will fail until configured.")
+        Returns:
+            Tuple of (is_schema_modifying, operation_type)
+        """
+        if not sql_query or not sql_query.strip():
+            return False, ""
 
-    oauth.register(
-        name="github",
-        client_id=github_client_id,
-        client_secret=github_client_secret,
-        access_token_url="https://github.com/login/oauth/access_token",
-        authorize_url="https://github.com/login/oauth/authorize",
-        api_base_url="https://api.github.com/",
-        client_kwargs={"scope": "user:email"},
-    )
+        # Clean and normalize the query
+        normalized_query = sql_query.strip().upper()
 
-    app.state.oauth = oauth
+        # Check for basic DDL operations
+        first_word = normalized_query.split()[0] if normalized_query.split() else ""
+        if first_word in MySQLLoader.SCHEMA_MODIFYING_OPERATIONS:
+            # Additional pattern matching for more precise detection
+            for pattern in MySQLLoader.SCHEMA_PATTERNS:
+                if re.match(pattern, normalized_query, re.IGNORECASE):
+                    return True, first_word
+
+            # If it's a known DDL operation but doesn't match specific patterns,
+            # still consider it schema-modifying (better safe than sorry)
+            return True, first_word
+
+        return False, ""
+
+    @staticmethod
+    async def refresh_graph_schema(graph_id: str, db_url: str) -> Tuple[bool, str]:
+        """
+        Refresh the graph schema by clearing existing data and reloading from the database.
+
+        Args:
+            graph_id: The graph ID to refresh
+            db_url: Database connection URL
+
+        Returns:
+            Tuple of (success, message)
+        """
+        try:
+            logging.info("Schema modification detected. Refreshing graph schema for: %s", graph_id)
+
+            # Import here to avoid circular imports
+            from api.extensions import db  # pylint: disable=import-outside-toplevel,import-error
+
+            # Clear existing graph data
+            # Drop current graph before reloading
+            graph = db.select_graph(graph_id)
+            await graph.delete()
+
+            # Extract prefix from graph_id (remove database name part)
+            # graph_id format is typically "prefix_database_name"
+            parts = graph_id.split('_')
+            if len(parts) >= 2:
+                # Reconstruct prefix by joining all parts except the last one
+                prefix = '_'.join(parts[:-1])
+            else:
+                prefix = graph_id
+
+            # Reuse the existing load method to reload the schema
+            success, message = await MySQLLoader.load(prefix, db_url)
+
+            if success:
+                logging.info("Graph schema refreshed successfully.")
+                return True, message
+
+            logging.error("Schema refresh failed for graph %s: %s", graph_id, message)
+            return False, "Failed to reload schema"
+
+        except ImportError as e:
+            logging.error("Failed to import required modules for schema refresh: %s", str(e))
+            return False, "Internal configuration error during schema refresh"
+        except (ValueError, KeyError) as e:
+            logging.error("Configuration error during schema refresh: %s", str(e))
+            return False, "Configuration error during schema refresh"
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            # Log the error and return failure
+            logging.error("Unexpected error refreshing graph schema: %s", str(e))
+            return False, "Unexpected error refreshing graph schema"
+
+    @staticmethod
+    def execute_sql_query(sql_query: str, db_url: str) -> List[Dict[str, Any]]:
+        """
+        Execute a SQL query on the MySQL database and return the results.
+
+        Args:
+            sql_query: The SQL query to execute
+            db_url: MySQL connection URL in format:
+                    mysql://username:password@host:port/database
+
+        Returns:
+            List of dictionaries containing the query results
+        """
+        try:
+            # Parse connection URL
+            conn_params = MySQLLoader.parse_mysql_url(db_url)
+
+            # Connect to MySQL database
+            conn = pymysql.connect(**conn_params)
+            cursor = conn.cursor(DictCursor)
+
+            # Execute the SQL query
+            cursor.execute(sql_query)
+
+            # Check if the query returns results (SELECT queries)
+            if cursor.description is not None:
+                # This is a SELECT query or similar that returns rows
+                results = cursor.fetchall()
+                result_list = []
+                for row in results:
+                    # Serialize each value to ensure JSON compatibility
+                    serialized_row = {
+                        key: MySQLLoader.serialize_value(value)
+                        for key, value in row.items()
+                    }
+                    result_list.append(serialized_row)
+            else:
+                # This is an INSERT, UPDATE, DELETE, or other non-SELECT query
+                # Return information about the operation
+                affected_rows = cursor.rowcount
+                sql_type = sql_query.strip().split()[0].upper()
+
+                if sql_type in ['INSERT', 'UPDATE', 'DELETE']:
+                    result_list = [{
+                        "operation": sql_type,
+                        "affected_rows": affected_rows,
+                        "status": "success"
+                    }]
+                else:
+                    # For other types of queries (CREATE, DROP, etc.)
+                    result_list = [{
+                        "operation": sql_type,
+                        "status": "success"
+                    }]
+
+            # Commit the transaction for write operations
+            conn.commit()
+
+            # Close database connection
+            cursor.close()
+            conn.close()
+
+            return result_list
+
+        except pymysql.MySQLError as e:
+            # Rollback in case of error
+            logging.error("MySQL error occurred: %s", e)
+            if 'conn' in locals():
+                conn.rollback()
+                cursor.close()
+                conn.close()
+            raise MySQLQueryError(f"MySQL query execution error: {str(e)}") from e
+        except Exception as e:
+            # Rollback in case of error
+            if 'conn' in locals():
+                conn.rollback()
+                cursor.close()
+                conn.close()
+            raise MySQLConnectionError(f"Error executing SQL query: {str(e)}") from e

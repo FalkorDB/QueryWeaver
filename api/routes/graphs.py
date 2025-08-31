@@ -76,6 +76,7 @@ def get_database_type_and_loader(db_url: str):
         return 'postgresql', PostgresLoader
     if db_url_lower.startswith('mysql://'):
         return 'mysql', MySQLLoader
+
     # Default to PostgresLoader for backward compatibility
     return 'postgresql', PostgresLoader
 
