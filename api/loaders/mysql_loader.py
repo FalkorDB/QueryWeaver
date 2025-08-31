@@ -60,11 +60,17 @@ class MySQLLoader(BaseLoader):
         Execute query to get total count and distinct count for a column.
         MySQL implementation returning counts from dictionary-style results.
         """
-        cursor.execute("""
+        # Simple safety check - identifiers shouldn't contain backticks or semicolons
+        if '`' in table_name or ';' in table_name or '`' in col_name or ';' in col_name:
+            raise ValueError("Invalid characters in identifier")
+
+        # Use backticks to properly escape MySQL identifiers
+        query = f"""
             SELECT COUNT(*) AS total_count,
-                   COUNT(DISTINCT %s) AS distinct_count
-            FROM %s;
-        """, (col_name, table_name))
+                   COUNT(DISTINCT `{col_name}`) AS distinct_count
+            FROM `{table_name}`;
+        """
+        cursor.execute(query)
         output = cursor.fetchall()
         first_result = output[0]
         return first_result['total_count'], first_result['distinct_count']
@@ -75,7 +81,13 @@ class MySQLLoader(BaseLoader):
         Execute query to get distinct values for a column.
         MySQL implementation handling dictionary-style results.
         """
-        cursor.execute("SELECT DISTINCT %s FROM %s;", (col_name, table_name))
+        # Simple safety check - identifiers shouldn't contain backticks or semicolons
+        if '`' in table_name or ';' in table_name or '`' in col_name or ';' in col_name:
+            raise ValueError("Invalid characters in identifier")
+
+        # Use backticks to properly escape MySQL identifiers
+        query = f"SELECT DISTINCT `{col_name}` FROM `{table_name}`;"
+        cursor.execute(query)
         distinct_results = cursor.fetchall()
         return [row[col_name] for row in distinct_results if row[col_name] is not None]
 
@@ -104,7 +116,7 @@ class MySQLLoader(BaseLoader):
     def serialize_value(value):
         """
         Public method for serializing values. Calls the private _serialize_value method.
-        
+
         Args:
             value: The value to serialize
 
@@ -354,12 +366,12 @@ class MySQLLoader(BaseLoader):
     def extract_distinct_values_for_column(cursor, table_name: str, col_name: str) -> List[str]:
         """
         Extract distinct values for a column to enhance column descriptions.
-        
+
         Args:
             cursor: Database cursor
             table_name: Name of the table
             col_name: Name of the column
-            
+
         Returns:
             List of strings describing distinct values
         """
@@ -614,7 +626,7 @@ class MySQLLoader(BaseLoader):
             return result_list
 
         except pymysql.MySQLError as e:
-            # Rollback in case of error
+            # Rollback in case of MySQL-specific error
             logging.error("MySQL error occurred: %s", e)
             if 'conn' in locals():
                 conn.rollback()
@@ -622,7 +634,8 @@ class MySQLLoader(BaseLoader):
                 conn.close()
             raise MySQLQueryError(f"MySQL query execution error: {str(e)}") from e
         except Exception as e:
-            # Rollback in case of error
+            # Rollback in case of other errors (parsing, connection issues, etc.)
+            logging.error("Unexpected error executing SQL query: %s", e)
             if 'conn' in locals():
                 conn.rollback()
                 cursor.close()
