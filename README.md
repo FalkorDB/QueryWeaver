@@ -195,6 +195,7 @@ Python example (stream-aware):
 
 ```python
 import requests
+import json
 
 url = 'https://app.queryweaver.ai/graphs/my_database'
 headers = {'Authorization': f'Bearer {TOKEN}', 'Content-Type': 'application/json'}
@@ -210,8 +211,6 @@ with requests.post(url, headers=headers, json={"chat": ["Count orders last week"
                         continue
                   obj = json.loads(part)
                   print('STREAM:', obj)
-
-```
 
 Notes & tips
 - Graph IDs are namespaced per-user. When calling the API directly use the plain graph id (the server will namespace by the authenticated user). For uploaded files the `database` field determines the saved graph id.

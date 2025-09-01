@@ -92,35 +92,7 @@
   gap: 10px;
 }
 
-.dropdown-container {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.dropdown-container select {
-  height: 100%;
-  padding: 8px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 14px;
-  background: var(--falkor-quaternary);
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.dropdown-container select:hover {
-  border-color: var(--falkor-primary);
-}
-
-.dropdown-container select:focus {
-  outline: none;
-  border-color: var(--falkor-primary);
-  box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
-}
-
-.dropdown-container button {
+.header-button {
   height: 100%;
   padding: 8px 16px;
   border: 1px solid var(--border-color);
@@ -132,12 +104,12 @@
   transition: all 0.2s ease;
 }
 
-.dropdown-container button:hover:not(:disabled) {
+.header-button:hover:not(:disabled) {
   background: var(--falkor-primary);
   color: white;
 }
 
-.dropdown-container button:disabled {
+.header-button:disabled {
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   cursor: not-allowed;
@@ -234,7 +206,7 @@
 }
 
 /* Custom Dropdown Styles */
-.custom-dropdown {
+.header-button {
   position: relative;
   display: inline-block;
   min-width: 140px;
@@ -277,10 +249,6 @@
   transition: transform 0.2s ease;
 }
 
-.custom-dropdown.open .dropdown-arrow {
-  transform: rotate(180deg);
-}
-
 .dropdown-options {
   position: absolute;
   top: 100%;
@@ -299,8 +267,45 @@
   display: none;
 }
 
+/* Show dropdown options when parent has .open */
+.custom-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
 .custom-dropdown.open .dropdown-options {
   display: block;
+}
+
+.custom-dropdown.open .dropdown-arrow {
+  transform: rotate(180deg);
+}
+
+/* Make the database-type dropdown match the input width and add gap */
+#database-type-dropdown {
+  display: block; /* behave like a block element so width:100% applies */
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 12px 0; /* gap between dropdown and input; prevent horizontal centering */
+}
+
+#database-type-dropdown .dropdown-selected {
+  width: 100%;
+  /* keep flex layout so text and arrow align on one line */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+/* Match modal input sizing for a consistent look */
+#database-type-dropdown .dropdown-selected {
+  padding: 0.6em;
+  font-size: 1em;
+  border-radius: 6px;
+}
+
+#database-type-dropdown .dropdown-options {
+  left: 0;
+  right: 0; /* ensure options fill the same width */
 }
 
 .dropdown-option {
@@ -333,7 +338,7 @@
 }
 
 /* Graph custom dropdown (moved from chat_header.j2 inline styles) */
-.graph-custom-dropdown {
+.graph-header-button {
   position: relative;
   display: inline-block;
   width: 180px;

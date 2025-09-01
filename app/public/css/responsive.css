@@ -143,12 +143,7 @@
     cursor: pointer;
   }
   
-  .dropdown-container {
-    flex: 1;
-    max-width: 35%;
-  }
-  
-  .custom-dropdown {
+  .header-button {
     width: 100%;
     height: 40px;
   }
@@ -189,7 +184,7 @@
     height: 36px;
   }
   
-  .custom-dropdown {
+  .header-button {
     height: 36px;
   }
   

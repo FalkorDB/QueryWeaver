@@ -1,6 +1,12 @@
 """Database connection routes for the text2sql API."""
 
 import logging
+<<<<<<< HEAD
+=======
+import json
+import time
+from typing import Optional
+>>>>>>> staging
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
@@ -20,6 +26,7 @@ class DatabaseConnectionRequest(BaseModel):
         BaseModel (_type_): _description_
     """
     url: str
+    type: Optional[str] = None
 
 
 @database_router.post("/database")

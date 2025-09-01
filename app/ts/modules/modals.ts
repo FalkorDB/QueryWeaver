@@ -31,28 +31,40 @@ function setLoadingState(isLoading: boolean, connectBtn: HTMLButtonElement, urlI
 }
 
 export function setupDatabaseModal() {
-    const dbModal = document.getElementById('db-modal') as HTMLElement | null;
-    const cancelDbModalBtn = document.getElementById('db-modal-cancel') as HTMLButtonElement | null;
-    const connectDbModalBtn = document.getElementById('db-modal-connect') as HTMLButtonElement | null;
-    const dbUrlInput = document.getElementById('db-url-input') as HTMLInputElement | null;
-    const dbTypeSelect = document.getElementById('database-type-select') as HTMLSelectElement | null;
-    const dbModalTitle = document.getElementById('db-modal-title') as HTMLElement | null;
+    const dbModal = document.getElementById('db-modal') as HTMLElement;
+    // Select any connect buttons by id or class to be resilient to template variations
+    const openConnectBtns = Array.from(document.querySelectorAll('#connect-database-btn, .connect-database-btn, #connect-database')) as HTMLButtonElement[];
+    const cancelDbModalBtn = document.getElementById('db-modal-cancel') as HTMLButtonElement;
+    const connectDbModalBtn = document.getElementById('db-modal-connect') as HTMLButtonElement;
+    const dbUrlInput = document.getElementById('db-url-input') as HTMLInputElement;
+    // This is a hidden input used by the custom dropdown UI
+    const dbTypeSelect = document.getElementById('database-type-select') as HTMLInputElement;
 
-    const databaseConfig: Record<string, { title: string; placeholder: string; example: string }> = {
+    const databaseConfig: Record<string, { placeholder: string; example: string }> = {
         postgresql: {
-            title: 'Connect to PostgreSQL',
             placeholder: 'postgresql://username:password@host:port/database',
             example: 'postgresql://myuser:mypass@localhost:5432/mydb'
         },
         mysql: {
-            title: 'Connect to MySQL',
             placeholder: 'mysql://username:password@host:port/database',
             example: 'mysql://myuser:mypass@localhost:3306/mydb'
         }
     };
 
-    if (!dbTypeSelect || !dbUrlInput || !connectDbModalBtn || !dbModal || !dbModalTitle) return;
+    const openModal = function() {
+        if (connectDbModalBtn) connectDbModalBtn.disabled = true;
+        if (dbTypeSelect) dbTypeSelect.value = '';
+        const steps = document.getElementById('db-connection-steps-list') as HTMLUListElement | null;
+        if (steps) steps.innerHTML = '';
+        dbModal.style.display = 'flex';
+    };
 
+    // Open modal from any connect-database button (header and toolbar)
+    if (openConnectBtns && openConnectBtns.length > 0) {
+        openConnectBtns.forEach(b => b.addEventListener('click', openModal));
+    }
+
+    
     // Helpers for displaying incremental connection steps in the modal (static elements in template)
     function addStep(text: string, status: 'pending' | 'success' | 'error' = 'pending') {
         const list = document.getElementById('db-connection-steps-list') as HTMLUListElement | null;
@@ -86,7 +98,7 @@ export function setupDatabaseModal() {
         list.scrollTop = list.scrollHeight;
     }
 
-    dbTypeSelect.addEventListener('change', function(this: HTMLSelectElement) {
+    dbTypeSelect.addEventListener('change', function(this: HTMLInputElement) {
         const selectedType = this.value;
         if (selectedType && databaseConfig[selectedType]) {
             dbUrlInput.disabled = false;
@@ -95,7 +107,6 @@ export function setupDatabaseModal() {
             // clear previous connection steps
             const existingList = document.getElementById('db-connection-steps-list') as HTMLUListElement | null;
             if (existingList) existingList.innerHTML = '';
-            dbModalTitle.textContent = databaseConfig[selectedType].title;
             connectDbModalBtn.disabled = false;
             setTimeout(() => dbUrlInput.focus(), 100);
         } else {
@@ -108,7 +119,7 @@ export function setupDatabaseModal() {
     if (cancelDbModalBtn && dbModal) {
         cancelDbModalBtn.addEventListener('click', function() {
             dbModal.style.display = 'none';
-            if (dbTypeSelect) dbTypeSelect.selectedIndex = 0;
+            if (dbTypeSelect) dbTypeSelect.value = '';
             if (connectDbModalBtn) connectDbModalBtn.disabled = true;
         });
     }
@@ -155,7 +166,7 @@ export function setupDatabaseModal() {
     fetch('/database', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: dbUrl }),
+            body: JSON.stringify({ url: dbUrl, type: selectedType }),
         }).then(response => {
             if (!response.ok) throw new Error(`Network response was not ok (${response.status})`);
 
@@ -183,7 +194,7 @@ export function setupDatabaseModal() {
                     setLoadingState(false, connectBtn, urlInput);
                     if (obj.success) {
                         if (dbModal) dbModal.style.display = 'none';
-                        if (dbTypeSelect) dbTypeSelect.selectedIndex = 0;
+                        if (dbTypeSelect) dbTypeSelect.value = '';
                         if (connectBtn) connectBtn.disabled = true;
                         location.reload();
                     } else {

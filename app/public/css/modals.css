@@ -1,6 +1,6 @@
 /* Modal and Popup Components */
 
-.db-modal {
+#db-modal {
   display: none;
   position: fixed;
   top: 0;
@@ -33,7 +33,7 @@
   font-size: 1em;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  margin-bottom: 1.5em;
+  margin: 0 0 12px 0; /* consistent gap under elements */
   color: var(--text-primary);
   background: var(--falkor-quaternary);
 }
@@ -178,6 +178,9 @@
 
 .user-profile-actions {
   padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px; /* space between API Tokens and Logout */
 }
 
 /* Destructive Confirmation Styles */
@@ -247,7 +250,6 @@
 
 .reset-confirmation-modal-content p {
   color: var(--text-secondary);
-  margin-bottom: 1.5em;
   font-size: 1em;
   line-height: 1.5;
 }
