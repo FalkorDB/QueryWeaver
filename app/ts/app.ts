@@ -19,7 +19,7 @@ import {
     setupCustomDropdown
 } from './modules/ui';
 import { setupAuthenticationModal, setupDatabaseModal } from './modules/modals';
-import { showGraph } from './modules/schema';
+import { resizeGraph, showGraph } from './modules/schema';
 import { setupTokenManagement } from './modules/tokens';
 import { initLeftToolbar } from './modules/left_toolbar';
 
@@ -68,7 +68,8 @@ function setupEventListeners() {
         toggleContainer(DOM.schemaContainer as HTMLElement, async () => {
             const selected = getSelectedGraph();
             if (!selected) return;
-            await loadAndShowGraph(selected);
+            loadAndShowGraph(selected);
+            setTimeout(resizeGraph, 450);
         });
     });
 
@@ -92,7 +93,8 @@ function setupEventListeners() {
         const selected = getSelectedGraph();
         if (!selected) return;
         if (DOM.schemaContainer && DOM.schemaContainer.classList.contains('open')) {
-            await loadAndShowGraph(selected);
+            loadAndShowGraph(selected);
+            setTimeout(resizeGraph, 450);
         }
     });
 

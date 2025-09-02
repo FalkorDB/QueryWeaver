@@ -135,19 +135,40 @@
   cursor: pointer;
 }
 
-/* Graph canvas container inside schema sidebar */
 #schema-graph {
   width: 100%;
   height: 100%; 
-  min-height: 300px;
-  background: transparent;
-  position: relative;
 }
 
-/* Ensure canvas inside ForceGraph fills the container */
-.force-graph-container, #schema-graph > canvas {
-  width: 100% !important;
-  height: 100% !important;
+#schema-content {
+  position: relative;
+  width: 100%;
+  height: 100%; 
+}
+
+#schema-controls {
+  position: absolute;
+  padding: 10px;
+  bottom: 15px;
+  left: 0px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+#schema-controls button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+  background-color: transparent;
+  pointer-events: auto;
+  border: none;
+  cursor: pointer;
 }
 
 #graph-select:focus {
