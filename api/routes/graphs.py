@@ -790,21 +790,22 @@ async def refresh_graph_schema(request: Request, graph_id: str):
     if they suspect the graph is out of sync with the database.
     """
     graph_id = _graph_name(request, graph_id)
-    
+
     try:
         # Get database description and URL
         _, db_url = await get_db_description(graph_id)
-        
+
         if not db_url or db_url == "No URL available for this database.":
-            raise HTTPException(status_code=404, detail="No database URL found for this graph")        
-        
+            raise HTTPException(status_code=404, detail="No database URL found for this graph")
+
         # Create a database connection request with the stored URL
         db_request = DatabaseConnectionRequest(url=db_url)
-        
-        # Call connect_database to refresh the schema by reconnecting
-        return connect_database(request, db_request)
-            
+
+        # Call connect_database to refresh the schema by reconnecting and stream progress
+        return await connect_database(request, db_request)
+
     except HTTPException:
+        # Re-raise HTTPExceptions as-is so FastAPI preserves the status code
         raise
     except Exception as e:
         logging.error("Error in refresh_graph_schema: %s", str(e))
