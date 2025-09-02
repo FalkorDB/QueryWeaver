@@ -58,6 +58,7 @@ export const DOM = {
     leftToolbarInner: getElement<HTMLElement | null>('left-toolbar-inner'),
     expInstructions: getElement<HTMLTextAreaElement | null>('instructions-textarea'),
     inputContainer: getElement<HTMLElement | null>('input-container'),
+    graphSelectRefresh: getElement<HTMLButtonElement | null>('graph-select-refresh'),
     resetConfirmationModal: getElement<HTMLElement | null>('reset-confirmation-modal'),
     resetConfirmBtn: getElement<HTMLButtonElement | null>('reset-confirm-btn'),
     resetCancelBtn: getElement<HTMLButtonElement | null>('reset-cancel-btn')

@@ -73,6 +73,23 @@ function setupEventListeners() {
         });
     });
 
+    DOM.graphSelectRefresh?.addEventListener('click', async () => {
+        const selected = getSelectedGraph();
+        if (!selected) return;
+        DOM.graphSelectRefresh?.classList.add('loading');
+        const result = await fetch(`/graphs/${encodeURIComponent(selected)}/refresh`, {
+            method: 'POST',
+        });
+        if (!result.ok) {
+            console.error('Failed to refresh graph:', result.status, result.statusText);
+            return;
+        }
+        
+        await loadAndShowGraph(selected);
+        setTimeout(resizeGraph, 450);
+        DOM.graphSelectRefresh?.classList.remove('loading');
+    });
+
     DOM.newChatButton?.addEventListener('click', showResetConfirmation);
     DOM.resetConfirmBtn?.addEventListener('click', handleResetConfirmation);
     DOM.resetCancelBtn?.addEventListener('click', hideResetConfirmation);
