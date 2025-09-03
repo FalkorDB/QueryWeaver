@@ -117,8 +117,8 @@
 }
 
 .final-result-message-container::before {
-  background: color-mix(in srgb, var(--accent-green) 40%, transparent);
-  border: 1px solid var(--accent-green);
+  background: color-mix(in srgb, var(--falkor-primary) 40%, transparent);
+  border: 1px solid var(--falkor-primary);
 }
 
 .loading-message-container::before {
@@ -168,8 +168,8 @@
 }
 
 .final-result-message {
-  background: color-mix(in srgb, var(--accent-green) 15%, transparent);
-  border-left: 3px solid var(--accent-green);
+  background: color-mix(in srgb, var(--falkor-primary) 15%, transparent);
+  border-left: 3px solid var(--falkor-primary);
 }
 
 .chat-input {
