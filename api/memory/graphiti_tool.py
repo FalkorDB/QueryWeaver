@@ -5,6 +5,7 @@ Saves summarized conversations with user and database nodes.
 # pylint: disable=all
 import asyncio
 import os
+import uuid
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -26,6 +27,22 @@ from graphiti_core.search.search_config_recipes import NODE_HYBRID_SEARCH_RRF
 from litellm import completion
 
 
+def extract_embedding_model_name(full_model_name: str) -> str:
+    """
+    Extract just the model name without provider prefix for Graphiti.
+    
+    Args:
+        full_model_name: Model name that may include provider prefix (e.g., "azure/text-embedding-ada-002")
+        
+    Returns:
+        Model name without prefix (e.g., "text-embedding-ada-002")
+    """
+    if "/" in full_model_name:
+        return full_model_name.split("/", 1)[1]  # Remove provider prefix
+    else:
+        return full_model_name
+
+
 class MemoryTool:
     """Memory management tool for handling user memories and interactions."""
 
@@ -43,10 +60,12 @@ class MemoryTool:
 
 
     @classmethod
-    async def create(cls, user_id: str, graph_id: str) -> "MemoryTool":
+    async def create(cls, user_id: str, graph_id: str, use_direct_entities: bool = True) -> "MemoryTool":
         """Async factory to construct and initialize the tool."""
         self = cls(user_id, graph_id)
-        await self._ensure_database_node(graph_id, user_id)
+
+        await self._ensure_entity_nodes_direct(user_id, graph_id)
+
 
         vector_size = Config.EMBEDDING_MODEL.get_vector_size()
         driver = self.graphiti_client.driver
@@ -128,6 +147,115 @@ class MemoryTool:
             print(f"Error creating database node for {database_name}: {e}")
             return None
 
+    async def _ensure_entity_nodes_direct(self, user_id: str, database_name: str) -> bool:
+        """
+        Ensure user and database entity nodes exist using direct Cypher queries.
+        This function creates Entity nodes similar to what Graphiti does but with hardcoded Cypher.
+        """
+        try:
+            graph_driver = self.graphiti_client.driver
+            
+            # Check if user entity node already exists
+            user_node_name = f"User {user_id}"
+            check_user_query = """
+                MATCH (n:Entity {name: $name})
+                RETURN n.uuid AS uuid
+                LIMIT 1
+            """
+            user_check_result = await graph_driver.execute_query(check_user_query, name=user_node_name)
+            
+            if not user_check_result[0]:  # If no records found, create user node
+                user_uuid = str(uuid.uuid4())
+                user_name_embedding = Config.EMBEDDING_MODEL.embed(user_node_name)[0]
+                
+                user_node_data = {
+                    'uuid': user_uuid,
+                    'name': user_node_name,
+                    'group_id': '\\_',
+                    'created_at': datetime.now().isoformat(),
+                    'summary': f'User {user_id} is using QueryWeaver',
+                    'name_embedding': user_name_embedding
+                }
+                
+                # Execute Cypher query for user entity node
+                user_cypher = """
+                    MERGE (n:Entity {uuid: $node.uuid})
+                    SET n = $node
+                    SET n.timestamp = timestamp()
+                    WITH n, $node AS node
+                    SET n.name_embedding = vecf32(node.name_embedding)
+                    RETURN n.uuid AS uuid
+                """
+                
+                await graph_driver.execute_query(user_cypher, node=user_node_data)
+                print(f"Created user entity node: {user_node_name} with UUID: {user_uuid}")
+            else:
+                print(f"User entity node already exists: {user_node_name}")
+            
+            # Check if database entity node already exists
+            database_node_name = f"Database {database_name}"
+            check_database_query = """
+                MATCH (n:Entity {name: $name})
+                RETURN n.uuid AS uuid
+                LIMIT 1
+            """
+            database_check_result = await graph_driver.execute_query(check_database_query, name=database_node_name)
+            
+            if not database_check_result[0]:  # If no records found, create database node
+                database_uuid = str(uuid.uuid4())
+                database_name_embedding = Config.EMBEDDING_MODEL.embed(database_node_name)[0]
+                
+                database_node_data = {
+                    'uuid': database_uuid,
+                    'name': database_node_name,
+                    'group_id': '\\_',
+                    'created_at': datetime.now().isoformat(),
+                    'summary': f'Database {database_name} available for querying by user {user_id}',
+                    'name_embedding': database_name_embedding
+                }
+                
+                # Execute Cypher query for database entity node
+                database_cypher = """
+                    MERGE (n:Entity {uuid: $node.uuid})
+                    SET n = $node
+                    SET n.timestamp = timestamp()
+                    WITH n, $node AS node
+                    SET n.name_embedding = vecf32(node.name_embedding)
+                    RETURN n.uuid AS uuid
+                """
+                
+                await graph_driver.execute_query(database_cypher, node=database_node_data)
+                print(f"Created database entity node: {database_node_name} with UUID: {database_uuid}")
+            else:
+                print(f"Database entity node already exists: {database_node_name}")
+            
+            # Create HAS_DATABASE relationship between user and database entities
+            try:
+                relationship_query = """
+                    MATCH (user:Entity {name: $user_name})
+                    MATCH (db:Entity {name: $database_name})
+                    MERGE (user)-[r:HAS_DATABASE]->(db)
+                    RETURN r
+                """
+                
+                await graph_driver.execute_query(
+                    relationship_query, 
+                    user_name=user_node_name,
+                    database_name=database_node_name,
+                    timestamp=datetime.now().isoformat()
+                )
+                print(f"Created HAS_DATABASE relationship between {user_node_name} and {database_node_name}")
+                
+            except Exception as rel_error:
+                print(f"Error creating HAS_DATABASE relationship: {rel_error}")
+                # Don't fail the entire function if relationship creation fails
+            
+            return True
+            
+        except Exception as e:
+            print(f"Error creating entity nodes directly for user {user_id} and database {database_name}: {e}")
+            return False
+
     async def add_new_memory(self, conversation: Dict[str, Any]) -> bool:
         # Use LLM to analyze and summarize the conversation with focus on graph-oriented database facts
         analysis = await self.summarize_conversation(conversation)
@@ -177,26 +305,24 @@ class MemoryTool:
         """
         try:
             database_name = self.graph_id
-            
-            # Find the database node
             database_node_name = f"Database {database_name}"
-            node_search_config = NODE_HYBRID_SEARCH_RRF.model_copy(deep=True)
-            node_search_config.limit = 1
+            graph_driver = self.graphiti_client.driver
             
-            database_node_results = await self.graphiti_client.search_(
-                query=database_node_name,
-                config=node_search_config,
-            )
+            # Find the database node using direct Cypher query
+            find_database_query = """
+                MATCH (n:Entity {name: $name})
+                RETURN n.uuid AS uuid
+                LIMIT 1
+            """
+            
+            database_result = await graph_driver.execute_query(find_database_query, name=database_node_name)
             
             # Check if database node exists
-            database_node_exists = False
-            for node in database_node_results.nodes:
-                if node.name == database_node_name:
-                    database_node_exists = True
-                    database_node_uuid = node.uuid
-                    break
-            if not database_node_exists:
+            if not database_result[0]:  # If no records found
+                print(f"Database entity node {database_node_name} not found")
                 return False
+            
+            database_node_uuid = database_result[0][0]['uuid']
 
             # Check if Query node with same user_query and sql_query already exists
             relationship_type = "SUCCESS" if success else "FAILED"
@@ -238,7 +364,7 @@ class MemoryTool:
             CREATE (db)-[:{relationship_type} {{timestamp: timestamp()}}]->(q)
             RETURN q.uuid as query_uuid
             """
-            
+
             # Execute the Cypher query through Graphiti's graph driver
             try:
                 result = await graph_driver.execute_query(cypher_query, embedding=embeddings)
@@ -598,7 +724,10 @@ class AzureOpenAIConfig:
         self.endpoint = os.getenv('AZURE_API_BASE') 
         self.api_version = os.getenv('AZURE_API_VERSION', '2024-02-01')
         self.model_choice = "gpt-4.1"  # Use the model name directly
-        self.embedding_model = "text-embedding-ada-002"  # Use model name, not deployment
+        
+        # Extract just the model name without provider prefix for Graphiti
+        self.embedding_model = extract_embedding_model_name(Config.EMBEDDING_MODEL_NAME)
+            
         self.small_model = os.getenv('AZURE_SMALL_MODEL', 'gpt-4o-mini')
         
         # Use model names directly instead of deployment names
@@ -652,7 +781,10 @@ def create_graphiti_client(falkor_driver: FalkorDriver) -> Graphiti:
             graph_driver=falkor_driver,
             llm_client=OpenAIClient(config=azure_llm_config, client=llm_client_azure),
             embedder=OpenAIEmbedder(
-                config=OpenAIEmbedderConfig(embedding_model=config.embedding_deployment),
+                config=OpenAIEmbedderConfig(
+                    embedding_model=config.embedding_deployment,
+                    embedding_dim=1536
+                ),
                 client=embedding_client_azure,
             ),
             cross_encoder=OpenAIRerankerClient(
@@ -662,8 +794,19 @@ def create_graphiti_client(falkor_driver: FalkorDriver) -> Graphiti:
                 client=llm_client_azure,
             ),
         )
-    else:  # Fallback to default OpenAI config
-        graphiti_client = Graphiti(graph_driver=falkor_driver)
+    else:  # Fallback to default OpenAI config but use Config's embedding model
+        # Extract just the model name without provider prefix for Graphiti
+        embedding_model_name = extract_embedding_model_name(Config.EMBEDDING_MODEL_NAME)
+            
+        graphiti_client = Graphiti(
+            graph_driver=falkor_driver,
+            embedder=OpenAIEmbedder(
+                config=OpenAIEmbedderConfig(
+                    embedding_model=embedding_model_name,
+                    embedding_dim=1536
+                )
+            ),
+        )
 
     return graphiti_client
 
