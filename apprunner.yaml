@@ -1,9 +1,10 @@
 version: 1.0
-runtime:  python311
+runtime: python311
 build:
   commands:
     build:
-      - pip install pipenv
+      - python -m pip install --upgrade pip
+      - python -m pip install pipenv
       - pipenv install --deploy --ignore-pipfile
 
 run:
