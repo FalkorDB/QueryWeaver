@@ -9,42 +9,24 @@ import re
 import time
 import secrets
 
-from pathlib import Path
 from urllib.parse import urljoin
 
 from authlib.integrations.starlette_client import OAuth
 
 from fastapi import APIRouter, Request, HTTPException, status
 from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
-from jinja2 import Environment, FileSystemLoader, FileSystemBytecodeCache, select_autoescape
+
 from starlette.config import Config
 from pydantic import BaseModel
 
 from api.auth.user_management import delete_user_token, ensure_user_in_organizations, validate_user
 from api.extensions import db
+from api.helpers.template import template_response
 
 
 # Router
 auth_router = APIRouter(tags=["Authentication"])
-TEMPLATES_DIR = str((Path(__file__).resolve().parents[1] / "../app/templates").resolve())
 
-TEMPLATES_CACHE_DIR = "/tmp/jinja_cache"
-os.makedirs(TEMPLATES_CACHE_DIR, exist_ok=True)  # ✅ ensures the folder exists
-
-templates = Jinja2Templates(
-    env=Environment(
-        loader=FileSystemLoader(TEMPLATES_DIR),
-        bytecode_cache=FileSystemBytecodeCache(
-            directory=TEMPLATES_CACHE_DIR,
-            pattern="%s.cache"
-        ),
-        auto_reload=True,
-        autoescape=select_autoescape(['html', 'xml', 'j2'])
-    )
-)
-
-templates.env.globals["google_tag_manager_id"] = os.getenv("GOOGLE_TAG_MANAGER_ID")
 
 GOOGLE_AUTH = bool(os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET"))
 GITHUB_AUTH = bool(os.getenv("GITHUB_CLIENT_ID") and os.getenv("GITHUB_CLIENT_SECRET"))
@@ -384,7 +366,7 @@ async def home(request: Request) -> HTMLResponse:
     user_info, is_authenticated_flag = await validate_user(request)
     auth_config = _get_auth_config()
 
-    return templates.TemplateResponse(
+    return template_response(
         "chat.j2",
         {
             "request": request,

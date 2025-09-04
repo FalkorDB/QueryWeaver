@@ -17,13 +17,13 @@
         {# Show OAuth options only if configured #}
         {% if google_auth_enabled %}
         <a href="{{ url_for('google.login') }}" class="google-login-btn">
-            <img src="/static/icons/google.svg"  alt="Google logo" class="google-login-logo">Sign in with Google
+            <span class="google-login-logo">{{ '/icons/google.svg' | inline_svg }}</span>Sign in with Google
         </a>
         {% endif %}
         
         {% if github_auth_enabled %}
         <a href="{{ url_for('github.login') }}" class="github-login-btn">
-            <img src="/static/icons/github.svg" alt="GitHub logo" class="github-login-logo">Sign in with GitHub
+            <span class="github-login-logo">{{ '/icons/github.svg' | inline_svg }}</span>Sign in with GitHub
         </a>
         {% endif %}
         
@@ -71,13 +71,13 @@
         {# Show OAuth options only if configured #}
         {% if google_auth_enabled %}
         <a href="{{ url_for('google.login') }}" class="google-login-btn">
-            <img src="{{ url_for('static', path='icons/google.svg') }}"  alt="Google logo" class="google-login-logo">Sign up with Google
+            <span class="google-login-logo">{{ '/icons/google.svg' | inline_svg }}</span>Sign up with Google
         </a>
         {% endif %}
         
         {% if github_auth_enabled %}
         <a href="{{ url_for('github.login') }}" class="github-login-btn" style="margin-top: 0.5em;">
-            <img src="{{ url_for('static', path='icons/github.svg') }}" alt="GitHub logo" class="github-login-logo">Sign up with GitHub
+            <span class="github-login-logo">{{ '/icons/github.svg' | inline_svg }}</span>Sign up with GitHub
         </a>
         {% endif %}
         
