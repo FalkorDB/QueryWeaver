@@ -249,3 +249,73 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* SQL Feedback Buttons */
+.sql-feedback-container {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--falkor-secondary) 50%, transparent);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.sql-feedback-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.feedback-label {
+  font-size: 0.9em;
+  color: var(--text-secondary);
+  margin-right: 4px;
+}
+
+.feedback-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 1.1em;
+  transition: all 0.2s ease;
+  min-width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.feedback-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--falkor-primary) 10%, transparent);
+  border-color: var(--falkor-primary);
+  transform: scale(1.05);
+}
+
+.feedback-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.feedback-btn.selected {
+  background: color-mix(in srgb, var(--falkor-primary) 20%, transparent);
+  border-color: var(--falkor-primary);
+  color: var(--falkor-primary);
+}
+
+.feedback-btn.thumbs-up.selected {
+  background: color-mix(in srgb, green 20%, transparent);
+  border-color: green;
+}
+
+.feedback-btn.thumbs-down.selected {
+  background: color-mix(in srgb, red 20%, transparent);
+  border-color: red;
+}
+
+.feedback-thanks {
+  font-size: 0.9em;
+  color: var(--text-primary);
+  font-weight: 500;
+}

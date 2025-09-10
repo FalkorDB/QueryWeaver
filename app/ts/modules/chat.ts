@@ -171,7 +171,12 @@ function handleFinalResult(step: any, isQuery = false) {
 
     const message = step.message || JSON.stringify(step.data, null, 2);
     if (step.is_valid) {
-        addMessage(message, "final-result", isQuery);
+        const messageElement = addMessage(message, "final-result", isQuery);
+        
+        // Add feedback buttons for SQL queries
+        if (isQuery && step.data) {
+            addFeedbackButtons(messageElement, step.data, state.questions_history[state.questions_history.length - 1] || '');
+        }
     }
 }
 
@@ -289,5 +294,95 @@ export async function handleDestructiveConfirmation(confirmation: string, sqlQue
     }
 }
 
+function addFeedbackButtons(messageElement: HTMLElement, sqlQuery: string, userQuery: string) {
+    const feedbackId = 'feedback-' + Date.now();
+    
+    const feedbackContainer = document.createElement('div');
+    feedbackContainer.className = 'sql-feedback-container';
+    feedbackContainer.setAttribute('data-feedback-id', feedbackId);
+    
+    const feedbackHTML = `
+        <div class="sql-feedback-buttons">
+            <span class="feedback-label">Was this SQL helpful?</span>
+            <button class="feedback-btn thumbs-up" onclick="handleSqlFeedback('thumbs_up', '${escapeForSingleQuotedJsString(sqlQuery)}', '${escapeForSingleQuotedJsString(userQuery)}', '${feedbackId}')" title="Thumbs up - This SQL was helpful">
+                👍
+            </button>
+            <button class="feedback-btn thumbs-down" onclick="handleSqlFeedback('thumbs_down', '${escapeForSingleQuotedJsString(sqlQuery)}', '${escapeForSingleQuotedJsString(userQuery)}', '${feedbackId}')" title="Thumbs down - This SQL was not helpful">
+                👎
+            </button>
+        </div>
+    `;
+    
+    feedbackContainer.innerHTML = feedbackHTML;
+    
+    // Add the feedback container to the message element's parent container
+    const messageContainer = messageElement.parentElement;
+    if (messageContainer) {
+        messageContainer.appendChild(feedbackContainer);
+    }
+}
+
+export async function handleSqlFeedback(feedback: string, sqlQuery: string, userQuery: string, feedbackId: string) {
+    const feedbackContainer = document.querySelector(`[data-feedback-id="${feedbackId}"]`);
+    if (feedbackContainer) {
+        const buttons = feedbackContainer.querySelectorAll('.feedback-btn');
+        buttons.forEach(btn => (btn as HTMLButtonElement).disabled = true);
+        
+        // Visual feedback
+        const clickedButton = feedbackContainer.querySelector(`.${feedback.replace('_', '-')}`);
+        if (clickedButton) {
+            clickedButton.classList.add('selected');
+        }
+    }
+
+    try {
+        const selectedValue = getSelectedGraph() || '';
+
+        const response = await fetch('/graphs/' + encodeURIComponent(selectedValue) + '/feedback', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                sql_query: sqlQuery,
+                user_query: userQuery,
+                feedback: feedback,
+                chat: state.questions_history
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Server responded with ${response.status}`);
+        }
+
+        // Show feedback confirmation
+        if (feedbackContainer) {
+            const buttonsContainer = feedbackContainer.querySelector('.sql-feedback-buttons');
+            if (buttonsContainer) {
+                buttonsContainer.innerHTML = `
+                    <span class="feedback-thanks">${feedback === 'thumbs_up' ? '👍' : '👎'}</span>
+                `;
+            }
+        }
+
+    } catch (error: any) {
+        console.error('Error submitting feedback:', error);
+        
+        // Re-enable buttons on error
+        if (feedbackContainer) {
+            const buttons = feedbackContainer.querySelectorAll('.feedback-btn');
+            buttons.forEach(btn => (btn as HTMLButtonElement).disabled = false);
+            
+            const clickedButton = feedbackContainer.querySelector(`.${feedback.replace('_', '-')}`);
+            if (clickedButton) {
+                clickedButton.classList.remove('selected');
+            }
+        }
+        
+        addMessage('Sorry, there was an error submitting your feedback: ' + (error.message || String(error)));
+    }
+}
+
 // Expose global for inline onclick handlers
 (window as any).handleDestructiveConfirmation = handleDestructiveConfirmation;
+(window as any).handleSqlFeedback = handleSqlFeedback;

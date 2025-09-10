@@ -62,6 +62,18 @@ class ConfirmRequest(BaseModel):
     chat: list = []
 
 
+class FeedbackRequest(BaseModel):
+    """Feedback request model for thumbs up/down on generated SQL.
+
+    Args:
+        BaseModel (_type_): _description_
+    """
+    sql_query: str
+    user_query: str
+    feedback: str  # "thumbs_up" or "thumbs_down"
+    chat: list = []
+
+
 def get_database_type_and_loader(db_url: str):
     """
     Determine the database type from URL and return appropriate loader class.
@@ -828,6 +840,65 @@ async def confirm_destructive_operation(
             ) + MESSAGE_DELIMITER
 
     return StreamingResponse(generate_confirmation(), media_type="application/json")
+
+
+@graphs_router.post("/{graph_id}/feedback", responses={
+    401: UNAUTHORIZED_RESPONSE
+})
+@token_required
+async def submit_sql_feedback(
+    request: Request,
+    graph_id: str,
+    feedback_data: FeedbackRequest,
+):
+    """
+    Handle user feedback (thumbs up/down) for generated SQL queries
+    """
+    graph_id = _graph_name(request, graph_id)
+    
+    user_query = feedback_data.user_query if hasattr(feedback_data, 'user_query') else ""
+    sql_query = feedback_data.sql_query if hasattr(feedback_data, 'sql_query') else ""
+    feedback = feedback_data.feedback if hasattr(feedback_data, 'feedback') else ""
+    
+    if not sql_query or not feedback:
+        raise HTTPException(status_code=400, detail="Missing required feedback data")
+    
+    if feedback not in ["thumbs_up", "thumbs_down"]:
+        raise HTTPException(status_code=400, detail="Invalid feedback type")
+    
+    try:
+        # Create memory tool for saving feedback
+        memory_tool = await MemoryTool.create(request.state.user_id, graph_id)
+        
+        # Save feedback to memory
+        feedback_data_dict = {
+            "type": "sql_feedback",
+            "user_query": user_query,
+            "sql_query": sql_query,
+            "feedback": feedback,
+            "timestamp": time.time()
+        }
+        
+        # Save feedback as a memory entry
+        save_feedback_task = asyncio.create_task(
+            memory_tool.add_new_memory(feedback_data_dict, [])
+        )
+        save_feedback_task.add_done_callback(
+            lambda t: logging.error("Feedback save failed: %s", t.exception())  # nosemgrep
+            if t.exception() else logging.info("SQL feedback saved successfully")
+        )
+        
+        logging.info("User feedback received: %s for SQL: %s", 
+                    feedback, sanitize_log_input(sql_query))
+        
+        return JSONResponse(content={
+            "success": True,
+            "message": "Feedback received successfully"
+        })
+        
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logging.error("Error saving SQL feedback: %s", str(e))  # nosemgrep
+        raise HTTPException(status_code=500, detail="Failed to save feedback") from e
 
 
 @graphs_router.post("/{graph_id}/refresh", responses={
