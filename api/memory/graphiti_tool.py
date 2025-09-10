@@ -4,6 +4,7 @@ Saves summarized conversations with user and database nodes.
 """
 # pylint: disable=all
 import asyncio
+import logging
 import os
 import uuid
 from typing import List, Dict, Any, Optional, Tuple
@@ -99,7 +100,7 @@ class MemoryTool:
                     'name': user_node_name,
                     'group_id': '\\_',
                     'created_at': datetime.now().isoformat(),
-                    'summary': f'The User is using QueryWeaver',
+                    'summary': 'The User is using QueryWeaver',
                     'name_embedding': user_name_embedding
                 }
                 
@@ -114,9 +115,9 @@ class MemoryTool:
                 """
                 
                 await graph_driver.execute_query(user_cypher, node=user_node_data)
-                print(f"Created user entity node: {user_node_name} with UUID: {user_uuid}")
+                logging.info("Created user entity node with UUID: %s", user_uuid)
             else:
-                print(f"User entity node already exists: {user_node_name}")
+                logging.info("User entity node already exists")
             
             # Check if database entity node already exists
             database_node_name = f"Database {database_name}"
@@ -151,9 +152,9 @@ class MemoryTool:
                 """
                 
                 await graph_driver.execute_query(database_cypher, node=database_node_data)
-                print(f"Created database entity node: {database_node_name} with UUID: {database_uuid}")
+                logging.info("Created database entity node: %s with UUID: %s", database_node_name, database_uuid)
             else:
-                print(f"Database entity node already exists: {database_node_name}")
+                logging.info("Database entity node already exists: %s", database_node_name)
             
             # Create HAS_DATABASE relationship between user and database entities
             try:
@@ -169,16 +170,15 @@ class MemoryTool:
                     user_name=user_node_name,
                     database_name=database_node_name
                 )
-                print(f"Created HAS_DATABASE relationship between {user_node_name} and {database_node_name}")
-                
+                logging.info("Created HAS_DATABASE relationship between user and %s database", database_node_name)
             except Exception as rel_error:
-                print(f"Error creating HAS_DATABASE relationship: {rel_error}")
+                logging.error("Error creating HAS_DATABASE relationship: %s", rel_error)
                 # Don't fail the entire function if relationship creation fails
             
             return True
             
         except Exception as e:
-            print(f"Error creating entity nodes directly for user {user_id} and database {database_name}: {e}")
+            logging.error("Error creating entity nodes directly: %s", e)
             return False
 
     async def update_user_information(self, conversation: Dict[str, Any], history: Tuple[List[str], List[str]]) -> bool:
@@ -273,7 +273,7 @@ class MemoryTool:
             await asyncio.gather(add_episode_task, update_user_task)
 
         except Exception as e:
-            print(f"Error adding new memory episodes: {e}")
+            logging.error("Error adding new memory episodes: %s", e)
             return False
         
         return True
@@ -307,7 +307,7 @@ class MemoryTool:
             
             # Check if database node exists
             if not database_result[0]:  # If no records found
-                print(f"Database entity node {database_node_name} not found")
+                logging.error("Database entity node %s not found", database_node_name)
                 return False
             
             database_node_uuid = database_result[0][0]['uuid']
@@ -335,7 +335,7 @@ class MemoryTool:
             
             # If query already exists, don't create a duplicate
             if check_result[0]:  # If records exist
-                print(f"Query with same user_query and sql_query already exists, skipping creation")
+                logging.info("Query with same user_query and sql_query already exists, skipping creation")
                 return True
 
             # Create the Query node and relationship using Cypher only if it doesn't exist
@@ -358,11 +358,11 @@ class MemoryTool:
                 result = await graph_driver.execute_query(cypher_query, embedding=embeddings)
                 return True
             except Exception as cypher_error:
-                print(f"Error executing Cypher query: {cypher_error}")
+                logging.error("Error executing Cypher query: %s", cypher_error)
                 return False
             
         except Exception as e:
-            print(f"Error saving query memory: {e}")
+            logging.error("Error saving query memory: %s", e)
             return False
         
     async def retrieve_similar_queries(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
@@ -423,11 +423,11 @@ class MemoryTool:
                 return similar_queries
 
             except Exception as cypher_error:
-                print(f"Error executing Cypher query: {cypher_error}")
+                logging.error("Error executing Cypher query: %s", cypher_error)
                 return []
 
         except Exception as e:
-            print(f"Error retrieving similar queries: {e}")
+            logging.error("Error retrieving similar queries: %s", e)
             return []
 
     async def search_user_summary(self, limit: int = 5) -> str:
@@ -456,7 +456,7 @@ class MemoryTool:
             return ""
             
         except Exception as e:
-            print(f"Error searching user node for {self.user_id}: {e}")
+            logging.error("Error searching user node: %s", e)
             return ""
         
     async def extract_episode_from_rel(self, rel_result):
@@ -514,7 +514,7 @@ class MemoryTool:
             database_facts_text = []
             episodes_contents = []
             if reranked_results and len(reranked_results) > 0:
-                print(f'\nPrevious session and facts for {self.graph_id}:')
+                logging.info("Previous session and facts for %s:", self.graph_id)
                 for i, result in enumerate(reranked_results, 1):
                     if result.source_node_uuid != center_node_uuid and result.target_node_uuid != center_node_uuid:
                         continue
@@ -541,7 +541,7 @@ class MemoryTool:
             return database_context
 
         except Exception as e:
-            print(f"Error searching database facts for {self.graph_id}: {e}")
+            logging.error("Error searching database facts for %s: %s", self.graph_id, e)
             return ""
 
     async def search_memories(self, query: str, user_limit: int = 5, database_limit: int = 10) -> str:
@@ -616,7 +616,7 @@ class MemoryTool:
             return memory_context
 
         except Exception as e:
-            print(f"Error in concurrent memory search: {e}")
+            logging.error("Error in concurrent memory search: %s", e)
             return ""
 
     async def clean_memory(self, size: int = 10000) -> int:
@@ -641,7 +641,7 @@ class MemoryTool:
             # Stats may not be available; return 0 on success path
             return 0
         except Exception as e:
-            print(f"Error cleaning memory: {e}")
+            logging.error("Error cleaning memory: %s", e)
             return 0
 
     async def summarize_conversation(self, conversation: Dict[str, Any], history: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -712,7 +712,7 @@ class MemoryTool:
             }
             
         except Exception as e:
-            print(f"Error in LLM summarization: {e}")
+            logging.error("Error in LLM summarization: %s", e)
             return {
                 "database_summary": ""
             }
