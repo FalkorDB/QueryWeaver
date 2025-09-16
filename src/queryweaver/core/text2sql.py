@@ -1,23 +1,35 @@
-"""Graph-related routes for the text2sql API."""
+"""Core text2sql functionality for QueryWeaver."""
 
 import asyncio
 import json
 import logging
 import os
+import sys
 import time
+from pathlib import Path
 
 from pydantic import BaseModel
 from redis import ResponseError
 
-from api.core.errors import GraphNotFoundError, InternalError, InvalidArgumentError
-from api.core.schema_loader import load_database
-from api.agents import AnalysisAgent, RelevancyAgent, ResponseFormatterAgent, FollowUpAgent
-from api.config import Config
-from api.extensions import db
-from api.graph import find, get_db_description
-from api.loaders.postgres_loader import PostgresLoader
-from api.loaders.mysql_loader import MySQLLoader
-from api.memory.graphiti_tool import MemoryTool
+# Add project root to path for api imports (temporarily)
+_project_root = Path(__file__).parent.parent.parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+
+try:
+    from .errors import GraphNotFoundError, InternalError, InvalidArgumentError
+    from .schema_loader import load_database
+    from api.agents import AnalysisAgent, RelevancyAgent, ResponseFormatterAgent, FollowUpAgent
+    from api.config import Config
+    from api.extensions import db
+    from api.graph import find, get_db_description
+    from api.loaders.postgres_loader import PostgresLoader
+    from api.loaders.mysql_loader import MySQLLoader
+    from api.memory.graphiti_tool import MemoryTool
+finally:
+    # Clean up path
+    if str(_project_root) in sys.path:
+        sys.path.remove(str(_project_root))
 
 # Use the same delimiter as in the JavaScript
 MESSAGE_DELIMITER = "|||FALKORDB_MESSAGE_BOUNDARY|||"

@@ -26,26 +26,17 @@ Example usage:
 import asyncio
 import json
 import logging
-import sys
 from typing import List, Dict, Any, Optional
-from pathlib import Path
 
-# Add the project root to Python path for api imports
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
-
-# Import base class and api modules
+# Import base class and core modules
 from .base import BaseQueryWeaverClient
-from api.core.text2sql import (
+from .core.text2sql import (
     query_database, 
     get_database_type_and_loader,
     GraphNotFoundError,
     InternalError,
     InvalidArgumentError
 )
-
-# Suppress FalkorDB logs if too verbose
-logging.getLogger("falkordb").setLevel(logging.WARNING)
 
 
 class QueryWeaverClient(BaseQueryWeaverClient):
@@ -121,14 +112,6 @@ class QueryWeaverClient(BaseQueryWeaverClient):
             )
 
         logging.info("Loading database '%s' from %s", database_name, db_type)
-        db_type, loader_class = get_database_type_and_loader(database_url)
-        if not loader_class:
-            raise ValueError(
-                "Unsupported database URL format. "
-                "Supported formats: postgresql://, postgres://, mysql://"
-            )
-        
-        logging.info("Loading database '%s' from %s", database_name, db_type)
         
         try:
             # Run the async loader in a sync context
@@ -141,9 +124,11 @@ class QueryWeaverClient(BaseQueryWeaverClient):
             else:
                 raise RuntimeError(f"Failed to load database schema for '{database_name}'")
                 
+        except ValueError:
+            raise
         except Exception as e:
-            logging.error("Error loading database '%s': %s", database_name, str(e))
-            raise RuntimeError(f"Failed to load database '{database_name}': {e}") from e
+            logging.exception("Error loading database '%s'", database_name)
+            raise RuntimeError(f"Failed to load database '{database_name}'") from e
     
     async def _load_database_async(self, database_name: str, database_url: str, loader_class) -> bool:
         """Async helper for loading database schema."""
@@ -155,8 +140,10 @@ class QueryWeaverClient(BaseQueryWeaverClient):
                     logging.error("Database loader error: %s", result)
                     break
             return success
-        except Exception as e:
-            logging.error("Exception during database loading: %s", str(e))
+        except ValueError:
+            raise
+        except Exception:
+            logging.exception("Exception during database loading")
             return False
     
     def text_to_sql(
@@ -190,12 +177,13 @@ class QueryWeaverClient(BaseQueryWeaverClient):
         
         try:
             # Run the async query processor and extract just the SQL
-            result = asyncio.run(self._generate_sql_async(database_name, chat_data))
-            return result
+            return asyncio.run(self._generate_sql_async(database_name, chat_data))
 
+        except ValueError:
+            raise
         except Exception as e:
-            logging.error("Error generating SQL: %s", str(e))
-            raise RuntimeError(f"Failed to generate SQL: {e}") from e
+            logging.exception("Error generating SQL")
+            raise RuntimeError("Failed to generate SQL") from e
 
     async def _generate_sql_async(self, database_name: str, chat_data) -> str:
         """Async helper for SQL generation that processes the streaming response."""
@@ -259,12 +247,13 @@ class QueryWeaverClient(BaseQueryWeaverClient):
         
         try:
             # Run the async query processor
-            result = asyncio.run(self._query_async(database_name, chat_data, execute_sql))
-            return result
+            return asyncio.run(self._query_async(database_name, chat_data, execute_sql))
             
+        except ValueError:
+            raise
         except Exception as e:
-            logging.error("Error processing query: %s", str(e))
-            raise RuntimeError(f"Failed to process query: {e}") from e
+            logging.exception("Error processing query")
+            raise RuntimeError("Failed to process query") from e
     
     async def _query_async(self, database_name: str, chat_data, execute_sql: bool) -> Dict[str, Any]:
         """Async helper for full query processing."""
@@ -287,8 +276,7 @@ class QueryWeaverClient(BaseQueryWeaverClient):
                         
                         if data.get("type") == "sql_query":
                             result["sql_query"] = data.get("data", "").strip()
-                        
-                        elif data.get("type") == "analysis":
+                            # Extract analysis data from sql_query message
                             result["analysis"] = {
                                 "explanation": data.get("exp", ""),
                                 "assumptions": data.get("assumptions", ""),
@@ -335,17 +323,18 @@ class QueryWeaverClient(BaseQueryWeaverClient):
         
         try:
             # Run async schema retrieval
-            schema = asyncio.run(self._get_schema_async(database_name))
-            return schema
+            return asyncio.run(self._get_schema_async(database_name))
             
+        except ValueError:
+            raise
         except Exception as e:
-            logging.error("Error retrieving schema for '%s': %s", database_name, str(e))
-            raise RuntimeError(f"Failed to retrieve schema: {e}") from e
+            logging.exception("Error retrieving schema for '%s'", database_name)
+            raise RuntimeError("Failed to retrieve schema") from e
     
     async def _get_schema_async(self, database_name: str) -> Dict[str, Any]:
         """Async helper for schema retrieval."""
         try:
-            from api.core.text2sql import get_schema
+            from .core.text2sql import get_schema
             schema = await get_schema(self._user_id, database_name)
             return schema
         except GraphNotFoundError as e:

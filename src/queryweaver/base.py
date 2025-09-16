@@ -109,6 +109,8 @@ class BaseQueryWeaverClient:
             )
             # Test the connection
             self._test_connection.ping()
+            # Close the test connection to avoid resource leaks
+            self._test_connection.close()
 
         except Exception as e:
             raise ConnectionError(f"Cannot connect to FalkorDB at {falkordb_url}: {e}") from e
@@ -133,7 +135,7 @@ class BaseQueryWeaverClient:
 
     def _prepare_chat_data(self, query: str, instructions: Optional[str], chat_history: Optional[List[str]]):
         """Prepare chat data for API calls."""
-        from api.core.text2sql import ChatRequest
+        from .core.text2sql import ChatRequest
         
         # Prepare chat data
         chat_list = chat_history.copy() if chat_history else []
