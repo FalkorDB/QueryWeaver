@@ -27,7 +27,7 @@ def sync_client(mock_falkordb):
     """Fixture to create a QueryWeaverClient for testing."""
     return QueryWeaverClient(
         falkordb_url="redis://localhost:6379/0",
-        openai_api_key="test-key"
+        openai_api_key="test-key",
     )
 
 
@@ -38,7 +38,7 @@ class TestQueryWeaverClientInit:
         """Test initialization with OpenAI API key."""
         client = QueryWeaverClient(
             falkordb_url="redis://localhost:6379/0",
-            openai_api_key="test-key"
+            openai_api_key="test-key",
         )
         assert client.falkordb_url == "redis://localhost:6379/0"
         assert client._user_id == "library_user"
@@ -48,7 +48,7 @@ class TestQueryWeaverClientInit:
         """Test initialization with Azure API key."""
         client = QueryWeaverClient(
             falkordb_url="redis://localhost:6379/0",
-            azure_api_key="test-azure-key"
+            azure_api_key="test-azure-key",
         )
         assert client.falkordb_url == "redis://localhost:6379/0"
 
@@ -58,8 +58,13 @@ class TestQueryWeaverClientInit:
         import os
         os.environ.pop("OPENAI_API_KEY", None)
         os.environ.pop("AZURE_API_KEY", None)
-        
-        with pytest.raises(ValueError, match="Either openai_api_key or azure_api_key must be provided"):
+
+        with pytest.raises(
+            ValueError,
+            match=(
+                "Either openai_api_key or azure_api_key must be provided"
+            ),
+        ):
             QueryWeaverClient(falkordb_url="redis://localhost:6379/0")
 
     def test_init_with_invalid_falkordb_url_raises_error(self, mock_falkordb):
@@ -67,18 +72,18 @@ class TestQueryWeaverClientInit:
         with pytest.raises(ValueError, match="FalkorDB URL must use redis:// or rediss:// scheme"):
             QueryWeaverClient(
                 falkordb_url="invalid://localhost:6379",
-                openai_api_key="test-key"
+                openai_api_key="test-key",
             )
 
     @patch('falkordb.FalkorDB')
     def test_init_with_falkordb_connection_error(self, mock_falkordb):
         """Test that FalkorDB connection error raises ConnectionError."""
         mock_falkordb.return_value.ping.side_effect = Exception("Connection failed")
-        
+
         with pytest.raises(ConnectionError, match="Cannot connect to FalkorDB"):
             QueryWeaverClient(
                 falkordb_url="redis://localhost:6379/0",
-                openai_api_key="test-key"
+                openai_api_key="test-key",
             )
 
 
@@ -105,7 +110,7 @@ class TestLoadDatabase:
         """Test successful database loading."""
         mock_load_async.return_value = asyncio.Future()
         mock_load_async.return_value.set_result(True)
-        
+
         with patch('asyncio.run', return_value=True):
             result = sync_client.load_database("test", "postgresql://user:pass@host/db")
             assert result is True
@@ -116,7 +121,7 @@ class TestLoadDatabase:
         """Test database loading failure."""
         mock_load_async.return_value = asyncio.Future()
         mock_load_async.return_value.set_result(False)
-        
+
         with patch('asyncio.run', return_value=False):
             with pytest.raises(RuntimeError, match="Failed to load database schema"):
                 sync_client.load_database("test", "postgresql://user:pass@host/db")
@@ -140,10 +145,10 @@ class TestTextToSQL:
         """Test successful SQL generation."""
         # Add database to loaded set
         sync_client._loaded_databases.add("test")
-        
+
         mock_generate_async.return_value = asyncio.Future()
         mock_generate_async.return_value.set_result("SELECT * FROM users;")
-        
+
         with patch('asyncio.run', return_value="SELECT * FROM users;"):
             result = sync_client.text_to_sql("test", "Show me all users")
             assert result == "SELECT * FROM users;"
@@ -152,15 +157,15 @@ class TestTextToSQL:
     def test_text_to_sql_with_instructions(self, mock_generate_async, sync_client):
         """Test SQL generation with instructions."""
         sync_client._loaded_databases.add("test")
-        
+
         mock_generate_async.return_value = asyncio.Future()
         mock_generate_async.return_value.set_result("SELECT * FROM users LIMIT 10;")
-        
+
         with patch('asyncio.run', return_value="SELECT * FROM users LIMIT 10;"):
             result = sync_client.text_to_sql(
-                "test", 
-                "Show me users", 
-                instructions="Limit to 10 results"
+                "test",
+                "Show me users",
+                instructions="Limit to 10 results",
             )
             assert result == "SELECT * FROM users LIMIT 10;"
 
@@ -182,17 +187,17 @@ class TestQuery:
     def test_query_success(self, mock_query_async, sync_client):
         """Test successful query execution."""
         sync_client._loaded_databases.add("test")
-        
+
         expected_result = {
             "sql_query": "SELECT * FROM users;",
             "results": [{"id": 1, "name": "John"}],
             "error": None,
-            "analysis": None
+            "analysis": None,
         }
-        
+
         mock_query_async.return_value = asyncio.Future()
         mock_query_async.return_value.set_result(expected_result)
-        
+
         with patch('asyncio.run', return_value=expected_result):
             result = sync_client.query("test", "Show me all users")
             assert result["sql_query"] == "SELECT * FROM users;"
@@ -202,17 +207,17 @@ class TestQuery:
     def test_query_without_execution(self, mock_query_async, sync_client):
         """Test query without SQL execution."""
         sync_client._loaded_databases.add("test")
-        
+
         expected_result = {
             "sql_query": "SELECT * FROM users;",
             "results": None,
             "error": None,
-            "analysis": None
+            "analysis": None,
         }
-        
+
         mock_query_async.return_value = asyncio.Future()
         mock_query_async.return_value.set_result(expected_result)
-        
+
         with patch('asyncio.run', return_value=expected_result):
             result = sync_client.query("test", "Show me all users", execute_sql=False)
             assert result["sql_query"] == "SELECT * FROM users;"
@@ -231,7 +236,7 @@ class TestUtilityMethods:
         """Test listing loaded databases with data."""
         sync_client._loaded_databases.add("db1")
         sync_client._loaded_databases.add("db2")
-        
+
         result = sync_client.list_loaded_databases()
         assert len(result) == 2
         assert "db1" in result
@@ -246,11 +251,11 @@ class TestUtilityMethods:
     def test_get_database_schema_success(self, mock_schema_async, sync_client):
         """Test successful schema retrieval."""
         sync_client._loaded_databases.add("test")
-        
+
         expected_schema = {"tables": ["users", "orders"]}
         mock_schema_async.return_value = asyncio.Future()
         mock_schema_async.return_value.set_result(expected_schema)
-        
+
         with patch('asyncio.run', return_value=expected_schema):
             result = sync_client.get_database_schema("test")
             assert result == expected_schema
@@ -263,7 +268,7 @@ class TestCreateClient:
         """Test successful client creation via convenience function."""
         client = create_client(
             falkordb_url="redis://localhost:6379/0",
-            openai_api_key="test-key"
+            openai_api_key="test-key",
         )
         assert isinstance(client, QueryWeaverClient)
         assert client.falkordb_url == "redis://localhost:6379/0"
@@ -273,6 +278,6 @@ class TestCreateClient:
         client = create_client(
             falkordb_url="redis://localhost:6379/0",
             openai_api_key="test-key",
-            completion_model="custom-model"
+            completion_model="custom-model",
         )
         assert isinstance(client, QueryWeaverClient)
