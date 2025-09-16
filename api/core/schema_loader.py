@@ -27,6 +27,7 @@ class DatabaseConnectionRequest(BaseModel):
 
     url: str
 
+
 def _step_start(steps_counter: int) -> dict[str, str]:
     """Yield the starting step message."""
     return {
@@ -34,7 +35,10 @@ def _step_start(steps_counter: int) -> dict[str, str]:
         "message": f"Step {steps_counter}: Starting database connection",
     }
 
-def _step_detect_db_type(steps_counter: int, url: str) -> tuple[type[BaseLoader], dict[str, str]]:
+
+def _step_detect_db_type(
+    steps_counter: int, url: str
+) -> tuple[type[BaseLoader], dict[str, str]]:
     """Yield the database type detection step message."""
     db_type = None
     loader: type[BaseLoader] = BaseLoader  # type: ignore
@@ -141,7 +145,7 @@ async def load_database(url: str, user_id: str):
     return generate()
 
 
-async def list_databases(user_id: str, general_prefix: str) -> list[str]:
+async def list_databases(user_id: str, general_prefix: str | None = None) -> list[str]:
     """
     This route is used to list all the graphs (databases names) that are available in the database.
     """
