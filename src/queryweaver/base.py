@@ -8,15 +8,26 @@ from urllib.parse import urlparse
 
 import falkordb
 
+# Try to import API config modules (may not be available in standalone library)
+try:
+    from api.config import Config, configure_litellm_logging, EmbeddingsModel
+except ImportError:
+    Config = None
+    configure_litellm_logging = None
+    EmbeddingsModel = None
 
-class BaseQueryWeaverClient:
+# Import core modules
+from .core.text2sql import ChatRequest
+
+
+class BaseQueryWeaverClient:  # pylint: disable=too-few-public-methods
     """
     Base class for QueryWeaver clients containing common initialization and validation logic.
-    
+
     This class should not be instantiated directly. Use QueryWeaverClient or AsyncQueryWeaverClient.
     """
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         falkordb_url: str,
         openai_api_key: Optional[str] = None,
@@ -40,13 +51,13 @@ class BaseQueryWeaverClient:
         """
         # Configure API keys
         self._configure_api_keys(openai_api_key, azure_api_key)
-        
+
         # Configure models if provided
         self._configure_models(completion_model, embedding_model)
-        
+
         # Configure FalkorDB connection
         self._configure_falkordb(falkordb_url)
-        
+
         # Initialize client state
         self.falkordb_url = falkordb_url
         self._user_id = "library_user"  # Default user ID for library usage
@@ -63,21 +74,25 @@ class BaseQueryWeaverClient:
 
     def _configure_models(self, completion_model: Optional[str], embedding_model: Optional[str]):
         """Configure model overrides if provided."""
-        # Import config and configure logging
-        from api.config import Config, configure_litellm_logging
-        configure_litellm_logging()
+        # Configure logging if available
+        if configure_litellm_logging:
+            configure_litellm_logging()
 
-        # Override model configurations if provided
-        if completion_model:
+        # Override model configurations if provided and Config is available
+        if Config and completion_model:
             # Modify the config directly since it's a class-level attribute
             if hasattr(Config, 'COMPLETION_MODEL'):
-                object.__setattr__(Config, 'COMPLETION_MODEL', completion_model)
-        if embedding_model:
+                object.__setattr__(
+                    Config, 'COMPLETION_MODEL', completion_model
+                )
+        if Config and embedding_model:
             if hasattr(Config, 'EMBEDDING_MODEL_NAME'):
-                object.__setattr__(Config, 'EMBEDDING_MODEL_NAME', embedding_model)
-            from api.config import EmbeddingsModel
-            if hasattr(Config, 'EMBEDDING_MODEL'):
-                object.__setattr__(Config, 'EMBEDDING_MODEL', EmbeddingsModel(model_name=embedding_model))
+                object.__setattr__(
+                    Config, 'EMBEDDING_MODEL_NAME', embedding_model
+                )
+            if EmbeddingsModel and hasattr(Config, 'EMBEDDING_MODEL'):
+                model = EmbeddingsModel(model_name=embedding_model)
+                object.__setattr__(Config, 'EMBEDDING_MODEL', model)
 
     def _configure_falkordb(self, falkordb_url: str):
         """Configure and test FalkorDB connection."""
@@ -104,7 +119,9 @@ class BaseQueryWeaverClient:
                 host=parsed_url.hostname or "localhost",
                 port=parsed_url.port or 6379,
                 password=parsed_url.password,
-                db=int(parsed_url.path.lstrip("/")) if parsed_url.path and parsed_url.path != "/" else 0
+                db=(int(parsed_url.path.lstrip("/"))
+                    if parsed_url.path and parsed_url.path != "/"
+                    else 0)
             )
             # Test the connection
             self._test_connection.ping()
@@ -132,10 +149,14 @@ class BaseQueryWeaverClient:
         if database_name not in self._loaded_databases:
             raise ValueError(f"Database '{database_name}' not loaded. Call load_database() first.")
 
-    def _prepare_chat_data(self, query: str, instructions: Optional[str], chat_history: Optional[List[str]]):
+    def _prepare_chat_data(
+        self,
+        query: str,
+        instructions: Optional[str],
+        chat_history: Optional[List[str]]
+    ):
         """Prepare chat data for API calls."""
-        from .core.text2sql import ChatRequest
-        
+
         # Prepare chat data
         chat_list = chat_history.copy() if chat_history else []
         chat_list.append(query.strip())

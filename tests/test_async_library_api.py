@@ -16,12 +16,11 @@ from queryweaver import AsyncQueryWeaverClient, create_async_client
 @pytest.fixture
 def mock_falkordb():
     """Fixture to mock FalkorDB connection."""
-    with patch('falkordb.FalkorDB') as mock_db:
-        mock_db.return_value.ping.return_value = True
-        yield mock_db.return_value
-    with patch('queryweaver.base.falkordb.FalkorDB') as mock_db:
-        mock_db.return_value.ping.return_value = True
-        yield mock_db
+    with patch('falkordb.FalkorDB') as mock_db1:
+        mock_db1.return_value.ping.return_value = True
+        with patch('queryweaver.base.falkordb.FalkorDB') as mock_db2:
+            mock_db2.return_value.ping.return_value = True
+            yield mock_db1.return_value
 
 
 @pytest.fixture
