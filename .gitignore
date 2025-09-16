@@ -21,3 +21,13 @@ node_modules/
 .jinja_cache/
 demo_tokens.py
 src/queryweaver.egg-info/
+
+# Security - tokens and keys should never be committed
+.mcpregistry_github_token
+.mcpregistry_registry_token
+key.pem
+
+# Build artifacts
+*.egg-info/
+build/
+dist/
