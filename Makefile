@@ -61,7 +61,7 @@ clean: ## Clean up test artifacts
 	find . -name "*.pyo" -delete
 
 run-dev: build-dev ## Run development server
-	pipenv run uvicorn api.index:app --host $${HOST:-127.0.0.1} --port $${PORT:-5000} --reload
+	pipenv run python -m uvicorn api.index:app --host $${HOST:-127.0.0.1} --port $${PORT:-5000} --reload
 
 run-prod: build-prod ## Run production server
 	pipenv run uvicorn api.index:app --host $${HOST:-0.0.0.0} --port $${PORT:-5000}
