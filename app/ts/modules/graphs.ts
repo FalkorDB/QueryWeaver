@@ -83,7 +83,7 @@ export function loadGraphs() {
         data.forEach((graph) => {
           // Check if this graph is a demo database
           const generalPrefix = (window as any).generalPrefix;
-          const isDemo = generalPrefix && graph.startsWith(generalPrefix);
+          const isDemo = !!(generalPrefix && graph.startsWith(generalPrefix));
           
           addGraphOption(
             graph,
