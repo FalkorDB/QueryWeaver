@@ -3,8 +3,7 @@ Base class for QueryWeaver clients containing shared functionality.
 """
 
 import os
-import logging
-from typing import Optional, Set, Dict, Any, List
+from typing import Optional, Set, List
 from urllib.parse import urlparse
 
 import falkordb

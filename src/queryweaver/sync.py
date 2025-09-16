@@ -276,10 +276,10 @@ class QueryWeaverClient(BaseQueryWeaverClient):
                         
                         if data.get("type") == "sql_query":
                             result["sql_query"] = data.get("data", "").strip()
+                            result["confidence"] = data.get("conf", 0)
                             # Extract analysis data from sql_query message
                             result["analysis"] = {
                                 "explanation": data.get("exp", ""),
-                                "assumptions": data.get("assumptions", ""),
                                 "ambiguities": data.get("amb", ""),
                                 "missing_information": data.get("miss", "")
                             }

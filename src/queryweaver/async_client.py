@@ -187,10 +187,10 @@ class AsyncQueryWeaverClient(BaseQueryWeaverClient):
         try:
             sql_query = None
             
-            # Get the generator from query_database 
-            generator = await query_database(self._user_id, database_name, chat_data)
+            # Get the async generator from query_database 
+            async_generator = await query_database(self._user_id, database_name, chat_data)
             
-            async for chunk in generator:
+            async for chunk in async_generator:
                 if isinstance(chunk, str):
                     try:
                         data = json.loads(chunk)
@@ -260,21 +260,21 @@ class AsyncQueryWeaverClient(BaseQueryWeaverClient):
                 "analysis": None
             }
             
-            # Get the generator from query_database
-            generator = await query_database(self._user_id, database_name, chat_data)
+            # Get the async generator from query_database
+            async_generator = await query_database(self._user_id, database_name, chat_data)
             
             # Process the streaming response from query_database
-            async for chunk in generator:
+            async for chunk in async_generator:
                 if isinstance(chunk, str):
                     try:
                         data = json.loads(chunk)
                         
                         if data.get("type") == "sql_query":
                             result["sql_query"] = data.get("data", "").strip()
+                            result["confidence"] = data.get("conf", 0)
                             # Extract analysis data from sql_query message
                             result["analysis"] = {
                                 "explanation": data.get("exp", ""),
-                                "assumptions": data.get("assumptions", ""),
                                 "ambiguities": data.get("amb", ""),
                                 "missing_information": data.get("miss", "")
                             }
