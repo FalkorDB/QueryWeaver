@@ -41,10 +41,18 @@ def fastapi_app():
     test_port = 5001
 
     # Start the FastAPI app using pipenv, with output visible for debugging
+    # Ensure the project's `src/` directory is on PYTHONPATH for the subprocess
+    # so imports like `queryweaver` (src/queryweaver) resolve when uvicorn imports
+    # the app.
+    env = os.environ.copy()
+    project_src = os.path.join(project_root, "src")
+    existing_pp = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{project_src}:{existing_pp}" if existing_pp else project_src
+
     process = subprocess.Popen([  # pylint: disable=consider-using-with
         "pipenv", "run", "uvicorn", "api.index:app",
         "--host", "localhost", "--port", str(test_port)
-    ], cwd=project_root)
+    ], cwd=project_root, env=env)
 
     # Wait for the app to start
     max_retries = 30
