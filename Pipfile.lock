@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "f2d8ca80d344e965968d86e8656ed9585766076fe4877794d1edd6ad35c3fa5f"
+            "sha256": "478a1ae3926e9181cf50b8e79e048bf2b7a805154b7ad376b7f0a77e2eb38c64"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -652,11 +652,11 @@
         },
         "huggingface-hub": {
             "hashes": [
-                "sha256:9b365d781739c93ff90c359844221beef048403f1bc1f1c123c191257c3c890a",
-                "sha256:a4228daa6fb001be3f4f4bdaf9a0db00e1739235702848df00885c9b5742c85c"
+                "sha256:f676c6db41bc3fbd4020f520c842a0548f4c9a3f698dbfa6514bd8e41c3ab52a",
+                "sha256:fea377adc6e9b6c239c1450e41a1409cbf2c6364d289c04c31d7dbaa222842e3"
             ],
             "markers": "python_full_version >= '3.8.0'",
-            "version": "==0.34.4"
+            "version": "==0.34.5"
         },
         "idna": {
             "hashes": [
@@ -879,11 +879,11 @@
         },
         "mcp": {
             "hashes": [
-                "sha256:165306a8fd7991dc80334edd2de07798175a56461043b7ae907b279794a834c5",
-                "sha256:c314e7c8bd477a23ba3ef472ee5a32880316c42d03e06dcfa31a1cc7a73b65df"
+                "sha256:2e7d98b195e08b2abc1dc6191f6f3dc0059604ac13ee6a40f88676274787fac4",
+                "sha256:b2d27feba27b4c53d41b58aa7f4d090ae0cb740cbc4e339af10f8cbe54c4e19d"
             ],
             "markers": "python_version >= '3.10'",
-            "version": "==1.13.1"
+            "version": "==1.14.0"
         },
         "mdurl": {
             "hashes": [
@@ -1099,11 +1099,11 @@
         },
         "openai": {
             "hashes": [
-                "sha256:a11fe8d4318e98e94309308dd3a25108dec4dfc1b606f9b1c5706e8d88bdd3cb",
-                "sha256:d159d4f3ee3d9c717b248c5d69fe93d7773a80563c8b1ca8e9cad789d3cf0260"
+                "sha256:4ca54a847235ac04c6320da70fdc06b62d71439de9ec0aa40d5690c3064d4025",
+                "sha256:69bb8032b05c5f00f7660e422f70f9aabc94793b9a30c5f899360ed21e46314f"
             ],
             "markers": "python_version >= '3.8'",
-            "version": "==1.107.2"
+            "version": "==1.107.3"
         },
         "packaging": {
             "hashes": [
