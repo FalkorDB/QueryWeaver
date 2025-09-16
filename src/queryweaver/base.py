@@ -82,17 +82,13 @@ class BaseQueryWeaverClient:  # pylint: disable=too-few-public-methods
         if Config and completion_model:
             # Modify the config directly since it's a class-level attribute
             if hasattr(Config, 'COMPLETION_MODEL'):
-                object.__setattr__(
-                    Config, 'COMPLETION_MODEL', completion_model
-                )
+                setattr(Config, 'COMPLETION_MODEL', completion_model)
         if Config and embedding_model:
             if hasattr(Config, 'EMBEDDING_MODEL_NAME'):
-                object.__setattr__(
-                    Config, 'EMBEDDING_MODEL_NAME', embedding_model
-                )
+                setattr(Config, 'EMBEDDING_MODEL_NAME', embedding_model)
             if EmbeddingsModel and hasattr(Config, 'EMBEDDING_MODEL'):
                 model = EmbeddingsModel(model_name=embedding_model)
-                object.__setattr__(Config, 'EMBEDDING_MODEL', model)
+                setattr(Config, 'EMBEDDING_MODEL', model)
 
     def _configure_falkordb(self, falkordb_url: str):
         """Configure and test FalkorDB connection."""
@@ -115,14 +111,36 @@ class BaseQueryWeaverClient:  # pylint: disable=too-few-public-methods
         # Test FalkorDB connection
         try:
             # Initialize the database connection using the existing extension
-            self._test_connection = falkordb.FalkorDB(
-                host=parsed_url.hostname or "localhost",
-                port=parsed_url.port or 6379,
-                password=parsed_url.password,
-                db=(int(parsed_url.path.lstrip("/"))
-                    if parsed_url.path and parsed_url.path != "/"
-                    else 0)
-            )
+            # FalkorDB constructor may accept different kwarg names across
+            # versions; try common variants and fall back to positional args.
+            db_index = (int(parsed_url.path.lstrip("/"))
+                        if parsed_url.path and parsed_url.path != "/"
+                        else 0)
+
+            try:
+                self._test_connection = falkordb.FalkorDB(
+                    host=parsed_url.hostname or "localhost",
+                    port=parsed_url.port or 6379,
+                    password=parsed_url.password,
+                    db=db_index
+                )
+            except TypeError:
+                try:
+                    # Some versions expect `database` as the kwarg
+                    self._test_connection = falkordb.FalkorDB(
+                        host=parsed_url.hostname or "localhost",
+                        port=parsed_url.port or 6379,
+                        password=parsed_url.password,
+                        database=db_index
+                    )
+                except TypeError:
+                    # Fall back to positional args (host, port, password, db)
+                    self._test_connection = falkordb.FalkorDB(
+                        parsed_url.hostname or "localhost",
+                        parsed_url.port or 6379,
+                        parsed_url.password,
+                        db_index
+                    )
             # Test the connection
             self._test_connection.ping()
             # Close the test connection to avoid resource leaks

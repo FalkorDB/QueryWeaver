@@ -87,8 +87,8 @@ def get_database_type_and_loader(db_url: str):
     if db_url_lower.startswith('mysql://'):
         return 'mysql', MySQLLoader
 
-    # Default to PostgresLoader for backward compatibility
-    return 'postgresql', PostgresLoader
+    # Unknown/unsupported URL scheme
+    return None, None
 
 def sanitize_query(query: str) -> str:
     """Sanitize the query to prevent injection attacks."""

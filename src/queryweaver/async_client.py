@@ -126,7 +126,8 @@ class AsyncQueryWeaverClient(BaseQueryWeaverClient):
             raise
         except Exception as e:
             logging.exception("Error loading database '%s'", database_name)
-            raise RuntimeError(f"Failed to load database '{database_name}'") from e
+            # Preserve original exception but raise a consistent message
+            raise RuntimeError(f"Failed to load database schema for '{database_name}'") from e
 
     async def _load_database_async(
         self,
