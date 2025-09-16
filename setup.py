@@ -48,7 +48,8 @@ setup(
     url="https://github.com/FalkorDB/QueryWeaver",
     package_dir={"": "src"},
     packages=find_packages(where="src", include=["queryweaver", "queryweaver.*"]) + 
-             find_packages(include=["api", "api.*"]),
+             find_packages(include=["api.core", "api.core.*"]),
+    py_modules=["api.config"],
     python_requires=">=3.11",
     install_requires=read_requirements(),
     extras_require={

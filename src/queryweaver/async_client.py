@@ -26,22 +26,19 @@ Example usage:
     asyncio.run(main())
 """
 
-import os
-import logging
 import json
+import logging
 import sys
 from typing import List, Dict, Any, Optional
-from urllib.parse import urlparse
 from pathlib import Path
 
 # Add the project root to Python path for api imports
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-# Now import from api package
-from api.config import Config, configure_litellm_logging
+# Import base class and api modules
+from .base import BaseQueryWeaverClient
 from api.core.text2sql import (
-    ChatRequest, 
     query_database, 
     get_database_type_and_loader,
     GraphNotFoundError,
@@ -49,15 +46,11 @@ from api.core.text2sql import (
     InvalidArgumentError
 )
 
-
-# Configure logging to suppress sensitive data
-configure_litellm_logging()
-
 # Suppress FalkorDB logs if too verbose
 logging.getLogger("falkordb").setLevel(logging.WARNING)
 
 
-class AsyncQueryWeaverClient:
+class AsyncQueryWeaverClient(BaseQueryWeaverClient):
     """
     Async version of QueryWeaver client for high-performance applications.
     
@@ -87,65 +80,17 @@ class AsyncQueryWeaverClient:
             ValueError: If neither OpenAI nor Azure API key is provided
             ConnectionError: If cannot connect to FalkorDB
         """
-        # Set up API keys in environment
-        if openai_api_key:
-            os.environ["OPENAI_API_KEY"] = openai_api_key
-        elif azure_api_key:
-            os.environ["AZURE_API_KEY"] = azure_api_key
-        elif not os.getenv("OPENAI_API_KEY") and not os.getenv("AZURE_API_KEY"):
-            raise ValueError("Either openai_api_key or azure_api_key must be provided")
-        
-        # Override model configurations if provided
-        if completion_model:
-            # Modify the config directly since it's a class-level attribute
-            if hasattr(Config, 'COMPLETION_MODEL'):
-                object.__setattr__(Config, 'COMPLETION_MODEL', completion_model)
-        if embedding_model:
-            if hasattr(Config, 'EMBEDDING_MODEL_NAME'):
-                object.__setattr__(Config, 'EMBEDDING_MODEL_NAME', embedding_model)
-            from api.config import EmbeddingsModel
-            if hasattr(Config, 'EMBEDDING_MODEL'):
-                object.__setattr__(Config, 'EMBEDDING_MODEL', EmbeddingsModel(model_name=embedding_model))
-        
-        # Parse FalkorDB URL and configure connection
-        parsed_url = urlparse(falkordb_url)
-        if parsed_url.scheme not in ['redis', 'rediss']:
-            raise ValueError("FalkorDB URL must use redis:// or rediss:// scheme")
-        
-        # Set environment variables for FalkorDB connection
-        os.environ["FALKORDB_HOST"] = parsed_url.hostname or "localhost"
-        os.environ["FALKORDB_PORT"] = str(parsed_url.port or 6379)
-        if parsed_url.password:
-            os.environ["FALKORDB_PASSWORD"] = parsed_url.password
-        if parsed_url.path and parsed_url.path != "/":
-            # Extract database number from path (e.g., "/0" -> "0")
-            db_num = parsed_url.path.lstrip("/")
-            if db_num.isdigit():
-                os.environ["FALKORDB_DB"] = db_num
-        
-        # Test FalkorDB connection
-        try:
-            # Initialize the database connection using the existing extension
-            import falkordb
-            self._test_connection = falkordb.FalkorDB(
-                host=parsed_url.hostname or "localhost",
-                port=parsed_url.port or 6379,
-                password=parsed_url.password,
-                db=int(parsed_url.path.lstrip("/")) if parsed_url.path and parsed_url.path != "/" else 0
-            )
-            # Test the connection
-            self._test_connection.ping()
-            
-        except Exception as e:
-            raise ConnectionError(f"Cannot connect to FalkorDB at {falkordb_url}: {e}") from e
-        
-        # Store connection info
-        self.falkordb_url = falkordb_url
-        self._user_id = "library_user"  # Default user ID for library usage
-        self._loaded_databases = set()
+        # Initialize using base class
+        super().__init__(
+            falkordb_url=falkordb_url,
+            openai_api_key=openai_api_key,
+            azure_api_key=azure_api_key,
+            completion_model=completion_model,
+            embedding_model=embedding_model
+        )
         
         logging.info("Async QueryWeaver client initialized successfully")
-    
+
     async def load_database(self, database_name: str, database_url: str) -> bool:
         """
         Load a database schema into FalkorDB for querying (async version).
@@ -163,14 +108,9 @@ class AsyncQueryWeaverClient:
             ConnectionError: If cannot connect to source database
             RuntimeError: If schema loading fails
         """
-        if not database_name or not database_name.strip():
-            raise ValueError("Database name cannot be empty")
-        
-        if not database_url or not database_url.strip():
-            raise ValueError("Database URL cannot be empty")
-        
-        database_name = database_name.strip()
-        
+        # Use base class validation
+        database_name = self._validate_database_params(database_name, database_url)
+
         # Validate database URL format
         db_type, loader_class = get_database_type_and_loader(database_url)
         if not loader_class:
@@ -178,9 +118,9 @@ class AsyncQueryWeaverClient:
                 "Unsupported database URL format. "
                 "Supported formats: postgresql://, postgres://, mysql://"
             )
-        
+
         logging.info("Loading database '%s' from %s", database_name, db_type)
-        
+
         try:
             success = await self._load_database_async(database_name, database_url, loader_class)
             
@@ -232,20 +172,11 @@ class AsyncQueryWeaverClient:
             ValueError: If database not loaded or query is empty
             RuntimeError: If SQL generation fails
         """
-        if not query or not query.strip():
-            raise ValueError("Query cannot be empty")
+        # Use base class validation
+        self._validate_query_params(database_name, query)
         
-        if database_name not in self._loaded_databases:
-            raise ValueError(f"Database '{database_name}' not loaded. Call load_database() first.")
-        
-        # Prepare chat data
-        chat_list = chat_history.copy() if chat_history else []
-        chat_list.append(query.strip())
-        
-        chat_data = ChatRequest(
-            chat=chat_list,
-            instructions=instructions
-        )
+        # Use base class helper to prepare chat data
+        chat_data = self._prepare_chat_data(query, instructions, chat_history)
         
         try:
             result = await self._generate_sql_async(database_name, chat_data)
@@ -255,7 +186,7 @@ class AsyncQueryWeaverClient:
             logging.error("Error generating SQL: %s", str(e))
             raise RuntimeError(f"Failed to generate SQL: {e}") from e
     
-    async def _generate_sql_async(self, database_name: str, chat_data: ChatRequest) -> str:
+    async def _generate_sql_async(self, database_name: str, chat_data) -> str:
         """Async helper for SQL generation that processes the streaming response."""
         try:
             sql_query = None
@@ -308,20 +239,11 @@ class AsyncQueryWeaverClient:
             ValueError: If database not loaded or query is empty
             RuntimeError: If processing fails
         """
-        if not query or not query.strip():
-            raise ValueError("Query cannot be empty")
+        # Use base class validation
+        self._validate_query_params(database_name, query)
         
-        if database_name not in self._loaded_databases:
-            raise ValueError(f"Database '{database_name}' not loaded. Call load_database() first.")
-        
-        # Prepare chat data
-        chat_list = chat_history.copy() if chat_history else []
-        chat_list.append(query.strip())
-        
-        chat_data = ChatRequest(
-            chat=chat_list,
-            instructions=instructions
-        )
+        # Use base class helper to prepare chat data
+        chat_data = self._prepare_chat_data(query, instructions, chat_history)
         
         try:
             result = await self._query_async(database_name, chat_data, execute_sql)
@@ -331,7 +253,7 @@ class AsyncQueryWeaverClient:
             logging.error("Error processing query: %s", str(e))
             raise RuntimeError(f"Failed to process query: {e}") from e
     
-    async def _query_async(self, database_name: str, chat_data: ChatRequest, execute_sql: bool) -> Dict[str, Any]:
+    async def _query_async(self, database_name: str, chat_data, execute_sql: bool) -> Dict[str, Any]:
         """Async helper for full query processing."""
         try:
             result: Dict[str, Any] = {
@@ -380,15 +302,6 @@ class AsyncQueryWeaverClient:
             raise ValueError(str(e)) from e
         except InternalError as e:
             raise RuntimeError(str(e)) from e
-    
-    def list_loaded_databases(self) -> List[str]:
-        """
-        Get list of currently loaded databases.
-        
-        Returns:
-            List[str]: Names of loaded databases
-        """
-        return list(self._loaded_databases)
     
     async def get_database_schema(self, database_name: str) -> Dict[str, Any]:
         """
