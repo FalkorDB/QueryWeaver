@@ -4,19 +4,32 @@ Unit tests for QueryWeaver async library API.
 
 import pytest
 import asyncio
-import json
 from unittest.mock import patch, AsyncMock
 from queryweaver import AsyncQueryWeaverClient, create_async_client
+
+
+@pytest.fixture
+def mock_falkordb():
+    """Fixture to mock FalkorDB connection."""
+    with patch('falkordb.FalkorDB') as mock_db:
+        mock_db.return_value.ping.return_value = True
+        yield mock_db
+
+
+@pytest.fixture
+def async_client(mock_falkordb):
+    """Fixture to create an AsyncQueryWeaverClient for testing."""
+    return AsyncQueryWeaverClient(
+        falkordb_url="redis://localhost:6379/0",
+        openai_api_key="test-key"
+    )
 
 
 class TestAsyncQueryWeaverClientInit:
     """Test AsyncQueryWeaverClient initialization."""
 
-    @patch('falkordb.FalkorDB')
     def test_init_with_openai_key(self, mock_falkordb):
         """Test async client initialization with OpenAI API key."""
-        mock_falkordb.return_value.ping.return_value = True
-        
         client = AsyncQueryWeaverClient(
             falkordb_url="redis://localhost:6379/0",
             openai_api_key="test-key"
@@ -25,41 +38,223 @@ class TestAsyncQueryWeaverClientInit:
         assert client._user_id == "library_user"
         assert len(client._loaded_databases) == 0
 
-    @patch('falkordb.FalkorDB')
     def test_init_with_azure_key(self, mock_falkordb):
         """Test async client initialization with Azure API key."""
-        mock_falkordb.return_value.ping.return_value = True
-        
         client = AsyncQueryWeaverClient(
             falkordb_url="redis://localhost:6379/0",
             azure_api_key="test-azure-key"
         )
         assert client.falkordb_url == "redis://localhost:6379/0"
 
-    def test_init_no_api_key_raises_error(self):
+    def test_init_without_api_key_raises_error(self, mock_falkordb):
         """Test that missing API key raises ValueError."""
-        with patch.dict('os.environ', {}, clear=True):
-            with pytest.raises(ValueError, match="Either openai_api_key or azure_api_key must be provided"):
-                AsyncQueryWeaverClient(falkordb_url="redis://localhost:6379/0")
+        # Clear any existing API keys
+        import os
+        os.environ.pop("OPENAI_API_KEY", None)
+        os.environ.pop("AZURE_API_KEY", None)
+        
+        with pytest.raises(ValueError, match="Either openai_api_key or azure_api_key must be provided"):
+            AsyncQueryWeaverClient(falkordb_url="redis://localhost:6379/0")
 
-    def test_init_invalid_falkordb_url_raises_error(self):
+    def test_init_with_invalid_falkordb_url_raises_error(self, mock_falkordb):
         """Test that invalid FalkorDB URL raises ValueError."""
         with pytest.raises(ValueError, match="FalkorDB URL must use redis:// or rediss:// scheme"):
             AsyncQueryWeaverClient(
-                falkordb_url="http://localhost:6379",
+                falkordb_url="invalid://localhost:6379",
+                openai_api_key="test-key"
+            )
+
+    @patch('falkordb.FalkorDB')
+    def test_init_with_falkordb_connection_error(self, mock_falkordb):
+        """Test that FalkorDB connection error raises ConnectionError."""
+        mock_falkordb.return_value.ping.side_effect = Exception("Connection failed")
+        
+        with pytest.raises(ConnectionError, match="Cannot connect to FalkorDB"):
+            AsyncQueryWeaverClient(
+                falkordb_url="redis://localhost:6379/0",
                 openai_api_key="test-key"
             )
 
 
-class TestAsyncContextManager:
-    """Test async context manager functionality."""
+class TestAsyncLoadDatabase:
+    """Test async database loading functionality."""
 
-    @patch('falkordb.FalkorDB')
+    @pytest.mark.asyncio
+    async def test_load_database_empty_name_raises_error(self, async_client):
+        """Test that empty database name raises ValueError."""
+        with pytest.raises(ValueError, match="Database name cannot be empty"):
+            await async_client.load_database("", "postgresql://user:pass@host/db")
+
+    @pytest.mark.asyncio
+    async def test_load_database_empty_url_raises_error(self, async_client):
+        """Test that empty database URL raises ValueError."""
+        with pytest.raises(ValueError, match="Database URL cannot be empty"):
+            await async_client.load_database("test", "")
+
+    @pytest.mark.asyncio
+    async def test_load_database_invalid_url_raises_error(self, async_client):
+        """Test that invalid database URL raises ValueError."""
+        with pytest.raises(ValueError, match="Unsupported database URL format"):
+            await async_client.load_database("test", "invalid://url")
+
+    @pytest.mark.asyncio
+    @patch('queryweaver.AsyncQueryWeaverClient._load_database_async')
+    async def test_load_database_success(self, mock_load_async, async_client):
+        """Test successful async database loading."""
+        mock_load_async.return_value = True
+        
+        result = await async_client.load_database("test", "postgresql://user:pass@host/db")
+        assert result is True
+        assert "test" in async_client._loaded_databases
+
+    @pytest.mark.asyncio
+    @patch('queryweaver.AsyncQueryWeaverClient._load_database_async')
+    async def test_load_database_failure(self, mock_load_async, async_client):
+        """Test async database loading failure."""
+        mock_load_async.return_value = False
+        
+        with pytest.raises(RuntimeError, match="Failed to load database schema"):
+            await async_client.load_database("test", "postgresql://user:pass@host/db")
+
+
+class TestAsyncTextToSQL:
+    """Test async SQL generation functionality."""
+
+    @pytest.mark.asyncio
+    async def test_text_to_sql_empty_query_raises_error(self, async_client):
+        """Test that empty query raises ValueError."""
+        with pytest.raises(ValueError, match="Query cannot be empty"):
+            await async_client.text_to_sql("test", "")
+
+    @pytest.mark.asyncio
+    async def test_text_to_sql_database_not_loaded_raises_error(self, async_client):
+        """Test that unloaded database raises ValueError."""
+        with pytest.raises(ValueError, match="Database 'test' not loaded"):
+            await async_client.text_to_sql("test", "Show me users")
+
+    @pytest.mark.asyncio
+    @patch('queryweaver.AsyncQueryWeaverClient._generate_sql_async')
+    async def test_text_to_sql_success(self, mock_generate_async, async_client):
+        """Test successful async SQL generation."""
+        # Add database to loaded set
+        async_client._loaded_databases.add("test")
+        mock_generate_async.return_value = "SELECT * FROM users;"
+        
+        result = await async_client.text_to_sql("test", "Show me all users")
+        assert result == "SELECT * FROM users;"
+
+    @pytest.mark.asyncio
+    @patch('queryweaver.AsyncQueryWeaverClient._generate_sql_async')
+    async def test_text_to_sql_with_instructions(self, mock_generate_async, async_client):
+        """Test async SQL generation with instructions."""
+        async_client._loaded_databases.add("test")
+        mock_generate_async.return_value = "SELECT * FROM users LIMIT 10;"
+        
+        result = await async_client.text_to_sql(
+            "test", 
+            "Show me users", 
+            instructions="Limit to 10 results"
+        )
+        assert result == "SELECT * FROM users LIMIT 10;"
+
+
+class TestAsyncQuery:
+    """Test async full query functionality."""
+
+    @pytest.mark.asyncio
+    async def test_query_empty_query_raises_error(self, async_client):
+        """Test that empty query raises ValueError."""
+        with pytest.raises(ValueError, match="Query cannot be empty"):
+            await async_client.query("test", "")
+
+    @pytest.mark.asyncio
+    async def test_query_database_not_loaded_raises_error(self, async_client):
+        """Test that unloaded database raises ValueError."""
+        with pytest.raises(ValueError, match="Database 'test' not loaded"):
+            await async_client.query("test", "Show me users")
+
+    @pytest.mark.asyncio
+    @patch('queryweaver.AsyncQueryWeaverClient._query_async')
+    async def test_query_success(self, mock_query_async, async_client):
+        """Test successful async query execution."""
+        async_client._loaded_databases.add("test")
+        
+        expected_result = {
+            "sql_query": "SELECT * FROM users;",
+            "results": [{"id": 1, "name": "John"}],
+            "error": None,
+            "analysis": None
+        }
+        mock_query_async.return_value = expected_result
+        
+        result = await async_client.query("test", "Show me all users")
+        assert result["sql_query"] == "SELECT * FROM users;"
+        assert len(result["results"]) == 1
+
+    @pytest.mark.asyncio
+    @patch('queryweaver.AsyncQueryWeaverClient._query_async')
+    async def test_query_without_execution(self, mock_query_async, async_client):
+        """Test async query without SQL execution."""
+        async_client._loaded_databases.add("test")
+        
+        expected_result = {
+            "sql_query": "SELECT * FROM users;",
+            "results": None,
+            "error": None,
+            "analysis": None
+        }
+        mock_query_async.return_value = expected_result
+        
+        result = await async_client.query("test", "Show me all users", execute_sql=False)
+        assert result["sql_query"] == "SELECT * FROM users;"
+        assert result["results"] is None
+
+
+class TestAsyncUtilityMethods:
+    """Test async utility methods."""
+
+    def test_list_loaded_databases_empty(self, async_client):
+        """Test listing loaded databases when none are loaded."""
+        result = async_client.list_loaded_databases()
+        assert result == []
+
+    def test_list_loaded_databases_with_data(self, async_client):
+        """Test listing loaded databases with data."""
+        async_client._loaded_databases.add("db1")
+        async_client._loaded_databases.add("db2")
+        
+        result = async_client.list_loaded_databases()
+        assert len(result) == 2
+        assert "db1" in result
+        assert "db2" in result
+
+    @pytest.mark.asyncio
+    async def test_get_database_schema_not_loaded_raises_error(self, async_client):
+        """Test that schema retrieval for unloaded database raises ValueError."""
+        with pytest.raises(ValueError, match="Database 'test' not loaded"):
+            await async_client.get_database_schema("test")
+
+    @pytest.mark.asyncio
+    @patch('queryweaver.AsyncQueryWeaverClient._get_schema_async')
+    async def test_get_database_schema_success(self, mock_schema_async, async_client):
+        """Test successful async schema retrieval."""
+        async_client._loaded_databases.add("test")
+        
+        expected_schema = {"tables": ["users", "orders"]}
+        mock_schema_async.return_value = expected_schema
+        
+        result = await async_client.get_database_schema("test")
+        assert result == expected_schema
+
+    @pytest.mark.asyncio
+    async def test_close_method(self, async_client):
+        """Test async client close method."""
+        # Should not raise any errors
+        await async_client.close()
+
     @pytest.mark.asyncio
     async def test_context_manager(self, mock_falkordb):
-        """Test async context manager functionality."""
-        mock_falkordb.return_value.ping.return_value = True
-        
+        """Test async client as context manager."""
         async with AsyncQueryWeaverClient(
             falkordb_url="redis://localhost:6379/0",
             openai_api_key="test-key"
@@ -67,342 +262,24 @@ class TestAsyncContextManager:
             assert client is not None
             assert isinstance(client, AsyncQueryWeaverClient)
 
-    @patch('falkordb.FalkorDB')
-    @pytest.mark.asyncio
-    async def test_manual_close(self, mock_falkordb):
-        """Test manual client close."""
-        mock_falkordb.return_value.ping.return_value = True
-        
-        client = AsyncQueryWeaverClient(
-            falkordb_url="redis://localhost:6379/0",
-            openai_api_key="test-key"
-        )
-        
-        # Should not raise an exception
-        await client.close()
 
+class TestCreateAsyncClient:
+    """Test create_async_client convenience function."""
 
-class TestAsyncLoadDatabase:
-    """Test async database loading functionality."""
-
-    @patch('falkordb.FalkorDB')
-    def setUp(self, mock_falkordb):
-        """Set up test client."""
-        mock_falkordb.return_value.ping.return_value = True
-        self.client = AsyncQueryWeaverClient(
-            falkordb_url="redis://localhost:6379/0",
-            openai_api_key="test-key"
-        )
-
-    @pytest.mark.asyncio
-    async def test_load_database_empty_name_raises_error(self):
-        """Test that empty database name raises ValueError."""
-        self.setUp()
-        with pytest.raises(ValueError, match="Database name cannot be empty"):
-            await self.client.load_database("", "postgresql://user:pass@host/db")
-
-    @pytest.mark.asyncio
-    async def test_load_database_empty_url_raises_error(self):
-        """Test that empty database URL raises ValueError."""
-        self.setUp()
-        with pytest.raises(ValueError, match="Database URL cannot be empty"):
-            await self.client.load_database("test", "")
-
-    @pytest.mark.asyncio
-    async def test_load_database_invalid_url_raises_error(self):
-        """Test that invalid database URL raises ValueError."""
-        self.setUp()
-        with pytest.raises(ValueError, match="Unsupported database URL format"):
-            await self.client.load_database("test", "invalid://url")
-
-    @pytest.mark.asyncio
-    async def test_load_database_success(self):
-        """Test successful async database loading."""
-        self.setUp()
-        
-        # Mock the async loader
-        async def mock_loader(user_id, url):
-            yield True, "Success"
-        
-        with patch('queryweaver.get_database_type_and_loader') as mock_get_loader:
-            mock_loader_class = AsyncMock()
-            mock_loader_class.load = mock_loader
-            mock_get_loader.return_value = ('postgresql', mock_loader_class)
-            
-            result = await self.client.load_database("test", "postgresql://user:pass@host/db")
-            assert result is True
-            assert "test" in self.client._loaded_databases
-
-    @pytest.mark.asyncio
-    async def test_load_database_failure(self):
-        """Test async database loading failure."""
-        self.setUp()
-        
-        # Mock the async loader to fail
-        async def mock_loader(user_id, url):
-            yield False, "Connection failed"
-        
-        with patch('queryweaver.get_database_type_and_loader') as mock_get_loader:
-            mock_loader_class = AsyncMock()
-            mock_loader_class.load = mock_loader
-            mock_get_loader.return_value = ('postgresql', mock_loader_class)
-            
-            with pytest.raises(RuntimeError, match="Failed to load database schema"):
-                await self.client.load_database("test", "postgresql://user:pass@host/db")
-
-
-class TestAsyncTextToSQL:
-    """Test async SQL generation functionality."""
-
-    @patch('falkordb.FalkorDB')
-    def setUp(self, mock_falkordb):
-        """Set up test client with loaded database."""
-        mock_falkordb.return_value.ping.return_value = True
-        self.client = AsyncQueryWeaverClient(
-            falkordb_url="redis://localhost:6379/0",
-            openai_api_key="test-key"
-        )
-        self.client._loaded_databases.add("test_db")
-
-    @pytest.mark.asyncio
-    async def test_text_to_sql_empty_query_raises_error(self):
-        """Test that empty query raises ValueError."""
-        self.setUp()
-        with pytest.raises(ValueError, match="Query cannot be empty"):
-            await self.client.text_to_sql("test_db", "")
-
-    @pytest.mark.asyncio
-    async def test_text_to_sql_database_not_loaded_raises_error(self):
-        """Test that querying unloaded database raises ValueError."""
-        self.setUp()
-        with pytest.raises(ValueError, match="Database 'nonexistent' not loaded"):
-            await self.client.text_to_sql("nonexistent", "show data")
-
-    @pytest.mark.asyncio
-    async def test_text_to_sql_success(self):
-        """Test successful async SQL generation."""
-        self.setUp()
-        
-        # Mock the query_database function
-        async def mock_generator():
-            yield json.dumps({"type": "sql_query", "data": "SELECT * FROM users"})
-        
-        with patch('api.core.text2sql.query_database') as mock_query_db:
-            mock_query_db.return_value = mock_generator()
-            
-            result = await self.client.text_to_sql("test_db", "show all users")
-            assert result == "SELECT * FROM users"
-
-    @pytest.mark.asyncio
-    async def test_text_to_sql_with_history_and_instructions(self):
-        """Test async SQL generation with chat history and instructions."""
-        self.setUp()
-        
-        async def mock_generator():
-            yield json.dumps({"type": "sql_query", "data": "SELECT * FROM users WHERE age > 18"})
-        
-        with patch('api.core.text2sql.query_database') as mock_query_db:
-            mock_query_db.return_value = mock_generator()
-            
-            result = await self.client.text_to_sql(
-                database_name="test_db",
-                query="filter by adult users",
-                instructions="Use age > 18 for adults",
-                chat_history=["show users"]
-            )
-            assert "SELECT" in result
-
-
-class TestAsyncQuery:
-    """Test async full query functionality."""
-
-    @patch('falkordb.FalkorDB')
-    def setUp(self, mock_falkordb):
-        """Set up test client with loaded database."""
-        mock_falkordb.return_value.ping.return_value = True
-        self.client = AsyncQueryWeaverClient(
-            falkordb_url="redis://localhost:6379/0",
-            openai_api_key="test-key"
-        )
-        self.client._loaded_databases.add("test_db")
-
-    @pytest.mark.asyncio
-    async def test_query_success(self):
-        """Test successful async query execution."""
-        self.setUp()
-        
-        # Mock the generator with multiple response types
-        async def mock_generator():
-            yield json.dumps({"type": "sql_query", "data": "SELECT * FROM users"})
-            yield json.dumps({
-                "type": "analysis", 
-                "exp": "Retrieves all users",
-                "amb": "None",
-                "miss": "None"
-            })
-            yield json.dumps({"type": "query_results", "results": [{"id": 1, "name": "John"}]})
-            yield json.dumps({"type": "final_result"})
-        
-        with patch('api.core.text2sql.query_database') as mock_query_db:
-            mock_query_db.return_value = mock_generator()
-            
-            result = await self.client.query("test_db", "show all users")
-            assert result["sql_query"] == "SELECT * FROM users"
-            assert result["analysis"]["explanation"] == "Retrieves all users"
-            assert result["results"] == [{"id": 1, "name": "John"}]
-
-    @pytest.mark.asyncio
-    async def test_query_sql_only(self):
-        """Test async query with execute_sql=False."""
-        self.setUp()
-        
-        async def mock_generator():
-            yield json.dumps({"type": "sql_query", "data": "SELECT COUNT(*) FROM orders"})
-            yield json.dumps({"type": "final_result"})
-        
-        with patch('api.core.text2sql.query_database') as mock_query_db:
-            mock_query_db.return_value = mock_generator()
-            
-            result = await self.client.query("test_db", "count orders", execute_sql=False)
-            assert result["sql_query"] == "SELECT COUNT(*) FROM orders"
-            assert result["results"] is None
-
-
-class TestAsyncUtilityMethods:
-    """Test async utility methods."""
-
-    @patch('falkordb.FalkorDB')
-    def setUp(self, mock_falkordb):
-        """Set up test client."""
-        mock_falkordb.return_value.ping.return_value = True
-        self.client = AsyncQueryWeaverClient(
-            falkordb_url="redis://localhost:6379/0",
-            openai_api_key="test-key"
-        )
-
-    def test_list_loaded_databases_empty(self):
-        """Test listing databases when none are loaded."""
-        self.setUp()
-        result = self.client.list_loaded_databases()
-        assert result == []
-
-    def test_list_loaded_databases_with_data(self):
-        """Test listing databases with loaded data."""
-        self.setUp()
-        self.client._loaded_databases.add("db1")
-        self.client._loaded_databases.add("db2")
-        
-        result = self.client.list_loaded_databases()
-        assert len(result) == 2
-        assert "db1" in result
-        assert "db2" in result
-
-    @pytest.mark.asyncio
-    async def test_get_database_schema_success(self):
-        """Test successful async schema retrieval."""
-        self.setUp()
-        self.client._loaded_databases.add("test_db")
-        
-        mock_schema = {"tables": ["users", "orders"], "columns": {}}
-        
-        with patch('api.core.text2sql.get_schema') as mock_get_schema:
-            mock_get_schema.return_value = mock_schema
-            
-            result = await self.client.get_database_schema("test_db")
-            assert result["tables"] == ["users", "orders"]
-
-    @pytest.mark.asyncio
-    async def test_get_database_schema_not_loaded_raises_error(self):
-        """Test schema retrieval for unloaded database raises ValueError."""
-        self.setUp()
-        with pytest.raises(ValueError, match="Database 'nonexistent' not loaded"):
-            await self.client.get_database_schema("nonexistent")
-
-
-class TestAsyncConvenienceFunction:
-    """Test async convenience functions."""
-
-    @patch('falkordb.FalkorDB')
-    def test_create_async_client_function(self, mock_falkordb):
-        """Test create_async_client convenience function."""
-        mock_falkordb.return_value.ping.return_value = True
-        
+    def test_create_async_client_success(self, mock_falkordb):
+        """Test successful async client creation via convenience function."""
         client = create_async_client(
             falkordb_url="redis://localhost:6379/0",
             openai_api_key="test-key"
         )
-        
         assert isinstance(client, AsyncQueryWeaverClient)
         assert client.falkordb_url == "redis://localhost:6379/0"
 
-
-class TestAsyncConcurrency:
-    """Test async concurrency features."""
-
-    @patch('falkordb.FalkorDB')
-    def setUp(self, mock_falkordb):
-        """Set up test client."""
-        mock_falkordb.return_value.ping.return_value = True
-        self.client = AsyncQueryWeaverClient(
+    def test_create_async_client_with_additional_args(self, mock_falkordb):
+        """Test async client creation with additional arguments."""
+        client = create_async_client(
             falkordb_url="redis://localhost:6379/0",
-            openai_api_key="test-key"
+            openai_api_key="test-key",
+            completion_model="custom-model"
         )
-        self.client._loaded_databases.add("test_db")
-
-    @pytest.mark.asyncio
-    async def test_concurrent_text_to_sql(self):
-        """Test concurrent SQL generation."""
-        self.setUp()
-        
-        # Mock query_database to return different SQL for each call
-        call_count = 0
-        async def mock_generator():
-            nonlocal call_count
-            call_count += 1
-            yield json.dumps({"type": "sql_query", "data": f"SELECT * FROM table{call_count}"})
-        
-        with patch('api.core.text2sql.query_database') as mock_query_db:
-            mock_query_db.return_value = mock_generator()
-            
-            # Process multiple queries concurrently
-            queries = ["query 1", "query 2", "query 3"]
-            tasks = [
-                self.client.text_to_sql("test_db", query) 
-                for query in queries
-            ]
-            
-            results = await asyncio.gather(*tasks)
-            
-            # Should have gotten different results for each query
-            assert len(results) == 3
-            assert all("SELECT" in result for result in results)
-
-    @pytest.mark.asyncio
-    async def test_concurrent_database_loading(self):
-        """Test concurrent database loading."""
-        self.setUp()
-        
-        # Mock successful loading
-        async def mock_loader(user_id, url):
-            yield True, "Success"
-        
-        with patch('queryweaver.get_database_type_and_loader') as mock_get_loader:
-            mock_loader_class = AsyncMock()
-            mock_loader_class.load = mock_loader
-            mock_get_loader.return_value = ('postgresql', mock_loader_class)
-            
-            # Load multiple databases concurrently
-            tasks = [
-                self.client.load_database(f"db{i}", f"postgresql://user:pass@host/db{i}")
-                for i in range(1, 4)
-            ]
-            
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # All should succeed
-            assert all(result is True for result in results)
-            assert len(self.client._loaded_databases) == 4  # test_db + 3 new ones
-
-
-if __name__ == "__main__":
-    pytest.main([__file__])
+        assert isinstance(client, AsyncQueryWeaverClient)
