@@ -1,15 +1,7 @@
 """Database connection routes for the text2sql API."""
-import sys
-from pathlib import Path
-
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-
-# Add src directory to Python path
-_src_path = Path(__file__).parent.parent.parent / "src"
-if str(_src_path) not in sys.path:
-    sys.path.insert(0, str(_src_path))
 
 from api.auth.user_management import token_required
 from api.routes.tokens import UNAUTHORIZED_RESPONSE

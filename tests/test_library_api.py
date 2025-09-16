@@ -1,18 +1,20 @@
 """
 Unit tests for QueryWeaver Python library.
 """
+# pylint: disable=redefined-outer-name, protected-access
 
-import pytest
 import asyncio
+import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 # Add src to Python path for testing
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from queryweaver import QueryWeaverClient, create_client
-
 
 @pytest.fixture
 def mock_falkordb():
@@ -20,10 +22,8 @@ def mock_falkordb():
     with patch('falkordb.FalkorDB') as mock_db:
         mock_db.return_value.ping.return_value = True
         yield mock_db.return_value
-
-
 @pytest.fixture
-def sync_client(mock_falkordb):
+def sync_client(_mock_falkordb):
     """Fixture to create a QueryWeaverClient for testing."""
     return QueryWeaverClient(
         falkordb_url="redis://localhost:6379/0",
@@ -34,7 +34,7 @@ def sync_client(mock_falkordb):
 class TestQueryWeaverClientInit:
     """Test QueryWeaverClient initialization."""
 
-    def test_init_with_openai_key(self, mock_falkordb):
+    def test_init_with_openai_key(self, _mock_falkordb):
         """Test initialization with OpenAI API key."""
         client = QueryWeaverClient(
             falkordb_url="redis://localhost:6379/0",
@@ -44,7 +44,7 @@ class TestQueryWeaverClientInit:
         assert client._user_id == "library_user"
         assert len(client._loaded_databases) == 0
 
-    def test_init_with_azure_key(self, mock_falkordb):
+    def test_init_with_azure_key(self, _mock_falkordb):
         """Test initialization with Azure API key."""
         client = QueryWeaverClient(
             falkordb_url="redis://localhost:6379/0",
@@ -52,10 +52,9 @@ class TestQueryWeaverClientInit:
         )
         assert client.falkordb_url == "redis://localhost:6379/0"
 
-    def test_init_without_api_key_raises_error(self, mock_falkordb):
+    def test_init_without_api_key_raises_error(self, _mock_falkordb):
         """Test that missing API key raises ValueError."""
         # Clear any existing API keys
-        import os
         os.environ.pop("OPENAI_API_KEY", None)
         os.environ.pop("AZURE_API_KEY", None)
 
@@ -67,7 +66,7 @@ class TestQueryWeaverClientInit:
         ):
             QueryWeaverClient(falkordb_url="redis://localhost:6379/0")
 
-    def test_init_with_invalid_falkordb_url_raises_error(self, mock_falkordb):
+    def test_init_with_invalid_falkordb_url_raises_error(self, _mock_falkordb):
         """Test that invalid FalkorDB URL raises ValueError."""
         with pytest.raises(ValueError, match="FalkorDB URL must use redis:// or rediss:// scheme"):
             QueryWeaverClient(
@@ -264,7 +263,7 @@ class TestUtilityMethods:
 class TestCreateClient:
     """Test create_client convenience function."""
 
-    def test_create_client_success(self, mock_falkordb):
+    def test_create_client_success(self, _mock_falkordb):
         """Test successful client creation via convenience function."""
         client = create_client(
             falkordb_url="redis://localhost:6379/0",
