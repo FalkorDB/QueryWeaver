@@ -4,7 +4,9 @@ Base class for QueryWeaver clients containing shared functionality.
 
 import os
 from typing import Optional, Set, List
+import json
 from urllib.parse import urlparse
+from typing import Any, Dict, List, Optional, Set
 
 import falkordb
 
@@ -118,7 +120,7 @@ class BaseQueryWeaverClient:  # pylint: disable=too-few-public-methods
                         else 0)
 
             try:
-                self._test_connection = falkordb.FalkorDB(
+                self._test_connection = falkordb.FalkorDB(  # pylint: disable=unexpected-keyword-arg
                     host=parsed_url.hostname or "localhost",
                     port=parsed_url.port or 6379,
                     password=parsed_url.password,
@@ -127,7 +129,7 @@ class BaseQueryWeaverClient:  # pylint: disable=too-few-public-methods
             except TypeError:
                 try:
                     # Some versions expect `database` as the kwarg
-                    self._test_connection = falkordb.FalkorDB(
+                    self._test_connection = falkordb.FalkorDB(  # pylint: disable=unexpected-keyword-arg
                         host=parsed_url.hostname or "localhost",
                         port=parsed_url.port or 6379,
                         password=parsed_url.password,
@@ -142,9 +144,9 @@ class BaseQueryWeaverClient:  # pylint: disable=too-few-public-methods
                         db_index
                     )
             # Test the connection
-            self._test_connection.ping()
+            self._test_connection.ping()  # pylint: disable=no-member
             # Close the test connection to avoid resource leaks
-            self._test_connection.close()
+            self._test_connection.close()  # pylint: disable=no-member
 
         except Exception as e:
             raise ConnectionError(f"Cannot connect to FalkorDB at {falkordb_url}: {e}") from e
@@ -192,3 +194,107 @@ class BaseQueryWeaverClient:  # pylint: disable=too-few-public-methods
             List[str]: Names of loaded databases
         """
         return list(self._loaded_databases)
+
+    def _extract_sql_from_stream_chunk(self, chunk: Any) -> Optional[str]:
+        """
+        Extracts SQL query from a stream chunk.
+
+        Args:
+            chunk: The chunk to process.
+
+        Returns:
+            Optional[str]: The SQL query if found, else None.
+        """
+        # Accept str, bytes, or already-parsed dict for flexibility
+        data = None
+        if isinstance(chunk, dict):
+            data = chunk
+        elif isinstance(chunk, bytes):
+            try:
+                data = json.loads(chunk.decode("utf-8", errors="replace"))
+            except json.JSONDecodeError:
+                return None
+        elif isinstance(chunk, str):
+            try:
+                data = json.loads(chunk)
+            except json.JSONDecodeError:
+                return None
+        else:
+            return None
+
+        # If this chunk contains an SQL query payload, return the SQL and metadata
+        if data.get("type") == "sql_query":
+            sql = data.get("data", "")
+            if not sql or not str(sql).strip():
+                return None
+            return str(sql).strip()
+
+        return None
+
+    def _process_query_stream_chunk(
+        self, chunk: Any, result: Dict[str, Any], execute_sql: bool
+    ) -> bool:
+        """
+        Process a single chunk from a streaming query response.
+
+        This method is designed to be called in a loop over stream chunks.
+
+        Args:
+            chunk: The chunk to process.
+            result: The result dictionary to populate.
+            execute_sql: Flag indicating if SQL should be executed.
+
+        Returns:
+            bool: True if processing should stop ("final_result" received), False otherwise.
+        """
+        # Try to extract SQL (and short-circuit) using the helper which accepts
+        # str/bytes/dict input. This reduces duplicated parsing logic.
+        sql = self._extract_sql_from_stream_chunk(chunk)
+        if sql is not None:
+            # We still want to populate confidence/analysis if present, so
+            # attempt to parse the chunk into data (helper already parsed for
+            # some types, but parsing again is inexpensive here).
+            try:
+                data = json.loads(chunk) if isinstance(chunk, str) else (
+                    json.loads(chunk.decode("utf-8", errors="replace"))
+                    if isinstance(chunk, bytes)
+                    else chunk
+                )
+            except Exception:
+                data = {}
+
+            result["sql_query"] = sql
+            result["confidence"] = data.get("conf", 0)
+            result["analysis"] = {
+                "explanation": data.get("exp", ""),
+                "ambiguities": data.get("amb", ""),
+                "missing_information": data.get("miss", ""),
+            }
+            return False
+
+        # Not an SQL chunk — parse and handle other chunk types
+        if isinstance(chunk, bytes):
+            try:
+                data = json.loads(chunk.decode("utf-8", errors="replace"))
+            except json.JSONDecodeError:
+                return False
+        elif isinstance(chunk, str):
+            try:
+                data = json.loads(chunk)
+            except json.JSONDecodeError:
+                return False  # Continue loop
+        elif isinstance(chunk, dict):
+            data = chunk
+        else:
+            return False
+
+        chunk_type = data.get("type")
+
+        if chunk_type == "query_results" and execute_sql:
+            result["results"] = data.get("results", [])
+        elif chunk_type == "error":
+            result["error"] = data.get("message", "Unknown error")
+        elif chunk_type == "final_result":
+            return True  # Break loop
+
+        return False

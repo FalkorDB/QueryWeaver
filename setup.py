@@ -1,7 +1,7 @@
 """Setup script for QueryWeaver library."""
 
-from setuptools import setup, find_packages
 import os
+from setuptools import setup, find_packages
 
 def read_requirements():
     """Read requirements from Pipfile."""

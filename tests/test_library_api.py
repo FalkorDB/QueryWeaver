@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from queryweaver import QueryWeaverClient, create_client
 
 @pytest.fixture
-def mock_falkordb():
+def _mock_falkordb():
     """Fixture to mock FalkorDB connection."""
     with patch('falkordb.FalkorDB') as mock_db:
         mock_db.return_value.ping.return_value = True
@@ -272,7 +272,7 @@ class TestCreateClient:
         assert isinstance(client, QueryWeaverClient)
         assert client.falkordb_url == "redis://localhost:6379/0"
 
-    def test_create_client_with_additional_args(self, mock_falkordb):
+    def test_create_client_with_additional_args(self, _mock_falkordb):
         """Test client creation with additional arguments."""
         client = create_client(
             falkordb_url="redis://localhost:6379/0",
