@@ -6,7 +6,7 @@ name = "pypi"
 [packages]
 fastapi = "~=0.116.1"
 uvicorn = "~=0.35.0"
-litellm = "~=1.76.3"
+litellm = "~=1.77.1"
 falkordb = "~=1.2.0"
 psycopg2-binary = "~=2.9.9"
 pymysql = "~=1.1.0"
@@ -24,7 +24,7 @@ pytest = "~=8.4.2"
 pylint = "~=3.3.4"
 playwright = "~=1.55.0"
 pytest-playwright = "~=0.7.1"
-pytest-asyncio = "~=1.1.0"
+pytest-asyncio = "~=1.2.0"
 
 [requires]
 python_version = "3.11"
