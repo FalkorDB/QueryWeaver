@@ -20,3 +20,4 @@ node_modules/
 /app/public/js/*
 .jinja_cache/
 demo_tokens.py
+src/queryweaver.egg-info/
