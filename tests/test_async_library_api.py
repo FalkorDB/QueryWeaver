@@ -3,8 +3,13 @@ Unit tests for QueryWeaver async library API.
 """
 
 import pytest
-import asyncio
-from unittest.mock import patch, AsyncMock
+import sys
+from pathlib import Path
+from unittest.mock import patch
+
+# Add src to Python path for testing
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
 from queryweaver import AsyncQueryWeaverClient, create_async_client
 
 
@@ -12,6 +17,9 @@ from queryweaver import AsyncQueryWeaverClient, create_async_client
 def mock_falkordb():
     """Fixture to mock FalkorDB connection."""
     with patch('falkordb.FalkorDB') as mock_db:
+        mock_db.return_value.ping.return_value = True
+        yield mock_db.return_value
+    with patch('queryweaver.base.falkordb.FalkorDB') as mock_db:
         mock_db.return_value.ping.return_value = True
         yield mock_db
 
