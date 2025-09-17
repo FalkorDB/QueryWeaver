@@ -17,10 +17,7 @@ import socket
 from urllib.parse import urlparse
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-# Tests add `src` at runtime for imports so static analyzers may incorrectly
-# report missing `queryweaver` — silence that with import-error here.
-# pylint: disable=import-error
-from queryweaver import QueryWeaverClient, create_client
+from queryweaver import QueryWeaverClient, create_client  # pylint: disable=import-error
 
 
 def _is_falkordb_reachable(url: str) -> bool:
