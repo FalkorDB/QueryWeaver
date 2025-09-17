@@ -10,7 +10,29 @@ from unittest.mock import patch
 
 import pytest
 
+# Ensure src is on sys.path for tests to import local package
+import sys
+from pathlib import Path
+import socket
+from urllib.parse import urlparse
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+# Tests add `src` at runtime for imports so static analyzers may incorrectly
+# report missing `queryweaver` — silence that with import-error here.
+# pylint: disable=import-error
 from queryweaver import QueryWeaverClient, create_client
+
+
+def _is_falkordb_reachable(url: str) -> bool:
+    """Quick TCP reachability check for the FalkorDB host:port."""
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname or "localhost"
+        port = parsed.port or 6379
+        with socket.create_connection((host, port), timeout=1):
+            return True
+    except Exception:
+        return False
 
 
 def test_library_import():
@@ -47,11 +69,16 @@ def test_convenience_function(mock_falkordb):
     assert client is not None
 
 
+FALKORDB_URL_ENV = os.getenv("FALKORDB_URL")
+RUN_REAL_INTEGRATION = os.getenv("RUN_REAL_INTEGRATION", "false").lower() in ("1", "true", "yes")
+
+
 @pytest.mark.skipif(
-    not os.getenv("FALKORDB_URL") or
+    not RUN_REAL_INTEGRATION or
+    not FALKORDB_URL_ENV or
+    not _is_falkordb_reachable(FALKORDB_URL_ENV) or
     not (os.getenv("OPENAI_API_KEY") or os.getenv("AZURE_API_KEY")),
-    reason=("Requires FALKORDB_URL and either OPENAI_API_KEY or "
-            "AZURE_API_KEY environment variables")
+    reason=("Set RUN_REAL_INTEGRATION=true and provide reachable FALKORDB_URL plus API keys to run this test")
 )
 def test_real_connection():
     """Test real connection to FalkorDB (only runs with proper environment setup)."""
