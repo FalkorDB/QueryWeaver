@@ -171,13 +171,13 @@ class MemoryTool:
                     database_name=database_node_name
                 )
                 logging.info("Created HAS_DATABASE relationship between user and %s database", database_node_name)
-            except Exception as rel_error:
+            except Exception as rel_error:  # pylint: disable=broad-exception-caught
                 logging.error("Error creating HAS_DATABASE relationship: %s", rel_error)
                 # Don't fail the entire function if relationship creation fails
             
             return True
             
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logging.error("Error creating entity nodes directly: %s", e)
             return False
 
@@ -272,7 +272,7 @@ class MemoryTool:
             # Wait for both operations to complete
             await asyncio.gather(add_episode_task, update_user_task)
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logging.error("Error adding new memory episodes: %s", e)
             return False
         
@@ -357,11 +357,11 @@ class MemoryTool:
             try:
                 result = await graph_driver.execute_query(cypher_query, embedding=embeddings)
                 return True
-            except Exception as cypher_error:
+            except Exception as cypher_error:  # pylint: disable=broad-exception-caught
                 logging.error("Error executing Cypher query: %s", cypher_error)
                 return False
             
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logging.error("Error saving query memory: %s", e)
             return False
         
@@ -422,11 +422,11 @@ class MemoryTool:
                 similar_queries = [record["query"] for record in records]
                 return similar_queries
 
-            except Exception as cypher_error:
+            except Exception as cypher_error:  # pylint: disable=broad-exception-caught
                 logging.error("Error executing Cypher query: %s", cypher_error)
                 return []
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logging.error("Error retrieving similar queries: %s", e)
             return []
 
@@ -455,7 +455,7 @@ class MemoryTool:
 
             return ""
             
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logging.error("Error searching user node: %s", e)
             return ""
         
@@ -540,7 +540,7 @@ class MemoryTool:
             # Join all facts into a single string
             return database_context
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logging.error("Error searching database facts for %s: %s", self.graph_id, e)
             return ""
 
@@ -615,7 +615,7 @@ class MemoryTool:
 
             return memory_context
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logging.error("Error in concurrent memory search: %s", e)
             return ""
 
@@ -640,7 +640,7 @@ class MemoryTool:
             )
             # Stats may not be available; return 0 on success path
             return 0
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logging.error("Error cleaning memory: %s", e)
             return 0
 
@@ -711,7 +711,7 @@ class MemoryTool:
                 "database_summary": content
             }
             
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logging.error("Error in LLM summarization: %s", e)
             return {
                 "database_summary": ""

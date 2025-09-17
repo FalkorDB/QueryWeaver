@@ -1,23 +1,35 @@
-"""Graph-related routes for the text2sql API."""
+"""Core text2sql functionality for QueryWeaver."""
 
 import asyncio
 import json
 import logging
 import os
+import sys
 import time
+from pathlib import Path
 
 from pydantic import BaseModel
 from redis import ResponseError
 
-from api.core.errors import GraphNotFoundError, InternalError, InvalidArgumentError
-from api.core.schema_loader import load_database
-from api.agents import AnalysisAgent, RelevancyAgent, ResponseFormatterAgent, FollowUpAgent
-from api.config import Config
-from api.extensions import db
-from api.graph import find, get_db_description
-from api.loaders.postgres_loader import PostgresLoader
-from api.loaders.mysql_loader import MySQLLoader
-from api.memory.graphiti_tool import MemoryTool
+# Add project root to path for api imports (temporarily)
+_project_root = Path(__file__).parent.parent.parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+
+try:
+    from .errors import GraphNotFoundError, InternalError, InvalidArgumentError
+    from .schema_loader import load_database
+    from api.agents import AnalysisAgent, RelevancyAgent, ResponseFormatterAgent, FollowUpAgent
+    from api.config import Config
+    from api.extensions import db
+    from api.graph import find, get_db_description
+    from api.loaders.postgres_loader import PostgresLoader
+    from api.loaders.mysql_loader import MySQLLoader
+    from api.memory.graphiti_tool import MemoryTool
+finally:
+    # Clean up path
+    if str(_project_root) in sys.path:
+        sys.path.remove(str(_project_root))
 
 # Use the same delimiter as in the JavaScript
 MESSAGE_DELIMITER = "|||FALKORDB_MESSAGE_BOUNDARY|||"
@@ -75,8 +87,8 @@ def get_database_type_and_loader(db_url: str):
     if db_url_lower.startswith('mysql://'):
         return 'mysql', MySQLLoader
 
-    # Default to PostgresLoader for backward compatibility
-    return 'postgresql', PostgresLoader
+    # Unknown/unsupported URL scheme
+    return None, None
 
 def sanitize_query(query: str) -> str:
     """Sanitize the query to prevent injection attacks."""
@@ -84,7 +96,7 @@ def sanitize_query(query: str) -> str:
 
 def sanitize_log_input(value: str) -> str:
     """
-    Sanitize input for safe logging—remove newlines, 
+    Sanitize input for safe logging—remove newlines,
     carriage returns, tabs, and wrap in repr().
     """
     if not isinstance(value, str):
@@ -109,7 +121,7 @@ async def get_schema(user_id: str, graph_id: str):  # pylint: disable=too-many-l
     This endpoint returns a JSON object with two keys: `nodes` and `edges`.
     Nodes contain a minimal set of properties (id, name, labels, props).
     Edges contain source and target node names (or internal ids), type and props.
-    
+
         args:
             graph_id (str): The ID of the graph to query (the database name).
     """
@@ -200,7 +212,7 @@ async def get_schema(user_id: str, graph_id: str):  # pylint: disable=too-many-l
 async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  # pylint: disable=too-many-statements
     """
     Query the Database with the given graph_id and chat_data.
-    
+
         Args:
             graph_id (str): The ID of the graph to query.
             chat_data (ChatRequest): The chat data containing user queries and context.
@@ -397,8 +409,8 @@ What this will do:
                     if is_destructive and general_graph:
                         yield json.dumps(
                             {
-                                "type": "error", 
-                                "final_response": True, 
+                                "type": "error",
+                                "final_response": True,
                                 "message": "Destructive operation not allowed on demo graphs"
                             }) + MESSAGE_DELIMITER
                     else:
@@ -503,8 +515,8 @@ What this will do:
                         overall_elapsed
                     )
                     yield json.dumps({
-                        "type": "error", 
-                        "final_response": True, 
+                        "type": "error",
+                        "final_response": True,
                         "message": "Error executing SQL query"
                     }) + MESSAGE_DELIMITER
             else:

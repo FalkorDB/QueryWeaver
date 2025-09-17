@@ -4,8 +4,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from api.auth.user_management import token_required
-from api.core.schema_loader import load_database
 from api.routes.tokens import UNAUTHORIZED_RESPONSE
+from queryweaver.core.schema_loader import load_database
 
 database_router = APIRouter(tags=["Database Connection"])
 

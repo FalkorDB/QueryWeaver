@@ -1,18 +1,29 @@
-"""Database connection routes for the text2sql API."""
+"""Database schema loading functionality for QueryWeaver."""
 
 import logging
 import json
+import sys
 import time
+from pathlib import Path
 from typing import AsyncGenerator
 
 from pydantic import BaseModel
 
-from api.extensions import db
+# Add project root to path for api imports (temporarily)
+_project_root = Path(__file__).parent.parent.parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
 
-from api.core.errors import InvalidArgumentError
-from api.loaders.base_loader import BaseLoader
-from api.loaders.postgres_loader import PostgresLoader
-from api.loaders.mysql_loader import MySQLLoader
+try:
+    from .errors import InvalidArgumentError
+    from api.extensions import db
+    from api.loaders.base_loader import BaseLoader
+    from api.loaders.postgres_loader import PostgresLoader
+    from api.loaders.mysql_loader import MySQLLoader
+finally:
+    # Clean up path
+    if str(_project_root) in sys.path:
+        sys.path.remove(str(_project_root))
 
 # Use the same delimiter as in the JavaScript frontend for streaming chunks
 MESSAGE_DELIMITER = "|||FALKORDB_MESSAGE_BOUNDARY|||"
@@ -27,6 +38,7 @@ class DatabaseConnectionRequest(BaseModel):
 
     url: str
 
+
 def _step_start(steps_counter: int) -> dict[str, str]:
     """Yield the starting step message."""
     return {
@@ -34,7 +46,10 @@ def _step_start(steps_counter: int) -> dict[str, str]:
         "message": f"Step {steps_counter}: Starting database connection",
     }
 
-def _step_detect_db_type(steps_counter: int, url: str) -> tuple[type[BaseLoader], dict[str, str]]:
+
+def _step_detect_db_type(
+    steps_counter: int, url: str
+) -> tuple[type[BaseLoader], dict[str, str]]:
     """Yield the database type detection step message."""
     db_type = None
     loader: type[BaseLoader] = BaseLoader  # type: ignore
@@ -141,7 +156,7 @@ async def load_database(url: str, user_id: str):
     return generate()
 
 
-async def list_databases(user_id: str, general_prefix: str) -> list[str]:
+async def list_databases(user_id: str, general_prefix: str | None = None) -> list[str]:
     """
     This route is used to list all the graphs (databases names) that are available in the database.
     """

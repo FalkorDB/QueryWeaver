@@ -10,7 +10,7 @@ url = os.getenv("FALKORDB_URL", None)
 if url is None:
     try:
         db = FalkorDB(host="localhost", port=6379)
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         raise ConnectionError(f"Failed to connect to FalkorDB: {e}") from e
 else:
     # Ensure the URL is properly encoded as string and handle potential encoding issues
@@ -21,5 +21,5 @@ else:
             decode_responses=True
         )
         db = FalkorDB(connection_pool=pool)
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         raise ConnectionError(f"Failed to connect to FalkorDB with URL: {e}") from e

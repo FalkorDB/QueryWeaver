@@ -181,7 +181,7 @@ async def _find_tables_sphere(
     try:
         tasks = [_query_graph(graph, query, {"name": name}) for name in tables]
         results = await asyncio.gather(*tasks)
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logging.error("Error finding tables in sphere: %s", e)
         results = []
 
@@ -241,7 +241,7 @@ async def _find_connecting_tables(
     """
     try:
         result = await _query_graph(graph, query, {"pairs": pairs}, timeout=500)
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logging.error("Error finding connecting tables: %s", e)
         result = []
 

@@ -3,19 +3,19 @@ from fastapi import APIRouter, Request, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from api.core.schema_loader import list_databases
-from api.core.text2sql import (GENERAL_PREFIX,
-                               ChatRequest,
-                               ConfirmRequest,
-                               GraphNotFoundError,
-                               InternalError,
-                               InvalidArgumentError,
-                               delete_database,
-                               execute_destructive_operation,
-                               get_schema,
-                               query_database,
-                               refresh_database_schema
-                                )
+from queryweaver.core.schema_loader import list_databases
+from queryweaver.core.text2sql import (GENERAL_PREFIX,
+                                       ChatRequest,
+                                       ConfirmRequest,
+                                       delete_database,
+                                       execute_destructive_operation,
+                                       get_schema,
+                                       query_database,
+                                       refresh_database_schema
+                                       )
+from queryweaver.core.errors import (GraphNotFoundError,
+                                     InternalError,
+                                     InvalidArgumentError)
 from api.auth.user_management import token_required
 from api.routes.tokens import UNAUTHORIZED_RESPONSE
 

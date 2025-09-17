@@ -1,0 +1,13 @@
+include README.md
+include LICENSE
+include SECURITY.md
+recursive-include src/queryweaver *.py
+recursive-include api *.py
+recursive-exclude api/__pycache__ *
+recursive-exclude api/*/__pycache__ *
+recursive-exclude src/__pycache__ *
+recursive-exclude src/*/__pycache__ *
+recursive-exclude tests *
+recursive-exclude examples *
+global-exclude *.pyc
+global-exclude .DS_Store

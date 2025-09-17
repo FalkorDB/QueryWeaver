@@ -111,6 +111,41 @@ Swagger UI: https://app.queryweaver.ai/docs
 
 OpenAPI JSON: https://app.queryweaver.ai/openapi.json
 
+## Documentation
+
+For detailed documentation and guides, see the following resources:
+
+- **[Library Usage Guide](docs/library-usage.md)** - Complete guide for using QueryWeaver as a Python library
+- **[PostgreSQL Loader](docs/postgres_loader.md)** - Detailed information about PostgreSQL schema loading
+- **[E2E Testing Guide](tests/e2e/README.md)** - End-to-end testing instructions and setup
+- **[Frontend Development](app/README.md)** - TypeScript frontend development guide
+- **[Async API Implementation](ASYNC_API_IMPLEMENTATION.md)** - Async API features and usage patterns
+- **[Library Implementation Details](LIBRARY_IMPLEMENTATION.md)** - Technical implementation details
+
+## Python Library
+
+QueryWeaver can be used as a Python library for direct integration. See [docs/library-usage.md](docs/library-usage.md) for complete documentation.
+
+### Quick Example
+```python
+from queryweaver import QueryWeaverClient
+
+# Initialize client
+client = QueryWeaverClient(
+    falkordb_url="redis://localhost:6379/0",
+    openai_api_key="your-api-key"
+)
+
+# Load a database schema
+client.load_database("mydatabase", "postgresql://user:pass@host:port/db")
+
+# Generate SQL from natural language
+sql = client.text_to_sql("mydatabase", "Show all customers from California")
+
+# Execute query and get results
+results = client.query("mydatabase", "Show all customers from California")
+```
+
 ### Overview
 
 QueryWeaver exposes a small REST API for managing graphs (database schemas) and running Text2SQL queries. All endpoints that modify or access user-scoped data require authentication via a bearer token. In the browser the app uses session cookies and OAuth flows; for CLI and scripts you can use an API token (see `tokens` routes or the web UI to create one).
