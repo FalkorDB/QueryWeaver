@@ -11,10 +11,10 @@ from unittest.mock import patch
 
 import pytest
 
+from queryweaver import QueryWeaverClient, create_client
+
 # Add src to Python path for testing
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from queryweaver import QueryWeaverClient, create_client
 
 @pytest.fixture
 def _mock_falkordb():

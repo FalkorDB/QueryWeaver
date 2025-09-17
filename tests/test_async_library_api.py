@@ -13,10 +13,10 @@ from unittest.mock import patch
 
 import pytest
 
+from queryweaver import AsyncQueryWeaverClient, create_async_client
+
 # Add src to Python path for testing so we can import the package under src/
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from queryweaver import AsyncQueryWeaverClient, create_async_client
 
 
 @pytest.fixture

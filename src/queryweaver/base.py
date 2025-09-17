@@ -3,10 +3,9 @@ Base class for QueryWeaver clients containing shared functionality.
 """
 
 import os
-from typing import Optional, Set, List
 import json
-from urllib.parse import urlparse
 from typing import Any, Dict, List, Optional, Set
+from urllib.parse import urlparse
 
 import falkordb
 
@@ -148,7 +147,7 @@ class BaseQueryWeaverClient:  # pylint: disable=too-few-public-methods
             # Close the test connection to avoid resource leaks
             self._test_connection.close()  # pylint: disable=no-member
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             raise ConnectionError(f"Cannot connect to FalkorDB at {falkordb_url}: {e}") from e
 
     def _validate_database_params(self, database_name: str, database_url: str):
@@ -260,7 +259,7 @@ class BaseQueryWeaverClient:  # pylint: disable=too-few-public-methods
                     if isinstance(chunk, bytes)
                     else chunk
                 )
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 data = {}
 
             result["sql_query"] = sql

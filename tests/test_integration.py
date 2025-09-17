@@ -48,7 +48,8 @@ def test_convenience_function(mock_falkordb):
 
 
 @pytest.mark.skipif(
-    not os.getenv("FALKORDB_URL") or not (os.getenv("OPENAI_API_KEY") or os.getenv("AZURE_API_KEY")),
+    not os.getenv("FALKORDB_URL") or
+    not (os.getenv("OPENAI_API_KEY") or os.getenv("AZURE_API_KEY")),
     reason=("Requires FALKORDB_URL and either OPENAI_API_KEY or "
             "AZURE_API_KEY environment variables")
 )

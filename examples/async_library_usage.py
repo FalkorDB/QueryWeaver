@@ -7,6 +7,7 @@ patterns.
 """
 
 import asyncio
+import time
 from queryweaver import AsyncQueryWeaverClient, create_async_client
 
 
@@ -30,7 +31,7 @@ async def basic_async_example():
                 ),
             )
             print(f"Database loaded successfully: {success}")
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             print(f"Error loading database: {e}")
             return
 
@@ -41,7 +42,7 @@ async def basic_async_example():
                 query="Show all customers from California",
             )
             print(f"Generated SQL: {sql}")
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             print(f"Error generating SQL: {e}")
 
         # Execute query and get results
@@ -55,7 +56,7 @@ async def basic_async_example():
             print(f"Results: {result['results']}")
             if result["analysis"]:
                 print(f"Explanation: {result['analysis']['explanation']}")
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             print(f"Error executing query: {e}")
 
 
@@ -98,7 +99,7 @@ async def concurrent_queries_example():
             else:
                 print(f"SQL: {result}")
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         print(f"Error in concurrent processing: {e}")
     finally:
         await client.close()
@@ -132,7 +133,7 @@ async def context_manager_example():
             loaded_dbs = client.list_loaded_databases()
             print(f"Available databases: {loaded_dbs}")
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             print(f"Error loading databases: {e}")
 
     # Client is automatically closed when exiting the context
@@ -242,7 +243,7 @@ async def streaming_example():
             # Simulate some processing time
             await asyncio.sleep(0.5)
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         print(f"Error in streaming example: {e}")
     finally:
         await client.close()
@@ -280,10 +281,10 @@ async def error_handling_example():
                     print(f"✗ {name}: ValueError - {e}")
                 except RuntimeError as e:
                     print(f"✗ {name}: RuntimeError - {e}")
-                except Exception as e:
+                except Exception as e:  # pylint: disable=broad-exception-caught
                     print(f"✗ {name}: Unexpected error - {e}")
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         print(f"Client initialization error: {e}")
 
 
@@ -291,8 +292,6 @@ async def error_handling_example():
 async def performance_monitoring_example():
     """Example showing performance monitoring of async operations."""
     print("\n=== Performance Monitoring Example ===")
-
-    import time
 
     async with AsyncQueryWeaverClient(
         falkordb_url="redis://localhost:6379/0",
