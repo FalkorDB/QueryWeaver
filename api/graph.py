@@ -241,7 +241,7 @@ async def _find_connecting_tables(
     """
     try:
         result = await _query_graph(graph, query, {"pairs": pairs}, timeout=500)
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logging.error("Error finding connecting tables: %s", e)
         result = []
 
