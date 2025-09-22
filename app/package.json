@@ -9,7 +9,7 @@
     "lint": "eslint --ext .ts ./ts --max-warnings=0 || true"
   },
   "devDependencies": {
-    "esbuild": "^0.25.9",
+    "esbuild": "^0.25.10",
     "typescript": "^5.9.2",
     "eslint": "^9.35.0",
     "@typescript-eslint/parser": "^8.42.0",
