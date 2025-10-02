@@ -66,9 +66,17 @@ class QueryWeaverClient:
         self._owns_session = self._session is None
 
         if self._session and api_token:
-            default_headers = getattr(self._session, "_default_headers", None)
-            if default_headers is not None:
-                default_headers["Authorization"] = f"Bearer {api_token}"
+            # Prefer updating the session.headers when it's a mutable mapping (helps tests
+            # that supply a simple DummySession). If session.headers is a read-only proxy
+            # (aiohttp's CIMultiDictProxy), this will raise; in that case fall back to
+            # setting _default_headers if available, otherwise rely on per-request headers.
+            try:
+                # some session implementations expose a writable headers dict
+                self._session.headers.update({"Authorization": f"Bearer {api_token}"})
+            except Exception:
+                default_headers = getattr(self._session, "_default_headers", None)
+                if default_headers is not None:
+                    default_headers["Authorization"] = f"Bearer {api_token}"
 
     async def __aenter__(self):
         if self._session is None:
