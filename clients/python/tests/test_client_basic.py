@@ -200,3 +200,96 @@ async def test_api_token_applied_to_provided_session():
     # Verify the Authorization header was added to the session
     assert "Authorization" in sess.headers
     assert sess.headers["Authorization"] == "Bearer test-token-123"
+
+
+@pytest.mark.asyncio
+async def test_query_auto_confirm():
+    """Test query with auto_confirm handles destructive operations automatically."""
+    class CustomContent:
+        """Custom content that returns specific JSON data."""
+
+        def __init__(self, data):
+            self.data = data
+
+        async def iter_any(self):
+            """Yield the data as encoded JSON."""
+            yield dumps(self.data).encode('utf-8')
+
+    class DestructiveSession(DummySession):
+        """Session that returns destructive confirmation request."""
+
+        def __init__(self):
+            super().__init__()
+            self.confirm_called = False
+
+        def post(self, url, json=None, timeout=None): # pylint: disable=unused-argument
+            if url.endswith("/confirm"):
+                # Confirm endpoint returns final result
+                self.confirm_called = True
+                resp = DummyResp(json_data={"result": "confirmed"})
+                resp.content = CustomContent({"result": "confirmed"})  # type: ignore
+                return resp
+
+            # Query endpoint returns destructive confirmation request
+            confirmation_data = {
+                "type": "destructive_confirmation",
+                "sql_query": "DELETE FROM users",
+                "message": "This will delete data"
+            }
+            resp = DummyResp(json_data=confirmation_data)
+            resp.content = CustomContent(confirmation_data)  # type: ignore
+            return resp
+
+    sess = DestructiveSession()
+    async with QueryWeaverClient("http://localhost:5000", session=sess) as client:
+        chat_data = {
+            "messages": [
+                {"role": "user", "content": "Delete all users"}
+            ]
+        }
+
+        # With auto_confirm=True, should automatically call confirm
+        result = await client.query("my_schema", chat_data, auto_confirm=True)
+        assert sess.confirm_called
+        assert result == {"result": "confirmed"}
+
+
+@pytest.mark.asyncio
+async def test_query_no_auto_confirm():
+    """Test query without auto_confirm returns confirmation request."""
+    class CustomContent:
+        """Custom content that returns specific JSON data."""
+
+        def __init__(self, data):
+            self.data = data
+
+        async def iter_any(self):
+            """Yield the data as encoded JSON."""
+            yield dumps(self.data).encode('utf-8')
+
+    class DestructiveSession(DummySession):
+        """Session that returns destructive confirmation request."""
+
+        def post(self, url, json=None, timeout=None): # pylint: disable=unused-argument
+            # Query endpoint returns destructive confirmation request
+            confirmation_data = {
+                "type": "destructive_confirmation",
+                "sql_query": "DELETE FROM users",
+                "message": "This will delete data"
+            }
+            resp = DummyResp(json_data=confirmation_data)
+            resp.content = CustomContent(confirmation_data)  # type: ignore
+            return resp
+
+    sess = DestructiveSession()
+    async with QueryWeaverClient("http://localhost:5000", session=sess) as client:
+        chat_data = {
+            "messages": [
+                {"role": "user", "content": "Delete all users"}
+            ]
+        }
+
+        # Without auto_confirm, should return confirmation request
+        result = await client.query("my_schema", chat_data, auto_confirm=False)
+        assert result["type"] == "destructive_confirmation"
+        assert result["sql_query"] == "DELETE FROM users"

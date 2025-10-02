@@ -61,4 +61,114 @@ describe('QueryWeaverClient', () => {
       expect(result).toEqual([]);
     });
   });
+
+  describe('query with auto_confirm', () => {
+    it('should auto confirm destructive operations when autoConfirm is true', async () => {
+      let callCount = 0;
+      
+      // Mock fetch for both query and confirm calls
+      global.fetch = jest.fn(() => {
+        callCount++;
+        if (callCount === 1) {
+          // First call returns confirmation request
+          let readCalled = false;
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            body: {
+              getReader: () => ({
+                read: () => {
+                  if (readCalled) {
+                    return Promise.resolve({ done: true, value: undefined });
+                  }
+                  readCalled = true;
+                  return Promise.resolve({
+                    done: false,
+                    value: new TextEncoder().encode(JSON.stringify({
+                      type: 'destructive_confirmation',
+                      sql_query: 'DELETE FROM users',
+                      message: 'This will delete data',
+                      confirmation_id: 'confirm-123'
+                    }))
+                  });
+                },
+                releaseLock: () => {}
+              })
+            }
+          });
+        } else {
+          // Second call returns success result
+          let readCalled = false;
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            body: {
+              getReader: () => ({
+                read: () => {
+                  if (readCalled) {
+                    return Promise.resolve({ done: true, value: undefined });
+                  }
+                  readCalled = true;
+                  return Promise.resolve({
+                    done: false,
+                    value: new TextEncoder().encode(JSON.stringify({
+                      type: 'success',
+                      result: 'Deleted 5 users'
+                    }))
+                  });
+                },
+                releaseLock: () => {}
+              })
+            }
+          });
+        }
+      }) as any;
+
+      const chatData = {
+        messages: [{ role: 'user' as const, content: 'Delete all users' }]
+      };
+
+      const result = await client.query('my_schema', chatData, true);
+      
+      expect(callCount).toBe(2); // Should have called fetch twice
+      expect(result).toHaveProperty('type', 'success');
+      expect(result).toHaveProperty('result', 'Deleted 5 users');
+    });
+
+    it('should return confirmation request when autoConfirm is false', async () => {
+      const data = { type: 'destructive_confirmation', sql_query: 'DELETE FROM users', message: 'This will delete data' };
+      let readCalled = false;
+      
+      // Mock fetch to return confirmation request
+      global.fetch = jest.fn(() =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          body: {
+            getReader: () => ({
+              read: () => {
+                if (readCalled) {
+                  return Promise.resolve({ done: true, value: undefined });
+                }
+                readCalled = true;
+                return Promise.resolve({
+                  done: false,
+                  value: new TextEncoder().encode(JSON.stringify(data))
+                });
+              },
+              releaseLock: () => {}
+            })
+          }
+        } as any)
+      ) as any;
+
+      const chatData = {
+        messages: [{ role: 'user' as const, content: 'Delete all users' }]
+      };
+
+      const result = await client.query('my_schema', chatData, false);
+      expect(result).toHaveProperty('type', 'destructive_confirmation');
+      expect(result).toHaveProperty('sql_query', 'DELETE FROM users');
+    });
+  });
 });

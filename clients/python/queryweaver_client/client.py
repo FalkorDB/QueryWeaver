@@ -160,12 +160,37 @@ class QueryWeaverClient:
             await self._raise_for_status(resp)
             return await self._parse_streaming_response(resp)
 
-    async def query(self, graph_id: str, chat_data: Dict[str, Any]) -> Dict[str, Any]:
-        """POST /graphs/{graph_id} - run a natural language query and return final result."""
+    async def query(self, graph_id: str, chat_data: Dict[str, Any],
+                    auto_confirm: bool = False) -> Dict[str, Any]:
+        """POST /graphs/{graph_id} - run a natural language query and return final result.
+
+        Args:
+            graph_id: The database/schema ID to query
+            chat_data: The chat data containing the query messages
+            auto_confirm: If True, automatically confirm destructive operations.
+                         If False (default), returns confirmation request for user approval.
+
+        Returns:
+            Dict containing the query result or confirmation request
+        """
         async with self._session.post(self._url(f"/graphs/{graph_id}"),
                                       json=chat_data, timeout=self.timeout) as resp:
             await self._raise_for_status(resp)
-            return await self._parse_streaming_response(resp)
+            result = await self._parse_streaming_response(resp)
+
+        # If auto_confirm is enabled and result requires confirmation, automatically
+        # confirm the destructive operation
+        is_destructive = (isinstance(result, dict) and
+                         result.get("type") == "destructive_confirmation")
+        if auto_confirm and is_destructive:
+            confirm_data = {
+                "sql_query": result.get("sql_query"),
+                "confirmation": "YES",
+                "chat": chat_data.get("messages", [])
+            }
+            return await self.confirm(graph_id, confirm_data)
+
+        return result
 
     async def confirm(self, graph_id: str, confirm_data: Dict[str, Any]) -> Dict[str, Any]:
         """POST /graphs/{graph_id}/confirm - confirm destructive operation and return result."""

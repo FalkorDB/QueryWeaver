@@ -147,8 +147,14 @@ export class QueryWeaverClient {
 
   /**
    * Run a natural language query and return final result.
+   *
+   * @param graphId - The database/schema ID to query
+   * @param chatData - The chat data containing the query messages
+   * @param autoConfirm - If true, automatically confirm destructive operations.
+   *                      If false (default), returns confirmation request for user approval.
+   * @returns The query result or confirmation request
    */
-  async query(graphId: string, chatData: ChatData): Promise<APIResponse> {
+  async query(graphId: string, chatData: ChatData, autoConfirm: boolean = false): Promise<APIResponse> {
     const response = await fetch(this.url(`/graphs/${graphId}`), {
       method: 'POST',
       headers: this.defaultHeaders,
@@ -157,7 +163,19 @@ export class QueryWeaverClient {
     });
 
     await this.raiseForStatus(response);
-    return this.consumeStreamingResponse(response);
+    const result = await this.consumeStreamingResponse(response);
+
+    // If autoConfirm is enabled and result requires confirmation, automatically confirm
+    if (autoConfirm && result.type === 'destructive_confirmation') {
+      const confirmData: ConfirmData = {
+        sql_query: result.sql_query as string,
+        confirmation: 'YES',
+        chat: chatData.messages,
+      };
+      return this.confirm(graphId, confirmData);
+    }
+
+    return result;
   }
 
   /**
