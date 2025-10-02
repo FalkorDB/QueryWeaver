@@ -1,6 +1,7 @@
 .env
 .venv
 *.pyc
+*.egg-info
 .vscode/
 *_conf*
 .ruff_code/
@@ -20,3 +21,4 @@ node_modules/
 /app/public/js/*
 .jinja_cache/
 demo_tokens.py
+
