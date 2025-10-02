@@ -75,7 +75,7 @@ interface QueryWeaverClientOptions {
 - `deleteSchema(graphId: string): Promise<APIResponse>` - Delete a schema
 - `refreshSchema(graphId: string): Promise<APIResponse>` - Refresh schema
 - `connectDatabase(dbUrl: string): Promise<APIResponse>` - Connect to database
-- `query(graphId: string, chatData: ChatData): Promise<APIResponse>` - Run natural language query
+- `query(graphId: string, chatData: ChatData, autoConfirm?: boolean): Promise<APIResponse>` - Run natural language query (optional `autoConfirm` to automatically confirm destructive operations)
 - `confirm(graphId: string, confirmData: ConfirmData): Promise<APIResponse>` - Confirm destructive operation
 
 ## Authentication
