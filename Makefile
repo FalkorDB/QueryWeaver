@@ -1,4 +1,4 @@
-.PHONY: help install install-clients test test-unit test-e2e test-e2e-headed test-e2e-debug test-clients lint format clean setup-dev build lint-frontend
+.PHONY: help install install-server install-clients test test-unit test-e2e test-e2e-headed test-e2e-debug test-clients lint format clean setup-dev build lint-frontend
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -6,7 +6,9 @@ help: ## Show this help message
 	@echo 'Targets:'
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-install: install-clients ## Install dependencies
+install: install-server install-clients ## Install dependencies
+
+install-server: ## Install server dependencies (Python + frontend, no clients)
 	pipenv sync --dev
 	npm install --prefix ./app
 
@@ -16,10 +18,11 @@ install-clients: ## Install client dependencies (Python and TypeScript)
 	@echo "Installing TypeScript client dependencies..."
 	cd clients/ts && npm install
 
-
-setup-dev: install ## Set up development environment
+install-playwright:
 	pipenv run playwright install chromium
 	pipenv run playwright install-deps
+
+setup-dev: install install-playwright ## Set up development environment
 	@echo "Development environment setup complete!"
 	@echo "Don't forget to copy .env.example to .env and configure your settings"
 
