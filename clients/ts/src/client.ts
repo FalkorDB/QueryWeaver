@@ -1,5 +1,7 @@
 import { ChatData, ConfirmData, APIResponse, QueryWeaverClientOptions, APIError } from './types';
 
+const MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||';
+
 /**
  * QueryWeaver HTTP API client.
  *
@@ -55,8 +57,10 @@ export class QueryWeaverClient {
 
   /**
    * List available user schemas/databases.
+   *
+   * @returns A list of database/schema names.
    */
-  async listSchemas(): Promise<APIResponse> {
+  async listSchemas(): Promise<string[]> {
     const response = await fetch(this.url('/graphs'), {
       method: 'GET',
       headers: this.defaultHeaders,
@@ -156,6 +160,7 @@ export class QueryWeaverClient {
 
   /**
    * Consume a streaming response and return the final result.
+   * Properly buffers chunks and splits on the exact MESSAGE_DELIMITER.
    */
   private async consumeStreamingResponse(response: Response): Promise<APIResponse> {
     const events: APIResponse[] = [];
@@ -166,6 +171,7 @@ export class QueryWeaverClient {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    let buffer = '';
 
     try {
       let done = false;
@@ -175,21 +181,36 @@ export class QueryWeaverClient {
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        if (!chunk.trim()) continue;
+        buffer += chunk;
 
-        // Split by potential delimiters (||| or newlines)
-        const parts = chunk.split('|||');
-        for (const part of parts) {
-          const trimmedPart = part.trim();
-          if (!trimmedPart) continue;
+        // Split by the delimiter and process complete messages
+        const parts = buffer.split(MESSAGE_DELIMITER);
+
+        // Keep the last part in the buffer (it may be incomplete)
+        buffer = parts[parts.length - 1];
+
+        // Process all complete messages
+        for (let i = 0; i < parts.length - 1; i++) {
+          const part = parts[i].trim();
+          if (!part) continue;
 
           try {
-            const event = JSON.parse(trimmedPart);
+            const event = JSON.parse(part);
             events.push(event);
           } catch {
             // If not valid JSON, store as raw text
-            events.push({ raw: trimmedPart });
+            events.push({ raw: part });
           }
+        }
+      }
+
+      // Process any remaining data in the buffer
+      if (buffer.trim()) {
+        try {
+          const event = JSON.parse(buffer.trim());
+          events.push(event);
+        } catch {
+          events.push({ raw: buffer.trim() });
         }
       }
     } finally {

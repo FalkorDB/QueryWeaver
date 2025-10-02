@@ -13,7 +13,7 @@ class DummyResp:  # pylint: disable=too-few-public-methods
     def __init__(self, status=200, json_data=None, text=""):
         self.status = status
         self._json = json_data
-        self.text = text
+        self._text = text
         self.content: Optional['DummyContent'] = None
 
     @property
@@ -24,6 +24,14 @@ class DummyResp:  # pylint: disable=too-few-public-methods
             bool: True if the response status is in the 2xx range, False otherwise.
         """
         return 200 <= self.status < 300
+
+    async def text(self):
+        """Return the text content of the response.
+
+        Returns:
+            str: The text content of the response.
+        """
+        return self._text
 
     async def json(self):
         """Convert the response to JSON.
@@ -74,7 +82,7 @@ class DummySession:
         Returns:
             DummyResp: A dummy response object with sample graph data.
         """
-        return DummyResp(json_data={"graphs": []})
+        return DummyResp(json_data=[])
 
     def post(self, url, json=None, timeout=None): # pylint: disable=unused-argument
         """Simulate a POST request for testing purposes.
@@ -124,7 +132,7 @@ async def test_list_schemas_and_delete():
     sess = DummySession()
     async with QueryWeaverClient("http://localhost:5000", session=sess) as client:
         result = await client.list_schemas()
-        assert result == {"graphs": []}
+        assert result == []
         result = await client.delete_schema("mydb")
         assert result == {"deleted": True}
 
