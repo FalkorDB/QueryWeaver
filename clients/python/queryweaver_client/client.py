@@ -6,9 +6,9 @@ Supports API token authentication (Bearer) and session cookie usage.
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Iterator, Optional
+from typing import Any, Dict, Optional
 
-import requests
+import aiohttp
 
 
 class APIError(Exception):
@@ -19,143 +19,141 @@ class QueryWeaverClient:
     """Minimal QueryWeaver client.
 
     Usage:
-      client = QueryWeaverClient("http://localhost:5000", api_token="...")
-      client.list_graphs()
-      client.connect_database("postgresql://user:pass@host/db")
+      async with QueryWeaverClient("http://localhost:5000", api_token="...") as client:
+        await client.list_schemas()
+        result = await client.connect_database("postgresql://user:pass@host/db")
 
     Authentication:
       - api_token: sent as Bearer token in Authorization header
-      - session cookie: pass a `requests.Session()` with cookies set
+      - session cookie: pass a `aiohttp.ClientSession()` with cookies set
     """
 
     def __init__(
         self,
         base_url: str,
         api_token: Optional[str] = None,
-    session: Optional[Any] = None,
+        session: Optional[aiohttp.ClientSession] = None,
         timeout: int = 30,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_token = api_token
-        self._session = session or requests.Session()
-        self.timeout = timeout
+        self._session = session
+        self.timeout = aiohttp.ClientTimeout(total=timeout)
 
         # default headers
-        self._session.headers.update({"Accept": "application/json"})
+        self._default_headers = {"Accept": "application/json"}
         if api_token:
-            self._session.headers.update({"Authorization": f"Bearer {api_token}"})
+            self._default_headers["Authorization"] = f"Bearer {api_token}"
+
+    async def __aenter__(self):
+        if self._session is None:
+            self._session = aiohttp.ClientSession(headers=self._default_headers)
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self._session and not self._session.closed:
+            await self._session.close()
 
     def _url(self, path: str) -> str:
         return f"{self.base_url}{path}"
 
-    def _raise_for_status(self, resp: requests.Response) -> None:
+    def _raise_for_status(self, resp: aiohttp.ClientResponse) -> None:
         if not resp.ok:
             # try to parse json error
             try:
                 payload = resp.json()
             except Exception:
                 payload = resp.text
-            raise APIError(f"HTTP {resp.status_code}: {payload}")
+            raise APIError(f"HTTP {resp.status}: {payload}")
 
-    def list_graphs(self) -> Dict[str, Any]:
-        """GET /graphs - list available user graphs/databases."""
-        resp = self._session.get(self._url("/graphs"), timeout=self.timeout)
-        self._raise_for_status(resp)
-        return resp.json()
+    async def list_schemas(self) -> Dict[str, Any]:
+        """GET /graphs - list available user schemas/databases."""
+        async with self._session.get(self._url("/graphs"), timeout=self.timeout) as resp:
+            self._raise_for_status(resp)
+            return await resp.json()
 
-    def get_graph_schema(self, graph_id: str) -> Dict[str, Any]:
+    async def get_schema(self, graph_id: str) -> Dict[str, Any]:
         """GET /graphs/{graph_id}/data - return schema nodes/edges."""
-        resp = self._session.get(self._url(f"/graphs/{graph_id}/data"), timeout=self.timeout)
-        self._raise_for_status(resp)
-        return resp.json()
+        async with self._session.get(self._url(f"/graphs/{graph_id}/data"), timeout=self.timeout) as resp:
+            self._raise_for_status(resp)
+            return await resp.json()
 
-    def delete_graph(self, graph_id: str) -> Dict[str, Any]:
-        """DELETE /graphs/{graph_id} - delete a graph."""
-        resp = self._session.delete(self._url(f"/graphs/{graph_id}"), timeout=self.timeout)
-        self._raise_for_status(resp)
-        return resp.json()
+    async def delete_schema(self, graph_id: str) -> Dict[str, Any]:
+        """DELETE /graphs/{graph_id} - delete a schema."""
+        async with self._session.delete(self._url(f"/graphs/{graph_id}"), timeout=self.timeout) as resp:
+            self._raise_for_status(resp)
+            return await resp.json()
 
-    def refresh_graph(self, graph_id: str) -> Dict[str, Any]:
+    async def refresh_schema(self, graph_id: str) -> Dict[str, Any]:
         """POST /graphs/{graph_id}/refresh - refresh schema."""
-        resp = self._session.post(self._url(f"/graphs/{graph_id}/refresh"), timeout=self.timeout)
-        self._raise_for_status(resp)
-        return resp.json()
+        async with self._session.post(self._url(f"/graphs/{graph_id}/refresh"), timeout=self.timeout) as resp:
+            self._raise_for_status(resp)
+            return await resp.json()
 
-    def connect_database(self, db_url: str) -> Iterator[Dict[str, Any]]:
-        """POST /database - send database url and stream progress.
-
-        Returns an iterator that yields decoded JSON objects as they arrive
-        separated by the server's streaming protocol.
-        """
+    async def connect_database(self, db_url: str) -> Dict[str, Any]:
+        """POST /database - connect to a database and return final result."""
         payload = {"url": db_url}
-        resp = self._session.post(self._url("/database"), json=payload, stream=True, timeout=self.timeout)
-        self._raise_for_status(resp)
+        async with self._session.post(self._url("/database"), json=payload, timeout=self.timeout) as resp:
+            self._raise_for_status(resp)
 
-        # The server streams JSON and uses a delimiter. We'll yield by lines
-        for chunk in resp.iter_lines(decode_unicode=True):
-            if not chunk:
-                continue
-            # the backend may send concatenated json, attempt to split by common delimiter
-            # The client doesn't need to know exact delimiter; try to parse each chunk as JSON
-            try:
-                yield json.loads(chunk)
-            except Exception:
-                # fallback: try to split by '|||' or newline
-                parts = chunk.split("|||")
-                for part in parts:
-                    part = part.strip()
-                    if not part:
-                        continue
-                    try:
-                        yield json.loads(part)
-                    except Exception:
-                        yield {"raw": part}
+            # Consume the streaming response and return the final result
+            events = []
+            async for chunk in resp.content.iter_any():
+                chunk_str = chunk.decode('utf-8')
+                if not chunk_str.strip():
+                    continue
+                try:
+                    events.append(json.loads(chunk_str))
+                except Exception:
+                    # fallback: try to split by '|||' or newline
+                    parts = chunk_str.split("|||")
+                    for part in parts:
+                        part = part.strip()
+                        if not part:
+                            continue
+                        try:
+                            events.append(json.loads(part))
+                        except Exception:
+                            events.append({"raw": part})
 
-    def generate_token(self) -> Dict[str, Any]:
-        """POST /tokens/generate - generate API token (requires OAuth session)."""
-        resp = self._session.post(self._url("/tokens/generate"), timeout=self.timeout)
-        self._raise_for_status(resp)
-        return resp.json()
+            # Return the last event which typically contains the final status/result
+            return events[-1] if events else {}
 
-    def list_tokens(self) -> Dict[str, Any]:
-        """GET /tokens/list - list API tokens."""
-        resp = self._session.get(self._url("/tokens/list"), timeout=self.timeout)
-        self._raise_for_status(resp)
-        return resp.json()
+    async def query(self, graph_id: str, chat_data: Dict[str, Any]) -> Dict[str, Any]:
+        """POST /graphs/{graph_id} - run a natural language query and return final result."""
+        async with self._session.post(self._url(f"/graphs/{graph_id}"), json=chat_data, timeout=self.timeout) as resp:
+            self._raise_for_status(resp)
 
-    def delete_token(self, token_id: str) -> Dict[str, Any]:
-        """DELETE /tokens/{token_id} - delete token by last-4-chars id."""
-        resp = self._session.delete(self._url(f"/tokens/{token_id}"), timeout=self.timeout)
-        self._raise_for_status(resp)
-        return resp.json()
+            # Consume the streaming response and return the final result
+            events = []
+            async for chunk in resp.content.iter_any():
+                chunk_str = chunk.decode('utf-8')
+                if not chunk_str.strip():
+                    continue
+                try:
+                    events.append(json.loads(chunk_str))
+                except Exception:
+                    # server may send partial JSON, try to yield raw
+                    events.append({"raw": chunk_str})
 
-    # Chat/query endpoints
-    def query(self, graph_id: str, chat_data: Dict[str, Any]) -> Iterator[Dict[str, Any]]:
-        """POST /graphs/{graph_id} - send ChatRequest and stream generator responses.
+            # Return the last event which typically contains the final SQL result
+            return events[-1] if events else {}
 
-        chat_data must match the server-side ChatRequest model. Usually a dict with
-        {'messages': [...], 'sources': [...]} etc. This method yields JSON objects
-        as they are streamed by the server.
-        """
-        resp = self._session.post(self._url(f"/graphs/{graph_id}"), json=chat_data, stream=True, timeout=self.timeout)
-        self._raise_for_status(resp)
-        for chunk in resp.iter_lines(decode_unicode=True):
-            if not chunk:
-                continue
-            try:
-                yield json.loads(chunk)
-            except Exception:
-                # server may send partial JSON, try to yield raw
-                yield {"raw": chunk}
+    async def confirm(self, graph_id: str, confirm_data: Dict[str, Any]) -> Dict[str, Any]:
+        """POST /graphs/{graph_id}/confirm - confirm destructive operation and return result."""
+        async with self._session.post(self._url(f"/graphs/{graph_id}/confirm"), json=confirm_data, timeout=self.timeout) as resp:
+            self._raise_for_status(resp)
 
-    def confirm(self, graph_id: str, confirm_data: Dict[str, Any]) -> Iterator[Dict[str, Any]]:
-        """POST /graphs/{graph_id}/confirm - confirm destructive ops; stream responses."""
-        resp = self._session.post(self._url(f"/graphs/{graph_id}/confirm"), json=confirm_data, stream=True, timeout=self.timeout)
-        self._raise_for_status(resp)
-        for chunk in resp.iter_lines(decode_unicode=True):
-            if not chunk:
-                continue
-            try:
-                yield json.loads(chunk)
-            except Exception:
-                yield {"raw": chunk}
+            # Consume the streaming response and return the final result
+            events = []
+            async for chunk in resp.content.iter_any():
+                chunk_str = chunk.decode('utf-8')
+                if not chunk_str.strip():
+                    continue
+                try:
+                    events.append(json.loads(chunk_str))
+                except Exception:
+                    events.append({"raw": chunk_str})
+
+            # Return the last event
+            return events[-1] if events else {}

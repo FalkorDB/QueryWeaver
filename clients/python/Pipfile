@@ -4,11 +4,12 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [packages]
-requests = "*"
+aiohttp = "*"
 queryweaver-client = {file = ".", editable = true}
 
 [dev-packages]
 pytest = "*"
+pytest-asyncio = "*"
 
 [requires]
 python_version = "3.12"
