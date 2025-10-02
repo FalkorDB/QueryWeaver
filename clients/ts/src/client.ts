@@ -39,7 +39,7 @@ export class QueryWeaverClient {
   constructor(options: QueryWeaverClientOptions = {}) {
     this.baseUrl = (options.baseUrl || 'http://localhost:5000').replace(/\/$/, '');
     this.apiToken = options.apiToken;
-    this.timeout = options.timeout || 30000;
+    this.timeout = options.timeout ?? 30000;
 
     this.defaultHeaders = {
       'Accept': 'application/json',
@@ -246,6 +246,15 @@ export class QueryWeaverClient {
             events.push({ raw: part });
           }
         }
+      }
+
+      // Flush the decoder to capture any partial multi-byte characters left in its internal buffer
+      // and append them to our accumulated buffer before final parsing.
+      try {
+        const tail = decoder.decode();
+        if (tail) buffer += tail;
+      } catch {
+        // Some environments may not support calling decode without args; ignore if it fails
       }
 
       // Process any remaining data in the buffer
