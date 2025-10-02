@@ -187,3 +187,16 @@ async def test_error_raised_for_bad_status():
     async with QueryWeaverClient("http://localhost:5000", session=sess) as client:
         with pytest.raises(APIError):
             await client.list_schemas()
+
+
+@pytest.mark.asyncio
+async def test_api_token_applied_to_provided_session():
+    """Test that api_token is applied to a provided session's headers."""
+    sess = DummySession()
+    QueryWeaverClient("http://localhost:5000",
+                     api_token="test-token-123",
+                     session=sess)
+
+    # Verify the Authorization header was added to the session
+    assert "Authorization" in sess.headers
+    assert sess.headers["Authorization"] == "Bearer test-token-123"

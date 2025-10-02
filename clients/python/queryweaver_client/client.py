@@ -29,6 +29,15 @@ class QueryWeaverClient:
     Authentication:
       - api_token: sent as Bearer token in Authorization header
       - session cookie: pass a `aiohttp.ClientSession()` with cookies set
+      - If both session and api_token are provided, the Authorization header
+        will be automatically added to the provided session's headers
+
+    Args:
+        base_url: The base URL of the QueryWeaver server
+        api_token: Optional API token for Bearer authentication
+        session: Optional aiohttp ClientSession. If provided with api_token,
+                 the Authorization header will be added to this session
+        timeout: Request timeout in seconds (default: 30)
     """
 
     def __init__(
@@ -47,6 +56,10 @@ class QueryWeaverClient:
         self._default_headers = {"Accept": "application/json"}
         if api_token:
             self._default_headers["Authorization"] = f"Bearer {api_token}"
+
+        # If a session is provided and api_token is set, update the session's headers
+        if self._session and api_token:
+            self._session.headers.update({"Authorization": f"Bearer {api_token}"})
 
     async def __aenter__(self):
         if self._session is None:
