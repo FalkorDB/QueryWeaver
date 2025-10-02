@@ -13,7 +13,7 @@ configured to be used with pipenv (Pipfile) or a plain virtualenv.
 If you just want to use the client (not develop it), install the published package from PyPI:
 
 ```bash
-pip install queryweaver_client
+pip install queryweaver-client
 ```
 
 This installs the latest released version. For development and tests use the pipenv/venv instructions below.
