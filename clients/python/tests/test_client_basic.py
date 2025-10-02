@@ -76,12 +76,12 @@ class DummySession:
         """
         return DummyResp(json_data={"graphs": []})
 
-    def post(self, url, data=None, timeout=None): # pylint: disable=unused-argument
+    def post(self, url, json=None, timeout=None): # pylint: disable=unused-argument
         """Simulate a POST request for testing purposes.
 
         Args:
             url (str): The URL to send the POST request to.
-            data (dict, optional): The JSON data to send in the request body. Defaults to None.
+            json (dict, optional): The JSON data to send in the request body. Defaults to None.
             timeout (float, optional): The timeout for the request. Defaults to None.
 
         Returns:
