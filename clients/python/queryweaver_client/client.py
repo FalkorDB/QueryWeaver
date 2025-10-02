@@ -73,7 +73,10 @@ class QueryWeaverClient:
             try:
                 # some session implementations expose a writable headers dict
                 self._session.headers.update({"Authorization": f"Bearer {api_token}"})
-            except Exception:
+            except (AttributeError, TypeError):
+                # aiohttp's ClientSession.headers is a read-only proxy and may raise
+                # AttributeError/TypeError when mutated. Fall back to _default_headers
+                # if available.
                 default_headers = getattr(self._session, "_default_headers", None)
                 if default_headers is not None:
                     default_headers["Authorization"] = f"Bearer {api_token}"
