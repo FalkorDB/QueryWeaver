@@ -55,6 +55,43 @@ export class QueryWeaverClient {
     return `${this.baseUrl}${path}`;
   }
 
+  /**
+   * Helper to perform fetch with an AbortController + setTimeout for broad compatibility.
+   * The helper uses broad RequestInit-like objects; to avoid pulling DOM lib types into
+   * environments that may not include them, we accept `any` here and cast when calling
+   * fetch. This is internal and constrained; eslint rule is disabled locally.
+   * eslint-disable-next-line @typescript-eslint/no-explicit-any
+   */
+  private async _fetchWithTimeout(input: string | URL, init: any = {}): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeout);
+    try {
+      const merged = { ...init, signal: controller.signal };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return await fetch(input as any, merged as any);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Fetch and check status, then parse JSON.
+   */
+  private async _fetchJson(input: string | URL, init: any = {}): Promise<any> {
+    const resp = await this._fetchWithTimeout(input, init);
+    await this.raiseForStatus(resp);
+    return resp.json();
+  }
+
+  /**
+   * Fetch and check status, then consume streaming response.
+   */
+  private async _fetchStreaming(input: string | URL, init: any = {}): Promise<APIResponse> {
+    const resp = await this._fetchWithTimeout(input, init);
+    await this.raiseForStatus(resp);
+    return this.consumeStreamingResponse(resp);
+  }
+
   private async raiseForStatus(response: Response): Promise<void> {
     if (!response.ok) {
       let errorMessage: string;
@@ -78,71 +115,51 @@ export class QueryWeaverClient {
    * @returns A list of database/schema names.
    */
   async listSchemas(): Promise<string[]> {
-    const response = await fetch(this.url('/graphs'), {
+    return this._fetchJson(this.url('/graphs'), {
       method: 'GET',
       headers: this.defaultHeaders,
-      signal: AbortSignal.timeout(this.timeout),
     });
-
-    await this.raiseForStatus(response);
-    return response.json();
   }
 
   /**
    * Get schema nodes/edges for a specific graph.
    */
   async getSchema(graphId: string): Promise<APIResponse> {
-    const response = await fetch(this.url(`/graphs/${graphId}/data`), {
+    return this._fetchJson(this.url(`/graphs/${graphId}/data`), {
       method: 'GET',
       headers: this.defaultHeaders,
-      signal: AbortSignal.timeout(this.timeout),
     });
-
-    await this.raiseForStatus(response);
-    return response.json();
   }
 
   /**
    * Delete a schema.
    */
   async deleteSchema(graphId: string): Promise<APIResponse> {
-    const response = await fetch(this.url(`/graphs/${graphId}`), {
+    return this._fetchJson(this.url(`/graphs/${graphId}`), {
       method: 'DELETE',
       headers: this.defaultHeaders,
-      signal: AbortSignal.timeout(this.timeout),
     });
-
-    await this.raiseForStatus(response);
-    return response.json();
   }
 
   /**
    * Refresh schema.
    */
   async refreshSchema(graphId: string): Promise<APIResponse> {
-    const response = await fetch(this.url(`/graphs/${graphId}/refresh`), {
+    return this._fetchJson(this.url(`/graphs/${graphId}/refresh`), {
       method: 'POST',
       headers: this.defaultHeaders,
-      signal: AbortSignal.timeout(this.timeout),
     });
-
-    await this.raiseForStatus(response);
-    return response.json();
   }
 
   /**
    * Connect to a database and return final result.
    */
   async connectDatabase(dbUrl: string): Promise<APIResponse> {
-    const response = await fetch(this.url('/database'), {
+    return this._fetchStreaming(this.url('/database'), {
       method: 'POST',
       headers: this.defaultHeaders,
       body: JSON.stringify({ url: dbUrl }),
-      signal: AbortSignal.timeout(this.timeout),
     });
-
-    await this.raiseForStatus(response);
-    return this.consumeStreamingResponse(response);
   }
 
   /**
@@ -155,15 +172,11 @@ export class QueryWeaverClient {
    * @returns The query result or confirmation request
    */
   async query(graphId: string, chatData: ChatData, autoConfirm: boolean = false): Promise<APIResponse> {
-    const response = await fetch(this.url(`/graphs/${graphId}`), {
+    const result = await this._fetchStreaming(this.url(`/graphs/${graphId}`), {
       method: 'POST',
       headers: this.defaultHeaders,
       body: JSON.stringify(chatData),
-      signal: AbortSignal.timeout(this.timeout),
     });
-
-    await this.raiseForStatus(response);
-    const result = await this.consumeStreamingResponse(response);
 
     // If autoConfirm is enabled and result requires confirmation, automatically confirm
     if (autoConfirm && result.type === 'destructive_confirmation') {
@@ -182,15 +195,11 @@ export class QueryWeaverClient {
    * Confirm destructive operation and return result.
    */
   async confirm(graphId: string, confirmData: ConfirmData): Promise<APIResponse> {
-    const response = await fetch(this.url(`/graphs/${graphId}/confirm`), {
+    return this._fetchStreaming(this.url(`/graphs/${graphId}/confirm`), {
       method: 'POST',
       headers: this.defaultHeaders,
       body: JSON.stringify(confirmData),
-      signal: AbortSignal.timeout(this.timeout),
     });
-
-    await this.raiseForStatus(response);
-    return this.consumeStreamingResponse(response);
   }
 
   /**
