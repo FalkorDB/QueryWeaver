@@ -57,9 +57,18 @@ class QueryWeaverClient:
         if api_token:
             self._default_headers["Authorization"] = f"Bearer {api_token}"
 
-        # If a session is provided and api_token is set, update the session's headers
+        # Track whether we own the session (created by us) so we only close it when
+        # appropriate. If a session is provided and api_token is set, avoid mutating
+        # the session.headers (a CIMultiDictProxy) which can raise AttributeError.
+        # Instead, if the session exposes a writable `_default_headers` attribute,
+        # set the Authorization header there; otherwise we will merge
+        # `self._default_headers` into each request.
+        self._owns_session = self._session is None
+
         if self._session and api_token:
-            self._session.headers.update({"Authorization": f"Bearer {api_token}"})
+            default_headers = getattr(self._session, "_default_headers", None)
+            if default_headers is not None:
+                default_headers["Authorization"] = f"Bearer {api_token}"
 
     async def __aenter__(self):
         if self._session is None:
