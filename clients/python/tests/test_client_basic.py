@@ -1,6 +1,6 @@
 """Test cases for QueryWeaverClient using a dummy session to simulate server responses."""
 
-import json
+from json import dumps
 from typing import Optional
 
 import pytest
@@ -50,8 +50,8 @@ class DummyContent: # pylint: disable=too-few-public-methods
     async def iter_any(self):
         """Simulate streaming response content."""
         # yield a few JSON lines as bytes
-        yield json.dumps({"step": 1}).encode('utf-8')
-        yield json.dumps({"step": 2}).encode('utf-8')
+        yield dumps({"step": 1}).encode('utf-8')
+        yield dumps({"step": 2}).encode('utf-8')
 
 class DummySession:
     """Dummy session class to simulate aiohttp session objects for testing."""
