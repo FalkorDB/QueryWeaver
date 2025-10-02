@@ -22,7 +22,7 @@ export function clearGraphOptions() {
     if (optionsContainer) optionsContainer.innerHTML = '';
 }
 
-export function addGraphOption(name: string, onSelect: (n: string) => void, onDelete: (n: string) => void, isDemo: boolean = false) {
+export function addGraphOption(name: string, onSelect: (_: string) => void, onDelete: (_: string) => void, isDemo: boolean = false) {
     const optionsContainer = document.getElementById('graph-options');
     if (!optionsContainer) return;
     const row = document.createElement('div');

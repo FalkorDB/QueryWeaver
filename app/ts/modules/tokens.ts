@@ -138,7 +138,7 @@ export function setupTokenManagement() {
                     deleteTokenModal.style.display = 'none';
                     currentDeleteTokenId = null;
                 }
-            } catch (err) {
+            } catch {
                 // ignore if computed style fails for any reason
             }
         }

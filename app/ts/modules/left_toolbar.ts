@@ -30,7 +30,7 @@ export function initLeftToolbar(): void {
 
     try {
         setOpen(mq.matches);
-    } catch (e) {
+    } catch {
         setOpen(true);
     }
 
@@ -54,7 +54,7 @@ export function initLeftToolbar(): void {
         ignoreNextClick = true;
     });
 
-    btn.addEventListener('click', function (_e: MouseEvent) {
+    btn.addEventListener('click', function () {
         if (ignoreNextClick) {
             ignoreNextClick = false;
             return;
