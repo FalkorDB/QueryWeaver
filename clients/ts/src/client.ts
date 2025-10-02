@@ -7,6 +7,20 @@ const MESSAGE_DELIMITER = '|||FALKORDB_MESSAGE_BOUNDARY|||';
  *
  * Simple wrapper around the REST API exposed by a running QueryWeaver server.
  * Supports API token authentication (Bearer) and session cookie usage.
+ *
+ * @example
+ * ```typescript
+ * // With API token authentication
+ * const client = new QueryWeaverClient({
+ *   baseUrl: 'http://localhost:5000',
+ *   apiToken: 'your-api-token'
+ * });
+ *
+ * // With session cookies (handled automatically by fetch)
+ * const client = new QueryWeaverClient({
+ *   baseUrl: 'http://localhost:5000'
+ * });
+ * ```
  */
 export class QueryWeaverClient {
   private baseUrl: string;
@@ -18,6 +32,9 @@ export class QueryWeaverClient {
    * Create a new QueryWeaver client.
    *
    * @param options - Client configuration options
+   * @param options.baseUrl - The base URL of the QueryWeaver server (default: 'http://localhost:5000')
+   * @param options.apiToken - Optional API token for Bearer authentication
+   * @param options.timeout - Request timeout in milliseconds (default: 30000)
    */
   constructor(options: QueryWeaverClientOptions = {}) {
     this.baseUrl = (options.baseUrl || 'http://localhost:5000').replace(/\/$/, '');
