@@ -27,4 +27,4 @@ pytest-playwright = "~=0.7.1"
 pytest-asyncio = "~=1.2.0"
 
 [requires]
-python_version = "3.11"
+python_version = "3.12"
