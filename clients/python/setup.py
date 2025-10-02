@@ -1,3 +1,5 @@
+"""Setup script for the QueryWeaver Python client package."""
+
 from setuptools import setup, find_packages
 
 setup(

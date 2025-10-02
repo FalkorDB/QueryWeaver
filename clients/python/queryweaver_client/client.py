@@ -74,26 +74,30 @@ class QueryWeaverClient:
 
     async def get_schema(self, graph_id: str) -> Dict[str, Any]:
         """GET /graphs/{graph_id}/data - return schema nodes/edges."""
-        async with self._session.get(self._url(f"/graphs/{graph_id}/data"), timeout=self.timeout) as resp:
+        async with self._session.get(self._url(f"/graphs/{graph_id}/data"),
+                                     timeout=self.timeout) as resp:
             self._raise_for_status(resp)
             return await resp.json()
 
     async def delete_schema(self, graph_id: str) -> Dict[str, Any]:
         """DELETE /graphs/{graph_id} - delete a schema."""
-        async with self._session.delete(self._url(f"/graphs/{graph_id}"), timeout=self.timeout) as resp:
+        async with self._session.delete(self._url(f"/graphs/{graph_id}"),
+                                        timeout=self.timeout) as resp:
             self._raise_for_status(resp)
             return await resp.json()
 
     async def refresh_schema(self, graph_id: str) -> Dict[str, Any]:
         """POST /graphs/{graph_id}/refresh - refresh schema."""
-        async with self._session.post(self._url(f"/graphs/{graph_id}/refresh"), timeout=self.timeout) as resp:
+        async with self._session.post(self._url(f"/graphs/{graph_id}/refresh"),
+                                      timeout=self.timeout) as resp:
             self._raise_for_status(resp)
             return await resp.json()
 
     async def connect_database(self, db_url: str) -> Dict[str, Any]:
         """POST /database - connect to a database and return final result."""
         payload = {"url": db_url}
-        async with self._session.post(self._url("/database"), json=payload, timeout=self.timeout) as resp:
+        async with self._session.post(self._url("/database"), json=payload,
+                                      timeout=self.timeout) as resp:
             self._raise_for_status(resp)
 
             # Consume the streaming response and return the final result
@@ -121,7 +125,8 @@ class QueryWeaverClient:
 
     async def query(self, graph_id: str, chat_data: Dict[str, Any]) -> Dict[str, Any]:
         """POST /graphs/{graph_id} - run a natural language query and return final result."""
-        async with self._session.post(self._url(f"/graphs/{graph_id}"), json=chat_data, timeout=self.timeout) as resp:
+        async with self._session.post(self._url(f"/graphs/{graph_id}"),
+                                      json=chat_data, timeout=self.timeout) as resp:
             self._raise_for_status(resp)
 
             # Consume the streaming response and return the final result
@@ -141,7 +146,8 @@ class QueryWeaverClient:
 
     async def confirm(self, graph_id: str, confirm_data: Dict[str, Any]) -> Dict[str, Any]:
         """POST /graphs/{graph_id}/confirm - confirm destructive operation and return result."""
-        async with self._session.post(self._url(f"/graphs/{graph_id}/confirm"), json=confirm_data, timeout=self.timeout) as resp:
+        async with self._session.post(self._url(f"/graphs/{graph_id}/confirm"),
+                                      json=confirm_data, timeout=self.timeout) as resp:
             self._raise_for_status(resp)
 
             # Consume the streaming response and return the final result
