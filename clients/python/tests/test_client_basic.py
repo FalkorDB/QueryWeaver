@@ -44,15 +44,11 @@ class DummyResp:  # pylint: disable=too-few-public-methods
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         pass
 
-class DummyContent:
+class DummyContent: # pylint: disable=too-few-public-methods
     """ A dummy content object to simulate aiohttp.StreamReader. """
 
     async def iter_any(self):
-        """Simulate streaming response content.
-
-        Yields:
-            _type_: _description_
-        """
+        """Simulate streaming response content."""
         # yield a few JSON lines as bytes
         yield json.dumps({"step": 1}).encode('utf-8')
         yield json.dumps({"step": 2}).encode('utf-8')
@@ -68,25 +64,25 @@ class DummySession:
         """Close the dummy session."""
         self.closed = True
 
-    def get(self, _url, _timeout=None):
+    def get(self, url, timeout=None): # pylint: disable=unused-argument
         """Simulate a GET request for testing purposes.
 
         Args:
-            _url (str): The URL to send the GET request to.
-            _timeout (float, optional): The timeout for the request. Defaults to None.
+            url (str): The URL to send the GET request to.
+            timeout (float, optional): The timeout for the request. Defaults to None.
 
         Returns:
             DummyResp: A dummy response object with sample graph data.
         """
         return DummyResp(json_data={"graphs": []})
 
-    def post(self, url, _data=None, _timeout=None):
+    def post(self, url, data=None, timeout=None): # pylint: disable=unused-argument
         """Simulate a POST request for testing purposes.
 
         Args:
             url (str): The URL to send the POST request to.
-            _data (dict, optional): The JSON data to send in the request body. Defaults to None.
-            _timeout (float, optional): The timeout for the request. Defaults to None.
+            data (dict, optional): The JSON data to send in the request body. Defaults to None.
+            timeout (float, optional): The timeout for the request. Defaults to None.
 
         Returns:
             DummyResp: A dummy response object with appropriate content based on the URL.
@@ -110,12 +106,12 @@ class DummySession:
 
         return DummyResp(json_data={"ok": True})
 
-    def delete(self, _url, _timeout=None):
+    def delete(self, url, timeout=None): # pylint: disable=unused-argument
         """Simulate DELETE request.
 
         Args:
             url (str): The URL to send the request to.
-            _timeout (float, optional): The timeout for the request. Defaults to None.
+            timeout (float, optional): The timeout for the request. Defaults to None.
 
         Returns:
             DummyResp: The simulated response object.
@@ -176,7 +172,7 @@ async def test_error_raised_for_bad_status():
     class BadSession(DummySession):
         """Simulate a bad session for testing."""
 
-        def get(self, _url, _timeout=None):
+        def get(self, url, timeout=None): # pylint: disable=unused-argument
             return DummyResp(status=500, text="boom")
 
     sess = BadSession()
