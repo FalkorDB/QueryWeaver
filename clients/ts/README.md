@@ -70,7 +70,7 @@ interface QueryWeaverClientOptions {
 
 #### Methods
 
-- `listSchemas(): Promise<APIResponse>` - List available schemas/databases
+- `listSchemas(): Promise<string[]>` - List available schemas/databases
 - `getSchema(graphId: string): Promise<APIResponse>` - Get schema details
 - `deleteSchema(graphId: string): Promise<APIResponse>` - Delete a schema
 - `refreshSchema(graphId: string): Promise<APIResponse>` - Refresh schema
