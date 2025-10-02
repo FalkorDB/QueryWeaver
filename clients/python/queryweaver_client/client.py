@@ -62,7 +62,7 @@ class QueryWeaverClient:
             # try to parse json error
             try:
                 payload = resp.json()
-            except Exception:
+            except json.JSONDecodeError:
                 payload = resp.text
             raise APIError(f"HTTP {resp.status}: {payload}")
 
@@ -108,7 +108,7 @@ class QueryWeaverClient:
                     continue
                 try:
                     events.append(json.loads(chunk_str))
-                except Exception:
+                except json.JSONDecodeError:
                     # fallback: try to split by '|||' or newline
                     parts = chunk_str.split("|||")
                     for part in parts:
@@ -117,7 +117,7 @@ class QueryWeaverClient:
                             continue
                         try:
                             events.append(json.loads(part))
-                        except Exception:
+                        except json.JSONDecodeError:
                             events.append({"raw": part})
 
             # Return the last event which typically contains the final status/result
@@ -137,7 +137,7 @@ class QueryWeaverClient:
                     continue
                 try:
                     events.append(json.loads(chunk_str))
-                except Exception:
+                except json.JSONDecodeError:
                     # server may send partial JSON, try to yield raw
                     events.append({"raw": chunk_str})
 
@@ -158,7 +158,7 @@ class QueryWeaverClient:
                     continue
                 try:
                     events.append(json.loads(chunk_str))
-                except Exception:
+                except json.JSONDecodeError:
                     events.append({"raw": chunk_str})
 
             # Return the last event

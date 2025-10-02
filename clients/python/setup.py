@@ -1,6 +1,6 @@
 """Setup script for the QueryWeaver Python client package."""
 
-from setuptools import setup, find_packages
+from setuptools import setup, find_packages  # pylint: disable=import-error
 
 setup(
     name="queryweaver-client",

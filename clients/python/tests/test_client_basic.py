@@ -7,7 +7,7 @@ import pytest
 
 from queryweaver_client.client import QueryWeaverClient, APIError
 
-class DummyResp:
+class DummyResp:  # pylint: disable=too-few-public-methods
     """ A dummy response object to simulate aiohttp.ClientResponse. """
 
     def __init__(self, status=200, json_data=None, text=""):
@@ -68,25 +68,25 @@ class DummySession:
         """Close the dummy session."""
         self.closed = True
 
-    def get(self, url, timeout=None):
+    def get(self, _url, _timeout=None):
         """Simulate a GET request for testing purposes.
 
         Args:
-            url (str): The URL to send the GET request to.
-            timeout (float, optional): The timeout for the request. Defaults to None.
+            _url (str): The URL to send the GET request to.
+            _timeout (float, optional): The timeout for the request. Defaults to None.
 
         Returns:
             DummyResp: A dummy response object with sample graph data.
         """
         return DummyResp(json_data={"graphs": []})
 
-    def post(self, url, json=None, timeout=None):
+    def post(self, url, _data=None, _timeout=None):
         """Simulate a POST request for testing purposes.
 
         Args:
             url (str): The URL to send the POST request to.
-            json (dict, optional): The JSON data to send in the request body. Defaults to None.
-            timeout (float, optional): The timeout for the request. Defaults to None.
+            _data (dict, optional): The JSON data to send in the request body. Defaults to None.
+            _timeout (float, optional): The timeout for the request. Defaults to None.
 
         Returns:
             DummyResp: A dummy response object with appropriate content based on the URL.
@@ -110,12 +110,12 @@ class DummySession:
 
         return DummyResp(json_data={"ok": True})
 
-    def delete(self, url, timeout=None):
+    def delete(self, _url, _timeout=None):
         """Simulate DELETE request.
 
         Args:
             url (str): The URL to send the request to.
-            timeout (float, optional): The timeout for the request. Defaults to None.
+            _timeout (float, optional): The timeout for the request. Defaults to None.
 
         Returns:
             DummyResp: The simulated response object.
@@ -176,7 +176,7 @@ async def test_error_raised_for_bad_status():
     class BadSession(DummySession):
         """Simulate a bad session for testing."""
 
-        def get(self, url, timeout=None):
+        def get(self, _url, _timeout=None):
             return DummyResp(status=500, text="boom")
 
     sess = BadSession()
