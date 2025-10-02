@@ -205,7 +205,7 @@ async def test_api_token_applied_to_provided_session():
 @pytest.mark.asyncio
 async def test_query_auto_confirm():
     """Test query with auto_confirm handles destructive operations automatically."""
-    class CustomContent:
+    class CustomContent:  # pylint: disable=too-few-public-methods
         """Custom content that returns specific JSON data."""
 
         def __init__(self, data):
@@ -215,7 +215,7 @@ async def test_query_auto_confirm():
             """Yield the data as encoded JSON."""
             yield dumps(self.data).encode('utf-8')
 
-    class DestructiveSession(DummySession):
+    class DestructiveSession(DummySession):  # pylint: disable=too-few-public-methods
         """Session that returns destructive confirmation request."""
 
         def __init__(self):
@@ -257,7 +257,7 @@ async def test_query_auto_confirm():
 @pytest.mark.asyncio
 async def test_query_no_auto_confirm():
     """Test query without auto_confirm returns confirmation request."""
-    class CustomContent:
+    class CustomContent:  # pylint: disable=too-few-public-methods
         """Custom content that returns specific JSON data."""
 
         def __init__(self, data):
@@ -267,7 +267,7 @@ async def test_query_no_auto_confirm():
             """Yield the data as encoded JSON."""
             yield dumps(self.data).encode('utf-8')
 
-    class DestructiveSession(DummySession):
+    class DestructiveSession(DummySession):  # pylint: disable=too-few-public-methods
         """Session that returns destructive confirmation request."""
 
         def post(self, url, json=None, timeout=None): # pylint: disable=unused-argument

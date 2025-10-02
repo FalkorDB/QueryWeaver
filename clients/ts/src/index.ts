@@ -1,2 +1,3 @@
 export { QueryWeaverClient } from './client';
-export { APIError, ChatData, ConfirmData, APIResponse, QueryWeaverClientOptions, ChatMessage } from './types';
+export { APIError } from './types';
+export type { ChatData, ConfirmData, APIResponse, QueryWeaverClientOptions, ChatMessage } from './types';
