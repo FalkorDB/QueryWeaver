@@ -21,7 +21,7 @@ graphiti-core = {ref = "staging", git = "git+https://github.com/FalkorDB/graphit
 
 [dev-packages]
 pytest = "~=8.4.2"
-pylint = "~=3.3.4"
+pylint = "~=3.3.9"
 playwright = "~=1.55.0"
 pytest-playwright = "~=0.7.1"
 pytest-asyncio = "~=1.2.0"
