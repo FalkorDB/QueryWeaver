@@ -3,7 +3,7 @@
 import logging
 import json
 import time
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 from pydantic import BaseModel
 
@@ -141,7 +141,7 @@ async def load_database(url: str, user_id: str):
     return generate()
 
 
-async def list_databases(user_id: str, general_prefix: str) -> list[str]:
+async def list_databases(user_id: str, general_prefix: Optional[str] = None) -> list[str]:
     """
     This route is used to list all the graphs (databases names) that are available in the database.
     """

@@ -21,7 +21,7 @@ class DatabaseConnectionRequest(BaseModel):
 
     url: str
 
-@database_router.post("/database", operation_id="connect_database", responses={
+@database_router.post("/database", operation_id="connect_database", tags=["mcp_tool"], responses={
     401: UNAUTHORIZED_RESPONSE
 })
 @token_required
