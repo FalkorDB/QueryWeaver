@@ -7,9 +7,10 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi_mcp import FastApiMCP
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from fastmcp import FastMCP
+from fastmcp.server.openapi import MCPType, RouteMap
 
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
@@ -22,24 +23,24 @@ from api.routes.tokens import tokens_router
 
 # Load environment variables from .env file
 load_dotenv()
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-class SecurityMiddleware(BaseHTTPMiddleware): # pylint: disable=too-few-public-methods
+
+class SecurityMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods
     """Middleware for security checks including static file access"""
 
-    STATIC_PREFIX = '/static/'
+    STATIC_PREFIX = "/static/"
 
     async def dispatch(self, request: Request, call_next):
         # Block directory access in static files
         if request.url.path.startswith(self.STATIC_PREFIX):
             # Remove /static/ prefix to get the actual path
-            filename = request.url.path[len(self.STATIC_PREFIX):]
+            filename = request.url.path[len(self.STATIC_PREFIX) :]
             # Basic security check for directory traversal
-            if not filename or '../' in filename or filename.endswith('/'):
-                return JSONResponse(
-                    status_code=403,
-                    content={"detail": "Forbidden"}
-                )
+            if not filename or "../" in filename or filename.endswith("/"):
+                return JSONResponse(status_code=403, content={"detail": "Forbidden"})
 
         response = await call_next(request)
         return response
@@ -47,28 +48,86 @@ class SecurityMiddleware(BaseHTTPMiddleware): # pylint: disable=too-few-public-m
 
 def create_app():
     """Create and configure the FastAPI application."""
+
+    # Create the FastAPI app instance just to set the o routes
+    # Will be merged with MCP app later if MCP is enabled
+    app = FastAPI(
+        title="QueryWeaver"
+    )
+
+    # Include routers
+    app.include_router(auth_router)
+    app.include_router(graphs_router, prefix="/graphs")
+    app.include_router(database_router)
+    app.include_router(tokens_router, prefix="/tokens")
+
+
+
+    # Control MCP endpoints via environment variable DISABLE_MCP
+    # Default: MCP is enabled unless DISABLE_MCP is set to true
+    disable_mcp = os.getenv("DISABLE_MCP", "false").lower() in ("1", "true", "yes")
+    mcp_app = None
+    if disable_mcp:
+        logging.info("MCP endpoints disabled via DISABLE_MCP environment variable")
+        routes=[
+            *app.routes,  # Original API routes only
+        ]
+    else:
+        mcp = FastMCP.from_fastapi(
+            app=app,
+            name="queryweaver",
+            route_maps=[
+                RouteMap(tags={"mcp_resource"}, mcp_type=MCPType.RESOURCE),
+                RouteMap(
+                    tags={"mcp_resource_template"},
+                    mcp_type=MCPType.RESOURCE_TEMPLATE,
+                ),
+                RouteMap(tags={"mcp_tool"}, mcp_type=MCPType.TOOL),
+                RouteMap(mcp_type=MCPType.EXCLUDE),
+            ],
+        )
+        mcp_app = mcp.http_app(path="/mcp")
+
+        # Combine routes from both apps
+        routes = [
+            *mcp_app.routes,  # MCP routes
+            *app.routes,  # Original API routes
+        ]
+
+    # Combine the MCP app and original app
     app = FastAPI(
         title="QueryWeaver",
         description="Text2SQL with Graph-Powered Schema Understanding",
         openapi_tags=[
-            {"name": "Authentication",
-             "description": "User authentication and OAuth operations"},
-            {"name": "Graphs & Databases",
-             "description": "Database schema management and querying"},
-            {"name": "Database Connection",
-             "description": "Connect to external databases"},
-            {"name": "API Tokens",
-             "description": "Manage API tokens for authentication"}
-        ]
+            {
+                "name": "Authentication",
+                "description": "User authentication and OAuth operations",
+            },
+            {
+                "name": "Graphs & Databases",
+                "description": "Database schema management and querying",
+            },
+            {
+                "name": "Database Connection",
+                "description": "Connect to external databases",
+            },
+            {
+                "name": "API Tokens",
+                "description": "Manage API tokens for authentication",
+            },
+        ],
+        routes=routes,
+        lifespan=mcp_app.lifespan if mcp_app else None,
     )
 
-        # Add security schemes to OpenAPI after app creation
+    # Add security schemes to OpenAPI after app creation
     def custom_openapi():
         if app.openapi_schema:
             return app.openapi_schema
 
         # pylint: disable=import-outside-toplevel
         from fastapi.openapi.utils import get_openapi
+
         openapi_schema = get_openapi(
             title=app.title,
             version=app.version,
@@ -83,15 +142,15 @@ def create_app():
                 "in": "cookie",
                 "name": "api_token",
                 "description": "API token for programmatic access. "
-                               "Generate via POST /tokens/generate after OAuth login."
+                "Generate via POST /tokens/generate after OAuth login.",
             },
             "SessionAuth": {
                 "type": "apiKey",
-                "in": "cookie", 
+                "in": "cookie",
                 "name": "session",
                 "description": "Session cookie for web browsers. "
-                               "Login via Google/GitHub at /login/google or /login/github."
-            }
+                "Login via Google/GitHub at /login/google or /login/github.",
+            },
         }
 
         # Add security requirements to protected endpoints
@@ -104,7 +163,7 @@ def create_app():
                         # SessionAuth (not both)
                         operation["security"] = [
                             {"ApiTokenAuth": []},  # Option 1: API Token
-                            {"SessionAuth": []}    # Option 2: OAuth Session
+                            {"SessionAuth": []},  # Option 2: OAuth Session
                         ]
 
         app.openapi_schema = openapi_schema
@@ -133,34 +192,12 @@ def create_app():
     # Initialize authentication (OAuth and sessions)
     init_auth(app)
 
-    # Include routers
-    app.include_router(auth_router)
-    app.include_router(graphs_router, prefix="/graphs")
-    app.include_router(database_router)
-    app.include_router(tokens_router, prefix="/tokens")
-
-    # app.include_router(mcp_router, prefix="/mcp")
     setup_oauth_handlers(app, app.state.oauth)
 
-    # Control MCP endpoints via environment variable DISABLE_MCP
-    # Default: MCP is enabled unless DISABLE_MCP is set to true
-    disable_mcp = os.getenv("DISABLE_MCP", "false").lower() in ("1", "true", "yes")
-    if disable_mcp:
-        logging.info("MCP endpoints disabled via DISABLE_MCP environment variable")
-    else:
-        mcp = FastApiMCP(app,
-                         name="queryweaver",
-                         description="QueryWeaver MCP API, provides Text2SQL capabilities",
-                         include_operations=["list_databases",
-                                             "connect_database",
-                                             "database_schema",
-                                             "query_database"]
-                         )
-
-        mcp.mount_http()
-
     @app.exception_handler(Exception)
-    async def handle_oauth_error(request: Request, exc: Exception): # pylint: disable=unused-argument
+    async def handle_oauth_error(
+        request: Request, exc: Exception
+    ):  # pylint: disable=unused-argument
         """Handle OAuth-related errors gracefully"""
         # Check if it's an OAuth-related error
         # TODO check this scenario, pylint: disable=fixme
