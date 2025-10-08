@@ -267,7 +267,7 @@ export function setupDatabaseModal() {
         list.scrollTop = list.scrollHeight;
     }
 
-    dbTypeSelect.addEventListener('change', function(this: HTMLInputElement) {
+    dbTypeSelect.addEventListener('change', function() {
         const selectedType = this.value;
         if (selectedType && databaseConfig[selectedType]) {
             dbUrlInput.disabled = false;

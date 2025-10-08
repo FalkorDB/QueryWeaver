@@ -74,7 +74,7 @@ export function addMessage(
       tableHeader.appendChild(headerRow);
       table.appendChild(tableHeader);
       const tableBody = document.createElement("tbody");
-      queryResult.forEach((row: any, index: number) => {
+      queryResult.forEach((row: any) => {
         const rowRow = document.createElement("tr");
         Object.values(row).forEach((value: any) => {
           const cell = document.createElement("td");
