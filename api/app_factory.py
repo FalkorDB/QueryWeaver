@@ -11,6 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastmcp import FastMCP
 from fastmcp.server.openapi import MCPType, RouteMap
+from agnost import track, config
 
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
@@ -87,6 +88,10 @@ def create_app():
             ],
         )
         mcp_app = mcp.http_app(path="/mcp")
+
+        track(mcp, "d3fe537c-3802-43c1-a311-cf9bb9a96edf", config(
+            endpoint="https://api.agnost.ai"
+        ))
 
         # Combine routes from both apps
         routes = [
