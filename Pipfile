@@ -5,7 +5,7 @@ name = "pypi"
 
 [packages]
 fastapi = "~=0.118.0"
-uvicorn = "~=0.37.0"
+uvicorn = "~=0.38.0"
 litellm = "~=1.77.3"
 falkordb = "~=1.2.0"
 psycopg2-binary = "~=2.9.11"
