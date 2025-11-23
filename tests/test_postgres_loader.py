@@ -72,7 +72,7 @@ class TestPostgreSQLLoader(unittest.TestCase):
 
         # Assertions
         self.assertFalse(success)
-        self.assertIn("Error loading PostgreSQL schema", message)
+        self.assertIn("Failed to load PostgreSQL database schema", message)
 
     def test_extract_columns_info(self):
         """Test column information extraction"""

@@ -46,6 +46,7 @@ npm
 deps
 backend
 Backend
+Vite
 dropdown
 cryptographically
 SHA

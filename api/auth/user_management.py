@@ -291,6 +291,39 @@ def token_required(func):
     return wrapper
 
 
+def token_optional(func):
+    """Decorator for routes that work with or without authentication.
+    Sets request.state.user_id if authenticated, None if not.
+    Does not raise 401 - allows unauthenticated access.
+    """
+
+    @wraps(func)
+    async def wrapper(request: Request, *args, **kwargs):
+        try:
+            user_info, is_authenticated = await validate_user(request)
+
+            if is_authenticated and user_info:
+                # Authenticated - set user info
+                email = user_info.get("email")
+                request.state.user_id = base64.b64encode(email.encode()).decode()
+                request.state.user_email = email
+            else:
+                # Not authenticated - set to None (allow demo mode)
+                request.state.user_id = None
+                request.state.user_email = None
+
+            return await func(request, *args, **kwargs)
+
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logging.exception("Unexpected error in token_optional: %s", e)
+            # Don't raise 401 - allow the request to proceed
+            request.state.user_id = None
+            request.state.user_email = None
+            return await func(request, *args, **kwargs)
+
+    return wrapper
+
+
 def _validate_user_input(provider_user_id: str, email: str, provider: str):
     """Validate input parameters for user creation/update."""
     if not provider_user_id or not email or not provider:

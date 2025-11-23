@@ -391,25 +391,37 @@ def _build_callback_url(request: Request, path: str) -> str:
     return urljoin(base, path.lstrip("/"))
 
 # ---- Routes ----
-@auth_router.get("/", response_class=HTMLResponse)
+@auth_router.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def home(request: Request) -> HTMLResponse:
     """
-    Handle the home page, rendering the landing page for unauthenticated users 
-    and the chat page for authenticated users.
+    Serve the React SPA (Single Page Application).
+    The React app handles authentication state via /auth-status endpoint.
     """
-    user_info, is_authenticated_flag = await validate_user(request)
-    auth_config = _get_auth_config()
-
-    return templates.TemplateResponse(
-        "chat.j2",
-        {
-            "request": request,
-            "is_authenticated": is_authenticated_flag,
-            "user_info": user_info,
-            "general_prefix": GENERAL_PREFIX,
-            **auth_config,
-        }
-    )
+    from fastapi.responses import FileResponse
+    
+    # Serve the React build's index.html
+    dist_path = Path(__file__).resolve().parents[1] / "../app/dist"
+    index_path = dist_path / "index.html"
+    
+    if not index_path.exists():
+        return HTMLResponse(
+            content="""
+            <html>
+                <head><title>QueryWeaver - Build Required</title></head>
+                <body style="font-family: system-ui; padding: 2rem; max-width: 800px; margin: 0 auto;">
+                    <h1>🛠️ Frontend Not Built</h1>
+                    <p>Please build the React frontend first:</p>
+                    <pre style="background: #f5f5f5; padding: 1rem; border-radius: 4px;">cd app && npm run build</pre>
+                    <p>Or run in development mode (recommended for development):</p>
+                    <pre style="background: #f5f5f5; padding: 1rem; border-radius: 4px;">cd app && npm run dev</pre>
+                    <p><small>The dev server will run on <a href="http://localhost:8080">http://localhost:8080</a> with hot reload.</small></p>
+                </body>
+            </html>
+            """,
+            status_code=503
+        )
+    
+    return FileResponse(index_path)
 
 @auth_router.get("/login/google", name="google.login", response_class=RedirectResponse)
 async def login_google(request: Request) -> RedirectResponse:
@@ -507,7 +519,7 @@ async def google_authorized(request: Request) -> RedirectResponse:
 
     except Exception as e:
         logging.error("Google OAuth authentication failed: %s", str(e))  # nosemgrep
-        raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}") from e
+        raise HTTPException(status_code=400, detail="Authentication failed") from e
 
 
 @auth_router.get("/login/google/callback", response_class=RedirectResponse)
@@ -611,7 +623,7 @@ async def github_authorized(request: Request) -> RedirectResponse:
 
     except Exception as e:
         logging.error("GitHub OAuth authentication failed: %s", str(e))  # nosemgrep
-        raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}") from e
+        raise HTTPException(status_code=400, detail="Authentication failed") from e
 
 
 @auth_router.get("/login/github/callback", response_class=RedirectResponse)
@@ -622,17 +634,47 @@ async def github_callback_compat(request: Request) -> RedirectResponse:
     return RedirectResponse(url=redirect, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
-@auth_router.get("/logout", response_class=RedirectResponse)
-async def logout(request: Request) -> RedirectResponse:
-    """Handle user logout and delete session cookies."""
-    resp = RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+@auth_router.get("/auth-status")
+async def auth_status(request: Request) -> JSONResponse:
+    """Check authentication status for the React app.
+    
+    Returns:
+        JSONResponse: Authentication status with user info if authenticated
+    """
+    user_info, is_authenticated = await validate_user(request)
+    
+    if is_authenticated and user_info:
+        return JSONResponse(
+            content={
+                "authenticated": True,
+                "user": {
+                    "id": str(user_info.get("id")),
+                    "email": user_info.get("email"),
+                    "name": user_info.get("name"),
+                    "picture": user_info.get("picture"),
+                    "provider": user_info.get("provider")
+                }
+            }
+        )
+    
+    # Not authenticated - return 200 with authenticated: false
+    # This is NOT an error - unauthenticated users can still use the app
+    return JSONResponse(
+        content={"authenticated": False},
+        status_code=200
+    )
 
+
+@auth_router.post("/logout")
+async def logout(request: Request) -> JSONResponse:
+    """Handle user logout and delete session cookies."""
     api_token = request.cookies.get("api_token")
     if api_token:
-        resp.delete_cookie("api_token")
         await delete_user_token(api_token)
-
-    return resp
+    
+    response = JSONResponse(content={"success": True})
+    response.delete_cookie("api_token")
+    return response
 
 # ---- Hook for app factory ----
 def init_auth(app):

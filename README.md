@@ -232,7 +232,7 @@ Follow these steps to run and develop QueryWeaver from source.
 - Python 3.12+
 - pipenv
 - A FalkorDB instance (local or remote)
-- Node.js and npm (for the TypeScript frontend)
+- Node.js and npm (for the React frontend)
 
 ### Install and configure
 
@@ -276,11 +276,11 @@ make run-prod  # production mode (ensure frontend build if needed)
 
 ### Frontend build (when needed)
 
-The frontend is a TypeScript app in `app/`. Build before production runs or after frontend changes:
+The frontend is a modern React + Vite app in `app/`. Build before production runs or after frontend changes:
 
 ```bash
 make install       # installs backend and frontend deps
-make build-prod    # builds the frontend into app/public/js/app.js
+make build-prod    # builds the frontend into app/dist/
 
 # or manually
 cd app
@@ -416,7 +416,7 @@ GitHub Actions run unit and E2E tests on pushes and pull requests. Failures capt
 ## Project layout (high level)
 
 - `api/` – FastAPI backend
-- `app/` – TypeScript frontend
+- `app/` – React + Vite frontend
 - `tests/` – unit and E2E tests
 
 

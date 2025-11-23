@@ -30,6 +30,7 @@ async def connect_database(request: Request, db_request: DatabaseConnectionReque
     Accepts a JSON payload with a database URL and attempts to connect.
     Supports both PostgreSQL and MySQL databases.
     Streams progress steps as a sequence of JSON messages separated by MESSAGE_DELIMITER.
+    Requires authentication.
     """
     generator = await load_database(db_request.url, request.state.user_id)
     return StreamingResponse(generator, media_type="application/json")

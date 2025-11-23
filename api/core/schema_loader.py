@@ -127,7 +127,8 @@ async def load_database(url: str, user_id: str):
                 yield _step_result(progress)
 
         except InvalidArgumentError as ia:
-            yield _step_result({"type": "error", "message": str(ia)})
+            logging.warning("Invalid argument in load_database: %s", str(ia))
+            yield _step_result({"type": "error", "message": "Invalid database connection request"})
         except Exception as e:  # pylint: disable=broad-exception-caught
             logging.exception("Unexpected error in connect_database stream: %s", str(e))
             yield _step_result({"type": "error", "message": "Internal server error"})

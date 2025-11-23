@@ -1,5 +1,6 @@
 """Graph-related routes for the text2sql API."""
 
+import logging
 from fastapi import APIRouter, Request, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
@@ -38,12 +39,13 @@ class GraphData(BaseModel):
     "",
     operation_id="list_databases",
     tags=["mcp_tool"],
-    responses={401: UNAUTHORIZED_RESPONSE},
+    responses={401: UNAUTHORIZED_RESPONSE}
 )
 @token_required
 async def list_graphs(request: Request):
     """
-    This route is used to list all the graphs (databases names) that are available in the database.
+    List all available graphs/databases for the authenticated user.
+    Requires authentication.
     """
     graphs = await list_databases(request.state.user_id, GENERAL_PREFIX)
     return JSONResponse(content=graphs)
@@ -53,17 +55,14 @@ async def list_graphs(request: Request):
     "/{graph_id}/data",
     operation_id="database_schema",
     tags=["mcp_tool"],
-    responses={401: UNAUTHORIZED_RESPONSE},
+    responses={401: UNAUTHORIZED_RESPONSE}
 )
 @token_required
 async def get_graph_data(
     request: Request, graph_id: str
 ):  # pylint: disable=too-many-locals,too-many-branches
-    """Return all nodes and edges for the specified database schema (namespaced to the user).
-
-    This endpoint returns a JSON object with two keys: `nodes` and `edges`.
-    Nodes contain a minimal set of properties (id, name, labels, props).
-    Edges contain source and target node names (or internal ids), type and props.
+    """Return all nodes and edges for the specified database schema.
+    Requires authentication.
 
         args:
             graph_id (str): The ID of the graph to query (the database name).
@@ -73,9 +72,14 @@ async def get_graph_data(
         schema = await get_schema(request.state.user_id, graph_id)
         return JSONResponse(content=schema)
     except GraphNotFoundError as gnfe:
-        return JSONResponse(content={"error": str(gnfe)}, status_code=404)
+        logging.warning("Graph not found: %s", str(gnfe))
+        return JSONResponse(content={"error": "Database not found"}, status_code=404)
     except InternalError as ie:
-        return JSONResponse(content={"error": str(ie)}, status_code=500)
+        logging.error("Internal error getting schema: %s", str(ie))
+        return JSONResponse(
+            content={"error": "Failed to retrieve database schema"},
+            status_code=500
+        )
 
 
 @graphs_router.post("", responses={401: UNAUTHORIZED_RESPONSE})
@@ -125,7 +129,7 @@ async def load_graph(
     "/{graph_id}",
     operation_id="query_database",
     tags=["mcp_tool"],
-    responses={401: UNAUTHORIZED_RESPONSE},
+    responses={401: UNAUTHORIZED_RESPONSE}
 )
 @token_required
 async def query_graph(
@@ -133,6 +137,7 @@ async def query_graph(
 ):  # pylint: disable=too-many-statements
     """
     Query the Database with the given graph_id and chat_data.
+    Requires authentication.
 
         Args:
             graph_id (str): The ID of the graph to query.
@@ -142,7 +147,8 @@ async def query_graph(
         generator = await query_database(request.state.user_id, graph_id, chat_data)
         return StreamingResponse(generator, media_type="application/json")
     except InvalidArgumentError as iae:
-        return JSONResponse(content={"error": str(iae)}, status_code=400)
+        logging.warning("Invalid argument in query: %s", str(iae))
+        return JSONResponse(content={"error": "Invalid query request"}, status_code=400)
 
 
 @graphs_router.post("/{graph_id}/confirm", responses={401: UNAUTHORIZED_RESPONSE})
@@ -153,7 +159,8 @@ async def confirm_destructive_operation(
     confirm_data: ConfirmRequest,
 ):
     """
-    Handle user confirmation for destructive SQL operations
+    Handle user confirmation for destructive SQL operations.
+    Requires authentication.
     """
 
     try:
@@ -162,7 +169,8 @@ async def confirm_destructive_operation(
         )
         return StreamingResponse(generator, media_type="application/json")
     except InvalidArgumentError as iae:
-        return JSONResponse(content={"error": str(iae)}, status_code=400)
+        logging.warning("Invalid argument in destructive operation: %s", str(iae))
+        return JSONResponse(content={"error": "Invalid confirmation request"}, status_code=400)
 
 
 @graphs_router.post("/{graph_id}/refresh", responses={401: UNAUTHORIZED_RESPONSE})
@@ -172,11 +180,22 @@ async def refresh_graph_schema(request: Request, graph_id: str):
     Manually refresh the graph schema from the database.
     This endpoint allows users to manually trigger a schema refresh
     if they suspect the graph is out of sync with the database.
+    Streams progress steps as a sequence of JSON messages.
     """
     try:
-        return await refresh_database_schema(request.state.user_id, graph_id)
-    except InternalError as ie:
-        return JSONResponse(content={"error": str(ie)}, status_code=500)
+        generator = await refresh_database_schema(request.state.user_id, graph_id)
+        return StreamingResponse(generator, media_type="application/json")
+    except (InternalError, InvalidArgumentError) as e:
+        # Log detailed error internally, send generic message to user
+        if isinstance(e, InternalError):
+            logging.error("Internal error refreshing schema: %s", str(e))
+            error_message = "Failed to refresh database schema"
+            status_code = 500
+        else:
+            logging.warning("Invalid argument refreshing schema: %s", str(e))
+            error_message = "Invalid request to refresh schema"
+            status_code = 400
+        return JSONResponse(content={"error": error_message}, status_code=status_code)
 
 
 @graphs_router.delete("/{graph_id}", responses={401: UNAUTHORIZED_RESPONSE})
@@ -195,8 +214,14 @@ async def delete_graph(request: Request, graph_id: str):
         return JSONResponse(content=result)
 
     except InvalidArgumentError as iae:
-        return JSONResponse(content={"error": str(iae)}, status_code=400)
+        logging.warning("Invalid argument in delete: %s", str(iae))
+        return JSONResponse(content={"error": "Invalid delete request"}, status_code=400)
     except GraphNotFoundError as gnfe:
-        return JSONResponse(content={"error": str(gnfe)}, status_code=404)
+        logging.warning("Graph not found for deletion: %s", str(gnfe))
+        return JSONResponse(content={"error": "Database not found"}, status_code=404)
     except InternalError as ie:
-        return JSONResponse(content={"error": str(ie)}, status_code=500)
+        logging.error("Internal error deleting database: %s", str(ie))
+        return JSONResponse(
+            content={"error": "Failed to delete database"},
+            status_code=500
+        )

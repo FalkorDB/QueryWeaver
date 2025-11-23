@@ -5,7 +5,7 @@ import os
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.responses import RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -184,15 +184,54 @@ def create_app():
     # Add security middleware
     app.add_middleware(SecurityMiddleware)
 
-    # Mount static files
-    static_path = os.path.join(os.path.dirname(__file__), "../app/public")
-    if os.path.exists(static_path):
-        app.mount("/static", StaticFiles(directory=static_path), name="static")
+    # Mount static files from the React build (app/dist)
+    # This serves the bundled assets (JS, CSS, images, etc.)
+    dist_path = os.path.join(os.path.dirname(__file__), "../app/dist")
+    if os.path.exists(dist_path):
+        # Mount the built React app's static assets
+        # Vite bundles JS/CSS into assets/, and copies public/ files to dist root
+        app.mount(
+            "/assets",
+            StaticFiles(directory=os.path.join(dist_path, "assets")),
+            name="assets"
+        )
+
+        # Mount public folders if they exist
+        if os.path.exists(os.path.join(dist_path, "icons")):
+            app.mount(
+                "/icons",
+                StaticFiles(directory=os.path.join(dist_path, "icons")),
+                name="icons"
+            )
+        if os.path.exists(os.path.join(dist_path, "img")):
+            app.mount(
+                "/img",
+                StaticFiles(directory=os.path.join(dist_path, "img")),
+                name="img"
+            )
+
+        # Serve favicon and other root files
+        app.mount("/static", StaticFiles(directory=dist_path), name="static")
+    else:
+        logging.warning(
+            "React build directory not found at %s. "
+            "Run 'cd app && npm run build' to build the frontend.",
+            dist_path
+        )
 
     # Initialize authentication (OAuth and sessions)
     init_auth(app)
 
     setup_oauth_handlers(app, app.state.oauth)
+
+    # Serve favicon
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon():
+        """Serve the favicon from the React build directory."""
+        favicon_path = os.path.join(dist_path, "favicon.ico")
+        if os.path.exists(favicon_path):
+            return FileResponse(favicon_path, media_type="image/x-icon")
+        return JSONResponse({"error": "Favicon not found"}, status_code=404)
 
     @app.exception_handler(Exception)
     async def handle_oauth_error(
@@ -211,5 +250,15 @@ def create_app():
 
         # For other errors, let them bubble up
         raise exc
+
+    # Serve React app for all non-API routes (SPA catch-all)
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_react_app(_full_path: str):
+        """Serve the React app for all routes not handled by API endpoints."""
+        # Serve index.html for the React SPA
+        index_path = os.path.join(dist_path, "index.html")
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+        return JSONResponse({"error": "React app not found"}, status_code=404)
 
     return app

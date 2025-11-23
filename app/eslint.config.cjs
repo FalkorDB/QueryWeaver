@@ -20,7 +20,10 @@ module.exports = [
 	{
 		rules: {
 			// Base JS recommended rules
-			'no-unused-vars': 'warn',
+			'no-unused-vars': ['warn', { 
+				'argsIgnorePattern': '^_',
+				'varsIgnorePattern': '^_'
+			}],
 			// TypeScript rules
 			'@typescript-eslint/no-explicit-any': 'off',
 		},

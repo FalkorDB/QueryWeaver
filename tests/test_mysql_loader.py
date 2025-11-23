@@ -125,7 +125,7 @@ class TestMySQLLoader:
         )
 
         assert success is False
-        assert "Error loading MySQL schema" in message
+        assert "Failed to load MySQL database schema" in message
 
     @patch('pymysql.connect')
     @patch('api.loaders.mysql_loader.load_to_graph')

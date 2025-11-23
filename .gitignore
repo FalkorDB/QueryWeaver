@@ -17,6 +17,11 @@ tests/e2e/screenshots/*.png
 tmp_*
 *.d.ts
 node_modules/
+
+# Frontend build outputs
 /app/public/js/*
+/app/dist/
+
 .jinja_cache/
 demo_tokens.py
+.DS_Store
