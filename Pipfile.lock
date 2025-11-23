@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "800c222e2b37595451393000c8cdd68e2589f42fa0aff82b2e154a9bb721b79b"
+            "sha256": "127b9dae68d747d55ad76df15be009fdfdc90e7c40fdaa14ead3eaebeef6021f"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -157,6 +157,14 @@
             ],
             "markers": "python_version >= '3.9'",
             "version": "==1.4.0"
+        },
+        "annotated-doc": {
+            "hashes": [
+                "sha256:571ac1dc6991c450b25a9c2d84a3705e2ae7a53467b5d111c24fa8baabbed320",
+                "sha256:fbcda96e87e9c92ad167c2e53839e57503ecfda18804ea28102353485033faa4"
+            ],
+            "markers": "python_version >= '3.8'",
+            "version": "==0.0.4"
         },
         "annotated-types": {
             "hashes": [
@@ -575,12 +583,12 @@
         },
         "fastapi": {
             "hashes": [
-                "sha256:5e81654d98c4d2f53790a7d32d25a7353b30c81441be7d0958a26b5d761fa1c8",
-                "sha256:705137a61e2ef71019d2445b123aa8845bd97273c395b744d5a7dfe559056855"
+                "sha256:0055bc24fe53e56a40e9e0ad1ae2baa81622c406e548e501e717634e2dfbc40b",
+                "sha256:0c78fc87587fcd910ca1bbf5bc8ba37b80e119b388a7206b39f0ecc95ebf53e9"
             ],
             "index": "pypi",
             "markers": "python_version >= '3.8'",
-            "version": "==0.118.0"
+            "version": "==0.121.3"
         },
         "fastmcp": {
             "hashes": [
@@ -2413,11 +2421,11 @@
         },
         "starlette": {
             "hashes": [
-                "sha256:0764ca97b097582558ecb498132ed0c7d942f233f365b86ba37770e026510659",
-                "sha256:7e8cee469a8ab2352911528110ce9088fdc6a37d9876926e73da7ce4aa4c7a46"
+                "sha256:9e5391843ec9b6e472eed1365a78c8098cfceb7a74bfd4d6b1c0c0095efb3bca",
+                "sha256:a2a17b22203254bcbc2e1f926d2d55f3f9497f769416b3190768befe598fa3ca"
             ],
-            "markers": "python_version >= '3.9'",
-            "version": "==0.48.0"
+            "markers": "python_version >= '3.10'",
+            "version": "==0.50.0"
         },
         "tenacity": {
             "hashes": [
