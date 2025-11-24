@@ -23,7 +23,7 @@ fastmcp = "~=2.13.1"
 pytest = "~=8.4.2"
 pylint = "~=4.0.3"
 playwright = "~=1.55.0"
-pytest-playwright = "~=0.7.1"
+pytest-playwright = "~=0.7.2"
 pytest-asyncio = "~=1.2.0"
 
 [requires]

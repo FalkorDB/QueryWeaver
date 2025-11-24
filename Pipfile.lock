@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "64b0f8f43c0d39ae51935b95e4344bd21e575a677bedef68738337bd78a9ae5b"
+            "sha256": "501656eca477bd8a1be753001d6f3d6df0b891e64f136c54c5cb541a96cc15a2"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -3101,12 +3101,12 @@
         },
         "pytest-playwright": {
             "hashes": [
-                "sha256:94b551b2677ecdc16284fcd6a4f0045eafda47a60e74410f3fe4d8260e12cabf",
-                "sha256:fcc46510fb75f8eba6df3bc8e84e4e902483d92be98075f20b9d160651a36d90"
+                "sha256:247b61123b28c7e8febb993a187a07e54f14a9aa04edc166f7a976d88f04c770",
+                "sha256:8084e015b2b3ecff483c2160f1c8219b38b66c0d4578b23c0f700d1b0240ea38"
             ],
             "index": "pypi",
-            "markers": "python_version >= '3.9'",
-            "version": "==0.7.1"
+            "markers": "python_version >= '3.10'",
+            "version": "==0.7.2"
         },
         "python-slugify": {
             "hashes": [
