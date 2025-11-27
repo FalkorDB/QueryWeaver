@@ -392,7 +392,7 @@ def _build_callback_url(request: Request, path: str) -> str:
 
 # ---- Routes ----
 @auth_router.get("/", response_class=HTMLResponse, include_in_schema=False)
-async def home(request: Request) -> HTMLResponse:
+async def home() -> HTMLResponse:
     """
     Serve the React SPA (Single Page Application).
     The React app handles authentication state via /auth-status endpoint.
@@ -665,15 +665,30 @@ async def auth_status(request: Request) -> JSONResponse:
     )
 
 
+@auth_router.get("/logout")
 @auth_router.post("/logout")
-async def logout(request: Request) -> JSONResponse:
-    """Handle user logout and delete session cookies."""
+async def logout(request: Request):
+    """Handle user logout and delete session cookies.
+
+    Supports both GET and POST methods for backward compatibility:
+    - GET: For direct navigation (bookmarks, links, old clients)
+    - POST: For programmatic logout from the app
+    """
+    # For GET requests, redirect to home page
+    if request.method == "GET":
+        response = RedirectResponse(url="/", status_code=302)
+        api_token = request.cookies.get("api_token")
+        if api_token:
+            response.delete_cookie("api_token")
+            await delete_user_token(api_token)
+        return response
+
+    # For POST requests, return JSON
+    response = JSONResponse(content={"success": True})
     api_token = request.cookies.get("api_token")
     if api_token:
+        response.delete_cookie("api_token")
         await delete_user_token(api_token)
-    
-    response = JSONResponse(content={"success": True})
-    response.delete_cookie("api_token")
     return response
 
 # ---- Hook for app factory ----

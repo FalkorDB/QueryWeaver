@@ -11,6 +11,7 @@ import DatabaseModal from "@/components/modals/DatabaseModal";
 import DeleteDatabaseModal from "@/components/modals/DeleteDatabaseModal";
 import TokensModal from "@/components/modals/TokensModal";
 import SchemaViewer from "@/components/schema";
+import LoadingSpinner from "@/components/ui/loading-spinner";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDatabase } from "@/contexts/DatabaseContext";
 import { DatabaseService } from "@/services/database";
@@ -32,7 +33,11 @@ const Index = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showSchemaViewer, setShowSchemaViewer] = useState(false);
   const [showTokensModal, setShowTokensModal] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isRefreshingSchema, setIsRefreshingSchema] = useState(false);
+  const [isChatProcessing, setIsChatProcessing] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  );
   const [schemaViewerWidth, setSchemaViewerWidth] = useState(() =>
     typeof window !== "undefined" ? Math.floor(window.innerWidth * 0.4) : 0,
   );
@@ -51,6 +56,15 @@ const Index = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Auto-collapse sidebar when switching to mobile view
+  useEffect(() => {
+    const isMobile = windowWidth < 768;
+    if (isMobile) {
+      setSidebarCollapsed(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windowWidth]); // Only run when windowWidth changes, not on manual toggle
+
   // Calculate sidebar width based on collapsed state
   // On desktop: sidebar is always visible (64px), on mobile: can be collapsed (0px)
   const getSidebarWidth = () => {
@@ -68,14 +82,14 @@ const Index = () => {
   // On desktop: account for both sidebar and schema viewer
   const getMainContentStyles = () => {
     const isMobile = windowWidth < 768;
-    
+
     if (isMobile) {
       return {
         marginLeft: `${sidebarWidth}px`,
         width: `calc(100% - ${sidebarWidth}px)`
       };
     }
-    
+
     // Desktop
     const totalOffset = showSchemaViewer ? schemaViewerWidth + sidebarWidth : sidebarWidth;
     return {
@@ -89,7 +103,7 @@ const Index = () => {
     fetch('https://api.github.com/repos/FalkorDB/QueryWeaver')
       .then(response => response.json())
       .then(data => {
-        if (data.stargazers_count) {
+        if (typeof data.stargazers_count === 'number') {
           setGithubStars(data.stargazers_count.toLocaleString());
         }
       })
@@ -100,12 +114,19 @@ const Index = () => {
 
   // Show login modal when not authenticated after loading completes
   useEffect(() => {
+    // Only auto-open the login modal once per user/session to avoid locking
+    // the SPA when the backend is down or in demo mode. Allow users to
+    // dismiss it and remember that choice in sessionStorage.
     if (!authLoading && !isAuthenticated) {
-      setShowLoginModal(true);
+      const dismissed = sessionStorage.getItem('loginModalDismissed');
+      if (!dismissed) {
+        setShowLoginModal(true);
+      }
     }
   }, [authLoading, isAuthenticated]);
 
   const handleConnectDatabase = () => {
+    if (isRefreshingSchema || isChatProcessing) return;
     setShowDatabaseModal(true);
   };
 
@@ -143,6 +164,7 @@ const Index = () => {
     // Check if this is a demo database
     const isDemo = graphId.startsWith('general_');
     
+    if (isRefreshingSchema) return;
     // Show the delete confirmation modal
     setDatabaseToDelete({ id: graphId, name: graphName, isDemo });
     setShowDeleteModal(true);
@@ -202,7 +224,17 @@ const Index = () => {
       return;
     }
 
+    if (isChatProcessing) {
+      toast({
+        title: "Chat is Processing",
+        description: "Please wait for the current query to complete",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
+      setIsRefreshingSchema(true);
       const response = await fetch(`/graphs/${selectedGraph.id}/refresh`, {
         method: 'POST',
         credentials: 'include',
@@ -226,20 +258,20 @@ const Index = () => {
 
       while (true) {
         const { done, value } = await reader.read();
-        
+
         if (done) break;
-        
+
         const chunk = decoder.decode(value, { stream: true });
         buffer += chunk;
-        
+
         // Process complete messages
         const parts = buffer.split(delimiter);
         buffer = parts.pop() || ''; // Keep incomplete part in buffer
-        
+
         for (const part of parts) {
           const trimmed = part.trim();
           if (!trimmed) continue;
-          
+
           try {
             const message = JSON.parse(trimmed);
             if (message.type === 'error') {
@@ -255,16 +287,16 @@ const Index = () => {
           }
         }
       }
-      
+
       if (hasError) {
         return; // Error already thrown and caught
       }
-      
+
       toast({
         title: "Schema Refreshed",
         description: "Database schema refreshed successfully!",
       });
-      
+
       // Reload to show updated schema
       window.location.reload();
     } catch (error) {
@@ -274,6 +306,9 @@ const Index = () => {
         description: error instanceof Error ? error.message : "Failed to refresh schema",
         variant: "destructive",
       });
+    }
+    finally {
+      setIsRefreshingSchema(false);
     }
   };
 
@@ -290,7 +325,7 @@ const Index = () => {
       
       {/* Left Sidebar */}
       <Sidebar 
-        onSchemaClick={() => setShowSchemaViewer(!showSchemaViewer)}
+        onSchemaClick={() => { if (!isRefreshingSchema) setShowSchemaViewer(!showSchemaViewer); }}
         isSchemaOpen={showSchemaViewer}
         isCollapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -484,18 +519,23 @@ const Index = () => {
         {/* Sub-header for controls */}
         <div className="px-6 py-4 border-b border-gray-700">
           <div className="flex gap-3 flex-wrap md:flex-nowrap">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed p-2"
                 onClick={handleRefreshSchema}
-                disabled={!selectedGraph}
-                title={selectedGraph ? "Refresh Schema" : "Select a database first"}
+                disabled={!selectedGraph || isRefreshingSchema || isChatProcessing}
+                title={selectedGraph ? (isRefreshingSchema ? 'Refreshing schema...' : isChatProcessing ? 'Wait for query to complete' : 'Refresh Schema') : "Select a database first"}
               >
-                <RefreshCw className="w-4 h-4" />
+                {isRefreshingSchema ? <LoadingSpinner size="sm" /> : <RefreshCw className="w-4 h-4" />}
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700 flex-1 md:flex-initial">
+                  <Button
+                    variant="outline"
+                    className="bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700 flex-1 md:flex-initial"
+                    disabled={isRefreshingSchema || isChatProcessing}
+                    title={isRefreshingSchema ? 'Refreshing schema...' : isChatProcessing ? 'Wait for query to complete' : undefined}
+                  >
                     <span className="truncate">{selectedGraph?.name || 'Select Database'}</span>
                   </Button>
                 </DropdownMenuTrigger>
@@ -503,21 +543,22 @@ const Index = () => {
                   {graphs.map((graph) => {
                     const isDemo = graph.id.startsWith('general_');
                     return (
-                      <DropdownMenuItem 
+                      <DropdownMenuItem
                         key={graph.id}
                         className="hover:!bg-gray-700 flex items-center justify-between group"
-                        onClick={() => selectGraph(graph.id)}
+                        onClick={() => { if (!isRefreshingSchema && !isChatProcessing) selectGraph(graph.id); }}
+                        disabled={isRefreshingSchema || isChatProcessing}
                       >
                         <span>{graph.name}</span>
                         <Button
                           variant="ghost"
                           size="sm"
                           className={`h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity ${
-                            isDemo ? 'cursor-not-allowed opacity-40' : 'hover:bg-red-600 hover:text-white'
+                            isDemo || isRefreshingSchema || isChatProcessing ? 'cursor-not-allowed opacity-40' : 'hover:bg-red-600 hover:text-white'
                           }`}
-                          onClick={(e) => handleDeleteGraph(graph.id, graph.name, e)}
-                          disabled={isDemo}
-                          title={isDemo ? 'Demo databases cannot be deleted' : `Delete ${graph.name}`}
+                          onClick={(e) => { if (isDemo || isRefreshingSchema || isChatProcessing) return; handleDeleteGraph(graph.id, graph.name, e); }}
+                          disabled={isDemo || isRefreshingSchema}
+                          title={isDemo ? 'Demo databases cannot be deleted' : (isRefreshingSchema ? 'Refreshing schema...' : `Delete ${graph.name}`)}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -531,10 +572,12 @@ const Index = () => {
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="bg-purple-600 border-purple-500 text-white hover:bg-purple-700 hover:border-purple-600 hover:text-white flex-1 md:flex-initial shadow-sm hover:shadow-md transition-all"
                 onClick={handleConnectDatabase}
+                disabled={isRefreshingSchema || isChatProcessing}
+                title={isRefreshingSchema ? 'Refreshing schema...' : isChatProcessing ? 'Wait for query to complete' : undefined}
               >
                   <span className="hidden sm:inline">Connect to Database</span>
                   <span className="sm:hidden">Connect DB</span>
@@ -552,16 +595,27 @@ const Index = () => {
         </div>
         
         {/* Chat Interface - Full remaining height */}
-        <div className="flex-1 overflow-hidden">
-          <ChatInterface />
+        <div className="flex-1 overflow-hidden flex justify-center">
+          <div className="h-full w-full max-w-7xl md:px-[15px]">
+            <ChatInterface
+              disabled={isRefreshingSchema}
+              onProcessingChange={setIsChatProcessing}
+            />
+          </div>
         </div>
       </div>
 
       {/* Modals */}
       <LoginModal 
         open={showLoginModal} 
-        onOpenChange={setShowLoginModal}
-        canClose={false}  // User must sign in - cannot close the modal
+        onOpenChange={(open) => {
+          setShowLoginModal(open);
+          if (!open) {
+            // Remember dismissal for this session to avoid pinning the modal
+            sessionStorage.setItem('loginModalDismissed', '1');
+          }
+        }}
+        canClose={true}
       />
       <DatabaseModal open={showDatabaseModal} onOpenChange={setShowDatabaseModal} />
       <DeleteDatabaseModal 

@@ -1,5 +1,8 @@
 {
   "dependencies": {
     "queryweaver-app": "file:app"
+  },
+  "devDependencies": {
+    "tailwindcss-animate": "^1.0.7"
   }
 }

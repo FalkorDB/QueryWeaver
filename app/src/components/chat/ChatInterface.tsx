@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { useDatabase } from "@/contexts/DatabaseContext";
 import { useAuth } from "@/contexts/AuthContext";
 import LoadingSpinner from "@/components/ui/loading-spinner";
@@ -31,13 +30,14 @@ interface ChatMessageData {
   timestamp: Date;
 }
 
-interface ChatInterfaceProps {
+export interface ChatInterfaceProps {
   className?: string;
+  disabled?: boolean; // when true, block interactions
+  onProcessingChange?: (isProcessing: boolean) => void; // callback to notify parent of processing state
 }
 
-const ChatInterface = ({ className }: ChatInterfaceProps) => {
+const ChatInterface = ({ className, disabled = false, onProcessingChange }: ChatInterfaceProps) => {
   const { toast } = useToast();
-  const isMobile = useIsMobile();
   const { selectedGraph } = useDatabase();
   const [isProcessing, setIsProcessing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -51,9 +51,9 @@ const ChatInterface = ({ className }: ChatInterfaceProps) => {
 
   // Loading message component using skeleton
   const LoadingMessage = () => (
-    <div className="px-6">
+    <div className="loading-message-container px-6">
       <div className="flex gap-3 mb-6 items-start">
-        <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+        <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
           <span className="text-white text-xs font-bold">QW</span>
         </div>
         <div className="flex-1 min-w-0 space-y-2">
@@ -81,13 +81,33 @@ const ChatInterface = ({ className }: ChatInterfaceProps) => {
     "What are the pending orders?"
   ];
 
+  // Reset conversation when the selected graph changes to avoid leaking
+  // conversation history between different databases.
+  useEffect(() => {
+    // Clear in-memory conversation history and reset messages to the greeting
+    conversationHistory.current = [];
+    setMessages([
+      {
+        id: "1",
+        type: "ai",
+        content: "Hello! Describe what you'd like to ask your database",
+        timestamp: new Date(),
+      }
+    ]);
+  }, [selectedGraph?.id]);
+
   // Scroll to bottom whenever messages change
   useEffect(() => {
     scrollToBottom();
   }, [messages, isProcessing]);
 
+  // Notify parent component of processing state changes
+  useEffect(() => {
+    onProcessingChange?.(isProcessing);
+  }, [isProcessing, onProcessingChange]);
+
   const handleSendMessage = async (query: string) => {
-    if (isProcessing) return; // Prevent multiple submissions
+  if (isProcessing || disabled) return; // Prevent multiple submissions or when disabled by parent
 
     if (!selectedGraph) {
       toast({
@@ -143,12 +163,10 @@ const ChatInterface = ({ className }: ChatInterfaceProps) => {
         database: selectedGraph.id,
         history: historySnapshot,
       })) {
-        console.log('📨 Received stream message:', message);
         
         if (message.type === 'status' || message.type === 'reasoning' || message.type === 'reasoning_step') {
           // Add each reasoning step as a separate AI message (like the old UI)
           const stepText = message.content || message.message || '';
-          console.log('🔄 Adding reasoning step as AI message:', stepText);
           
           const stepMessage: ChatMessageData = {
             id: `step-${Date.now()}-${Math.random()}`,
@@ -157,11 +175,8 @@ const ChatInterface = ({ className }: ChatInterfaceProps) => {
             timestamp: new Date(),
           };
           
-          console.log('Adding step message to state:', stepMessage);
           setMessages(prev => {
-            console.log('Previous messages count:', prev.length);
             const newMessages = [...prev, stepMessage];
-            console.log('New messages count:', newMessages.length);
             return newMessages;
           });
         } else if (message.type === 'sql_query') {
@@ -175,22 +190,17 @@ const ChatInterface = ({ className }: ChatInterfaceProps) => {
             explanation: message.exp,
             isValid: message.is_valid
           };
-          console.log('SQL Query generated:', sqlQuery);
-          console.log('Analysis info:', analysisInfo);
+
         } else if (message.type === 'query_result') {
           // Store query results to display as table - backend sends it in 'data' field
           queryResults = message.data || [];
-          console.log('Query results received:', queryResults?.length || 0, 'rows');
         } else if (message.type === 'ai_response') {
           // AI-generated response - this is what we show to the user
           const responseContent = (message.message || message.content || '').trim();
-          console.log('🤖 AI Response received:', responseContent.substring(0, 200) + '...');
-          console.log('Full AI Response length:', responseContent.length);
           finalContent = responseContent;
         } else if (message.type === 'followup_questions') {
           // Follow-up questions when query is unclear or off-topic
           const followupContent = (message.message || message.content || '').trim();
-          console.log('❓ Follow-up questions received:', followupContent);
           finalContent = followupContent;
         } else if (message.type === 'error') {
           // Handle error
@@ -200,18 +210,15 @@ const ChatInterface = ({ className }: ChatInterfaceProps) => {
             variant: "destructive",
           });
           finalContent = `Error: ${message.content}`;
-        } else if (message.type === 'confirmation') {
-          // Handle confirmation request
-          finalContent = `⚠️ This operation requires confirmation:\n\n${message.content}`;
+        } else if (message.type === 'confirmation' || message.type === 'destructive_confirmation') {
+          // Handle confirmation request (also accept destructive_confirmation emitted by backend)
+          finalContent = `This operation requires confirmation:\n\n${message.content}`;
         } else {
-          console.warn('⚠️ Unknown message type received:', message.type, message);
+          console.warn('Unknown message type received:', message.type, message);
         }
         
         setTimeout(() => scrollToBottom(), 50);
       }
-
-      console.log('✅ Stream complete. Final content length:', finalContent.length);
-      console.log('Final content:', finalContent);
 
       // Add SQL query message with analysis info (even if SQL is empty)
       if (sqlQuery !== undefined || Object.keys(analysisInfo).length > 0) {
@@ -308,17 +315,20 @@ const ChatInterface = ({ className }: ChatInterfaceProps) => {
       {/* Bottom Section with Suggestions and Input */}
       <div className="border-t border-gray-700 bg-gray-900">
         <div className="p-6">
-          {/* Suggestion Cards */}
-          <SuggestionCards 
-            suggestions={suggestions}
-            onSelect={handleSuggestionSelect}
-          />
+          {/* Suggestion Cards - Only show for DEMO_CRM database */}
+          {(selectedGraph?.id === 'DEMO_CRM' || selectedGraph?.name === 'DEMO_CRM') && (
+            <SuggestionCards
+              suggestions={suggestions}
+              onSelect={handleSuggestionSelect}
+              disabled={isProcessing || disabled}
+            />
+          )}
           
           {/* Query Input */}
           <QueryInput 
             onSubmit={handleSendMessage}
             placeholder="Ask me anything about your database..."
-            disabled={isProcessing}
+            disabled={isProcessing || disabled}
           />
           
           {/* Show loading indicator when processing */}
@@ -331,7 +341,9 @@ const ChatInterface = ({ className }: ChatInterfaceProps) => {
           
           {/* Footer */}
           <div className="text-center mt-4">
-            <p className="text-gray-500 text-sm">Powered by FalkorDB</p>
+            <p className="text-gray-500 text-sm">
+              Powered by <a href="https://falkordb.com" target="_blank">FalkorDB</a>
+            </p>
           </div>
         </div>
       </div>

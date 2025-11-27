@@ -1,5 +1,6 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { buildApiUrl, API_CONFIG } from "@/config/api";
 
 interface LoginModalProps {
   open: boolean;
@@ -9,11 +10,11 @@ interface LoginModalProps {
 
 const LoginModal = ({ open, onOpenChange, canClose = true }: LoginModalProps) => {
   const handleGoogleLogin = () => {
-    window.location.href = '/login/google';
+    window.location.href = buildApiUrl(API_CONFIG.ENDPOINTS.LOGIN_GOOGLE);
   };
 
   const handleGithubLogin = () => {
-    window.location.href = '/login/github';
+    window.location.href = buildApiUrl(API_CONFIG.ENDPOINTS.LOGIN_GITHUB);
   };
 
   return (

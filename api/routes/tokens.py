@@ -40,7 +40,7 @@ async def generate_token(request: Request) -> TokenListItem:
             api_token = secrets.token_urlsafe(32)  # ~43 chars, hard to guess
 
             user_data = {
-                "id": "0",
+                "id": user_email,
                 "email": user_email,
                 "name": "token token",
                 "picture": ""

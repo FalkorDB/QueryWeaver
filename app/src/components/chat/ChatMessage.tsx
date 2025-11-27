@@ -35,7 +35,7 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, progress, 
           <div className="flex-1 max-w-xl">
             <Card className="bg-gray-700 border-gray-600 inline-block float-right">
               <CardContent className="p-3">
-                <p className="text-gray-200 text-sm leading-relaxed">{content}</p>
+                <p className="text-gray-200 text-base leading-relaxed">{content}</p>
               </CardContent>
             </Card>
           </div>
@@ -58,35 +58,30 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, progress, 
       <div className="px-6">
         <div className="flex gap-3 mb-6 items-start">
           <Avatar className="w-8 h-8 flex-shrink-0">
-            <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-500 text-white text-xs font-bold">
-              QW
-            </AvatarFallback>
+              <AvatarFallback className="bg-purple-600 text-white text-xs font-bold">
+                QW
+              </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-          <Card className={`bg-gray-800 ${isValid ? 'border-blue-500/30' : 'border-yellow-500/30'}`}>
+          <Card className={`bg-gray-800 ${isValid ? 'border-purple-500/30' : 'border-yellow-500/30'}`}>
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-2">
-                <Code className={`w-4 h-4 ${isValid ? 'text-blue-400' : 'text-yellow-400'}`} />
-                <span className={`text-sm font-semibold ${isValid ? 'text-blue-400' : 'text-yellow-400'}`}>
+                <Code className={`w-4 h-4 ${isValid ? 'text-purple-400' : 'text-yellow-400'}`} />
+                <span className={`text-base font-semibold ${isValid ? 'text-purple-400' : 'text-yellow-400'}`}>
                   {hasSQL ? 'Generated SQL Query' : 'Query Analysis'}
                 </span>
-                {analysisInfo?.confidence !== undefined && (
-                  <Badge variant="outline" className="ml-auto text-xs">
-                    Confidence: {analysisInfo.confidence}%
-                  </Badge>
-                )}
               </div>
-              
+
               {hasSQL && (
                 <div className="overflow-x-auto -mx-2 px-2">
-                  <pre className="bg-gray-900 text-gray-200 p-3 rounded text-xs mb-3 w-fit min-w-full">
+                  <pre className="bg-gray-900 text-gray-200 p-3 rounded text-sm mb-3 w-fit min-w-full font-mono">
                     <code className="language-sql">{content}</code>
                   </pre>
                 </div>
               )}
-              
+
               {!isValid && (
-                <div className="space-y-2 text-xs">
+                <div className="space-y-2 text-sm">
                   {analysisInfo?.explanation && (
                     <div className="bg-gray-900/50 p-2 rounded">
                       <span className="font-semibold text-yellow-400">Explanation:</span>
@@ -120,24 +115,24 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, progress, 
       <div className="px-6">
         <div className="flex gap-3 mb-6 items-start">
           <Avatar className="w-8 h-8 flex-shrink-0">
-          <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-500 text-white text-xs font-bold">
-            QW
-          </AvatarFallback>
+            <AvatarFallback className="bg-purple-600 text-white text-xs font-bold">
+              QW
+            </AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0 max-w-full overflow-hidden">
           <Card className="bg-gray-800 border-green-500/30 max-w-full">
             <CardContent className="p-4 max-w-full overflow-hidden">
               <div className="flex items-center gap-2 mb-3">
                 <Database className="w-4 h-4 text-green-400" />
-                <span className="text-sm font-semibold text-green-400">Query Results</span>
-                <Badge variant="outline" className="ml-auto text-xs">
+                <span className="text-base font-semibold text-green-400">Query Results</span>
+                <Badge variant="outline" className="ml-auto text-sm">
                   {queryData?.length || 0} rows
                 </Badge>
               </div>
               {queryData && queryData.length > 0 && (
                 <div className="max-w-full overflow-hidden -mx-4 px-4">
                   <div className="overflow-x-auto overflow-y-auto max-h-96 border border-gray-700 rounded scrollbar-visible" style={{ maxWidth: '100%' }}>
-                    <table className="text-xs border-collapse" style={{ width: '100%', maxWidth: '100%', tableLayout: 'auto', display: 'table' }}>
+                    <table className="text-sm border-collapse" style={{ width: '100%', maxWidth: '100%', tableLayout: 'auto', display: 'table' }}>
                       <thead className="sticky top-0 bg-gray-800 z-10">
                         <tr className="border-b border-gray-700">
                           {Object.keys(queryData[0]).map((column) => (
@@ -175,12 +170,12 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, progress, 
       <div className="px-6">
         <div className="flex gap-3 mb-6 items-start">
           <Avatar className="w-8 h-8 flex-shrink-0">
-            <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-500 text-white text-xs font-bold">
-              QW
-            </AvatarFallback>
+              <AvatarFallback className="bg-purple-600 text-white text-xs font-bold">
+                QW
+              </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <div className="text-gray-200 text-sm leading-relaxed">
+            <div className="text-gray-200 text-base leading-relaxed whitespace-pre-line">
               {content}
             </div>
           </div>
@@ -194,7 +189,7 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, progress, 
       <div className="px-6">
       <div className="flex gap-3 mb-6 items-start">
         <Avatar className="w-8 h-8 flex-shrink-0">
-          <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-500 text-white text-xs font-bold">
+          <AvatarFallback className="bg-purple-600 text-white text-xs font-bold">
             QW
           </AvatarFallback>
         </Avatar>
