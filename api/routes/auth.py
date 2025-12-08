@@ -401,9 +401,9 @@ async def home(request: Request) -> HTMLResponse:
     auth_config = _get_auth_config()
 
     return templates.TemplateResponse(
+        request,
         "chat.j2",
         {
-            "request": request,
             "is_authenticated": is_authenticated_flag,
             "user_info": user_info,
             "general_prefix": GENERAL_PREFIX,
