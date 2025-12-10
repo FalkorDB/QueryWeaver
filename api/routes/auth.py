@@ -266,7 +266,12 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
             await _set_mail_hash(email, password_hash)
 
         else:
-            logging.info("User already exists: %s", _sanitize_for_log(email))
+            # User already exists - return error instead of success
+            logging.info("Signup attempt for existing user: %s", _sanitize_for_log(email))
+            return JSONResponse(
+                {"success": False, "error": "An account with this email already exists"},
+                status_code=status.HTTP_409_CONFLICT
+            )
 
         logging.info("User registration successful: %s", _sanitize_for_log(email))
 
