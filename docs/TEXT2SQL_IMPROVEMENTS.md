@@ -367,14 +367,23 @@ pipenv run pytest tests/ -k "test_analysis_agent" -v
 pipenv run pytest tests/e2e/ -v
 ```
 
-### Benchmark Testing (Future)
+### Benchmark Testing (Recommended for Future Implementation)
+
+To properly validate these improvements, benchmarking against Spider datasets is recommended:
+
 ```bash
+# Example commands for future benchmark implementation
+# Note: Benchmark scripts need to be implemented separately
+# These are examples of the recommended testing approach
+
 # Run against Spider 1.0 dataset
 python benchmark_spider1.py --config improved
 
 # Run against Spider 2.0 dataset
 python benchmark_spider2.py --config improved
 ```
+
+**Note:** The benchmark scripts referenced above are examples and need to be implemented separately to test against Spider 1.0 and Spider 2.0 datasets. The Spider benchmarks are available at: https://yale-lily.github.io/spider
 
 ## Troubleshooting
 

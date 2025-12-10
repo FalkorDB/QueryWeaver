@@ -197,12 +197,22 @@ pipenv run pytest tests/e2e/ -v
 
 ### Benchmark Tests (Recommended)
 ```bash
+# Example commands for benchmark testing
+# Note: Benchmark scripts need to be implemented separately
+# Spider datasets are available at: https://yale-lily.github.io/spider
+
 # Against Spider 1.0
 python benchmark_spider1.py --before --after
 
 # Against Spider 2.0
 python benchmark_spider2.py --before --after
 ```
+
+**Note:** The benchmark scripts referenced above are examples. To implement benchmark testing:
+1. Download Spider 1.0/2.0 datasets from Yale
+2. Create evaluation scripts that run QueryWeaver against test cases
+3. Compare accuracy metrics (execution accuracy, exact match)
+4. Generate comparison reports
 
 ## Performance Considerations
 
