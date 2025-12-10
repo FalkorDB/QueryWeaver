@@ -30,6 +30,8 @@ const Index = () => {
   const { toast } = useToast();
   const [showDatabaseModal, setShowDatabaseModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginModalCanClose, setLoginModalCanClose] = useState(true);
+  const [showSignupMode, setShowSignupMode] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showSchemaViewer, setShowSchemaViewer] = useState(false);
   const [showTokensModal, setShowTokensModal] = useState(false);
@@ -114,14 +116,11 @@ const Index = () => {
 
   // Show login modal when not authenticated after loading completes
   useEffect(() => {
-    // Only auto-open the login modal once per user/session to avoid locking
-    // the SPA when the backend is down or in demo mode. Allow users to
-    // dismiss it and remember that choice in sessionStorage.
+    // Auto-open the login modal and keep it open until user authenticates
     if (!authLoading && !isAuthenticated) {
-      const dismissed = sessionStorage.getItem('loginModalDismissed');
-      if (!dismissed) {
-        setShowLoginModal(true);
-      }
+      setShowSignupMode(false);
+      setLoginModalCanClose(false); // Don't allow closing until authenticated
+      setShowLoginModal(true);
     }
   }, [authLoading, isAuthenticated]);
 
@@ -416,7 +415,11 @@ const Index = () => {
                 <Button 
                   variant="outline" 
                   className="bg-purple-600 border-purple-500 text-white hover:bg-purple-700"
-                  onClick={() => setShowLoginModal(true)}
+                  onClick={() => {
+                    setShowSignupMode(false);
+                    setLoginModalCanClose(true); // Allow closing when manually opened
+                    setShowLoginModal(true);
+                  }}
                 >
                   Sign In
                 </Button>
@@ -473,7 +476,11 @@ const Index = () => {
                   variant="outline" 
                   size="sm"
                   className="bg-purple-600 border-purple-500 text-white hover:bg-purple-700"
-                  onClick={() => setShowLoginModal(true)}
+                  onClick={() => {
+                    setShowSignupMode(false);
+                    setLoginModalCanClose(true); // Allow closing when manually opened
+                    setShowLoginModal(true);
+                  }}
                 >
                   Sign In
                 </Button>
@@ -609,13 +616,18 @@ const Index = () => {
       <LoginModal 
         open={showLoginModal} 
         onOpenChange={(open) => {
-          setShowLoginModal(open);
-          if (!open) {
-            // Remember dismissal for this session to avoid pinning the modal
-            sessionStorage.setItem('loginModalDismissed', '1');
+          // Allow closing if:
+          // 1. User is authenticated (successful login/signup), OR
+          // 2. Modal was manually opened (loginModalCanClose is true)
+          if (isAuthenticated || loginModalCanClose) {
+            setShowLoginModal(open);
+            if (!open) {
+              setShowSignupMode(false);
+            }
           }
         }}
-        canClose={true}
+        canClose={loginModalCanClose}
+        startInSignupMode={showSignupMode}
       />
       <DatabaseModal open={showDatabaseModal} onOpenChange={setShowDatabaseModal} />
       <DeleteDatabaseModal 

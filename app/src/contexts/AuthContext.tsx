@@ -9,6 +9,10 @@ interface AuthContextType {
   login: {
     google: () => Promise<void>;
     github: () => Promise<void>;
+    email: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  };
+  signup: {
+    email: (firstName: string, lastName: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   };
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
@@ -55,6 +59,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     login: {
       google: AuthService.loginWithGoogle,
       github: AuthService.loginWithGithub,
+      email: AuthService.loginWithEmail,
+    },
+    signup: {
+      email: AuthService.signupWithEmail,
     },
     logout: handleLogout,
     refreshAuth: checkAuth,

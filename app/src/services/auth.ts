@@ -86,6 +86,65 @@ export class AuthService {
   }
 
   /**
+   * Login with email and password
+   */
+  static async loginWithEmail(email: string, password: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.LOGIN_EMAIL), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return { success: false, error: data.error || 'Login failed' };
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to login with email:', error);
+      return { success: false, error: 'Failed to connect to authentication service' };
+    }
+  }
+
+  /**
+   * Sign up with email and password
+   */
+  static async signupWithEmail(
+    firstName: string,
+    lastName: string,
+    email: string,
+    password: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.SIGNUP_EMAIL), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ firstName, lastName, email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return { success: false, error: data.error || 'Signup failed' };
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to signup with email:', error);
+      return { success: false, error: 'Failed to connect to authentication service' };
+    }
+  }
+
+  /**
    * Logout current user
    */
   static async logout(): Promise<void> {
