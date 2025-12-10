@@ -114,10 +114,18 @@ def _verify_password(password: str, stored_password_hex: str) -> bool:
         return False
 
 def _sanitize_for_log(value: str) -> str:
-    """Sanitize user input for logging by removing newlines and carriage returns."""
+    """Sanitize user input for logging by removing all newlines and separator characters."""
     if not isinstance(value, str):
-        return str(value)
-    return value.replace('\r\n', '').replace('\n', '').replace('\r', '')
+        value = str(value)
+    # Remove CR, LF, CRLF, and Unicode line/paragraph separators
+    return (
+        value
+        .replace('\r\n', '')
+        .replace('\n', '')
+        .replace('\r', '')
+        .replace('\u2028', '')
+        .replace('\u2029', '')
+    )
 
 def _validate_email(email: str) -> bool:
     """Basic email validation."""
@@ -257,7 +265,7 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
                                             f"{first_name} {last_name}", "email", api_token)
 
         if success and user_info and user_info["new_identity"]:
-            logging.info("New user created: %s", _sanitize_for_log(email))
+            logging.info("New user created: [%s]", _sanitize_for_log(email))
 
             # Hash password
             password_hash = _hash_password(password)
@@ -267,13 +275,13 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
 
         else:
             # User already exists - return error instead of success
-            logging.info("Signup attempt for existing user: %s", _sanitize_for_log(email))
+            logging.info("Signup attempt for existing user: [%s]", _sanitize_for_log(email))
             return JSONResponse(
                 {"success": False, "error": "An account with this email already exists"},
                 status_code=status.HTTP_409_CONFLICT
             )
 
-        logging.info("User registration successful: %s", _sanitize_for_log(email))
+        logging.info("User registration successful: [%s]", _sanitize_for_log(email))
 
         response = JSONResponse({
             "success": True,
