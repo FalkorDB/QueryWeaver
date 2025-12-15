@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import HomePage from "@/e2e/logic/POM/homePage";
+import HomePage from "../logic/POM/homePage";
 
 test.describe("Unauthenticated User Flow", () => {
   test("should show appropriate UI for unauthenticated users", async ({ page }) => {

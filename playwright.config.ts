@@ -52,7 +52,7 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: 'make run-dev',
+    command: 'PATH=$PATH:$HOME/.local/bin pipenv run uvicorn api.index:app --host localhost --port 5000',
     url: 'http://localhost:5000',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,

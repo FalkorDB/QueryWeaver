@@ -1,5 +1,5 @@
 import { Page, Locator } from "@playwright/test";
-import BasePage from "@/e2e/infra/ui/basePage";
+import BasePage from "../../infra/ui/basePage";
 
 export default class HomePage extends BasePage {
   constructor(page: Page) {

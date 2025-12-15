@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import HomePage from "@/e2e/logic/POM/homePage";
+import HomePage from "../logic/POM/homePage";
 
 test.describe("Basic Functionality Tests", () => {
   test("should load the application successfully", async ({ page }) => {
