@@ -1,17 +1,22 @@
 #!/bin/bash
 
-# QueryWeaver E2E Test Setup Script
-# This script demonstrates how to set up and run E2E tests
+# QueryWeaver E2E Test Setup Script (TypeScript/Playwright)
+# This script sets up the TypeScript E2E testing environment
 
 set -e
 
-echo "🚀 Setting up QueryWeaver E2E Tests"
-echo "=================================="
+echo "🚀 Setting up QueryWeaver E2E Tests (TypeScript)"
+echo "================================================"
 
-# Check if pipenv is installed
-if ! command -v pipenv &> /dev/null; then
-    echo "❌ pipenv is not installed. Please install it first:"
-    echo "   pip install pipenv"
+# Check if Node.js is installed
+if ! command -v node &> /dev/null; then
+    echo "❌ Node.js is not installed. Please install Node.js 20+ first."
+    exit 1
+fi
+
+# Check if npm is installed
+if ! command -v npm &> /dev/null; then
+    echo "❌ npm is not installed. Please install npm first."
     exit 1
 fi
 
@@ -22,13 +27,13 @@ if [ ! -f .env ]; then
     echo "✅ .env file created. Please edit it with your configuration."
 fi
 
-# Install dependencies
-echo "📦 Installing dependencies..."
-pipenv sync --dev
+# Install Node dependencies
+echo "📦 Installing Node.js dependencies..."
+npm install
 
 # Install Playwright browsers
 echo "🌐 Installing Playwright browsers..."
-pipenv run playwright install chromium
+npx playwright install chromium
 
 # Check if FalkorDB is running (optional for basic tests)
 echo "🔍 Checking for FalkorDB..."
@@ -45,16 +50,22 @@ else
     echo "⚠️  Docker not found. Some tests may require FalkorDB."
 fi
 
+# Build frontend
+echo "🏗️  Building frontend..."
+make build-dev
+
 echo ""
-echo "🎉 Setup complete! You can now run tests:"
+echo "🎉 Setup complete! You can now run TypeScript E2E tests:"
 echo ""
-echo "  make test-unit         # Run unit tests"
-echo "  make test-e2e          # Run E2E tests (headless)"
-echo "  make test-e2e-headed   # Run E2E tests (with browser)"
-echo "  make test              # Run all tests"
+echo "  npm run test:e2e           # Run E2E tests (headless)"
+echo "  npm run test:e2e:headed    # Run E2E tests (with browser)"
+echo "  npm run test:e2e:ui        # Run E2E tests (UI mode)"
+echo "  npm run test:e2e:debug     # Run E2E tests (debug mode)"
 echo ""
-echo "Or use pytest directly:"
-echo "  pipenv run pytest tests/e2e/test_basic_functionality.py -v"
+echo "Or use make commands:"
+echo "  make test-e2e-ts           # Run E2E tests (headless)"
+echo "  make test-e2e-ts-headed    # Run E2E tests (with browser)"
+echo "  make test-e2e-ts-ui        # Run E2E tests (UI mode)"
 echo ""
 echo "To run the application:"
 echo "  make run-dev"

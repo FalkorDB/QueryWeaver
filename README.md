@@ -388,17 +388,20 @@ make test
 # Run unit tests only (faster)
 make test-unit
 
-# Run E2E tests (headless)
-make test-e2e
+# Run TypeScript E2E tests (headless)
+make test-e2e-ts
 
-# Run E2E tests with a visible browser for debugging
-make test-e2e-headed
+# Run TypeScript E2E tests with a visible browser for debugging
+make test-e2e-ts-headed
+
+# Run TypeScript E2E tests with UI mode
+make test-e2e-ts-ui
 ```
 
 ### Test types
 
 - Unit tests: focus on individual modules and utilities. Run with `make test-unit` or `pipenv run pytest tests/ -k "not e2e"`.
-- End-to-end (E2E) tests: run via Playwright and exercise UI flows, OAuth, file uploads, schema processing, chat queries, and API endpoints. Use `make test-e2e`.
+- End-to-end (E2E) tests: TypeScript-based tests using Playwright that exercise UI flows, OAuth, file uploads, schema processing, chat queries, and API endpoints. Use `make test-e2e-ts`.
 
 See `tests/e2e/README.md` for full E2E test instructions.
 
@@ -409,7 +412,7 @@ GitHub Actions run unit and E2E tests on pushes and pull requests. Failures capt
 ## Troubleshooting
 
 - FalkorDB connection issues: start the DB helper `make docker-falkordb` or check network/host settings.
-- Playwright/browser failures: install browsers with `pipenv run playwright install` and ensure system deps are present.
+- Playwright/browser failures: install browsers with `npx playwright install chromium` and ensure system deps are present.
 - Missing environment variables: copy `.env.example` and fill required values.
 - **OAuth "mismatching_state: CSRF Warning!" errors**: Set `APP_ENV=production` (or `staging`) in your environment for HTTPS deployments, or `APP_ENV=development` for HTTP development environments. This ensures session cookies are configured correctly for your deployment type.
 

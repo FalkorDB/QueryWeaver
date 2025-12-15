@@ -13,8 +13,6 @@ install: ## Install dependencies
 
 
 setup-dev: install ## Set up development environment
-	pipenv run playwright install chromium
-	pipenv run playwright install-deps
 	npx playwright install chromium
 	@echo "Development environment setup complete!"
 	@echo "Don't forget to copy .env.example to .env and configure your settings"
@@ -41,18 +39,6 @@ test-e2e-ts-ui: build-dev ## Run TypeScript E2E tests with UI mode
 
 test-e2e-ts-debug: build-dev ## Run TypeScript E2E tests in debug mode
 	npx playwright test --debug
-
-# Legacy Python e2e tests (kept for reference)
-test-e2e: build-dev ## Run legacy Python E2E tests headless
-	pipenv run python -m pytest tests/e2e-python-backup/ --browser chromium --video=on --screenshot=on
-
-
-test-e2e-headed: build-dev ## Run legacy Python E2E tests with browser visible
-	pipenv run python -m pytest tests/e2e-python-backup/ --browser chromium --headed
-
-
-test-e2e-debug: build-dev ## Run E2E tests with debugging enabled
-	pipenv run python -m pytest tests/e2e/ --browser chromium --slowmo=1000
 
 lint: ## Run linting (backend + frontend)
 	@echo "Running backend lint (pylint)"

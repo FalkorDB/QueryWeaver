@@ -139,18 +139,17 @@ npm run test:e2e:ui       # UI mode
 ### Modified Files
 - `package.json` - Added Playwright and TypeScript dependencies
 - `Makefile` - Added TypeScript e2e test commands
-- `tests/e2e-python-backup/` - Moved old Python tests for reference
 
 ## CI/CD Integration
 
 The CI workflow:
-1. ✅ Sets up Python 3.12 and pipenv
-2. ✅ Sets up Node.js 20 with npm
+1. ✅ Sets up Node.js 20 with npm
+2. ✅ Sets up Python 3.12 and pipenv (for backend unit tests only)
 3. ✅ Installs all dependencies
 4. ✅ Starts FalkorDB service
 5. ✅ Builds the frontend
 6. ✅ Creates test environment configuration
-7. ✅ Runs Playwright tests
+7. ✅ Runs Playwright TypeScript tests
 8. ✅ Uploads test artifacts on failure
 
 ## Test Results
@@ -194,7 +193,7 @@ Created comprehensive `tests/e2e/README.md` covering:
 ## Verification
 
 ✅ All requirements met:
-- [x] Use TypeScript instead of Python
+- [x] Use TypeScript for e2e tests (no Python)
 - [x] Follow falkordb-browser architecture pattern
 - [x] Run all tests twice (16 tests passed in second run)
 - [x] Implement Playwright CI workflow
