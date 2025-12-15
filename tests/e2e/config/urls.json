@@ -1,0 +1,5 @@
+{
+  "baseUrl": "http://localhost:5000",
+  "loginUrl": "http://localhost:5000/",
+  "apiUrl": "http://localhost:5000"
+}

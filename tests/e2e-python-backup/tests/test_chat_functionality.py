@@ -2,7 +2,7 @@
 Test chat and query functionality.
 """
 import pytest
-from tests.e2e.pages.home_page import HomePage
+from tests.e2e.logic.pom import HomePage
 from tests.e2e.fixtures.test_data import TestDataFixtures
 
 

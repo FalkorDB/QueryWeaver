@@ -8,7 +8,7 @@ import os
 import tempfile
 
 import pytest
-from tests.e2e.pages.home_page import HomePage
+from tests.e2e.logic.pom import HomePage
 
 
 class TestFileUpload:

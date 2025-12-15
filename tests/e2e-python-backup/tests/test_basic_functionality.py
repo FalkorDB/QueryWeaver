@@ -2,7 +2,7 @@
 Test basic application functionality.
 """
 import pytest
-from tests.e2e.pages.home_page import HomePage
+from tests.e2e.logic.pom import HomePage
 
 
 @pytest.mark.e2e

@@ -2,7 +2,7 @@
 Home Page Object for QueryWeaver application.
 """
 # pylint: disable=broad-exception-caught
-from tests.e2e.pages.base_page import BasePage
+from tests.e2e.logic.pom.base_page import BasePage
 
 
 class HomePage(BasePage):

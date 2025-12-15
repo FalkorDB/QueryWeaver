@@ -1,7 +1,7 @@
 """
 Test the user experience for unauthenticated users.
 """
-from tests.e2e.pages.home_page import HomePage
+from tests.e2e.logic.pom import HomePage
 
 
 class TestUnauthenticatedFlow:
