@@ -1,19 +1,21 @@
-.PHONY: help install test test-unit test-e2e test-e2e-headed lint format clean setup-dev build lint-frontend
+.PHONY: help install test test-unit test-e2e test-e2e-headed test-e2e-ts test-e2e-ts-headed test-e2e-ts-ui lint format clean setup-dev build lint-frontend
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
 	@echo ''
 	@echo 'Targets:'
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 install: ## Install dependencies
 	pipenv sync --dev
 	npm install --prefix ./app
+	npm install
 
 
 setup-dev: install ## Set up development environment
 	pipenv run playwright install chromium
 	pipenv run playwright install-deps
+	npx playwright install chromium
 	@echo "Development environment setup complete!"
 	@echo "Don't forget to copy .env.example to .env and configure your settings"
 
@@ -23,18 +25,30 @@ build-dev:
 build-prod:
 	npm --prefix ./app run build
 
-test: build-dev test-unit test-e2e ## Run all tests
+test: build-dev test-unit test-e2e-ts ## Run all tests (unit + TypeScript e2e)
 
 test-unit: ## Run unit tests only
 	pipenv run python -m pytest tests/ -k "not e2e" --verbose
 
+test-e2e-ts: build-dev ## Run TypeScript E2E tests (headless)
+	npx playwright test
 
-test-e2e: build-dev ## Run E2E tests headless
-	pipenv run python -m pytest tests/e2e/ --browser chromium --video=on --screenshot=on
+test-e2e-ts-headed: build-dev ## Run TypeScript E2E tests with visible browser
+	npx playwright test --headed
+
+test-e2e-ts-ui: build-dev ## Run TypeScript E2E tests with UI mode
+	npx playwright test --ui
+
+test-e2e-ts-debug: build-dev ## Run TypeScript E2E tests in debug mode
+	npx playwright test --debug
+
+# Legacy Python e2e tests (kept for reference)
+test-e2e: build-dev ## Run legacy Python E2E tests headless
+	pipenv run python -m pytest tests/e2e-python-backup/ --browser chromium --video=on --screenshot=on
 
 
-test-e2e-headed: build-dev ## Run E2E tests with browser visible
-	pipenv run python -m pytest tests/e2e/ --browser chromium --headed
+test-e2e-headed: build-dev ## Run legacy Python E2E tests with browser visible
+	pipenv run python -m pytest tests/e2e-python-backup/ --browser chromium --headed
 
 
 test-e2e-debug: build-dev ## Run E2E tests with debugging enabled
