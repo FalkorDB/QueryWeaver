@@ -36,7 +36,7 @@ def parse_response(response: str) -> Dict[str, Any]:
         json_blocks = []
         depth = 0
         start_idx = None
-        
+
         for i, char in enumerate(response):
             if char == '{':
                 if depth == 0:
@@ -47,7 +47,7 @@ def parse_response(response: str) -> Dict[str, Any]:
                 if depth == 0 and start_idx is not None:
                     json_blocks.append(response[start_idx:i+1])
                     start_idx = None
-        
+
         # Try to parse JSON blocks from last to first (prefer the corrected version)
         for json_str in reversed(json_blocks):
             try:
@@ -57,7 +57,7 @@ def parse_response(response: str) -> Dict[str, Any]:
                     return analysis
             except json.JSONDecodeError:
                 continue
-        
+
         # Fallback to original method if block parsing fails
         json_start = response.find("{")
         json_end = response.rfind("}") + 1

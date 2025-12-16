@@ -1,5 +1,5 @@
 """Graph-related routes for the text2sql API."""
-# pylint: disable=line-too-long,trailing-whitespace
+# pylint: disable=line-too-long
 
 import asyncio
 import json
@@ -87,7 +87,7 @@ def sanitize_query(query: str) -> str:
 
 def sanitize_log_input(value: str) -> str:
     """
-    Sanitize input for safe logging—remove newlines, 
+    Sanitize input for safe logging—remove newlines,
     carriage returns, tabs, and wrap in repr().
     """
     if not isinstance(value, str):
@@ -112,7 +112,7 @@ async def get_schema(user_id: str, graph_id: str):  # pylint: disable=too-many-l
     This endpoint returns a JSON object with two keys: `nodes` and `edges`.
     Nodes contain a minimal set of properties (id, name, labels, props).
     Edges contain source and target node names (or internal ids), type and props.
-    
+
         args:
             graph_id (str): The ID of the graph to query (the database name).
     """
@@ -203,7 +203,7 @@ async def get_schema(user_id: str, graph_id: str):  # pylint: disable=too-many-l
 async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  # pylint: disable=too-many-statements
     """
     Query the Database with the given graph_id and chat_data.
-    
+
         Args:
             graph_id (str): The ID of the graph to query.
             chat_data (ChatRequest): The chat data containing user queries and context.
@@ -425,8 +425,8 @@ What this will do:
                     if is_destructive and general_graph:
                         yield json.dumps(
                             {
-                                "type": "error", 
-                                "final_response": True, 
+                                "type": "error",
+                                "final_response": True,
                                 "message": "Destructive operation not allowed on demo graphs"
                             }) + MESSAGE_DELIMITER
                     else:
@@ -461,10 +461,10 @@ What this will do:
                                 question=queries_history[-1],
                                 database_type=db_type
                             )
-                            
+
                             if healing_result.get("healing_failed"):
                                 raise exec_error
-                            
+
                             yield json.dumps({
                                 "type": "healing_attempt",
                                 "final_response": False,
@@ -472,7 +472,7 @@ What this will do:
                                 "original_error": str(exec_error),
                                 "healed_sql": healing_result.get("sql_query", "")
                             }) + MESSAGE_DELIMITER
-                            
+
                             # Execute healed SQL
                             try:
                                 query_results = loader_class.execute_sql_query(
@@ -480,7 +480,7 @@ What this will do:
                                     db_url
                                 )
                                 answer_an["sql_query"] = healing_result["sql_query"]
-                                
+
                                 yield json.dumps({
                                     "type": "healing_success",
                                     "final_response": False,
@@ -575,8 +575,8 @@ What this will do:
                         overall_elapsed
                     )
                     yield json.dumps({
-                        "type": "error", 
-                        "final_response": True, 
+                        "type": "error",
+                        "final_response": True,
                         "message": "Error executing SQL query"
                     }) + MESSAGE_DELIMITER
             else:

@@ -28,7 +28,7 @@ class AnalysisAgent(BaseAgent):
                 "role": "system",
                 "content": f"You are a SQL expert. TARGET DATABASE: {database_type.upper() if database_type else 'UNKNOWN'}"
             })
-        
+
         prompt = self._build_prompt(
             user_query, formatted_schema, db_description, instructions, memory_context, database_type
         )
@@ -79,7 +79,7 @@ class AnalysisAgent(BaseAgent):
         Format a single table's information.
 
         Args:
-            table_info: Table information in the structure 
+            table_info: Table information in the structure
                        [name, description, foreign_keys, columns]
 
         Returns:
@@ -189,9 +189,9 @@ class AnalysisAgent(BaseAgent):
             memory_section = f"""
             <memory_context>
             The following information contains relevant context from previous interactions:
-            
+
             {memory_context.strip()}
-            
+
             Use this context to:
             1. Better understand the user's preferences and working style
             2. Leverage previous learnings about this database
@@ -269,7 +269,7 @@ class AnalysisAgent(BaseAgent):
             - CRITICAL: If missing personalization information is a significant part of the user query (e.g., the query is primarily about "my orders", "my account", "my data", "employees I have", "how many X do I have") AND no user identification exists in memory context or schema, set "is_sql_translatable" to false.
             - DO NOT assume general/company-wide interpretations for personal pronouns when NO user context is available.
             - Mark as translatable if sufficient user context exists in memory context to identify the specific user, even for primarily personal queries.
-            - If a query depends on personal context (e.g., "my", "me", "birthday", "account", "orders") 
+            - If a query depends on personal context (e.g., "my", "me", "birthday", "account", "orders")
                 and the required information (user_id, birthday, etc.) is missing in memory context or schema:
                     - Set "is_sql_translatable" to false
                     - Add the required information to "missing_information"
