@@ -24,13 +24,15 @@ class AnalysisAgent(BaseAgent):
         formatted_schema = self._format_schema(combined_tables)
         # Add system message with database type if not already present
         if not self.messages or self.messages[0].get("role") != "system":
+            db_type = database_type.upper() if database_type else 'UNKNOWN'
             self.messages.insert(0, {
                 "role": "system",
-                "content": f"You are a SQL expert. TARGET DATABASE: {database_type.upper() if database_type else 'UNKNOWN'}"
+                "content": f"You are a SQL expert. TARGET DATABASE: {db_type}"
             })
 
         prompt = self._build_prompt(
-            user_query, formatted_schema, db_description, instructions, memory_context, database_type
+            user_query, formatted_schema, db_description, instructions,
+            memory_context, database_type
         )
         self.messages.append({"role": "user", "content": prompt})
         completion_result = completion(
