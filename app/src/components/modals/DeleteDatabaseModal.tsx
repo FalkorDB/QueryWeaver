@@ -31,7 +31,10 @@ const DeleteDatabaseModal = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md bg-gray-900 border-gray-700 text-gray-100">
+      <DialogContent 
+        className="sm:max-w-md bg-gray-900 border-gray-700 text-gray-100"
+        data-testid="delete-database-modal"
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-red-500">
             <AlertTriangle className="h-5 w-5" />
@@ -65,6 +68,7 @@ const DeleteDatabaseModal = ({
             variant="outline"
             onClick={() => onOpenChange(false)}
             className="bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700"
+            data-testid="delete-modal-cancel"
           >
             Cancel
           </Button>
@@ -73,6 +77,7 @@ const DeleteDatabaseModal = ({
               variant="destructive"
               onClick={handleConfirm}
               className="bg-red-600 hover:bg-red-700 text-white"
+              data-testid="delete-modal-confirm"
             >
               Delete Database
             </Button>

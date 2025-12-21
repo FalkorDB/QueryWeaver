@@ -222,24 +222,26 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
           </DialogDescription>
         </DialogHeader>
         
-        <div className="space-y-4 mt-6">
+        <div className="space-y-4 mt-6" data-testid="database-modal-content">
           {/* Database Type Selection */}
           <div className="space-y-2">
             <Label htmlFor="database-type" className="text-sm font-medium">
               Database Type
             </Label>
             <Select onValueChange={setSelectedDatabase} value={selectedDatabase}>
-              <SelectTrigger className="bg-muted border-border">
-                <SelectValue placeholder="-- Select Database --" />
-              </SelectTrigger>
+              <div data-testid="database-type-select">
+                <SelectTrigger className="bg-muted border-border">
+                  <SelectValue placeholder="-- Select Database --" />
+                </SelectTrigger>
+              </div>
               <SelectContent className="bg-card border-border">
-                <SelectItem value="postgresql" className="hover:bg-accent">
+                <SelectItem value="postgresql" className="hover:bg-accent" data-testid="postgresql-option">
                   <div className="flex items-center">
                     <div className="w-4 h-4 bg-blue-500 rounded-sm mr-2"></div>
                     PostgreSQL
                   </div>
                 </SelectItem>
-                <SelectItem value="mysql" className="hover:bg-accent">
+                <SelectItem value="mysql" className="hover:bg-accent" data-testid="mysql-option">
                   <div className="flex items-center">
                     <div className="w-4 h-4 bg-orange-500 rounded-sm mr-2"></div>
                     MySQL
@@ -257,6 +259,7 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
                 variant={connectionMode === 'url' ? 'default' : 'ghost'}
                 className="flex-1"
                 onClick={() => setConnectionMode('url')}
+                data-testid="connection-mode-url"
               >
                 Connection URL
               </Button>
@@ -265,6 +268,7 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
                 variant={connectionMode === 'manual' ? 'default' : 'ghost'}
                 className="flex-1"
                 onClick={() => setConnectionMode('manual')}
+                data-testid="connection-mode-manual"
               >
                 Manual Entry
               </Button>
@@ -278,6 +282,7 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
               </Label>
               <Input
                 id="connection-url"
+                data-testid="connection-url-input"
                 placeholder={
                   selectedDatabase === 'postgresql'
                     ? 'postgresql://username:password@host:5432/database'
@@ -383,6 +388,7 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={isConnecting}
+            data-testid="cancel-database-button"
           >
             Cancel
           </Button>
@@ -390,6 +396,7 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
             onClick={handleConnect}
             disabled={!selectedDatabase || isConnecting}
             className="bg-primary hover:bg-primary-dark"
+            data-testid="connect-database-button"
           >
             {isConnecting ? "Connecting..." : "Connect"}
           </Button>

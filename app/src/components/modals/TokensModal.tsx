@@ -168,6 +168,7 @@ const TokensModal: React.FC<TokensModalProps> = ({ open, onOpenChange }) => {
                 onClick={handleGenerateToken}
                 disabled={generating}
                 className="bg-purple-600 hover:bg-purple-700"
+                data-testid="generate-token-btn"
               >
                 {generating ? 'Generating...' : 'Generate New Token'}
               </Button>
@@ -175,7 +176,7 @@ const TokensModal: React.FC<TokensModalProps> = ({ open, onOpenChange }) => {
 
             {/* New Token Display */}
             {newToken && (
-              <Alert className="bg-green-900/20 border-green-600">
+              <Alert className="bg-green-900/20 border-green-600" data-testid="new-token-alert">
                 <AlertCircle className="h-4 w-4 text-green-600" />
                 <AlertDescription className="text-gray-200">
                   <h4 className="font-semibold mb-2">Token Generated Successfully!</h4>
@@ -189,12 +190,14 @@ const TokensModal: React.FC<TokensModalProps> = ({ open, onOpenChange }) => {
                         value={newToken}
                         readOnly
                         className="bg-gray-900 border-gray-600 text-gray-100 font-mono text-xs sm:text-sm"
+                        data-testid="new-token-input"
                       />
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => setShowToken(!showToken)}
                         className="bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600 flex-shrink-0"
+                        data-testid="toggle-token-visibility"
                       >
                         {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
@@ -204,6 +207,7 @@ const TokensModal: React.FC<TokensModalProps> = ({ open, onOpenChange }) => {
                       size="sm"
                       onClick={handleCopyToken}
                       className="bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600"
+                      data-testid="copy-token-btn"
                     >
                       <Copy className="h-4 w-4 mr-1" />
                       Copy
@@ -222,7 +226,7 @@ const TokensModal: React.FC<TokensModalProps> = ({ open, onOpenChange }) => {
                 <p className="text-gray-400">You don't have any API tokens yet.</p>
               ) : (
                 <div className="overflow-x-auto -mx-2 sm:mx-0">
-                  <Table>
+                  <Table data-testid="tokens-table">
                     <TableHeader>
                       <TableRow className="border-gray-600">
                         <TableHead className="text-gray-300">Token</TableHead>
@@ -232,11 +236,11 @@ const TokensModal: React.FC<TokensModalProps> = ({ open, onOpenChange }) => {
                     </TableHeader>
                     <TableBody>
                       {tokens.map((token) => (
-                        <TableRow key={token.token_id} className="border-gray-600">
-                          <TableCell className="text-gray-200 font-mono text-xs sm:text-sm">
+                        <TableRow key={token.token_id} className="border-gray-600" data-testid={`token-row-${token.token_id}`}>
+                          <TableCell className="text-gray-200 font-mono text-xs sm:text-sm" data-testid={`token-value-${token.token_id}`}>
                             ****{token.token_id}
                           </TableCell>
-                          <TableCell className="text-gray-300 text-xs sm:text-sm hidden sm:table-cell">
+                          <TableCell className="text-gray-300 text-xs sm:text-sm hidden sm:table-cell" data-testid={`token-created-${token.token_id}`}>
                             {formatDate(token.created_at)}
                           </TableCell>
                           <TableCell>
@@ -245,6 +249,7 @@ const TokensModal: React.FC<TokensModalProps> = ({ open, onOpenChange }) => {
                               size="sm"
                               onClick={() => setDeleteTokenId(token.token_id)}
                               className="bg-red-600 hover:bg-red-700 h-8 px-2 sm:px-3"
+                              data-testid={`delete-token-btn-${token.token_id}`}
                             >
                               <Trash2 className="h-4 w-4 sm:mr-1" />
                               <span className="hidden sm:inline">Delete</span>
@@ -263,7 +268,7 @@ const TokensModal: React.FC<TokensModalProps> = ({ open, onOpenChange }) => {
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deleteTokenId} onOpenChange={(open) => !open && setDeleteTokenId(null)}>
-        <AlertDialogContent className="bg-gray-800 border-gray-600">
+        <AlertDialogContent className="bg-gray-800 border-gray-600" data-testid="delete-token-confirm-dialog">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-gray-100">Delete Token</AlertDialogTitle>
             <AlertDialogDescription className="text-gray-300">
@@ -274,9 +279,10 @@ const TokensModal: React.FC<TokensModalProps> = ({ open, onOpenChange }) => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel 
+            <AlertDialogCancel
               className="bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600"
               disabled={deleting}
+              data-testid="delete-token-cancel-btn"
             >
               Cancel
             </AlertDialogCancel>
@@ -284,6 +290,7 @@ const TokensModal: React.FC<TokensModalProps> = ({ open, onOpenChange }) => {
               onClick={handleDeleteToken}
               disabled={deleting}
               className="bg-red-600 hover:bg-red-700"
+              data-testid="delete-token-confirm-action"
             >
               {deleting ? 'Deleting...' : 'Delete Token'}
             </AlertDialogAction>

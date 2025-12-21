@@ -30,7 +30,7 @@ interface ChatMessageProps {
 const ChatMessage = ({ type, content, steps, queryData, analysisInfo, progress, user }: ChatMessageProps) => {
   if (type === 'user') {
     return (
-      <div className="px-6">
+      <div className="px-6" data-testid="user-message">
         <div className="flex justify-end gap-3 mb-6">
           <div className="flex-1 max-w-xl">
             <Card className="bg-gray-700 border-gray-600 inline-block float-right">
@@ -53,9 +53,9 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, progress, 
   if (type === 'sql-query') {
     const hasSQL = content && content.trim().length > 0;
     const isValid = analysisInfo?.isValid !== false; // Default to true if not specified
-    
+
     return (
-      <div className="px-6">
+      <div className="px-6" data-testid="sql-query-message">
         <div className="flex gap-3 mb-6 items-start">
           <Avatar className="w-8 h-8 flex-shrink-0">
               <AvatarFallback className="bg-purple-600 text-white text-xs font-bold">
@@ -112,7 +112,7 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, progress, 
 
   if (type === 'query-result') {
     return (
-      <div className="px-6">
+      <div className="px-6" data-testid="query-results-message">
         <div className="flex gap-3 mb-6 items-start">
           <Avatar className="w-8 h-8 flex-shrink-0">
             <AvatarFallback className="bg-purple-600 text-white text-xs font-bold">
@@ -132,7 +132,7 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, progress, 
               {queryData && queryData.length > 0 && (
                 <div className="max-w-full overflow-hidden -mx-4 px-4">
                   <div className="overflow-x-auto overflow-y-auto max-h-96 border border-gray-700 rounded scrollbar-visible" style={{ maxWidth: '100%' }}>
-                    <table className="text-sm border-collapse" style={{ width: '100%', maxWidth: '100%', tableLayout: 'auto', display: 'table' }}>
+                    <table className="text-sm border-collapse" data-testid="results-table" style={{ width: '100%', maxWidth: '100%', tableLayout: 'auto', display: 'table' }}>
                       <thead className="sticky top-0 bg-gray-800 z-10">
                         <tr className="border-b border-gray-700">
                           {Object.keys(queryData[0]).map((column) => (
@@ -167,7 +167,7 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, progress, 
 
   if (type === 'ai') {
     return (
-      <div className="px-6">
+      <div className="px-6" data-testid="ai-message">
         <div className="flex gap-3 mb-6 items-start">
           <Avatar className="w-8 h-8 flex-shrink-0">
               <AvatarFallback className="bg-purple-600 text-white text-xs font-bold">

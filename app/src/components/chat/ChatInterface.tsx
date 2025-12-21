@@ -290,9 +290,9 @@ const ChatInterface = ({ className, disabled = false, onProcessingChange }: Chat
   };
 
   return (
-    <div className={cn("flex flex-col h-full bg-gray-900", className)}>
+    <div className={cn("flex flex-col h-full bg-gray-900", className)} data-testid="chat-interface">
       {/* Messages Area */}
-      <div ref={chatContainerRef} className="flex-1 overflow-y-auto scrollbar-hide overflow-x-hidden">
+      <div ref={chatContainerRef} className="flex-1 overflow-y-auto scrollbar-hide overflow-x-hidden" data-testid="chat-messages-container">
         <div className="space-y-6 py-6 max-w-full">
           {messages.map((msg) => (
             <ChatMessage
@@ -333,7 +333,7 @@ const ChatInterface = ({ className, disabled = false, onProcessingChange }: Chat
           
           {/* Show loading indicator when processing */}
           {isProcessing && (
-            <div className="flex items-center justify-center gap-2 mt-2">
+            <div className="flex items-center justify-center gap-2 mt-2" data-testid="processing-query-indicator">
               <LoadingSpinner size="sm" />
               <span className="text-gray-400 text-sm">Processing your query...</span>
             </div>

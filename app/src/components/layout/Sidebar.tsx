@@ -26,12 +26,13 @@ interface SidebarProps {
   onToggleCollapse?: () => void;
 }
 
-const SidebarIcon = ({ icon: Icon, label, active, onClick, href }: { 
-  icon: React.ElementType, 
-  label: string, 
+const SidebarIcon = ({ icon: Icon, label, active, onClick, href, testId }: {
+  icon: React.ElementType,
+  label: string,
   active?: boolean,
   onClick?: () => void,
-  href?: string
+  href?: string,
+  testId?: string
 }) => (
   <TooltipProvider delayDuration={300} skipDelayDuration={0}>
     <Tooltip delayDuration={0}>
@@ -44,6 +45,7 @@ const SidebarIcon = ({ icon: Icon, label, active, onClick, href }: {
                 ? 'bg-purple-600 text-white'
                 : 'text-gray-400 hover:bg-gray-800 hover:text-white'
             }`}
+            data-testid={testId}
           >
             <Icon className="h-5 w-5" />
             <span className="sr-only">{label}</span>
@@ -58,6 +60,7 @@ const SidebarIcon = ({ icon: Icon, label, active, onClick, href }: {
                 ? 'bg-purple-600 text-white'
                 : 'text-gray-400 hover:bg-gray-800 hover:text-white'
             }`}
+            data-testid={testId}
           >
             <Icon className="h-5 w-5" />
             <span className="sr-only">{label}</span>
@@ -70,6 +73,7 @@ const SidebarIcon = ({ icon: Icon, label, active, onClick, href }: {
                 ? 'bg-purple-600 text-white'
                 : 'text-gray-400 hover:bg-gray-800 hover:text-white'
             }`}
+            data-testid={testId}
           >
             <Icon className="h-5 w-5" />
             <span className="sr-only">{label}</span>
@@ -98,6 +102,7 @@ const Sidebar = ({ className, onSchemaClick, isSchemaOpen, isCollapsed = false, 
               onClick={onToggleCollapse}
               className="group flex h-10 w-10 shrink-0 items-center justify-center gap-2 rounded-full bg-gray-800 text-lg font-semibold text-white hover:bg-gray-700"
               title="Toggle Sidebar (Mobile)"
+              data-testid="sidebar-toggle"
             >
               <PanelLeft className="h-5 w-5 transition-all group-hover:scale-110" />
               <span className="sr-only">Toggle Sidebar</span>
@@ -105,11 +110,12 @@ const Sidebar = ({ className, onSchemaClick, isSchemaOpen, isCollapsed = false, 
           )}
           <ThemeToggle />
           {/* <SidebarIcon icon={BrainCircuit} label="Query" active /> */}
-          <SidebarIcon 
-            icon={Waypoints} 
-            label="Schema" 
+          <SidebarIcon
+            icon={Waypoints}
+            label="Schema"
             active={isSchemaOpen}
             onClick={onSchemaClick}
+            testId="schema-button"
           />
         </nav>
       
@@ -118,8 +124,8 @@ const Sidebar = ({ className, onSchemaClick, isSchemaOpen, isCollapsed = false, 
       </div>
       
       <nav className="flex flex-col items-center gap-4 px-2 py-4">
-        <SidebarIcon icon={BookOpen} label="Documentation" href="https://docs.falkordb.com/" />
-        <SidebarIcon icon={LifeBuoy} label="Support" href="https://discord.com/invite/jyUgBweNQz" />
+        <SidebarIcon icon={BookOpen} label="Documentation" href="https://docs.falkordb.com/" testId="documentation-link" />
+        <SidebarIcon icon={LifeBuoy} label="Support" href="https://discord.com/invite/jyUgBweNQz" testId="support-link" />
         {/* <SidebarIcon icon={Settings} label="Settings" /> */}
       </nav>
     </aside>

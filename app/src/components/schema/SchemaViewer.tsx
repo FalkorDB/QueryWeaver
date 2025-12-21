@@ -405,12 +405,13 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
       
       {/* Schema Viewer */}
       <div
+        data-testid="schema-panel"
         className={`fixed top-0 h-full bg-gray-900 border-r border-gray-700 flex flex-col transition-all duration-300
           ${isOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'}
           md:z-30 z-50
           w-[80vw] max-w-[400px] md:max-w-none
         `}
-        style={{ 
+        style={{
           ...(isOpen && window.innerWidth >= 768 ? {
             left: `${sidebarWidth}px`,
             width: `${width}px`

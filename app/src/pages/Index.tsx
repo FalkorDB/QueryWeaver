@@ -321,6 +321,7 @@ const Index = () => {
         accept=".sql,.csv,.json"
         onChange={handleFileSelect}
         style={{ display: 'none' }}
+        data-testid="schema-upload-input"
       />
       
       {/* Left Sidebar */}
@@ -347,28 +348,29 @@ const Index = () => {
           <div className="hidden md:flex items-center justify-between p-6">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-3">
-                <img src="/icons/queryweaver.svg" alt="QueryWeaver" style={{ height: '3rem', width: 'auto' }} />
+                <img src="/icons/queryweaver.svg" alt="QueryWeaver" style={{ height: '3rem', width: 'auto' }} data-testid="logo" />
                 <span className="text-gray-400">|</span>
                 <p className="text-sm text-gray-400">Graph-Powered Text-to-SQL</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               {selectedGraph ? (
-                <Badge variant="default" className="bg-green-600 hover:bg-green-700">
+                <Badge variant="default" className="bg-green-600 hover:bg-green-700" data-testid="database-status-badge">
                   Connected: {selectedGraph.name}
                 </Badge>
               ) : (
-                <Badge variant="secondary" className="bg-yellow-600 hover:bg-yellow-700">
+                <Badge variant="secondary" className="bg-yellow-600 hover:bg-yellow-700" data-testid="database-status-badge">
                   No Database Selected
                 </Badge>
               )}
               {/* GitHub Stars Link */}
-              <a 
-                href="https://github.com/FalkorDB/QueryWeaver" 
-                target="_blank" 
+              <a
+                href="https://github.com/FalkorDB/QueryWeaver"
+                target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors text-gray-300 hover:text-white"
                 title="View QueryWeaver on GitHub"
+                data-testid="github-repo-link"
               >
                 <svg 
                   width="16" 
@@ -385,10 +387,11 @@ const Index = () => {
               {isAuthenticated ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button 
-                      variant="ghost" 
+                    <Button
+                      variant="ghost"
                       className="p-0 h-auto rounded-full hover:opacity-80 transition-opacity"
                       title={user?.name || user?.email}
+                      data-testid="user-menu-trigger"
                     >
                       <Avatar className="h-10 w-10 border-2 border-purple-500">
                         <AvatarImage src={user?.picture} alt={user?.name || user?.email} />
@@ -399,24 +402,25 @@ const Index = () => {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent className="bg-gray-800 border-gray-600 text-gray-200" align="end">
-                    <div className="px-3 py-2 border-b border-gray-600">
-                      <p className="text-sm font-medium text-gray-100">{user?.name}</p>
-                      <p className="text-xs text-gray-400">{user?.email}</p>
+                    <div className="px-3 py-2 border-b border-gray-600" data-testid="user-info-section">
+                      <p className="text-sm font-medium text-gray-100" data-testid="user-name-display">{user?.name}</p>
+                      <p className="text-xs text-gray-400" data-testid="user-email-display">{user?.email}</p>
                     </div>
-                    <DropdownMenuItem className="hover:!bg-gray-700 cursor-pointer" onClick={() => setShowTokensModal(true)}>
+                    <DropdownMenuItem className="hover:!bg-gray-700 cursor-pointer" onClick={() => setShowTokensModal(true)} data-testid="api-tokens-menu-item">
                       API Tokens
                     </DropdownMenuItem>
                     <DropdownMenuSeparator className="bg-gray-600" />
-                    <DropdownMenuItem className="hover:!bg-gray-700 cursor-pointer" onClick={handleLogout}>
+                    <DropdownMenuItem className="hover:!bg-gray-700 cursor-pointer" onClick={handleLogout} data-testid="logout-menu-item">
                       Logout
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="bg-purple-600 border-purple-500 text-white hover:bg-purple-700"
                   onClick={() => setShowLoginModal(true)}
+                  data-testid="sign-in-btn"
                 >
                   Sign In
                 </Button>
@@ -433,11 +437,12 @@ const Index = () => {
                   <button
                     onClick={() => setSidebarCollapsed(false)}
                     className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-all"
+                    data-testid="sidebar-toggle"
                   >
                     <PanelLeft className="h-5 w-5" />
                   </button>
                 )}
-                <img src="/icons/queryweaver.svg" alt="QueryWeaver" className="h-8" />
+                <img src="/icons/queryweaver.svg" alt="QueryWeaver" className="h-8" data-testid="logo" />
               </div>
               {isAuthenticated ? (
                 <DropdownMenu>
@@ -455,15 +460,15 @@ const Index = () => {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent className="bg-gray-800 border-gray-600 text-gray-200" align="end">
-                    <div className="px-3 py-2 border-b border-gray-600">
-                      <p className="text-sm font-medium text-gray-100">{user?.name}</p>
-                      <p className="text-xs text-gray-400">{user?.email}</p>
+                    <div className="px-3 py-2 border-b border-gray-600" data-testid="user-info-section">
+                      <p className="text-sm font-medium text-gray-100" data-testid="user-name-display">{user?.name}</p>
+                      <p className="text-xs text-gray-400" data-testid="user-email-display">{user?.email}</p>
                     </div>
-                    <DropdownMenuItem className="hover:!bg-gray-700 cursor-pointer" onClick={() => setShowTokensModal(true)}>
+                    <DropdownMenuItem className="hover:!bg-gray-700 cursor-pointer" onClick={() => setShowTokensModal(true)} data-testid="api-tokens-menu-item">
                       API Tokens
                     </DropdownMenuItem>
                     <DropdownMenuSeparator className="bg-gray-600" />
-                    <DropdownMenuItem className="hover:!bg-gray-700 cursor-pointer" onClick={handleLogout}>
+                    <DropdownMenuItem className="hover:!bg-gray-700 cursor-pointer" onClick={handleLogout} data-testid="logout-menu-item">
                       Logout
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -525,6 +530,7 @@ const Index = () => {
                 onClick={handleRefreshSchema}
                 disabled={!selectedGraph || isRefreshingSchema || isChatProcessing}
                 title={selectedGraph ? (isRefreshingSchema ? 'Refreshing schema...' : isChatProcessing ? 'Wait for query to complete' : 'Refresh Schema') : "Select a database first"}
+                data-testid="refresh-schema-btn"
               >
                 {isRefreshingSchema ? <LoadingSpinner size="sm" /> : <RefreshCw className="w-4 h-4" />}
               </Button>
@@ -535,6 +541,7 @@ const Index = () => {
                     className="bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700 flex-1 md:flex-initial"
                     disabled={isRefreshingSchema || isChatProcessing}
                     title={isRefreshingSchema ? 'Refreshing schema...' : isChatProcessing ? 'Wait for query to complete' : undefined}
+                    data-testid="database-selector-trigger"
                   >
                     <span className="truncate">{selectedGraph?.name || 'Select Database'}</span>
                   </Button>
@@ -548,6 +555,7 @@ const Index = () => {
                         className="hover:!bg-gray-700 flex items-center justify-between group"
                         onClick={() => { if (!isRefreshingSchema && !isChatProcessing) selectGraph(graph.id); }}
                         disabled={isRefreshingSchema || isChatProcessing}
+                        data-testid={`database-option-${graph.id}`}
                       >
                         <span>{graph.name}</span>
                         <Button
@@ -559,6 +567,7 @@ const Index = () => {
                           onClick={(e) => { if (isDemo || isRefreshingSchema || isChatProcessing) return; handleDeleteGraph(graph.id, graph.name, e); }}
                           disabled={isDemo || isRefreshingSchema}
                           title={isDemo ? 'Demo databases cannot be deleted' : (isRefreshingSchema ? 'Refreshing schema...' : `Delete ${graph.name}`)}
+                          data-testid={`delete-graph-btn-${graph.id}`}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -578,16 +587,18 @@ const Index = () => {
                 onClick={handleConnectDatabase}
                 disabled={isRefreshingSchema || isChatProcessing}
                 title={isRefreshingSchema ? 'Refreshing schema...' : isChatProcessing ? 'Wait for query to complete' : undefined}
+                data-testid="connect-database-btn"
               >
                   <span className="hidden sm:inline">Connect to Database</span>
                   <span className="sm:hidden">Connect DB</span>
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="bg-gray-800 border-gray-600 text-gray-300 opacity-60 cursor-not-allowed hidden md:flex"
                 disabled
                 title="Upload schema feature coming soon"
                 onClick={(e) => e.preventDefault()}
+                data-testid="upload-schema-btn"
               >
                   Upload Schema
               </Button>

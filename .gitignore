@@ -25,3 +25,10 @@ node_modules/
 .jinja_cache/
 demo_tokens.py
 .DS_Store
+
+# Playwright
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+e2e/.auth/

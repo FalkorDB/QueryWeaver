@@ -49,6 +49,7 @@ const ThemeToggle = () => {
             onClick={toggleTheme}
             className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
             aria-label="Toggle theme"
+            data-testid="theme-toggle"
           >
             {getIcon()}
             <span className="sr-only">{getTooltipText()}</span>

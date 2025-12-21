@@ -21,7 +21,7 @@ const QueryInput = ({ onSubmit, placeholder = "Ask me anything about your databa
   };
 
   return (
-    <form onSubmit={handleSubmit} className="relative">
+    <form onSubmit={handleSubmit} className="relative" data-testid="query-input-form">
       <Textarea
         value={query}
         onChange={(e) => setQuery(e.target.value)}
@@ -34,6 +34,7 @@ const QueryInput = ({ onSubmit, placeholder = "Ask me anything about your databa
             handleSubmit(e);
           }
         }}
+        data-testid="query-textarea"
       />
       <Button
         type="submit"
@@ -41,6 +42,7 @@ const QueryInput = ({ onSubmit, placeholder = "Ask me anything about your databa
         className="absolute right-2 bottom-2 bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
         disabled={!query.trim() || disabled}
         aria-label="Send query"
+        data-testid="send-query-btn"
       >
         <Send className="w-4 h-4" />
       </Button>
