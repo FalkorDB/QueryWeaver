@@ -20,6 +20,7 @@ from api.routes.auth import auth_router, init_auth
 from api.routes.graphs import graphs_router
 from api.routes.database import database_router
 from api.routes.tokens import tokens_router
+from api.routes.settings import settings_router
 
 # Load environment variables from .env file
 load_dotenv()
@@ -60,6 +61,7 @@ def create_app():
     app.include_router(graphs_router, prefix="/graphs")
     app.include_router(database_router)
     app.include_router(tokens_router, prefix="/tokens")
+    app.include_router(settings_router, prefix="/api")
 
 
 

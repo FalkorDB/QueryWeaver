@@ -27,17 +27,31 @@ export class ChatService {
       // Add current query to the chat array
       chatHistory.push(request.query);
       
+      // Build request body
+      const requestBody: any = {
+        chat: chatHistory,
+        // Optional fields the backend supports:
+        // result: [],  // Previous results if needed
+        // instructions: ""  // Additional instructions if needed
+      };
+      
+      // Add custom API key, model, and vendor if provided
+      if (request.customApiKey) {
+        requestBody.custom_api_key = request.customApiKey;
+      }
+      if (request.customModel && request.customVendor) {
+        // Map vendor to LiteLLM prefix (google -> gemini)
+        const vendorPrefix = request.customVendor === 'google' ? 'gemini' : request.customVendor;
+        // Format model name with vendor prefix for LiteLLM
+        requestBody.custom_model = `${vendorPrefix}/${request.customModel}`;
+      }
+      
       const response = await fetch(buildApiUrl(endpoint), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          chat: chatHistory,
-          // Optional fields the backend supports:
-          // result: [],  // Previous results if needed
-          // instructions: ""  // Additional instructions if needed
-        }),
+        body: JSON.stringify(requestBody),
         credentials: 'include',
       });
 

@@ -70,11 +70,18 @@ class FollowUpAgent(BaseAgent):  # pylint: disable=too-few-public-methods
         )
 
         try:
-            completion_result = completion(
-                model=Config.COMPLETION_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.9
-            )
+            # Prepare completion arguments
+            completion_args = {
+                "model": self.custom_model if self.custom_model else Config.COMPLETION_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.9
+            }
+            
+            # Add custom API key if provided
+            if self.custom_api_key:
+                completion_args["api_key"] = self.custom_api_key
+            
+            completion_result = completion(**completion_args)
 
             response = completion_result.choices[0].message.content.strip()
             return response

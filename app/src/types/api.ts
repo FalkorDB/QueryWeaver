@@ -37,6 +37,9 @@ export interface ChatRequest {
   query: string;
   database: string;
   history?: ConversationMessage[];
+  customApiKey?: string;
+  customModel?: string;
+  customVendor?: 'openai' | 'google' | 'anthropic';
 }
 
 export interface ConversationMessage {

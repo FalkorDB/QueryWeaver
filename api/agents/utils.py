@@ -7,7 +7,8 @@ from typing import Any, Dict
 class BaseAgent:  # pylint: disable=too-few-public-methods
     """Base class for agents."""
 
-    def __init__(self, queries_history: list, result_history: list):
+    def __init__(self, queries_history: list, result_history: list, 
+                 custom_api_key: str = None, custom_model: str = None):
         """Initialize the agent with query and result history."""
         if result_history is None:
             self.messages = []
@@ -16,6 +17,9 @@ class BaseAgent:  # pylint: disable=too-few-public-methods
             for query, result in zip(queries_history[:-1], result_history):
                 self.messages.append({"role": "user", "content": query})
                 self.messages.append({"role": "assistant", "content": result})
+        
+        self.custom_api_key = custom_api_key
+        self.custom_model = custom_model
 
 
 def parse_response(response: str) -> Dict[str, Any]:

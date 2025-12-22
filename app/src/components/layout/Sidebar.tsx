@@ -7,6 +7,7 @@ import {
   BookOpen,
   LifeBuoy,
   Waypoints,
+  Sliders,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -24,6 +25,7 @@ interface SidebarProps {
   isSchemaOpen?: boolean;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  onSettingsClick?: () => void;
 }
 
 const SidebarIcon = ({ icon: Icon, label, active, onClick, href }: { 
@@ -82,7 +84,7 @@ const SidebarIcon = ({ icon: Icon, label, active, onClick, href }: {
 );
 
 
-const Sidebar = ({ className, onSchemaClick, isSchemaOpen, isCollapsed = false, onToggleCollapse }: SidebarProps) => {
+const Sidebar = ({ className, onSchemaClick, isSchemaOpen, isCollapsed = false, onToggleCollapse, onSettingsClick }: SidebarProps) => {
   const isMobile = useIsMobile();
   return (
     <>
@@ -118,9 +120,9 @@ const Sidebar = ({ className, onSchemaClick, isSchemaOpen, isCollapsed = false, 
       </div>
       
       <nav className="flex flex-col items-center gap-4 px-2 py-4">
+        <SidebarIcon icon={Sliders} label="Configurations" onClick={onSettingsClick} />
         <SidebarIcon icon={BookOpen} label="Documentation" href="https://docs.falkordb.com/" />
         <SidebarIcon icon={LifeBuoy} label="Support" href="https://discord.com/invite/jyUgBweNQz" />
-        {/* <SidebarIcon icon={Settings} label="Settings" /> */}
       </nav>
     </aside>
     </>

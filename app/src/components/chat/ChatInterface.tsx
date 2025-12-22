@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 import { useDatabase } from "@/contexts/DatabaseContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSettings } from "@/contexts/SettingsContext";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import ChatMessage from "./ChatMessage";
@@ -39,6 +40,7 @@ export interface ChatInterfaceProps {
 const ChatInterface = ({ className, disabled = false, onProcessingChange }: ChatInterfaceProps) => {
   const { toast } = useToast();
   const { selectedGraph } = useDatabase();
+  const { vendor, apiKey, modelName, isApiKeyValid } = useSettings();
   const [isProcessing, setIsProcessing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -156,12 +158,14 @@ const ChatInterface = ({ className, disabled = false, onProcessingChange }: Chat
         explanation?: string;
         isValid?: boolean;
       } = {};
-
       // Stream the query
       for await (const message of ChatService.streamQuery({
         query,
         database: selectedGraph.id,
         history: historySnapshot,
+        customApiKey: isApiKeyValid ? apiKey : undefined,
+        customModel: isApiKeyValid ? modelName : undefined,
+        customVendor: isApiKeyValid ? vendor : undefined,
       })) {
         
         if (message.type === 'status' || message.type === 'reasoning' || message.type === 'reasoning_step') {
