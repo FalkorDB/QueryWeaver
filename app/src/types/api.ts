@@ -84,9 +84,9 @@ export interface StreamMessage {
 
 // Confirmation types
 export interface ConfirmRequest {
-  confirmation_id: string;
-  confirmed: boolean;
-  database: string;
+  sql_query: string;      // The SQL query to execute
+  confirmation: string;   // "CONFIRM" or "" (empty for cancel)
+  chat: string[];         // Conversation history
 }
 
 // Upload types

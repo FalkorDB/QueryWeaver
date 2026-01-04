@@ -74,7 +74,6 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
   }, []);
 
   const NODE_WIDTH = 160;
-  const NODE_SIZE = 6; // For collision detection
   const MIN_WIDTH = 300;
   const MAX_WIDTH_PERCENT = 0.6;
   const DEFAULT_WIDTH_PERCENT = 0.5;
@@ -396,22 +395,21 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
   return (
     <>
       {/* Mobile overlay backdrop */}
-      {isOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
-          onClick={onClose}
-        />
-      )}
+      <div 
+        className="fixed inset-0 bg-black/50 z-40 md:hidden"
+        onClick={onClose}
+      />
       
       {/* Schema Viewer */}
       <div
+        data-testid="schema-panel"
         className={`fixed top-0 h-full bg-gray-900 border-r border-gray-700 flex flex-col transition-all duration-300
           ${isOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'}
           md:z-30 z-50
           w-[80vw] max-w-[400px] md:max-w-none
         `}
-        style={{ 
-          ...(isOpen && window.innerWidth >= 768 ? {
+        style={{
+          ...(window.innerWidth >= 768 ? {
             left: `${sidebarWidth}px`,
             width: `${width}px`
           } : {})

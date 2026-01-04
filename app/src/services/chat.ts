@@ -142,14 +142,17 @@ export class ChatService {
   }
 
   /**
-   * Confirm a destructive SQL operation
+   * Confirm a destructive SQL operation and stream results
    * Used when the backend requires confirmation for INSERT/UPDATE/DELETE
    */
-  static async confirmOperation(request: ConfirmRequest): Promise<void> {
+  static async *streamConfirmOperation(
+    database: string,
+    request: ConfirmRequest
+  ): AsyncGenerator<StreamMessage, void, unknown> {
     try {
       // The backend expects POST /graphs/{database}/confirm
-      const endpoint = `/graphs/${encodeURIComponent(request.database)}/confirm`;
-      
+      const endpoint = `/graphs/${encodeURIComponent(database)}/confirm`;
+
       const response = await fetch(buildApiUrl(endpoint), {
         method: 'POST',
         headers: {
@@ -159,12 +162,95 @@ export class ChatService {
         credentials: 'include',
       });
 
+      console.log('Confirmation response status:', response.status);
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to confirm operation');
+        const errorText = await response.text();
+        console.error('Confirmation error response:', errorText);
+
+        try {
+          const errorData = JSON.parse(errorText);
+          const errorMessage = errorData.error || errorData.detail || errorData.message || 'Failed to confirm operation';
+          throw new Error(errorMessage);
+        } catch (parseError) {
+          throw new Error(errorText || `Request failed with status ${response.status}`);
+        }
+      }
+
+      if (!response.body) {
+        throw new Error('No response body');
+      }
+
+      // Read the streaming response (same logic as streamQuery)
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            console.log('Confirmation stream done. Final buffer:', buffer);
+            break;
+          }
+
+          const chunk = decoder.decode(value, { stream: true });
+          console.log('Received confirmation chunk:', chunk);
+          buffer += chunk;
+
+          const parts = buffer.split(API_CONFIG.STREAM_BOUNDARY);
+          console.log('Split into parts:', parts.length, 'parts');
+
+          buffer = parts.pop() || '';
+
+          for (const part of parts) {
+            const trimmed = part.trim();
+            if (!trimmed) continue;
+
+            console.log('Processing confirmation message part:', trimmed);
+            try {
+              const message: StreamMessage = JSON.parse(trimmed);
+              console.log('Parsed confirmation message:', message);
+              yield message;
+            } catch (e) {
+              console.error('Failed to parse confirmation stream message:', trimmed, e);
+              yield {
+                type: 'error',
+                content: `Failed to parse server response: ${trimmed.substring(0, 100)}...`
+              } as StreamMessage;
+            }
+          }
+        }
+
+        // Process any remaining buffer
+        if (buffer.trim()) {
+          try {
+            const message: StreamMessage = JSON.parse(buffer.trim());
+            yield message;
+          } catch (e) {
+            console.error('Failed to parse final confirmation message:', buffer, e);
+            yield {
+              type: 'error',
+              content: `Failed to parse final server response`
+            } as StreamMessage;
+          }
+        }
+      } catch (streamError) {
+        console.error('Confirmation stream reading error:', streamError);
+        yield {
+          type: 'error',
+          content: `Stream error: ${streamError instanceof Error ? streamError.message : 'Unknown streaming error'}`
+        } as StreamMessage;
       }
     } catch (error) {
-      console.error('Failed to confirm operation:', error);
+      console.error('Failed to stream confirmation:', error);
+
+      yield {
+        type: 'error',
+        content: error instanceof Error ? error.message : 'Unknown error occurred'
+      } as StreamMessage;
+
       throw error;
     }
   }

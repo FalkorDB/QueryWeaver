@@ -1,9 +1,10 @@
 import React from 'react';
-import { User, Bot, ArrowRight, Database, Search, Code, MessageSquare } from 'lucide-react';
+import { Database, Search, Code, MessageSquare, AlertTriangle } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Button } from '@/components/ui/button';
 import type { User as UserType } from '@/types/api';
 
 interface Step {
@@ -12,7 +13,7 @@ interface Step {
 }
 
 interface ChatMessageProps {
-  type: 'user' | 'ai' | 'ai-steps' | 'sql-query' | 'query-result';
+  type: 'user' | 'ai' | 'ai-steps' | 'sql-query' | 'query-result' | 'confirmation';
   content: string;
   steps?: Step[];
   queryData?: any[]; // For table data
@@ -23,14 +24,96 @@ interface ChatMessageProps {
     explanation?: string;
     isValid?: boolean;
   };
+  confirmationData?: {
+    sqlQuery: string;
+    operationType: string;
+    message: string;
+  };
   progress?: number; // Progress percentage for AI steps
   user?: UserType | null; // User info for avatar
+  onConfirm?: () => void;
+  onCancel?: () => void;
 }
 
-const ChatMessage = ({ type, content, steps, queryData, analysisInfo, progress, user }: ChatMessageProps) => {
+const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmationData, progress, user, onConfirm, onCancel }: ChatMessageProps) => {
+  if (type === 'confirmation') {
+    const operationType = (confirmationData?.operationType ?? 'UNKNOWN').toUpperCase();
+    const isHighRisk = ['DELETE', 'DROP', 'TRUNCATE'].includes(operationType);
+
+    return (
+      <div className="px-6" data-testid="confirmation-message">
+        <div className="flex gap-3 mb-6 items-start">
+          <Avatar className="w-8 h-8 flex-shrink-0">
+            <AvatarFallback className="bg-purple-600 text-white text-xs font-bold">
+              QW
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <Card className={`${isHighRisk ? 'border-red-500/50 bg-red-950/20' : 'border-yellow-500/50 bg-yellow-950/20'}`}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertTriangle className={`w-5 h-5 ${isHighRisk ? 'text-red-400' : 'text-yellow-400'}`} />
+                  <span className={`text-base font-semibold ${isHighRisk ? 'text-red-400' : 'text-yellow-400'}`}>
+                    Destructive Operation Detected
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-gray-300 text-sm mb-2">
+                      This operation will perform a <span className={`font-semibold ${isHighRisk ? 'text-red-400' : 'text-yellow-400'}`}>{operationType}</span> query:
+                    </p>
+                    {confirmationData?.sqlQuery && (
+                      <div className="bg-gray-900 border border-gray-700 rounded p-3 overflow-x-auto">
+                        <pre className="text-sm font-mono text-gray-200">
+                          <code className="language-sql">{confirmationData.sqlQuery}</code>
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className={`${isHighRisk ? 'bg-red-950/40 border-red-700/50' : 'bg-yellow-950/40 border-yellow-700/50'} border rounded p-3`}>
+                    <p className="text-sm text-gray-300">
+                      {isHighRisk ? (
+                        <>
+                          <span className="font-semibold text-red-400">⚠️ WARNING:</span> This operation may be irreversible and will permanently modify your database.
+                        </>
+                      ) : (
+                        <>This operation will make changes to your database. Please review carefully before confirming.</>
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <Button
+                      variant="outline"
+                      onClick={onCancel}
+                      className="flex-1 bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700"
+                      data-testid="confirmation-cancel-button"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={onConfirm}
+                      className={`flex-1 ${isHighRisk ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-600 hover:bg-yellow-700'} text-white font-semibold`}
+                      data-testid="confirmation-confirm-button"
+                    >
+                      Confirm {operationType}
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (type === 'user') {
     return (
-      <div className="px-6">
+      <div className="px-6" data-testid="user-message">
         <div className="flex justify-end gap-3 mb-6">
           <div className="flex-1 max-w-xl">
             <Card className="bg-gray-700 border-gray-600 inline-block float-right">
@@ -53,9 +136,9 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, progress, 
   if (type === 'sql-query') {
     const hasSQL = content && content.trim().length > 0;
     const isValid = analysisInfo?.isValid !== false; // Default to true if not specified
-    
+
     return (
-      <div className="px-6">
+      <div className="px-6" data-testid="sql-query-message">
         <div className="flex gap-3 mb-6 items-start">
           <Avatar className="w-8 h-8 flex-shrink-0">
               <AvatarFallback className="bg-purple-600 text-white text-xs font-bold">
@@ -112,7 +195,7 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, progress, 
 
   if (type === 'query-result') {
     return (
-      <div className="px-6">
+      <div className="px-6" data-testid="query-results-message">
         <div className="flex gap-3 mb-6 items-start">
           <Avatar className="w-8 h-8 flex-shrink-0">
             <AvatarFallback className="bg-purple-600 text-white text-xs font-bold">
@@ -132,7 +215,7 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, progress, 
               {queryData && queryData.length > 0 && (
                 <div className="max-w-full overflow-hidden -mx-4 px-4">
                   <div className="overflow-x-auto overflow-y-auto max-h-96 border border-gray-700 rounded scrollbar-visible" style={{ maxWidth: '100%' }}>
-                    <table className="text-sm border-collapse" style={{ width: '100%', maxWidth: '100%', tableLayout: 'auto', display: 'table' }}>
+                    <table className="text-sm border-collapse" data-testid="results-table" style={{ width: '100%', maxWidth: '100%', tableLayout: 'auto', display: 'table' }}>
                       <thead className="sticky top-0 bg-gray-800 z-10">
                         <tr className="border-b border-gray-700">
                           {Object.keys(queryData[0]).map((column) => (
@@ -167,7 +250,7 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, progress, 
 
   if (type === 'ai') {
     return (
-      <div className="px-6">
+      <div className="px-6" data-testid="ai-message">
         <div className="flex gap-3 mb-6 items-start">
           <Avatar className="w-8 h-8 flex-shrink-0">
               <AvatarFallback className="bg-purple-600 text-white text-xs font-bold">

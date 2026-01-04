@@ -13,7 +13,7 @@ import type { ConversationMessage } from "@/types/api";
 
 interface ChatMessageData {
   id: string;
-  type: 'user' | 'ai' | 'ai-steps' | 'sql-query' | 'query-result';
+  type: 'user' | 'ai' | 'ai-steps' | 'sql-query' | 'query-result' | 'confirmation';
   content: string;
   steps?: Array<{
     icon: 'search' | 'database' | 'code' | 'message';
@@ -26,6 +26,12 @@ interface ChatMessageData {
     ambiguities?: string;
     explanation?: string;
     isValid?: boolean;
+  };
+  confirmationData?: {
+    sqlQuery: string;
+    operationType: string;
+    message: string;
+    chatHistory: string[];
   };
   timestamp: Date;
 }
@@ -211,8 +217,24 @@ const ChatInterface = ({ className, disabled = false, onProcessingChange }: Chat
           });
           finalContent = `Error: ${message.content}`;
         } else if (message.type === 'confirmation' || message.type === 'destructive_confirmation') {
-          // Handle confirmation request (also accept destructive_confirmation emitted by backend)
-          finalContent = `This operation requires confirmation:\n\n${message.content}`;
+          // Handle destructive operation confirmation - add inline confirmation message
+          const confirmationMessage: ChatMessageData = {
+            id: `confirm-${Date.now()}`,
+            type: 'confirmation',
+            content: message.message || message.content || '',
+            confirmationData: {
+              sqlQuery: message.sql_query || '',
+              operationType: message.operation_type || 'UNKNOWN',
+              message: message.message || message.content || '',
+              chatHistory: conversationHistory.current.map(m => m.content),
+            },
+            timestamp: new Date(),
+          };
+
+          setMessages(prev => [...prev, confirmationMessage]);
+
+          // Don't set finalContent - we want the confirmation to be standalone
+          finalContent = "";
         } else {
           console.warn('Unknown message type received:', message.type, message);
         }
@@ -285,14 +307,191 @@ const ChatInterface = ({ className, disabled = false, onProcessingChange }: Chat
     }
   };
 
+  const handleConfirmDestructive = async (messageId: string) => {
+    if (!selectedGraph) return;
+
+    // Find the confirmation message to get the data
+    const confirmMessage = messages.find(m => m.id === messageId && m.type === 'confirmation');
+    if (!confirmMessage?.confirmationData) return;
+
+    setIsProcessing(true);
+
+    // Remove the confirmation message and replace with "Executing..." message
+    setMessages(prev => prev.filter(m => m.id !== messageId));
+
+    const executingMessage: ChatMessageData = {
+      id: `executing-${Date.now()}`,
+      type: 'ai',
+      content: 'Executing confirmed operation...',
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, executingMessage]);
+
+    // Show processing toast
+    toast({
+      title: "Executing Operation",
+      description: "Processing your confirmed operation...",
+    });
+
+    try {
+      let finalContent = "";
+      let queryResults: any[] | null = null;
+
+      // Stream the confirmation response
+      for await (const message of ChatService.streamConfirmOperation(
+        selectedGraph.id,
+        {
+          sql_query: confirmMessage.confirmationData.sqlQuery,
+          confirmation: 'CONFIRM',
+          chat: confirmMessage.confirmationData.chatHistory,
+        }
+      )) {
+        if (message.type === 'status' || message.type === 'reasoning' || message.type === 'reasoning_step') {
+          // Add reasoning steps
+          const stepText = message.content || message.message || '';
+          const stepMessage: ChatMessageData = {
+            id: `step-${Date.now()}-${Math.random()}`,
+            type: "ai",
+            content: stepText,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, stepMessage]);
+        } else if (message.type === 'query_result') {
+          // Store query results
+          queryResults = message.data || [];
+        } else if (message.type === 'ai_response') {
+          // AI-generated response
+          const responseContent = (message.message || message.content || '').trim();
+          finalContent = responseContent;
+        } else if (message.type === 'error') {
+          // Handle error - backend sends 'message' field, not 'content'
+          let errorMsg = message.message || message.content || 'Unknown error occurred';
+
+          // Clean up common database errors to be more user-friendly
+          if (errorMsg.includes('duplicate key value violates unique constraint')) {
+            const match = errorMsg.match(/Key \((\w+)\)=\(([^)]+)\)/);
+            if (match) {
+              const [, field, value] = match;
+              errorMsg = `A record with ${field} "${value}" already exists.`;
+            } else {
+              errorMsg = 'This record already exists in the database.';
+            }
+          } else if (errorMsg.includes('violates foreign key constraint')) {
+            errorMsg = 'Cannot perform this operation due to related records in other tables.';
+          } else if (errorMsg.includes('violates not-null constraint')) {
+            const match = errorMsg.match(/column "(\w+)"/);
+            if (match) {
+              errorMsg = `The field "${match[1]}" cannot be empty.`;
+            } else {
+              errorMsg = 'Required field cannot be empty.';
+            }
+          } else if (errorMsg.includes('PostgreSQL query execution error:') || errorMsg.includes('MySQL query execution error:')) {
+            // Strip the "PostgreSQL/MySQL query execution error:" prefix
+            errorMsg = errorMsg.replace(/^(PostgreSQL|MySQL) query execution error:\s*/i, '');
+            // Remove technical details after newline
+            errorMsg = errorMsg.split('\n')[0];
+          }
+
+          toast({
+            title: "Operation Failed",
+            description: errorMsg,
+            variant: "destructive",
+          });
+          finalContent = `${errorMsg}`;
+        } else if (message.type === 'schema_refresh') {
+          // Schema refresh notification
+          const refreshContent = message.message || message.content || '';
+          const refreshMessage: ChatMessageData = {
+            id: `refresh-${Date.now()}`,
+            type: "ai",
+            content: refreshContent,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, refreshMessage]);
+        }
+
+        setTimeout(() => scrollToBottom(), 50);
+      }
+
+      // Add query results table if available
+      if (queryResults && queryResults.length > 0) {
+        const resultsMessage: ChatMessageData = {
+          id: (Date.now() + 3).toString(),
+          type: "query-result",
+          content: "Query Results",
+          queryData: queryResults,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, resultsMessage]);
+      }
+
+      // Add AI final response if we have one
+      if (finalContent) {
+        const finalResponse: ChatMessageData = {
+          id: (Date.now() + 4).toString(),
+          type: "ai",
+          content: finalContent,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, finalResponse]);
+        conversationHistory.current.push({ role: 'assistant', content: finalContent });
+      }
+
+      toast({
+        title: "Operation Complete",
+        description: "Successfully executed the operation!",
+      });
+    } catch (error) {
+      console.error('Confirmation error:', error);
+
+      const errorMessage: ChatMessageData = {
+        id: (Date.now() + 2).toString(),
+        type: "ai",
+        content: `Failed to execute operation: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date(),
+      };
+
+      setMessages(prev => [...prev, errorMessage]);
+
+      toast({
+        title: "Operation Failed",
+        description: error instanceof Error ? error.message : "Failed to execute operation",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+      setTimeout(() => scrollToBottom(), 100);
+    }
+  };
+
+  const handleCancelDestructive = (messageId: string) => {
+    // Remove the confirmation message and add cancellation message
+    setMessages(prev => prev.filter(m => m.id !== messageId));
+
+    setMessages(prev => [
+      ...prev,
+      {
+        id: `cancel-${Date.now()}`,
+        type: 'ai',
+        content: 'Operation cancelled. The destructive SQL query was not executed.',
+        timestamp: new Date(),
+      }
+    ]);
+
+    toast({
+      title: "Operation Cancelled",
+      description: "The destructive operation was not executed.",
+    });
+  };
+
   const handleSuggestionSelect = (suggestion: string) => {
     handleSendMessage(suggestion);
   };
 
   return (
-    <div className={cn("flex flex-col h-full bg-gray-900", className)}>
+    <div className={cn("flex flex-col h-full bg-gray-900", className)} data-testid="chat-interface">
       {/* Messages Area */}
-      <div ref={chatContainerRef} className="flex-1 overflow-y-auto scrollbar-hide overflow-x-hidden">
+      <div ref={chatContainerRef} className="flex-1 overflow-y-auto scrollbar-hide overflow-x-hidden" data-testid="chat-messages-container">
         <div className="space-y-6 py-6 max-w-full">
           {messages.map((msg) => (
             <ChatMessage
@@ -302,7 +501,10 @@ const ChatInterface = ({ className, disabled = false, onProcessingChange }: Chat
               steps={msg.steps}
               queryData={msg.queryData}
               analysisInfo={msg.analysisInfo}
+              confirmationData={msg.confirmationData}
               user={user}
+              onConfirm={msg.type === 'confirmation' ? () => handleConfirmDestructive(msg.id) : undefined}
+              onCancel={msg.type === 'confirmation' ? () => handleCancelDestructive(msg.id) : undefined}
             />
           ))}
           {/* Show loading skeleton when processing */}
@@ -333,7 +535,7 @@ const ChatInterface = ({ className, disabled = false, onProcessingChange }: Chat
           
           {/* Show loading indicator when processing */}
           {isProcessing && (
-            <div className="flex items-center justify-center gap-2 mt-2">
+            <div className="flex items-center justify-center gap-2 mt-2" data-testid="processing-query-indicator">
               <LoadingSpinner size="sm" />
               <span className="text-gray-400 text-sm">Processing your query...</span>
             </div>

@@ -1,0 +1,168 @@
+name: Playwright Tests
+on:
+  push:
+    branches: [ main, staging ]
+  pull_request:
+    branches: [ main, staging ]
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: '3.12'
+  NODE_VERSION: 'lts/*'
+
+
+jobs:
+  test:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    # Setup Python
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    # Setup Node.js
+    - uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+    
+    # Install pipenv
+    - name: Install pipenv
+      run: pip install pipenv
+    
+    # Install Python dependencies
+    - name: Install Python dependencies
+      run: pipenv sync --dev
+    
+    # Install Node dependencies (root - for Playwright)
+    - name: Install root dependencies
+      run: npm ci
+
+    # Install Node dependencies (frontend)
+    - name: Install frontend dependencies
+      run: npm ci
+      working-directory: ./app
+
+    # Build frontend
+    - name: Build frontend
+      run: npm run build
+      working-directory: ./app
+    
+    # Start Docker Compose services (test databases)
+    - name: Start test databases
+      run: |
+        docker compose -f e2e/docker-compose.test.yml up -d
+        # Wait for databases to be healthy
+        echo "Waiting for databases to be ready..."
+        sleep 20
+        docker ps -a
+        # Verify all containers are running
+        docker compose -f e2e/docker-compose.test.yml ps
+    
+    # Start FalkorDB (Redis graph database)
+    - name: Start FalkorDB
+      run: |
+        docker run -d --name falkordb-test -p 6379:6379 falkordb/falkordb:latest
+        echo "Waiting for FalkorDB to be ready..."
+        # Wait for FalkorDB to accept connections and be fully initialized
+        for i in {1..30}; do
+          if docker exec falkordb-test redis-cli PING > /dev/null 2>&1; then
+            # Test that FalkorDB graph commands work
+            if docker exec falkordb-test redis-cli GRAPH.LIST > /dev/null 2>&1; then
+              echo "FalkorDB graph module loaded, testing vector index creation..."
+              # Test creating a graph with vector index (the actual operation that fails)
+              if docker exec falkordb-test redis-cli GRAPH.QUERY test_graph "CREATE VECTOR INDEX FOR (n:Test) ON (n.embedding)" > /dev/null 2>&1; then
+                # Clean up test graph
+                docker exec falkordb-test redis-cli GRAPH.DELETE test_graph > /dev/null 2>&1 || true
+                echo "FalkorDB is fully ready with vector index support!"
+                # Extra wait to ensure complete initialization
+                sleep 5
+                break
+              fi
+            fi
+          fi
+          echo "Waiting for FalkorDB initialization... attempt $i/30"
+          sleep 1
+        done
+        # Verify FalkorDB is accessible from host
+        echo "Testing FalkorDB connectivity from host..."
+        docker ps -a
+    
+    # Start the FastAPI application
+    - name: Start FastAPI application
+      run: |
+        # Start server in background directly with pipenv
+        pipenv run uvicorn api.index:app --host localhost --port 5000 > /tmp/uvicorn.log 2>&1 &
+        UVICORN_PID=$!
+        echo "Started server with PID: $UVICORN_PID"
+        # Wait for app to start
+        echo "Waiting for application to start..."
+        for i in {1..30}; do
+          if curl -f http://localhost:5000/ 2>/dev/null; then
+            echo "Application started successfully!"
+            break
+          fi
+          echo "Waiting... attempt $i/30"
+          sleep 1
+          if [ $i -eq 30 ]; then
+            echo "Failed to start application after 30 seconds"
+            echo "=== Server logs ==="
+            cat /tmp/uvicorn.log
+            exit 1
+          fi
+        done
+      env:
+        PYTHONUNBUFFERED: 1
+        FASTAPI_SECRET_KEY: test-secret-key-for-ci
+        APP_ENV: development
+        FASTAPI_DEBUG: False
+        FALKORDB_URL: redis://localhost:6379
+        DISABLE_MCP: true
+        # Azure OpenAI API keys - required for database schema analysis
+        AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
+        AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
+        AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
+    
+    # Install Playwright browsers
+    - name: Install Playwright Browsers
+      run: npx playwright install --with-deps chromium firefox
+    
+    # Create auth directory for storage state
+    - name: Create auth directory
+      run: mkdir -p e2e/.auth
+    
+    # Run Playwright tests
+    - name: Run Playwright tests
+      run: npx playwright test --reporter=list
+      env:
+        CI: true
+    
+    # Upload test results on failure
+    - uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: playwright-report
+        path: playwright-report/
+        retention-days: 30
+    
+    # Upload test screenshots on failure
+    - uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: test-results
+        path: test-results/
+        retention-days: 30
+    
+    # Cleanup - Stop all containers
+    - name: Cleanup Docker containers
+      if: always()
+      run: |
+        docker compose -f e2e/docker-compose.test.yml down -v || true
+        docker stop falkordb-test || true
+        docker rm falkordb-test || true
