@@ -116,12 +116,13 @@ const Index = () => {
   // Show login modal when not authenticated after loading completes
   useEffect(() => {
     // Auto-open the login modal and keep it open until user authenticates
-    if (!authLoading && !isAuthenticated) {
+    // Only disable closing if we're auto-opening (not if user manually opened it)
+    if (!authLoading && !isAuthenticated && !showLoginModal) {
       setShowSignupMode(false);
       setLoginModalCanClose(false); // Don't allow closing until authenticated
       setShowLoginModal(true);
     }
-  }, [authLoading, isAuthenticated]);
+  }, [authLoading, isAuthenticated, showLoginModal]);
 
   const handleConnectDatabase = () => {
     if (isRefreshingSchema || isChatProcessing) return;

@@ -264,7 +264,24 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
         success, user_info = await ensure_user_in_organizations(email, email,
                                             f"{first_name} {last_name}", "email", api_token)
 
-        if success and user_info and user_info["new_identity"]:
+        # Check for system errors (success=False and user_info=None)
+        if not success and user_info is None:
+            logging.error("System error during user creation: [%s]", _sanitize_for_log(email))
+            return JSONResponse(
+                {"success": False, "error": "Registration failed. Please try again later."},
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # Check if user already exists (success=False and user_info is not None)
+        if not success and user_info is not None:
+            logging.info("Signup attempt for existing user: [%s]", _sanitize_for_log(email))
+            return JSONResponse(
+                {"success": False, "error": "Registration failed. Please try again."},
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # New user created successfully (success=True and user_info["new_identity"]=True)
+        if success and user_info and user_info.get("new_identity"):
             logging.info("New user created: [%s]", _sanitize_for_log(email))
 
             # Hash password
@@ -272,14 +289,6 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
 
             # Set email hash
             await _set_mail_hash(email, password_hash)
-
-        else:
-            # User already exists - return error instead of success
-            logging.info("Signup attempt for existing user: [%s]", _sanitize_for_log(email))
-            return JSONResponse(
-                {"success": False, "error": "An account with this email already exists"},
-                status_code=status.HTTP_409_CONFLICT
-            )
 
         logging.info("User registration successful: [%s]", _sanitize_for_log(email))
 

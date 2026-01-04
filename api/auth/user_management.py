@@ -40,7 +40,7 @@ async def _get_user_info(api_token: str) -> Optional[Dict[str, Any]]:
     """
     query = """
         MATCH (i:Identity)-[:HAS_TOKEN]->(t:Token {id: $api_token})
-        RETURN i.email, i.name, i.picture, (t IS NOT NULL AND timestamp() <= t.expires_at) AS token_valid
+        RETURN i.provider_user_id, i.email, i.name, i.picture, i.provider, (t IS NOT NULL AND timestamp() <= t.expires_at) AS token_valid
     """
 
     try:
@@ -56,13 +56,15 @@ async def _get_user_info(api_token: str) -> Optional[Dict[str, Any]]:
 
         if result.result_set:
             single_result = result.result_set[0]
-            token_valid = single_result[3]
+            token_valid = single_result[5]  # Updated index due to new fields
 
             if token_valid:
                 return {
-                    "email": single_result[0],
-                    "name": single_result[1],
-                    "picture": single_result[2],
+                    "id": single_result[0],  # provider_user_id as id
+                    "email": single_result[1],
+                    "name": single_result[2],
+                    "picture": single_result[3],
+                    "provider": single_result[4],
                 }
             # Delete invalid/expired token from DB for cleanup
             await delete_user_token(api_token)
