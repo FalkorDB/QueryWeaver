@@ -221,61 +221,61 @@ const LoginModal = ({ open, onOpenChange, canClose = true, startInSignupMode = f
                 <span className="bg-card px-2 text-muted-foreground">Or</span>
               </div>
             </div>
-            <Button onClick={() => setShowEmailForm(true)} className="w-full" variant="outline">
+            <Button onClick={() => setShowEmailForm(true)} className="w-full" variant="outline" data-testid={isSignIn ? "signin-with-email-btn" : "signup-with-email-btn"}>
               {isSignIn ? 'Sign in with Email' : 'Sign up with Email'}
             </Button>
             <div className="text-center text-sm text-muted-foreground pt-4">
               {isSignIn ? "Don't have an account? " : "Already have an account? "}
-              <button onClick={switchMode} className="text-primary hover:underline font-medium">
+              <button onClick={switchMode} className="text-primary hover:underline font-medium" data-testid="switch-mode-link">
                 {isSignIn ? 'Sign up' : 'Sign in'}
               </button>
             </div>
           </div>
         ) : isSignIn ? (
-          <form onSubmit={handleEmailLogin} className="space-y-4 py-6">
+          <form onSubmit={handleEmailLogin} className="space-y-4 py-6" data-testid="email-signin-form">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" placeholder="john@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={isLoading} />
+              <Input id="email" type="email" placeholder="john@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={isLoading} data-testid="email-signin-input" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <div className="relative">
-                <Input id="password" type={showPassword ? "text" : "password"} placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required disabled={isLoading} className="pr-10" />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" tabIndex={-1}>
+                <Input id="password" type={showPassword ? "text" : "password"} placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required disabled={isLoading} className="pr-10" data-testid="password-signin-input" />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" aria-label={showPassword ? "Hide password" : "Show password"}>
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
-            {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{error}</div>}
+            {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md" data-testid="signin-error">{error}</div>}
             <div className="flex gap-3">
               <Button type="button" variant="outline" className="flex-1" onClick={() => { setShowEmailForm(false); setError(''); }} disabled={isLoading}>Back</Button>
-              <Button type="submit" className="flex-1" disabled={isLoading}>{isLoading ? 'Signing in...' : 'Sign In'}</Button>
+              <Button type="submit" className="flex-1" disabled={isLoading} data-testid="signin-submit-btn">{isLoading ? 'Signing in...' : 'Sign In'}</Button>
             </div>
             <div className="text-center text-sm text-muted-foreground pt-2">
-              Don't have an account? <button type="button" onClick={switchMode} className="text-primary hover:underline font-medium" disabled={isLoading}>Sign up</button>
+              Don't have an account? <button type="button" onClick={switchMode} className="text-primary hover:underline font-medium" disabled={isLoading} data-testid="switch-to-signup-link">Sign up</button>
             </div>
           </form>
         ) : (
-          <form onSubmit={handleEmailSignUp} className="space-y-4 py-6">
+          <form onSubmit={handleEmailSignUp} className="space-y-4 py-6" data-testid="email-signup-form">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="firstName">First Name</Label>
-                <Input id="firstName" type="text" placeholder="John" value={firstName} onChange={(e) => setFirstName(e.target.value)} required disabled={isLoading} />
+                <Input id="firstName" type="text" placeholder="John" value={firstName} onChange={(e) => setFirstName(e.target.value)} required disabled={isLoading} data-testid="firstname-input" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="lastName">Last Name</Label>
-                <Input id="lastName" type="text" placeholder="Doe" value={lastName} onChange={(e) => setLastName(e.target.value)} required disabled={isLoading} />
+                <Input id="lastName" type="text" placeholder="Doe" value={lastName} onChange={(e) => setLastName(e.target.value)} required disabled={isLoading} data-testid="lastname-input" />
               </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" placeholder="john@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={isLoading} />
+              <Input id="email" type="email" placeholder="john@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={isLoading} data-testid="email-signup-input" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <div className="relative">
-                <Input id="password" type={showPassword ? "text" : "password"} placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required disabled={isLoading} minLength={8} className="pr-10" />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" tabIndex={-1}>
+                <Input id="password" type={showPassword ? "text" : "password"} placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required disabled={isLoading} minLength={8} className="pr-10" data-testid="password-signup-input" />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" aria-label={showPassword ? "Hide password" : "Show password"}>
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
@@ -284,19 +284,19 @@ const LoginModal = ({ open, onOpenChange, canClose = true, startInSignupMode = f
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">Confirm Password</Label>
               <div className="relative">
-                <Input id="confirmPassword" type={showConfirmPassword ? "text" : "password"} placeholder="••••••••" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required disabled={isLoading} className="pr-10" />
-                <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" tabIndex={-1}>
+                <Input id="confirmPassword" type={showConfirmPassword ? "text" : "password"} placeholder="••••••••" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required disabled={isLoading} className="pr-10" data-testid="confirm-password-input" />
+                <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" aria-label={showConfirmPassword ? "Hide password" : "Show password"}>
                   {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
-            {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{error}</div>}
+            {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md" data-testid="signup-error">{error}</div>}
             <div className="flex gap-3">
               <Button type="button" variant="outline" className="flex-1" onClick={() => { setShowEmailForm(false); setError(''); }} disabled={isLoading}>Back</Button>
-              <Button type="submit" className="flex-1" disabled={isLoading}>{isLoading ? 'Creating Account...' : 'Create Account'}</Button>
+              <Button type="submit" className="flex-1" disabled={isLoading} data-testid="create-account-btn">{isLoading ? 'Creating Account...' : 'Create Account'}</Button>
             </div>
             <div className="text-center text-sm text-muted-foreground pt-2">
-              Already have an account? <button type="button" onClick={switchMode} className="text-primary hover:underline font-medium" disabled={isLoading}>Sign in</button>
+              Already have an account? <button type="button" onClick={switchMode} className="text-primary hover:underline font-medium" disabled={isLoading} data-testid="switch-to-signin-link">Sign in</button>
             </div>
           </form>
         )}
