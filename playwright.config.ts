@@ -43,6 +43,7 @@ export default defineConfig({
       testMatch: /.*\.setup\.ts/,
     },
 
+    // Authenticated tests (most tests)
     {
       name: 'chromium',
       use: {
@@ -51,6 +52,7 @@ export default defineConfig({
         storageState: 'e2e/.auth/user.json',
       },
       dependencies: ['setup'],
+      testIgnore: '**/emailAuth.spec.ts', // Exclude email auth tests
     },
 
     {
@@ -61,6 +63,26 @@ export default defineConfig({
         storageState: 'e2e/.auth/user.json',
       },
       dependencies: ['setup'],
+      testIgnore: '**/emailAuth.spec.ts', // Exclude email auth tests
+    },
+
+    // Unauthenticated tests (for testing signup/signin flows)
+    {
+      name: 'chromium-unauthenticated',
+      use: {
+        ...devices['Desktop Chrome'],
+        // No storageState - tests run without authentication
+      },
+      testMatch: '**/emailAuth.spec.ts', // Only run email auth tests
+    },
+
+    {
+      name: 'firefox-unauthenticated',
+      use: {
+        ...devices['Desktop Firefox'],
+        // No storageState - tests run without authentication
+      },
+      testMatch: '**/emailAuth.spec.ts', // Only run email auth tests
     },
 
     // {

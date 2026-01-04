@@ -141,17 +141,21 @@ jobs:
     - name: Create auth directory
       run: mkdir -p e2e/.auth
     
+    # List Playwright projects (for visibility)
+    - name: List Playwright projects
+      run: npx playwright test --list --reporter=list
+    
     # Run Playwright tests
     - name: Run Playwright tests
       run: npx playwright test --reporter=list
       env:
         CI: true
     
-    # Upload test results on failure
+    # Upload Playwright HTML report
     - uses: actions/upload-artifact@v4
-      if: failure()
+      if: always()
       with:
-        name: playwright-report
+        name: playwright-html-report
         path: playwright-report/
         retention-days: 30
     

@@ -221,7 +221,7 @@ const LoginModal = ({ open, onOpenChange, canClose = true, startInSignupMode = f
                 <span className="bg-card px-2 text-muted-foreground">Or</span>
               </div>
             </div>
-            <Button onClick={() => setShowEmailForm(true)} className="w-full" variant="outline" data-testid={isSignIn ? "signin-with-email-btn" : "signup-with-email-btn"}>
+            <Button onClick={() => setShowEmailForm(true)} className="w-full" variant="outline" data-testid="email-auth-btn">
               {isSignIn ? 'Sign in with Email' : 'Sign up with Email'}
             </Button>
             <div className="text-center text-sm text-muted-foreground pt-4">

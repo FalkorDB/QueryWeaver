@@ -604,6 +604,23 @@ export class HomePage extends BasePage {
     await element.click();
   }
 
+  // Form State Functions
+  async waitForLoginModalVisible(): Promise<void> {
+    await this.interactWithLoginModal();
+  }
+
+  async waitForLoginModalHidden(timeout: number = 5000): Promise<void> {
+    await this.loginModal.waitFor({ state: 'hidden', timeout });
+  }
+
+  async isLoginModalVisible(): Promise<boolean> {
+    try {
+      return await this.loginModal.isVisible();
+    } catch {
+      return false;
+    }
+  }
+
   // Database Connection Modal Functions
   async selectDatabaseType(type: "postgresql" | "mysql"): Promise<void> {
     const element = await this.interactWithDatabaseTypeSelect();
