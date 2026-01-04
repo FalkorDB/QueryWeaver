@@ -8,7 +8,7 @@ interface SuggestionCardsProps {
 
 const SuggestionCards = ({ suggestions, onSelect, disabled = false }: SuggestionCardsProps) => {
   return (
-    <div className="grid gap-3 mb-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-2 sm:gap-3 mb-3 sm:mb-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
       {suggestions.map((suggestion) => (
         <Card
           key={suggestion}
@@ -25,7 +25,7 @@ const SuggestionCards = ({ suggestions, onSelect, disabled = false }: Suggestion
             }
           }}
         >
-          <CardContent className="p-3 sm:p-4">
+          <CardContent className="p-2 sm:p-4">
             <div className="text-gray-300 text-xs sm:text-sm text-center line-clamp-2">
               {suggestion}
             </div>

@@ -446,83 +446,83 @@ const Index = () => {
                 )}
                 <img src="/icons/queryweaver.svg" alt="QueryWeaver" className="h-8" data-testid="logo" />
               </div>
-              {isAuthenticated ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button 
-                      variant="ghost" 
-                      className="p-0 h-auto rounded-full hover:opacity-80 transition-opacity"
-                    >
-                      <Avatar className="h-8 w-8 border-2 border-purple-500">
-                        <AvatarImage src={user?.picture} alt={user?.name || user?.email} />
-                        <AvatarFallback className="bg-purple-600 text-white font-medium text-xs">
-                          {(user?.name || user?.email || 'U').charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="bg-gray-800 border-gray-600 text-gray-200" align="end">
-                    <div className="px-3 py-2 border-b border-gray-600" data-testid="user-info-section">
-                      <p className="text-sm font-medium text-gray-100" data-testid="user-name-display">{user?.name}</p>
-                      <p className="text-xs text-gray-400" data-testid="user-email-display">{user?.email}</p>
-                    </div>
-                    <DropdownMenuItem className="hover:!bg-gray-700 cursor-pointer" onClick={() => setShowTokensModal(true)} data-testid="api-tokens-menu-item">
-                      API Tokens
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator className="bg-gray-600" />
-                    <DropdownMenuItem className="hover:!bg-gray-700 cursor-pointer" onClick={handleLogout} data-testid="logout-menu-item">
-                      Logout
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : (
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  className="bg-purple-600 border-purple-500 text-white hover:bg-purple-700"
-                  onClick={() => {
-                    setShowSignupMode(false);
-                    setLoginModalCanClose(true); // Allow closing when manually opened
-                    setShowLoginModal(true);
-                  }}
+              <div className="flex items-center gap-2">
+                <a
+                  href="https://github.com/FalkorDB/QueryWeaver"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 transition-colors text-gray-300"
                 >
-                  Sign In
-                </Button>
-              )}
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path d="M12 0C5.374 0 0 5.373 0 12 0 17.302 3.438 21.8 8.207 23.387c.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" />
+                  </svg>
+                  <Star className="w-3 h-3" fill="currentColor" />
+                  <span className="text-xs font-medium">{githubStars}</span>
+                </a>
+                {isAuthenticated ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="p-0 h-auto rounded-full hover:opacity-80 transition-opacity"
+                      >
+                        <Avatar className="h-8 w-8 border-2 border-purple-500">
+                          <AvatarImage src={user?.picture} alt={user?.name || user?.email} />
+                          <AvatarFallback className="bg-purple-600 text-white font-medium text-xs">
+                            {(user?.name || user?.email || 'U').charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="bg-gray-800 border-gray-600 text-gray-200" align="end">
+                      <div className="px-3 py-2 border-b border-gray-600" data-testid="user-info-section">
+                        <p className="text-sm font-medium text-gray-100" data-testid="user-name-display">{user?.name}</p>
+                        <p className="text-xs text-gray-400" data-testid="user-email-display">{user?.email}</p>
+                      </div>
+                      <DropdownMenuItem className="hover:!bg-gray-700 cursor-pointer" onClick={() => setShowTokensModal(true)} data-testid="api-tokens-menu-item">
+                        API Tokens
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator className="bg-gray-600" />
+                      <DropdownMenuItem className="hover:!bg-gray-700 cursor-pointer" onClick={handleLogout} data-testid="logout-menu-item">
+                        Logout
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="bg-purple-600 border-purple-500 text-white hover:bg-purple-700"
+                    onClick={() => {
+                      setShowSignupMode(false);
+                      setLoginModalCanClose(true); // Allow closing when manually opened
+                      setShowLoginModal(true);
+                    }}
+                  >
+                    Sign In
+                  </Button>
+                )}
+              </div>
             </div>
             
-            {/* Row 2: Tagline */}
-            <p className="text-xs text-gray-400">Graph-Powered Text-to-SQL</p>
-            
-            {/* Row 3: Status and GitHub */}
+            {/* Row 2: Tagline + Database Status */}
             <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-gray-400">Graph-Powered Text-to-SQL</p>
               {selectedGraph ? (
-                <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-xs px-2 py-0.5">
-                  {selectedGraph.name}
+                <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-xs px-2 py-0.5 flex-shrink-0">
+                  {selectedGraph.name === 'DEMO_CRM' ? 'CRM' : selectedGraph.name}
                 </Badge>
               ) : (
-                <Badge variant="secondary" className="bg-yellow-600 hover:bg-yellow-700 text-xs px-2 py-0.5">
+                <Badge variant="secondary" className="bg-yellow-600 hover:bg-yellow-700 text-xs px-2 py-0.5 flex-shrink-0">
                   No DB
                 </Badge>
               )}
-              <a 
-                href="https://github.com/FalkorDB/QueryWeaver" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 transition-colors text-gray-300"
-              >
-                <svg 
-                  width="14" 
-                  height="14" 
-                  viewBox="0 0 24 24" 
-                  fill="currentColor" 
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path d="M12 0C5.374 0 0 5.373 0 12 0 17.302 3.438 21.8 8.207 23.387c.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" />
-                </svg>
-                <Star className="w-3 h-3" fill="currentColor" />
-                <span className="text-xs font-medium">{githubStars}</span>
-              </a>
             </div>
           </div>
         </header>

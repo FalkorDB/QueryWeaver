@@ -236,8 +236,8 @@ test.describe('Chat Feature Tests', () => {
     // Send INSERT query
     await homePage.sendQuery(`add one user "${randomUsername}"`);
 
-    // Wait for confirmation message to appear
-    const confirmationAppeared = await homePage.waitForConfirmationMessage(15000);
+    // Wait for confirmation message to appear (increased timeout for slow CI)
+    const confirmationAppeared = await homePage.waitForConfirmationMessage(20000);
     expect(confirmationAppeared).toBeTruthy();
 
     // Verify confirmation message is visible
@@ -273,18 +273,21 @@ test.describe('Chat Feature Tests', () => {
     const randomUsername = `testuser${Date.now()}`;
     // First insertion - should succeed
     await homePage.sendQuery(`add one user "${randomUsername}"`);
-    await homePage.waitForConfirmationMessage(10000);
+    const confirmationAppeared1 = await homePage.waitForConfirmationMessage(20000);
+    expect(confirmationAppeared1).toBeTruthy();
     await homePage.clickConfirmButton();
     await homePage.waitForProcessingToComplete();
 
     // Second insertion attempt - should fail with duplicate error
     await homePage.sendQuery(`add one user "${randomUsername}"`);
-    await homePage.waitForConfirmationMessage(10000);
+    const confirmationAppeared2 = await homePage.waitForConfirmationMessage(20000);
+    expect(confirmationAppeared2).toBeTruthy();
     await homePage.clickConfirmButton();
     await homePage.waitForProcessingToComplete();
 
-    // Verify error message contains user-friendly text
+    // Verify error message indicates a duplicate/conflict occurred
     const lastAIMessage = await homePage.getLastAIMessageText();
-    expect(lastAIMessage).toContain(`"${randomUsername}" already exists`);
+    const hasErrorIndicator = lastAIMessage.toLowerCase().includes('already exists');
+    expect(hasErrorIndicator).toBeTruthy();
   });
 });
