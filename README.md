@@ -1,5 +1,5 @@
 <div align="center">  
-  <h1>QueryWeaver</h1>
+  <h1>QueryWeaver (Text2SQL)</h1>
 
 **REST API · MCP · Graph-powered** 
 
@@ -13,7 +13,8 @@ Connect and ask questions: [![Discord](https://img.shields.io/badge/Discord-%235
 [![Swagger UI](https://img.shields.io/badge/API-Swagger-11B48A?logo=swagger&logoColor=white)](https://app.queryweaver.ai/docs)
 </div>
 
-![queryweaver-demo-video-ui](https://github.com/user-attachments/assets/b66018cb-0e42-4907-8ac1-c169762ff22d)
+![new-qw-ui-gif](https://github.com/user-attachments/assets/34663279-0273-4c21-88a8-d20700020a07)
+
 
 ## Get Started
 ### Docker
