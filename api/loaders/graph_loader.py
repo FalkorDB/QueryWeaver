@@ -6,7 +6,7 @@ import tqdm
 
 from api.config import Config
 from api.extensions import db
-from api.utils import generate_db_description
+from api.utils import generate_db_description, create_combined_description
 
 
 async def load_to_graph(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
@@ -30,6 +30,8 @@ async def load_to_graph(  # pylint: disable=too-many-arguments,too-many-position
     graph = db.select_graph(graph_id)
     embedding_model = Config.EMBEDDING_MODEL
     vec_len = embedding_model.get_vector_size()
+
+    create_combined_description(entities)
 
     try:
         # Create vector indices
@@ -123,6 +125,13 @@ async def load_to_graph(  # pylint: disable=too-many-arguments,too-many-position
                 embed_columns.extend(embedding_result)
                 idx = 0
 
+            # Combine description with sample values after embedding is created
+            final_description = col_info["description"]
+            sample_values = col_info.get("sample_values", [])
+            if sample_values:
+                sample_values_str = f"(Sample values: {', '.join(f'({v})' for v in sample_values)})"
+                final_description = f"{final_description} {sample_values_str}"
+
             await graph.query(
                 """
                 MATCH (t:Table {name: $table_name})
@@ -141,7 +150,7 @@ async def load_to_graph(  # pylint: disable=too-many-arguments,too-many-position
                     "type": col_info.get("type", "unknown"),
                     "nullable": col_info.get("null", "unknown"),
                     "key": col_info.get("key", "unknown"),
-                    "description": col_info["description"],
+                    "description": final_description,
                     "embedding": embed_columns[idx],
                 },
             )

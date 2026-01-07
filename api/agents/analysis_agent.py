@@ -167,7 +167,7 @@ class AnalysisAgent(BaseAgent):
 
         return fk_str
 
-    def _build_prompt(   # pylint: disable=too-many-arguments, too-many-positional-arguments
+    def _build_prompt(   # pylint: disable=too-many-arguments, too-many-positional-arguments, disable=line-too-long
         self, user_input: str, formatted_schema: str,
         db_description: str, instructions, memory_context: str | None = None,
         database_type: str | None = None,
@@ -254,8 +254,6 @@ class AnalysisAgent(BaseAgent):
             - Analyze the query's translatability into SQL according to the instructions.
             - Apply the instructions explicitly.
             - You MUST NEVER use application-level identifiers that are email-based or encoded emails.
-            - If you CANNOT apply instructions in the SQL, explain why under
-              "instructions_comments", "explanation" and reduce your confidence.
             - Penalize confidence appropriately if any part of the instructions is unmet.
             - When there several tables that can be used to answer the question, you can combine them in a single SQL query.
             - Use the memory context to inform your SQL generation, considering user preferences and previous database interactions.
@@ -282,14 +280,13 @@ class AnalysisAgent(BaseAgent):
             ```json
             {{
                 "is_sql_translatable": true or false,
-                "instructions_comments": ("Comments about any part of the instructions, "
-                                         "especially if they are unclear, impossible, "
-                                         "or partially met"),
+                "query_analysis": "OUTPUT: <exact SELECT columns required by the question (no extra columns); if the question says 'list/show all' but does not name columns, select minimal identifying columns>.\\nOUTPUT GRAIN: <state only if explicitly requested; otherwise write N/A>.\\nMETRIC: <write the exact metric expression only if explicitly requested/defined; otherwise N/A (direct column retrieval)>.\\nGRAIN CHECK: <MATCH|MISMATCH|N/A>.\\nAGGREGATION DECISION: <NONE|SUM|AVG|COUNT|MIN|MAX> (NONE unless explicitly requested).\\nRANKING/LIMIT: <ORDER BY ... LIMIT ... | NONE>.\\nFILTERS: <predicates explicitly justified by the question> (each predicate must be a concrete SQL condition using =, >, <, BETWEEN, IN; do NOT use LIKE/contains unless explicitly requested).",
                 "explanation": ("Detailed explanation why the query can or cannot be "
                                "translated, mentioning instructions explicitly and "
                                "referencing conversation history if relevant"),
-                "sql_query": ("High-level SQL query (you must to applying instructions "
-                             "and use previous answers if the question is a continuation)"),
+                "sql_query": ("ONE valid SQL query for the target database that follows "
+                             "all rules above (use previous answers only if the question "
+                             "is a continuation)"),
                 "tables_used": ["list", "of", "tables", "used", "in", "the", "query",
                                "with", "the", "relationships", "between", "them"],
                 "missing_information": ["list", "of", "missing", "information"],
