@@ -4,8 +4,14 @@ import "./index.css";
 
 // Initialize theme on page load
 try {
-  const savedTheme = localStorage.getItem("theme") || "dark";
-  document.documentElement.setAttribute("data-theme", savedTheme);
+  const savedTheme = localStorage.getItem("theme");
+  // Normalize: only accept "light" or "dark", default to "dark"
+  const theme = (savedTheme === "light" || savedTheme === "dark") ? savedTheme : "dark";
+  document.documentElement.setAttribute("data-theme", theme);
+  // Update localStorage if we normalized the value
+  if (savedTheme !== theme) {
+    localStorage.setItem("theme", theme);
+  }
 } catch {
   document.documentElement.setAttribute("data-theme", "dark");
 }

@@ -190,8 +190,21 @@ export class DatabaseService {
       });
 
       if (!response.ok) {
+        const errorMessages: Record<number, string> = {
+          401: 'Not authenticated. Please sign in to connect databases.',
+          403: 'Access denied. You do not have permission to connect databases.',
+          500: 'Server error. Please try again later.',
+        };
+
+        // For 400, try to get server error message first
+        if (response.status === 400) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Invalid database connection URL.');
+        }
+
+        // Try to get error from response body, fallback to status message
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to connect to database');
+        throw new Error(errorData.error || errorMessages[response.status] || `Failed to connect to database (${response.status})`);
       }
 
       const data = await response.json();
@@ -235,8 +248,21 @@ export class DatabaseService {
       });
 
       if (!response.ok) {
+        const errorMessages: Record<number, string> = {
+          401: 'Not authenticated. Please sign in to connect databases.',
+          403: 'Access denied. You do not have permission to connect databases.',
+          500: 'Server error. Please try again later.',
+        };
+
+        // For 400, try to get server error message first
+        if (response.status === 400) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Invalid database connection URL.');
+        }
+
+        // Try to get error from response body, fallback to status message
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to connect to database');
+        throw new Error(errorData.error || errorMessages[response.status] || `Failed to connect to database (${response.status})`);
       }
 
       const data = await response.json();

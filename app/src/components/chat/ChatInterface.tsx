@@ -63,9 +63,9 @@ const ChatInterface = ({ className, disabled = false, onProcessingChange }: Chat
           <span className="text-white text-xs font-bold">QW</span>
         </div>
         <div className="flex-1 min-w-0 space-y-2">
-          <Skeleton className="h-4 w-3/4 bg-gray-700" />
-          <Skeleton className="h-4 w-1/2 bg-gray-700" />
-          <Skeleton className="h-4 w-2/3 bg-gray-700" />
+          <Skeleton className="h-4 w-3/4 bg-muted" />
+          <Skeleton className="h-4 w-1/2 bg-muted" />
+          <Skeleton className="h-4 w-2/3 bg-muted" />
         </div>
       </div>
     </div>
@@ -489,7 +489,7 @@ const ChatInterface = ({ className, disabled = false, onProcessingChange }: Chat
   };
 
   return (
-    <div className={cn("flex flex-col h-full bg-gray-900", className)} data-testid="chat-interface">
+    <div className={cn("flex flex-col h-full bg-background", className)} data-testid="chat-interface">
       {/* Messages Area */}
       <div ref={chatContainerRef} className="flex-1 overflow-y-auto scrollbar-hide overflow-x-hidden" data-testid="chat-messages-container">
         <div className="space-y-6 py-6 max-w-full">
@@ -515,7 +515,7 @@ const ChatInterface = ({ className, disabled = false, onProcessingChange }: Chat
       </div>
 
       {/* Bottom Section with Suggestions and Input */}
-      <div className="border-t border-gray-700 bg-gray-900">
+      <div className="border-t border-border bg-background">
         <div className="p-6">
           {/* Suggestion Cards - Only show for DEMO_CRM database */}
           {(selectedGraph?.id === 'DEMO_CRM' || selectedGraph?.name === 'DEMO_CRM') && (
@@ -537,13 +537,13 @@ const ChatInterface = ({ className, disabled = false, onProcessingChange }: Chat
           {isProcessing && (
             <div className="flex items-center justify-center gap-2 mt-2" data-testid="processing-query-indicator">
               <LoadingSpinner size="sm" />
-              <span className="text-gray-400 text-sm">Processing your query...</span>
+              <span className="text-muted-foreground text-sm">Processing your query...</span>
             </div>
           )}
           
           {/* Footer */}
           <div className="text-center mt-4">
-            <p className="text-gray-500 text-sm">
+            <p className="text-muted-foreground text-sm">
               Powered by <a href="https://falkordb.com" target="_blank">FalkorDB</a>
             </p>
           </div>

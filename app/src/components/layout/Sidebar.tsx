@@ -42,7 +42,7 @@ const SidebarIcon = ({ icon: Icon, label, active, onClick, href, testId }: {
             className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
               active
                 ? 'bg-purple-600 text-white'
-                : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                : 'text-muted-foreground hover:bg-card hover:text-foreground'
             }`}
             data-testid={testId}
           >
@@ -57,7 +57,7 @@ const SidebarIcon = ({ icon: Icon, label, active, onClick, href, testId }: {
             className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
               active
                 ? 'bg-purple-600 text-white'
-                : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                : 'text-muted-foreground hover:bg-card hover:text-foreground'
             }`}
             data-testid={testId}
           >
@@ -70,7 +70,7 @@ const SidebarIcon = ({ icon: Icon, label, active, onClick, href, testId }: {
             className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
               active
                 ? 'bg-purple-600 text-white'
-                : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                : 'text-muted-foreground hover:bg-card hover:text-foreground'
             }`}
             data-testid={testId}
           >
@@ -90,7 +90,7 @@ const Sidebar = ({ className, onSchemaClick, isSchemaOpen, isCollapsed = false, 
   return (
     <>
       <aside className={cn(
-        "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-gray-700 bg-gray-900 transition-all duration-300",
+        "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-background transition-all duration-300",
         // Only collapse on mobile (md:w-16 keeps it visible on desktop)
         isCollapsed ? "w-0 -translate-x-full overflow-hidden md:w-16 md:translate-x-0" : "w-16",
         className
@@ -99,7 +99,7 @@ const Sidebar = ({ className, onSchemaClick, isSchemaOpen, isCollapsed = false, 
           {isMobile && (
             <button
               onClick={onToggleCollapse}
-              className="group flex h-10 w-10 shrink-0 items-center justify-center gap-2 rounded-full bg-gray-800 text-lg font-semibold text-white hover:bg-gray-700"
+              className="group flex h-10 w-10 shrink-0 items-center justify-center gap-2 rounded-full bg-card text-lg font-semibold text-foreground hover:bg-muted"
               title="Toggle Sidebar (Mobile)"
               data-testid="sidebar-toggle"
             >
@@ -119,7 +119,7 @@ const Sidebar = ({ className, onSchemaClick, isSchemaOpen, isCollapsed = false, 
         </nav>
       
       <div className="flex-1 flex items-center justify-center">
-        <Separator orientation="horizontal" className="bg-gray-700 w-8" />
+        <Separator orientation="horizontal" className="bg-border w-8" />
       </div>
       
       <nav className="flex flex-col items-center gap-4 px-2 py-4">

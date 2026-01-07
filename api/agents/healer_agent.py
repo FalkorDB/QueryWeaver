@@ -15,7 +15,6 @@ from api.config import Config
 from .utils import parse_response
 
 
-
 class HealerAgent:
     """Agent specialized in fixing SQL syntax errors."""
 
@@ -297,8 +296,17 @@ ERROR:
 
 Please fix this error."""
         self.messages.append({"role": "user", "content": feedback})
-
-
+        
+        # Fallback return
+        return {
+            "success": False,
+            "sql_query": initial_sql,
+            "query_results": None,
+            "attempts": self.max_healing_attempts,
+            "final_error": initial_error
+        }
+        
+    
     def _analyze_error(self, error_message: str, database_type: str) -> str:
         """Analyze error message and provide targeted hints."""
 
