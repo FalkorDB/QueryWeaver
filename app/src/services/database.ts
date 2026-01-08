@@ -276,5 +276,66 @@ export class DatabaseService {
       throw error;
     }
   }
+
+  /**
+   * Get user rules for a specific database
+   */
+  static async getUserRules(graphId: string): Promise<string> {
+    try {
+      const url = buildApiUrl(`${API_CONFIG.ENDPOINTS.GRAPHS}/${graphId}/user-rules`);
+      
+      const response = await fetch(url, {
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          return '';
+        }
+        throw new Error('Failed to fetch user rules');
+      }
+
+      const data = await response.json();
+      return data.user_rules || '';
+    } catch (error) {
+      console.error('Error fetching user rules:', error);
+      return '';
+    }
+  }
+
+  /**
+   * Update user rules for a specific database
+   */
+  static async updateUserRules(graphId: string, userRules: string): Promise<void> {
+    try {
+      console.log('Updating user rules for graph:', graphId, 'Length:', userRules.length);
+      const url = buildApiUrl(`${API_CONFIG.ENDPOINTS.GRAPHS}/${graphId}/user-rules`);
+      console.log('PUT request to:', url);
+      
+      const response = await fetch(url, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ user_rules: userRules }),
+      });
+
+      console.log('Update user rules response status:', response.status);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Failed to update user rules:', errorData);
+        throw new Error(errorData.error || 'Failed to update user rules');
+      }
+      
+      const result = await response.json();
+      console.log('User rules updated successfully:', result);
+    } catch (error) {
+      console.error('Error updating user rules:', error);
+      throw error;
+    }
+  }
 }
 
+export const databaseService = DatabaseService;

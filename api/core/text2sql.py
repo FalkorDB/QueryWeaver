@@ -16,7 +16,7 @@ from api.agents import AnalysisAgent, RelevancyAgent, ResponseFormatterAgent, Fo
 from api.agents.healer_agent import HealerAgent
 from api.config import Config
 from api.extensions import db
-from api.graph import find, get_db_description
+from api.graph import find, get_db_description, get_user_rules
 from api.loaders.postgres_loader import PostgresLoader
 from api.loaders.mysql_loader import MySQLLoader
 from api.memory.graphiti_tool import MemoryTool
@@ -45,6 +45,8 @@ class ChatRequest(BaseModel):
     chat: list[str]
     result: list[str] | None = None
     instructions: str | None = None
+    use_user_rules: bool = True  # If True, fetch rules from database; if False, don't use rules
+    use_memory: bool = True
 
 
 class ConfirmRequest(BaseModel):
@@ -213,6 +215,7 @@ async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  
     queries_history = chat_data.chat if hasattr(chat_data, 'chat') else None
     result_history = chat_data.result if hasattr(chat_data, 'result') else None
     instructions = chat_data.instructions if hasattr(chat_data, 'instructions') else None
+    use_user_rules = chat_data.use_user_rules if hasattr(chat_data, 'use_user_rules') else True
 
     if not queries_history or not isinstance(queries_history, list):
         raise InvalidArgumentError("Invalid or missing chat history")
@@ -233,7 +236,10 @@ async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  
 
     logging.info("User Query: %s", sanitize_query(queries_history[-1]))
 
-    memory_tool_task = asyncio.create_task(MemoryTool.create(user_id, graph_id))
+    if chat_data.use_memory:
+        memory_tool_task = asyncio.create_task(MemoryTool.create(user_id, graph_id))
+    else:
+        memory_tool_task = None
 
     # Create a generator function for streaming
     async def generate():  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
@@ -252,6 +258,8 @@ async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  
         yield json.dumps(step) + MESSAGE_DELIMITER
         # Ensure the database description is loaded
         db_description, db_url = await get_db_description(graph_id)
+        # Fetch user rules from database only if toggle is enabled
+        user_rules_spec = await get_user_rules(graph_id) if use_user_rules else None
 
         # Determine database type and get appropriate loader
         db_type, loader_class = get_database_type_and_loader(db_url)
@@ -304,15 +312,18 @@ async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  
 
             logging.info("Calling to analysis agent with query: %s",
                          sanitize_query(queries_history[-1]))  # nosemgrep
-            memory_tool = await memory_tool_task
-            memory_context = await memory_tool.search_memories(
-                query=queries_history[-1]
-            )
+            
+            memory_context = None
+            if memory_tool_task:
+                memory_tool = await memory_tool_task
+                memory_context = await memory_tool.search_memories(
+                    query=queries_history[-1]
+                )
 
             logging.info("Starting SQL generation with analysis agent")
             answer_an = agent_an.get_analysis(
                 queries_history[-1], result, db_description, instructions, memory_context,
-                db_type
+                db_type, user_rules_spec
             )
 
             # Initialize response variables
@@ -625,56 +636,58 @@ What this will do:
                 )
 
             # Save conversation to memory (only for on-topic queries)
-            # Determine the final answer based on which path was taken
-            final_answer = user_readable_response if user_readable_response else follow_up_result
+            # Only save to memory if use_memory is enabled
+            if memory_tool_task:
+                # Determine the final answer based on which path was taken
+                final_answer = user_readable_response if user_readable_response else follow_up_result
 
-            # Build comprehensive response for memory
-            full_response = {
-                "question": queries_history[-1],
-                "generated_sql": answer_an.get('sql_query', ""),
-                "answer": final_answer
-            }
+                # Build comprehensive response for memory
+                full_response = {
+                    "question": queries_history[-1],
+                    "generated_sql": answer_an.get('sql_query', ""),
+                    "answer": final_answer
+                }
 
-            # Add error information if SQL execution failed
-            if execution_error:
-                full_response["error"] = execution_error
-                full_response["success"] = False
-            else:
-                full_response["success"] = True
+                # Add error information if SQL execution failed
+                if execution_error:
+                    full_response["error"] = execution_error
+                    full_response["success"] = False
+                else:
+                    full_response["success"] = True
 
 
-            # Save query to memory
-            save_query_task = asyncio.create_task(
-                memory_tool.save_query_memory(
-                    query=queries_history[-1],
-                    sql_query=answer_an["sql_query"],
-                    success=full_response["success"],
-                    error=execution_error
+                # Save query to memory
+                save_query_task = asyncio.create_task(
+                    memory_tool.save_query_memory(
+                        query=queries_history[-1],
+                        sql_query=answer_an["sql_query"],
+                        success=full_response["success"],
+                        error=execution_error
+                    )
                 )
-            )
-            save_query_task.add_done_callback(
-                lambda t: logging.error("Query memory save failed: %s", t.exception())  # nosemgrep
-                if t.exception() else logging.info("Query memory saved successfully")
-            )
+                save_query_task.add_done_callback(
+                    lambda t: logging.error("Query memory save failed: %s", t.exception())  # nosemgrep
+                    if t.exception() else logging.info("Query memory saved successfully")
+                )
 
-            # Save conversation with memory tool (run in background)
-            save_task = asyncio.create_task(
-                memory_tool.add_new_memory(full_response,
-                                            [queries_history, result_history])
-            )
-            # Add error handling callback to prevent silent failures
-            save_task.add_done_callback(
-                lambda t: logging.error("Memory save failed: %s", t.exception())  # nosemgrep
-                if t.exception() else logging.info("Conversation saved to memory tool")
-            )
-            logging.info("Conversation save task started in background")
+                # Save conversation with memory tool (run in background)
+                save_task = asyncio.create_task(
+                    memory_tool.add_new_memory(full_response,
+                                                [queries_history, result_history])
+                )
+                # Add error handling callback to prevent silent failures
+                save_task.add_done_callback(
+                    lambda t: logging.error("Memory save failed: %s", t.exception())  # nosemgrep
+                    if t.exception() else logging.info("Conversation saved to memory tool")
+                )
+                logging.info("Conversation save task started in background")
 
-            # Clean old memory in background (once per week cleanup)
-            clean_memory_task = asyncio.create_task(memory_tool.clean_memory())
-            clean_memory_task.add_done_callback(
-                lambda t: logging.error("Memory cleanup failed: %s", t.exception())  # nosemgrep
-                if t.exception() else logging.info("Memory cleanup completed successfully")
-            )
+                # Clean old memory in background (once per week cleanup)
+                clean_memory_task = asyncio.create_task(memory_tool.clean_memory())
+                clean_memory_task.add_done_callback(
+                    lambda t: logging.error("Memory cleanup failed: %s", t.exception())  # nosemgrep
+                    if t.exception() else logging.info("Memory cleanup completed successfully")
+                )
 
         # Log timing summary at the end of processing
         overall_elapsed = time.perf_counter() - overall_start

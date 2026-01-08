@@ -17,11 +17,19 @@ export class ChatService {
       const endpoint = `/graphs/${encodeURIComponent(request.database)}`;
       
       // Transform conversation history to backend format
-      // Backend expects: chat: ["user msg", "ai msg", "user msg", ...]
+      // Backend expects:
+      // - chat: list of user queries only (strings)
+      // - result: list of AI responses (strings)
       const chatHistory: string[] = [];
+      const resultHistory: string[] = [];
+      
       if (request.history && request.history.length > 0) {
         for (const msg of request.history) {
-          chatHistory.push(msg.content);
+          if (msg.role === 'user') {
+            chatHistory.push(msg.content);
+          } else if (msg.role === 'assistant') {
+            resultHistory.push(msg.content);
+          }
         }
       }
       // Add current query to the chat array
@@ -34,9 +42,13 @@ export class ChatService {
         },
         body: JSON.stringify({
           chat: chatHistory,
-          // Optional fields the backend supports:
-          // result: [],  // Previous results if needed
-          // instructions: ""  // Additional instructions if needed
+          result: resultHistory.length > 0 ? resultHistory : undefined,
+          ...(request.use_user_rules !== undefined && {
+            use_user_rules: request.use_user_rules
+          }),
+          ...(request.use_memory !== undefined && {
+            use_memory: request.use_memory
+          })
         }),
         credentials: 'include',
       });
