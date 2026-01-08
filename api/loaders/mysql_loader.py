@@ -4,7 +4,7 @@ import datetime
 import decimal
 import logging
 import re
-from typing import AsyncGenerator, Tuple, Dict, Any, List
+from typing import AsyncGenerator, Dict, Any, List, Tuple
 
 import tqdm
 import pymysql
@@ -54,33 +54,24 @@ class MySQLLoader(BaseLoader):
     ]
 
     @staticmethod
-    def _execute_count_query(cursor, table_name: str, col_name: str) -> Tuple[int, int]:
+    def _execute_sample_query(
+        cursor, table_name: str, col_name: str, sample_size: int = 3
+    ) -> List[Any]:
         """
-        Execute query to get total count and distinct count for a column.
-        MySQL implementation returning counts from dictionary-style results.
+        Execute query to get random sample values for a column.
+        MySQL implementation using ORDER BY RAND() for random sampling.
         """
         query = f"""
-            SELECT COUNT(*) AS total_count,
-                COUNT(DISTINCT `{col_name}`) AS distinct_count
-            FROM `{table_name}`;
+            SELECT DISTINCT `{col_name}`
+            FROM `{table_name}`
+            WHERE `{col_name}` IS NOT NULL
+            ORDER BY RAND()
+            LIMIT %s;
         """
+        cursor.execute(query, (sample_size,))
 
-        cursor.execute(query)
-        output = cursor.fetchall()
-        first_result = output[0]
-        return first_result['total_count'], first_result['distinct_count']
-
-    @staticmethod
-    def _execute_distinct_query(cursor, table_name: str, col_name: str) -> List[Any]:
-        """
-        Execute query to get distinct values for a column.
-        MySQL implementation handling dictionary-style results.
-        """
-        query = f"SELECT DISTINCT `{col_name}` FROM `{table_name}`;"
-        cursor.execute(query)
-
-        distinct_results = cursor.fetchall()
-        return [row[col_name] for row in distinct_results if row[col_name] is not None]
+        sample_results = cursor.fetchall()
+        return [row[col_name] for row in sample_results if row[col_name] is not None]
 
     @staticmethod
     def _serialize_value(value):
@@ -324,18 +315,18 @@ class MySQLLoader(BaseLoader):
             if column_default is not None:
                 description_parts.append(f"(Default: {column_default})")
 
-            # Add distinct values if applicable
-            distinct_values_desc = MySQLLoader.extract_distinct_values_for_column(
+            # Extract sample values for the column (stored separately, not in description)
+            sample_values = MySQLLoader.extract_sample_values_for_column(
                 cursor, table_name, col_name
             )
-            description_parts.extend(distinct_values_desc)
 
             columns_info[col_name] = {
                 'type': data_type,
                 'null': is_nullable,
                 'key': key_type,
                 'description': ' '.join(description_parts),
-                'default': column_default
+                'default': column_default,
+                'sample_values': sample_values
             }
 
         return columns_info

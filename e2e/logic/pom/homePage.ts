@@ -100,6 +100,18 @@ export class HomePage extends BasePage {
     return this.page.getByTestId("results-table");
   }
 
+  private get confirmationMessage(): Locator {
+    return this.page.getByTestId("confirmation-message");
+  }
+
+  private get confirmationConfirmBtn(): Locator {
+    return this.page.getByTestId("confirmation-confirm-button");
+  }
+
+  private get confirmationCancelBtn(): Locator {
+    return this.page.getByTestId("confirmation-cancel-button");
+  }
+
   // Modals
   private get loginModal(): Locator {
     return this.page.getByTestId("login-modal");
@@ -1107,5 +1119,67 @@ export class HomePage extends BasePage {
     await this.page.reload();
 
     return true;
+  }
+
+  // ==================== CONFIRMATION DIALOG METHODS ====================
+
+  /**
+   * Check if confirmation message is visible
+   */
+  async isConfirmationMessageVisible(): Promise<boolean> {
+    try {
+      return await this.confirmationMessage.isVisible();
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Wait for confirmation message to appear
+   */
+  async waitForConfirmationMessage(timeout: number = 10000): Promise<boolean> {
+    try {
+      await this.confirmationMessage.waitFor({ state: 'visible', timeout });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Click confirm button on confirmation dialog
+   */
+  async clickConfirmButton(): Promise<void> {
+    await this.confirmationConfirmBtn.click();
+  }
+
+  /**
+   * Click cancel button on confirmation dialog
+   */
+  async clickCancelButton(): Promise<void> {
+    await this.confirmationCancelBtn.click();
+  }
+
+  /**
+   * Get text content from confirmation message
+   */
+  async getConfirmationMessageText(): Promise<string> {
+    try {
+      return await this.confirmationMessage.textContent() || '';
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Verify confirmation message contains expected text
+   */
+  async verifyConfirmationContains(expectedText: string): Promise<boolean> {
+    try {
+      const text = await this.getConfirmationMessageText();
+      return text.includes(expectedText);
+    } catch {
+      return false;
+    }
   }
 }

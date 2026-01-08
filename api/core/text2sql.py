@@ -1,5 +1,5 @@
 """Graph-related routes for the text2sql API."""
-# pylint: disable=line-too-long
+# pylint: disable=line-too-long,trailing-whitespace
 
 import asyncio
 import json
@@ -16,7 +16,7 @@ from api.agents import AnalysisAgent, RelevancyAgent, ResponseFormatterAgent, Fo
 from api.agents.healer_agent import HealerAgent
 from api.config import Config
 from api.extensions import db
-from api.graph import find, get_db_description
+from api.graph import find, get_db_description, get_user_rules
 from api.loaders.postgres_loader import PostgresLoader
 from api.loaders.mysql_loader import MySQLLoader
 from api.memory.graphiti_tool import MemoryTool
@@ -45,6 +45,8 @@ class ChatRequest(BaseModel):
     chat: list[str]
     result: list[str] | None = None
     instructions: str | None = None
+    use_user_rules: bool = True  # If True, fetch rules from database; if False, don't use rules
+    use_memory: bool = True
 
 
 class ConfirmRequest(BaseModel):
@@ -87,7 +89,7 @@ def sanitize_query(query: str) -> str:
 
 def sanitize_log_input(value: str) -> str:
     """
-    Sanitize input for safe logging—remove newlines,
+    Sanitize input for safe logging—remove newlines, 
     carriage returns, tabs, and wrap in repr().
     """
     if not isinstance(value, str):
@@ -112,7 +114,7 @@ async def get_schema(user_id: str, graph_id: str):  # pylint: disable=too-many-l
     This endpoint returns a JSON object with two keys: `nodes` and `edges`.
     Nodes contain a minimal set of properties (id, name, labels, props).
     Edges contain source and target node names (or internal ids), type and props.
-
+    
         args:
             graph_id (str): The ID of the graph to query (the database name).
     """
@@ -203,7 +205,7 @@ async def get_schema(user_id: str, graph_id: str):  # pylint: disable=too-many-l
 async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  # pylint: disable=too-many-statements
     """
     Query the Database with the given graph_id and chat_data.
-
+    
         Args:
             graph_id (str): The ID of the graph to query.
             chat_data (ChatRequest): The chat data containing user queries and context.
@@ -213,6 +215,7 @@ async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  
     queries_history = chat_data.chat if hasattr(chat_data, 'chat') else None
     result_history = chat_data.result if hasattr(chat_data, 'result') else None
     instructions = chat_data.instructions if hasattr(chat_data, 'instructions') else None
+    use_user_rules = chat_data.use_user_rules if hasattr(chat_data, 'use_user_rules') else True
 
     if not queries_history or not isinstance(queries_history, list):
         raise InvalidArgumentError("Invalid or missing chat history")
@@ -233,7 +236,10 @@ async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  
 
     logging.info("User Query: %s", sanitize_query(queries_history[-1]))
 
-    memory_tool_task = asyncio.create_task(MemoryTool.create(user_id, graph_id))
+    if chat_data.use_memory:
+        memory_tool_task = asyncio.create_task(MemoryTool.create(user_id, graph_id))
+    else:
+        memory_tool_task = None
 
     # Create a generator function for streaming
     async def generate():  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
@@ -252,6 +258,8 @@ async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  
         yield json.dumps(step) + MESSAGE_DELIMITER
         # Ensure the database description is loaded
         db_description, db_url = await get_db_description(graph_id)
+        # Fetch user rules from database only if toggle is enabled
+        user_rules_spec = await get_user_rules(graph_id) if use_user_rules else None
 
         # Determine database type and get appropriate loader
         db_type, loader_class = get_database_type_and_loader(db_url)
@@ -304,15 +312,18 @@ async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  
 
             logging.info("Calling to analysis agent with query: %s",
                          sanitize_query(queries_history[-1]))  # nosemgrep
-            memory_tool = await memory_tool_task
-            memory_context = await memory_tool.search_memories(
-                query=queries_history[-1]
-            )
+            
+            memory_context = None
+            if memory_tool_task:
+                memory_tool = await memory_tool_task
+                memory_context = await memory_tool.search_memories(
+                    query=queries_history[-1]
+                )
 
             logging.info("Starting SQL generation with analysis agent")
             answer_an = agent_an.get_analysis(
                 queries_history[-1], result, db_description, instructions, memory_context,
-                db_type
+                db_type, user_rules_spec
             )
 
             # Initialize response variables
@@ -425,8 +436,8 @@ What this will do:
                     if is_destructive and general_graph:
                         yield json.dumps(
                             {
-                                "type": "error",
-                                "final_response": True,
+                                "type": "error", 
+                                "final_response": True, 
                                 "message": "Destructive operation not allowed on demo graphs"
                             }) + MESSAGE_DELIMITER
                     else:
@@ -441,54 +452,76 @@ What this will do:
                             loader_class.is_schema_modifying_query(sql_query)
                         )
 
-                        # Try executing the SQL query, with healing on failure
+                        # Try executing the SQL query first
                         try:
                             query_results = loader_class.execute_sql_query(
                                 answer_an["sql_query"],
                                 db_url
                             )
                         except Exception as exec_error:  # pylint: disable=broad-exception-caught
-                            # Attempt healing
-                            step = {"type": "reasoning_step",
-                                    "final_response": False,
-                                    "message": "Step 2a: SQL execution failed, attempting to heal query..."}
+                            # Initial execution failed - start iterative healing process
+                            step = {
+                                "type": "reasoning_step",
+                                "final_response": False,
+                                "message": "Step 2a: SQL execution failed, attempting to heal query..."
+                            }
                             yield json.dumps(step) + MESSAGE_DELIMITER
 
-                            healing_result = HealerAgent().heal_query(
-                                failed_sql=answer_an["sql_query"],
-                                error_message=str(exec_error),
-                                db_description=db_description[:500] if db_description else "",
+                            # Create healer agent and attempt iterative healing
+                            healer_agent = HealerAgent(max_healing_attempts=3)
+                            
+                            # Create a wrapper function for execute_sql_query
+                            def execute_sql(sql: str):
+                                return loader_class.execute_sql_query(sql, db_url)
+                            
+                            healing_result = healer_agent.heal_and_execute(
+                                initial_sql=answer_an["sql_query"],
+                                initial_error=str(exec_error),
+                                execute_sql_func=execute_sql,
+                                db_description=db_description,
                                 question=queries_history[-1],
                                 database_type=db_type
                             )
-
-                            if healing_result.get("healing_failed"):
+                            
+                            if not healing_result.get("success"):
+                                # Healing failed after all attempts
+                                yield json.dumps({
+                                    "type": "healing_failed",
+                                    "final_response": False,
+                                    "message": f"❌ Failed to heal query after {healing_result['attempts']} attempt(s)",
+                                    "final_error": healing_result.get("final_error", str(exec_error)),
+                                    "healing_log": healing_result.get("healing_log", [])
+                                }) + MESSAGE_DELIMITER
                                 raise exec_error
-
+                            
+                            # Healing succeeded!
+                            healing_log = healing_result.get("healing_log", [])
+                            
+                            # Show healing progress
+                            for log_entry in healing_log:
+                                if log_entry.get("status") == "healed":
+                                    changes_msg = ", ".join(log_entry.get("changes_made", []))
+                                    yield json.dumps({
+                                        "type": "healing_attempt",
+                                        "final_response": False,
+                                        "message": f"Attempt {log_entry['attempt']}: {changes_msg}",
+                                        "attempt": log_entry["attempt"],
+                                        "changes": log_entry.get("changes_made", []),
+                                        "confidence": log_entry.get("confidence", 0)
+                                    }) + MESSAGE_DELIMITER
+                            
+                            # Update the SQL query to the healed version
+                            answer_an["sql_query"] = healing_result["sql_query"]
+                            query_results = healing_result["query_results"]
+                            
                             yield json.dumps({
-                                "type": "healing_attempt",
+                                "type": "healing_success",
                                 "final_response": False,
-                                "message": f"Query was automatically fixed. Changes made: {', '.join(healing_result.get('changes_made', []))}",
-                                "original_error": str(exec_error),
-                                "healed_sql": healing_result.get("sql_query", "")
+                                "message": f"✅ Query healed and executed successfully after {healing_result['attempts'] + 1} attempt(s)",
+                                "healed_sql": healing_result["sql_query"],
+                                "attempts": healing_result["attempts"] + 1
                             }) + MESSAGE_DELIMITER
 
-                            # Execute healed SQL
-                            try:
-                                query_results = loader_class.execute_sql_query(
-                                    healing_result["sql_query"],
-                                    db_url
-                                )
-                                answer_an["sql_query"] = healing_result["sql_query"]
-
-                                yield json.dumps({
-                                    "type": "healing_success",
-                                    "final_response": False,
-                                    "message": "✅ Healed query executed successfully"
-                                }) + MESSAGE_DELIMITER
-                            except Exception as healed_error:  # pylint: disable=broad-exception-caught
-                                logging.error("Healed query also failed: %s", str(healed_error))
-                                raise healed_error
                         if len(query_results) != 0:
                             yield json.dumps(
                                 {
@@ -575,8 +608,8 @@ What this will do:
                         overall_elapsed
                     )
                     yield json.dumps({
-                        "type": "error",
-                        "final_response": True,
+                        "type": "error", 
+                        "final_response": True, 
                         "message": "Error executing SQL query"
                     }) + MESSAGE_DELIMITER
             else:
@@ -603,56 +636,58 @@ What this will do:
                 )
 
             # Save conversation to memory (only for on-topic queries)
-            # Determine the final answer based on which path was taken
-            final_answer = user_readable_response if user_readable_response else follow_up_result
+            # Only save to memory if use_memory is enabled
+            if memory_tool_task:
+                # Determine the final answer based on which path was taken
+                final_answer = user_readable_response if user_readable_response else follow_up_result
 
-            # Build comprehensive response for memory
-            full_response = {
-                "question": queries_history[-1],
-                "generated_sql": answer_an.get('sql_query', ""),
-                "answer": final_answer
-            }
+                # Build comprehensive response for memory
+                full_response = {
+                    "question": queries_history[-1],
+                    "generated_sql": answer_an.get('sql_query', ""),
+                    "answer": final_answer
+                }
 
-            # Add error information if SQL execution failed
-            if execution_error:
-                full_response["error"] = execution_error
-                full_response["success"] = False
-            else:
-                full_response["success"] = True
+                # Add error information if SQL execution failed
+                if execution_error:
+                    full_response["error"] = execution_error
+                    full_response["success"] = False
+                else:
+                    full_response["success"] = True
 
 
-            # Save query to memory
-            save_query_task = asyncio.create_task(
-                memory_tool.save_query_memory(
-                    query=queries_history[-1],
-                    sql_query=answer_an["sql_query"],
-                    success=full_response["success"],
-                    error=execution_error
+                # Save query to memory
+                save_query_task = asyncio.create_task(
+                    memory_tool.save_query_memory(
+                        query=queries_history[-1],
+                        sql_query=answer_an["sql_query"],
+                        success=full_response["success"],
+                        error=execution_error
+                    )
                 )
-            )
-            save_query_task.add_done_callback(
-                lambda t: logging.error("Query memory save failed: %s", t.exception())  # nosemgrep
-                if t.exception() else logging.info("Query memory saved successfully")
-            )
+                save_query_task.add_done_callback(
+                    lambda t: logging.error("Query memory save failed: %s", t.exception())  # nosemgrep
+                    if t.exception() else logging.info("Query memory saved successfully")
+                )
 
-            # Save conversation with memory tool (run in background)
-            save_task = asyncio.create_task(
-                memory_tool.add_new_memory(full_response,
-                                            [queries_history, result_history])
-            )
-            # Add error handling callback to prevent silent failures
-            save_task.add_done_callback(
-                lambda t: logging.error("Memory save failed: %s", t.exception())  # nosemgrep
-                if t.exception() else logging.info("Conversation saved to memory tool")
-            )
-            logging.info("Conversation save task started in background")
+                # Save conversation with memory tool (run in background)
+                save_task = asyncio.create_task(
+                    memory_tool.add_new_memory(full_response,
+                                                [queries_history, result_history])
+                )
+                # Add error handling callback to prevent silent failures
+                save_task.add_done_callback(
+                    lambda t: logging.error("Memory save failed: %s", t.exception())  # nosemgrep
+                    if t.exception() else logging.info("Conversation saved to memory tool")
+                )
+                logging.info("Conversation save task started in background")
 
-            # Clean old memory in background (once per week cleanup)
-            clean_memory_task = asyncio.create_task(memory_tool.clean_memory())
-            clean_memory_task.add_done_callback(
-                lambda t: logging.error("Memory cleanup failed: %s", t.exception())  # nosemgrep
-                if t.exception() else logging.info("Memory cleanup completed successfully")
-            )
+                # Clean old memory in background (once per week cleanup)
+                clean_memory_task = asyncio.create_task(memory_tool.clean_memory())
+                clean_memory_task.add_done_callback(
+                    lambda t: logging.error("Memory cleanup failed: %s", t.exception())  # nosemgrep
+                    if t.exception() else logging.info("Memory cleanup completed successfully")
+                )
 
         # Log timing summary at the end of processing
         overall_elapsed = time.perf_counter() - overall_start
@@ -821,6 +856,7 @@ async def execute_destructive_operation(  # pylint: disable=too-many-statements
 
             except Exception as e:  # pylint: disable=broad-exception-caught
                 logging.error("Error executing confirmed SQL query: %s", str(e))  # nosemgrep
+                error_message = str(e) if str(e) else "Error executing query"
 
                 # Save failed confirmed query to memory
                 save_query_task = asyncio.create_task(
@@ -841,7 +877,7 @@ async def execute_destructive_operation(  # pylint: disable=too-many-statements
                 )
 
                 yield json.dumps(
-                    {"type": "error", "message": "Error executing query"}
+                    {"type": "error", "message": error_message}
                 ) + MESSAGE_DELIMITER
         else:
             # User cancelled or provided invalid confirmation

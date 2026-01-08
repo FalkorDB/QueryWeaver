@@ -147,9 +147,6 @@ test.describe('Chat Feature Tests', () => {
     // Ensure database is connected (will skip if already connected)
     await homePage.ensureDatabaseConnected(apiCall);
 
-    // Get initial message count
-    const initialCount = await homePage.getMessageCount();
-
     // Verify send button is disabled with empty input
     const isSendButtonDisabled = await homePage.isSendQueryButtonDisabled();
     expect(isSendButtonDisabled).toBeTruthy();
@@ -224,5 +221,76 @@ test.describe('Chat Feature Tests', () => {
     // Verify only AI welcome message is present
     const aiMessageCount = await homePage.getAIMessageCount();
     expect(aiMessageCount).toBe(1);
+  });
+
+  test('destructive operation shows inline confirmation and executes on confirm', async () => {
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    await browser.setPageToFullScreen();
+
+    // Ensure database is connected
+    await homePage.ensureDatabaseConnected(apiCall);
+
+    // Generate random username and email to avoid conflicts
+    const randomUsername = `testuser${Date.now()}`;
+    const randomEmail = `${randomUsername}@test.com`;
+
+    // Send INSERT query
+    await homePage.sendQuery(`add one user "${randomUsername}" with email "${randomEmail}"`);
+
+    // Wait for confirmation message to appear (increased timeout for slow CI)
+    const confirmationAppeared = await homePage.waitForConfirmationMessage(20000);
+    expect(confirmationAppeared).toBeTruthy();
+
+    // Verify confirmation message is visible
+    const confirmationVisible = await homePage.isConfirmationMessageVisible();
+    expect(confirmationVisible).toBeTruthy();
+
+    // Verify confirmation contains INSERT operation type
+    const hasInsertText = await homePage.verifyConfirmationContains('INSERT');
+    expect(hasInsertText).toBeTruthy();
+
+    // Click confirm button
+    await homePage.clickConfirmButton();
+
+    // Wait for operation to complete
+    const processingComplete = await homePage.waitForProcessingToComplete();
+    expect(processingComplete).toBeTruthy();
+
+    // Verify confirmation message is no longer visible
+    const confirmationStillVisible = await homePage.isConfirmationMessageVisible();
+    expect(confirmationStillVisible).toBeFalsy();
+
+    // Verify AI response appears after confirmation
+    const finalAIMessageCount = await homePage.getAIMessageCount();
+    expect(finalAIMessageCount).toBeGreaterThan(1); // Welcome message + execution result
+  });
+
+  test('duplicate record shows user-friendly error message', async () => {
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    await browser.setPageToFullScreen();
+
+    // Ensure database is connected
+    await homePage.ensureDatabaseConnected(apiCall);
+    const randomUsername = `testuser${Date.now()}`;
+    const randomEmail = `${randomUsername}@test.com`;
+
+    // First insertion - should succeed
+    await homePage.sendQuery(`add one user "${randomUsername}" with email "${randomEmail}"`);
+    const confirmationAppeared1 = await homePage.waitForConfirmationMessage(20000);
+    expect(confirmationAppeared1).toBeTruthy();
+    await homePage.clickConfirmButton();
+    await homePage.waitForProcessingToComplete();
+
+    // Second insertion attempt - should fail with duplicate error
+    await homePage.sendQuery(`add one user "${randomUsername}" with email "${randomEmail}"`);
+    const confirmationAppeared2 = await homePage.waitForConfirmationMessage(20000);
+    expect(confirmationAppeared2).toBeTruthy();
+    await homePage.clickConfirmButton();
+    await homePage.waitForProcessingToComplete();
+
+    // Verify error message indicates a duplicate/conflict occurred
+    const lastAIMessage = await homePage.getLastAIMessageText();
+    const hasErrorIndicator = lastAIMessage.toLowerCase().includes('already exists');
+    expect(hasErrorIndicator).toBeTruthy();
   });
 });

@@ -1,4 +1,4 @@
-import { Locator, Page } from "playwright";
+import { Locator } from "playwright";
 
 export function delay(ms: number) {
   return new Promise((resolve) => {

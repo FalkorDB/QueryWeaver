@@ -40,7 +40,7 @@ export class AuthService {
    */
   static async checkBackendAvailable(): Promise<boolean> {
     try {
-      const response = await fetch(buildApiUrl('/health').replace('/health', ''), {
+      await fetch(buildApiUrl('/health').replace('/health', ''), {
         method: 'HEAD',
         mode: 'no-cors'
       });

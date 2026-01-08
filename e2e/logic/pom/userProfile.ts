@@ -371,6 +371,9 @@ export class UserProfile extends BasePage {
 
   async getFirstTokenIdFromRows(): Promise<string> {
     const tokenRows = await this.getAllTokenRows();
+    if (tokenRows.length === 0) {
+      return '';
+    }
     const firstTokenRow = tokenRows[0];
     const firstTokenId = await firstTokenRow.getAttribute('data-testid');
     return firstTokenId?.replace('token-row-', '') || '';
@@ -378,6 +381,9 @@ export class UserProfile extends BasePage {
 
   async getLastTokenIdFromRows(): Promise<string> {
     const tokenRows = await this.getAllTokenRows();
+    if (tokenRows.length === 0) {
+      return '';
+    }
     const lastTokenRow = tokenRows[tokenRows.length - 1];
     const lastTokenId = await lastTokenRow.getAttribute('data-testid');
     return lastTokenId?.replace('token-row-', '') || '';
