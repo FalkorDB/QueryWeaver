@@ -32,6 +32,23 @@ const Index = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showSchemaViewer, setShowSchemaViewer] = useState(false);
   const [showTokensModal, setShowTokensModal] = useState(false);
+  // userRulesSpec is now fetched from the graph database per query
+  const [useMemory, setUseMemory] = useState(() => {
+    // Load from localStorage on init, default to true
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('queryweaver_use_memory');
+      return saved === null ? true : saved === 'true';
+    }
+    return true;
+  });
+  const [useRulesFromDatabase, setUseRulesFromDatabase] = useState(() => {
+    // Load from localStorage on init, default to false
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('queryweaver_use_rules_from_database');
+      return saved === null ? false : saved === 'true';
+    }
+    return false;
+  });
   const [isRefreshingSchema, setIsRefreshingSchema] = useState(false);
   const [isChatProcessing, setIsChatProcessing] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
@@ -110,6 +127,8 @@ const Index = () => {
         console.log('Failed to fetch GitHub stars:', error);
       });
   }, []);
+
+  // No need to fetch rules - we just pass the toggle state to backend
 
   // Show login modal when not authenticated after loading completes
   useEffect(() => {
@@ -610,6 +629,8 @@ const Index = () => {
             <ChatInterface
               disabled={isRefreshingSchema}
               onProcessingChange={setIsChatProcessing}
+              useMemory={useMemory}
+              useRulesFromDatabase={useRulesFromDatabase}
             />
           </div>
         </div>

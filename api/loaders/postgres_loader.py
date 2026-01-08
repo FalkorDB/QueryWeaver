@@ -4,7 +4,7 @@ import re
 import datetime
 import decimal
 import logging
-from typing import AsyncGenerator, Tuple, Dict, Any, List
+from typing import AsyncGenerator, Dict, Any, List, Tuple
 
 import psycopg2
 from psycopg2 import sql
@@ -51,37 +51,29 @@ class PostgresLoader(BaseLoader):
     ]
 
     @staticmethod
-    def _execute_count_query(cursor, table_name: str, col_name: str) -> Tuple[int, int]:
+    def _execute_sample_query(
+        cursor, table_name: str, col_name: str, sample_size: int = 3
+    ) -> List[Any]:
         """
-        Execute query to get total count and distinct count for a column.
-        PostgreSQL implementation returning counts from tuple-style results.
+        Execute query to get random sample values for a column.
+        PostgreSQL implementation using ORDER BY RANDOM() for random sampling.
         """
         query = sql.SQL("""
-            SELECT COUNT(*) AS total_count,
-                   COUNT(DISTINCT {col}) AS distinct_count
-            FROM {table};
+            SELECT {col}
+            FROM (
+                SELECT DISTINCT {col}
+                FROM {table}
+                WHERE {col} IS NOT NULL
+            ) AS distinct_vals
+            ORDER BY RANDOM()
+            LIMIT %s;
         """).format(
             col=sql.Identifier(col_name),
             table=sql.Identifier(table_name)
         )
-        cursor.execute(query)
-        output = cursor.fetchall()
-        first_result = output[0]
-        return first_result[0], first_result[1]
-
-    @staticmethod
-    def _execute_distinct_query(cursor, table_name: str, col_name: str) -> List[Any]:
-        """
-        Execute query to get distinct values for a column.
-        PostgreSQL implementation handling tuple-style results.
-        """
-        query = sql.SQL("SELECT DISTINCT {col} FROM {table};").format(
-            col=sql.Identifier(col_name),
-            table=sql.Identifier(table_name)
-        )
-        cursor.execute(query)
-        distinct_results = cursor.fetchall()
-        return [row[0] for row in distinct_results if row[0] is not None]
+        cursor.execute(query, (sample_size,))
+        sample_results = cursor.fetchall()
+        return [row[0] for row in sample_results if row[0] is not None]
 
     @staticmethod
     def _serialize_value(value):
@@ -279,18 +271,18 @@ class PostgresLoader(BaseLoader):
             if column_default:
                 description_parts.append(f"(Default: {column_default})")
 
-            # Add distinct values if applicable
-            distinct_values_desc = PostgresLoader.extract_distinct_values_for_column(
+            # Extract sample values for the column (stored separately, not in description)
+            sample_values = PostgresLoader.extract_sample_values_for_column(
                 cursor, table_name, col_name
             )
-            description_parts.extend(distinct_values_desc)
 
             columns_info[col_name] = {
                 'type': data_type,
                 'null': is_nullable,
                 'key': key_type,
                 'description': ' '.join(description_parts),
-                'default': column_default
+                'default': column_default,
+                'sample_values': sample_values
             }
 
 

@@ -1,11 +1,12 @@
 import React from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   PanelLeft,
   BookOpen,
   LifeBuoy,
   Waypoints,
+  Settings,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -23,6 +24,7 @@ interface SidebarProps {
   isSchemaOpen?: boolean;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  onSettingsClick?: () => void;
 }
 
 const SidebarIcon = ({ icon: Icon, label, active, onClick, href, testId }: {
@@ -85,8 +87,24 @@ const SidebarIcon = ({ icon: Icon, label, active, onClick, href, testId }: {
 );
 
 
-const Sidebar = ({ className, onSchemaClick, isSchemaOpen, isCollapsed = false, onToggleCollapse }: SidebarProps) => {
+const Sidebar = ({ className, onSchemaClick, isSchemaOpen, isCollapsed = false, onToggleCollapse, onSettingsClick }: SidebarProps) => {
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
+  const location = useLocation();
+  
+  const isSettingsOpen = location.pathname === '/settings';
+  
+  const handleSettingsClick = () => {
+    if (onSettingsClick) {
+      onSettingsClick();
+    }
+    if (isSettingsOpen) {
+      navigate('/');
+    } else {
+      navigate('/settings');
+    }
+  };
+  
   return (
     <>
       <aside className={cn(
@@ -123,9 +141,9 @@ const Sidebar = ({ className, onSchemaClick, isSchemaOpen, isCollapsed = false, 
       </div>
       
       <nav className="flex flex-col items-center gap-4 px-2 py-4">
+        <SidebarIcon icon={Settings} label="Settings" active={isSettingsOpen} onClick={handleSettingsClick} testId="settings-button" />
         <SidebarIcon icon={BookOpen} label="Documentation" href="https://docs.falkordb.com/" testId="documentation-link" />
         <SidebarIcon icon={LifeBuoy} label="Support" href="https://discord.com/invite/jyUgBweNQz" testId="support-link" />
-        {/* <SidebarIcon icon={Settings} label="Settings" /> */}
       </nav>
     </aside>
     </>

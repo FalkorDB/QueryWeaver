@@ -42,6 +42,22 @@ export default {
           DEFAULT: "var(--muted)",
           foreground: "var(--muted-foreground)",
         },
+        success: {
+          DEFAULT: "var(--success)",
+          foreground: "var(--success-foreground)",
+        },
+        warning: {
+          DEFAULT: "var(--warning)",
+          foreground: "var(--warning-foreground)",
+        },
+        error: {
+          DEFAULT: "var(--error)",
+          foreground: "var(--error-foreground)",
+        },
+        info: {
+          DEFAULT: "var(--info)",
+          foreground: "var(--info-foreground)",
+        },
         accent: {
           DEFAULT: "var(--accent)",
           foreground: "var(--accent-foreground)",

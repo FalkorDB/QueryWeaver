@@ -20,7 +20,7 @@ Based on shadcn/ui Clean Slate theme with OKLch color space for perceptual unifo
     --popover: oklch(1.0000 0 0);
     --popover-foreground: oklch(0.2795 0.0368 260.0310);
 
-    --primary: oklch(0.5854 0.2041 277.1173);
+    --primary: oklch(0.5531 0.2471 301.88);
     --primary-foreground: oklch(1.0000 0 0);
 
     --secondary: oklch(0.9276 0.0058 264.5313);
@@ -37,24 +37,34 @@ Based on shadcn/ui Clean Slate theme with OKLch color space for perceptual unifo
 
     --border: oklch(0.8717 0.0093 258.3382);
     --input: oklch(0.8717 0.0093 258.3382);
-    --ring: oklch(0.5854 0.2041 277.1173);
+    --ring: oklch(0.5531 0.2471 301.88);
 
     /* Chart colors */
-    --chart-1: oklch(0.5854 0.2041 277.1173);
+    --chart-1: oklch(0.5531 0.2471 301.88);
     --chart-2: oklch(0.5106 0.2301 276.9656);
     --chart-3: oklch(0.4568 0.2146 277.0229);
     --chart-4: oklch(0.3984 0.1773 277.3662);
     --chart-5: oklch(0.3588 0.1354 278.6973);
 
+    /* Semantic state colors */
+    --success: oklch(0.6500 0.1800 145.0000);
+    --success-foreground: oklch(1.0000 0 0);
+    --warning: oklch(0.7500 0.1500 90.0000);
+    --warning-foreground: oklch(0.2000 0.0300 90.0000);
+    --error: oklch(0.6368 0.2078 25.3313);
+    --error-foreground: oklch(1.0000 0 0);
+    --info: oklch(0.6500 0.1800 240.0000);
+    --info-foreground: oklch(1.0000 0 0);
+
     /* Sidebar colors */
     --sidebar: oklch(0.9670 0.0029 264.5419);
     --sidebar-foreground: oklch(0.2795 0.0368 260.0310);
-    --sidebar-primary: oklch(0.5854 0.2041 277.1173);
+    --sidebar-primary: oklch(0.5531 0.2471 301.88);
     --sidebar-primary-foreground: oklch(1.0000 0 0);
     --sidebar-accent: oklch(0.9299 0.0334 272.7879);
     --sidebar-accent-foreground: oklch(0.3729 0.0306 259.7328);
     --sidebar-border: oklch(0.8717 0.0093 258.3382);
-    --sidebar-ring: oklch(0.5854 0.2041 277.1173);
+    --sidebar-ring: oklch(0.5531 0.2471 301.88);
 
     /* Typography */
     --font-sans: Inter, sans-serif;
@@ -96,7 +106,7 @@ Based on shadcn/ui Clean Slate theme with OKLch color space for perceptual unifo
     --popover: oklch(1.0000 0 0);
     --popover-foreground: oklch(0.2795 0.0368 260.0310);
 
-    --primary: oklch(0.5854 0.2041 277.1173);
+    --primary: oklch(0.5531 0.2471 301.88);
     --primary-foreground: oklch(1.0000 0 0);
 
     --secondary: oklch(0.9276 0.0058 264.5313);
@@ -113,22 +123,32 @@ Based on shadcn/ui Clean Slate theme with OKLch color space for perceptual unifo
 
     --border: oklch(0.8717 0.0093 258.3382);
     --input: oklch(0.8717 0.0093 258.3382);
-    --ring: oklch(0.5854 0.2041 277.1173);
+    --ring: oklch(0.5531 0.2471 301.88);
 
-    --chart-1: oklch(0.5854 0.2041 277.1173);
+    --chart-1: oklch(0.5531 0.2471 301.88);
     --chart-2: oklch(0.5106 0.2301 276.9656);
     --chart-3: oklch(0.4568 0.2146 277.0229);
     --chart-4: oklch(0.3984 0.1773 277.3662);
     --chart-5: oklch(0.3588 0.1354 278.6973);
 
+    /* Semantic state colors */
+    --success: oklch(0.6500 0.1800 145.0000);
+    --success-foreground: oklch(1.0000 0 0);
+    --warning: oklch(0.7500 0.1500 90.0000);
+    --warning-foreground: oklch(0.2000 0.0300 90.0000);
+    --error: oklch(0.6368 0.2078 25.3313);
+    --error-foreground: oklch(1.0000 0 0);
+    --info: oklch(0.6500 0.1800 240.0000);
+    --info-foreground: oklch(1.0000 0 0);
+
     --sidebar: oklch(0.9670 0.0029 264.5419);
     --sidebar-foreground: oklch(0.2795 0.0368 260.0310);
-    --sidebar-primary: oklch(0.5854 0.2041 277.1173);
+    --sidebar-primary: oklch(0.5531 0.2471 301.88);
     --sidebar-primary-foreground: oklch(1.0000 0 0);
     --sidebar-accent: oklch(0.9299 0.0334 272.7879);
     --sidebar-accent-foreground: oklch(0.3729 0.0306 259.7328);
     --sidebar-border: oklch(0.8717 0.0093 258.3382);
-    --sidebar-ring: oklch(0.5854 0.2041 277.1173);
+    --sidebar-ring: oklch(0.5531 0.2471 301.88);
 
     --font-sans: Inter, sans-serif;
     --font-serif: Merriweather, serif;
@@ -191,6 +211,16 @@ Based on shadcn/ui Clean Slate theme with OKLch color space for perceptual unifo
     --chart-3: oklch(0.5106 0.2301 276.9656);
     --chart-4: oklch(0.4568 0.2146 277.0229);
     --chart-5: oklch(0.3984 0.1773 277.3662);
+
+    /* Semantic state colors */
+    --success: oklch(0.6500 0.1800 145.0000);
+    --success-foreground: oklch(0.1158 0 0);
+    --warning: oklch(0.7500 0.1500 90.0000);
+    --warning-foreground: oklch(0.1158 0 0);
+    --error: oklch(0.6368 0.2078 25.3313);
+    --error-foreground: oklch(0.1158 0 0);
+    --info: oklch(0.6500 0.1800 240.0000);
+    --info-foreground: oklch(0.1158 0 0);
 
     /* Sidebar colors */
     --sidebar: oklch(0.1158 0 0);
