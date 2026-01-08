@@ -152,10 +152,10 @@ const TokensModal: React.FC<TokensModalProps> = ({ open, onOpenChange }) => {
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-gray-800 border-gray-600">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-card border-border">
           <DialogHeader>
-            <DialogTitle className="text-gray-100">API Tokens</DialogTitle>
-            <DialogDescription className="text-gray-400">
+            <DialogTitle className="text-foreground">API Tokens</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
               API tokens allow you to authenticate with the QueryWeaver API without using OAuth.
               Keep your tokens secure and don't share them publicly.
             </DialogDescription>
@@ -178,9 +178,9 @@ const TokensModal: React.FC<TokensModalProps> = ({ open, onOpenChange }) => {
             {newToken && (
               <Alert className="bg-green-900/20 border-green-600" data-testid="new-token-alert">
                 <AlertCircle className="h-4 w-4 text-green-600" />
-                <AlertDescription className="text-gray-200">
+                <AlertDescription className="text-foreground">
                   <h4 className="font-semibold mb-2">Token Generated Successfully!</h4>
-                  <p className="text-sm text-gray-300 mb-3">
+                  <p className="text-sm text-foreground mb-3">
                     <strong>Important:</strong> This is the only time you'll see this token. Copy it now and store it securely.
                   </p>
                   <div className="flex flex-col sm:flex-row gap-2">
@@ -189,14 +189,14 @@ const TokensModal: React.FC<TokensModalProps> = ({ open, onOpenChange }) => {
                         type={showToken ? 'text' : 'password'}
                         value={newToken}
                         readOnly
-                        className="bg-gray-900 border-gray-600 text-gray-100 font-mono text-xs sm:text-sm"
+                        className="bg-background border-border text-foreground font-mono text-xs sm:text-sm"
                         data-testid="new-token-input"
                       />
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => setShowToken(!showToken)}
-                        className="bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600 flex-shrink-0"
+                        className="bg-muted border-border text-foreground hover:bg-muted/80 flex-shrink-0"
                         data-testid="toggle-token-visibility"
                       >
                         {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -206,7 +206,7 @@ const TokensModal: React.FC<TokensModalProps> = ({ open, onOpenChange }) => {
                       variant="outline"
                       size="sm"
                       onClick={handleCopyToken}
-                      className="bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600"
+                      className="bg-muted border-border text-foreground hover:bg-muted/80"
                       data-testid="copy-token-btn"
                     >
                       <Copy className="h-4 w-4 mr-1" />
@@ -219,28 +219,28 @@ const TokensModal: React.FC<TokensModalProps> = ({ open, onOpenChange }) => {
 
             {/* Tokens List */}
             <div>
-              <h3 className="text-lg font-semibold text-gray-100 mb-3">Your Tokens</h3>
+              <h3 className="text-lg font-semibold text-foreground mb-3">Your Tokens</h3>
               {loading ? (
-                <p className="text-gray-400">Loading tokens...</p>
+                <p className="text-muted-foreground">Loading tokens...</p>
               ) : tokens.length === 0 ? (
-                <p className="text-gray-400">You don't have any API tokens yet.</p>
+                <p className="text-muted-foreground">You don't have any API tokens yet.</p>
               ) : (
                 <div className="overflow-x-auto -mx-2 sm:mx-0">
                   <Table data-testid="tokens-table">
                     <TableHeader>
-                      <TableRow className="border-gray-600">
-                        <TableHead className="text-gray-300">Token</TableHead>
-                        <TableHead className="text-gray-300 hidden sm:table-cell">Created</TableHead>
-                        <TableHead className="text-gray-300">Actions</TableHead>
+                      <TableRow className="border-border">
+                        <TableHead className="text-muted-foreground">Token</TableHead>
+                        <TableHead className="text-muted-foreground hidden sm:table-cell">Created</TableHead>
+                        <TableHead className="text-muted-foreground">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {tokens.map((token) => (
-                        <TableRow key={token.token_id} className="border-gray-600" data-testid={`token-row-${token.token_id}`}>
-                          <TableCell className="text-gray-200 font-mono text-xs sm:text-sm" data-testid={`token-value-${token.token_id}`}>
+                        <TableRow key={token.token_id} className="border-border" data-testid={`token-row-${token.token_id}`}>
+                          <TableCell className="text-foreground font-mono text-xs sm:text-sm" data-testid={`token-value-${token.token_id}`}>
                             ****{token.token_id}
                           </TableCell>
-                          <TableCell className="text-gray-300 text-xs sm:text-sm hidden sm:table-cell" data-testid={`token-created-${token.token_id}`}>
+                          <TableCell className="text-muted-foreground text-xs sm:text-sm hidden sm:table-cell" data-testid={`token-created-${token.token_id}`}>
                             {formatDate(token.created_at)}
                           </TableCell>
                           <TableCell>
@@ -268,10 +268,10 @@ const TokensModal: React.FC<TokensModalProps> = ({ open, onOpenChange }) => {
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deleteTokenId} onOpenChange={(open) => !open && setDeleteTokenId(null)}>
-        <AlertDialogContent className="bg-gray-800 border-gray-600" data-testid="delete-token-confirm-dialog">
+        <AlertDialogContent className="bg-card border-border" data-testid="delete-token-confirm-dialog">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-gray-100">Delete Token</AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-300">
+            <AlertDialogTitle className="text-foreground">Delete Token</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
               Are you sure you want to delete this token? This action cannot be undone.
               <br />
               <br />
@@ -280,7 +280,7 @@ const TokensModal: React.FC<TokensModalProps> = ({ open, onOpenChange }) => {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel
-              className="bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600"
+              className="bg-muted border-border text-foreground hover:bg-muted/80"
               disabled={deleting}
               data-testid="delete-token-cancel-btn"
             >

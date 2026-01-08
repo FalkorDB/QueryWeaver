@@ -85,7 +85,7 @@ const Header = ({ onConnectDatabase, onUploadSchema }: HeaderProps) => {
         href="https://github.com/FalkorDB/QueryWeaver" 
         target="_blank" 
         rel="noopener noreferrer"
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors text-gray-300 hover:text-white"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-card hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
         title="View QueryWeaver on GitHub"
       >
         <svg 
