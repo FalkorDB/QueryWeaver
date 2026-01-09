@@ -53,6 +53,34 @@ async def get_db_description(graph_id: str) -> tuple[str, str]:
     return (query_result.result_set[0][0],
             query_result.result_set[0][1])  # Return the first result's description
 
+
+async def get_user_rules(graph_id: str) -> str:
+    """Get the user rules from the graph."""
+    graph = db.select_graph(graph_id)
+    query_result = await graph.query(
+        """
+        MATCH (d:Database)
+        RETURN d.user_rules
+        """
+    )
+
+    if not query_result.result_set or not query_result.result_set[0][0]:
+        return ""
+
+    return query_result.result_set[0][0]
+
+
+async def set_user_rules(graph_id: str, user_rules: str) -> None:
+    """Set the user rules in the graph."""
+    graph = db.select_graph(graph_id)
+    await graph.query(
+        """
+        MERGE (d:Database)
+        SET d.user_rules = $user_rules
+        """,
+        {"user_rules": user_rules}
+    )
+
 async def _query_graph(
     graph,
     query: str,

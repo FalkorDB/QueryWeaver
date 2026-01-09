@@ -1,8 +1,7 @@
 """Base loader module providing abstract base class for data loaders."""
 
 from abc import ABC, abstractmethod
-from typing import AsyncGenerator, List, Any, Tuple, TYPE_CHECKING
-from api.config import Config
+from typing import AsyncGenerator, List, Any, TYPE_CHECKING
 
 
 class BaseLoader(ABC):
@@ -24,69 +23,45 @@ class BaseLoader(ABC):
 
     @staticmethod
     @abstractmethod
-    def _execute_count_query(cursor, table_name: str, col_name: str) -> Tuple[int, int]:
+    def _execute_sample_query(
+        cursor, table_name: str, col_name: str, sample_size: int = 3
+    ) -> List[Any]:
         """
-        Execute query to get total count and distinct count for a column.
+        Execute query to get random sample values for a column.
 
         Args:
             cursor: Database cursor
             table_name: Name of the table
             col_name: Name of the column
+            sample_size: Number of random samples to retrieve (default: 3)
 
         Returns:
-            Tuple of (total_count, distinct_count)
-        """
-
-    @staticmethod
-    @abstractmethod
-    def _execute_distinct_query(cursor, table_name: str, col_name: str) -> List[Any]:
-        """
-        Execute query to get distinct values for a column.
-
-        Args:
-            cursor: Database cursor
-            table_name: Name of the table
-            col_name: Name of the column
-
-        Returns:
-            List of distinct values
+            List of sample values
         """
 
     @classmethod
-    def extract_distinct_values_for_column(
-        cls, cursor, table_name: str, col_name: str
-    ) -> List[str]:
+    def extract_sample_values_for_column(
+        cls, cursor, table_name: str, col_name: str, sample_size: int = 3
+    ) -> List[Any]:
         """
-        Extract distinct values for a column if it meets the criteria for inclusion.
+        Extract random sample values for a column to provide balanced descriptions.
 
         Args:
             cursor: Database cursor
             table_name: Name of the table
             col_name: Name of the column
+            sample_size: Number of random samples to retrieve (default: 3)
 
         Returns:
-            List of formatted distinct values to add to description, or empty list
+            List of sample values (converted to strings), or empty list
         """
-        # Get row counts using database-specific implementation
-        rows_count, distinct_count = cls._execute_count_query(
-            cursor, table_name, col_name
-        )
+        # Get sample values using database-specific implementation
+        sample_values = cls._execute_sample_query(cursor, table_name, col_name, sample_size)
 
-        max_distinct = Config.DB_MAX_DISTINCT
-        uniqueness_threshold = Config.DB_UNIQUENESS_THRESHOLD
-
-        if 0 < distinct_count < max_distinct and distinct_count < (
-            uniqueness_threshold * rows_count
-        ):
-            # Get distinct values using database-specific implementation
-            distinct_values = cls._execute_distinct_query(cursor, table_name, col_name)
-
-            if distinct_values:
-                # Check first value type to avoid objects like dict/bytes
-                first_val = distinct_values[0]
-                if isinstance(first_val, (str, int)):
-                    return [
-                        f"(Optional values: {', '.join(f'({str(v)})' for v in distinct_values)})"
-                    ]
+        if sample_values:
+            # Check first value type to avoid objects like dict/bytes
+            first_val = sample_values[0]
+            if isinstance(first_val, (str, int, float)):
+                return [str(v) for v in sample_values]
 
         return []

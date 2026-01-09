@@ -271,7 +271,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
     // Theme-aware colors
     const isLight = theme === 'light';
     const textColor = isLight ? '#111' : '#f5f5f5';
-    const fillColor = isLight ? '#ffffff' : '#1f2937';
+    const fillColor = isLight ? '#ffffff' : '#191919';
     const strokeColor = isLight ? '#d1d5db' : '#374151';
     const columnTextColor = isLight ? '#111' : '#e5e7eb';
     const typeTextColor = isLight ? '#6b7280' : '#9ca3af';
@@ -383,7 +383,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
 
   // Get theme-aware colors
   const getBackgroundColor = () => {
-    return theme === 'light' ? '#ffffff' : '#030712';
+    return theme === 'light' ? '#ffffff' : '#191919';
   };
 
   const getLinkColor = () => {
@@ -403,7 +403,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
       {/* Schema Viewer */}
       <div
         data-testid="schema-panel"
-        className={`fixed top-0 h-full bg-gray-900 border-r border-gray-700 flex flex-col transition-all duration-300
+        className={`fixed top-0 h-full bg-background border-r border-border flex flex-col transition-all duration-300
           ${isOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'}
           md:z-30 z-50
           w-[80vw] max-w-[400px] md:max-w-none
@@ -416,25 +416,25 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
         }}
       >
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-700">
-        <h2 className="text-lg font-semibold text-gray-100">Database Schema</h2>
+      <div className="flex items-center justify-between p-4 border-b border-border">
+        <h2 className="text-lg font-semibold text-foreground">Database Schema</h2>
         <Button
           variant="ghost"
           size="sm"
           onClick={onClose}
-          className="h-8 w-8 p-0 text-gray-400 hover:text-gray-100"
+          className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
         >
           <X className="h-4 w-4" />
         </Button>
       </div>
 
       {/* Controls */}
-      <div className="flex gap-2 p-2 border-b border-gray-700">
+      <div className="flex gap-2 p-2 border-b border-border">
         <Button
           variant="outline"
           size="sm"
           onClick={handleZoomIn}
-          className="h-8 w-8 p-0 bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700"
+          className="h-8 w-8 p-0 bg-card border-border text-muted-foreground hover:bg-muted"
           title="Zoom In"
         >
           <ZoomIn className="h-4 w-4" />
@@ -443,7 +443,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
           variant="outline"
           size="sm"
           onClick={handleZoomOut}
-          className="h-8 w-8 p-0 bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700"
+          className="h-8 w-8 p-0 bg-card border-border text-muted-foreground hover:bg-muted"
           title="Zoom Out"
         >
           <ZoomOut className="h-4 w-4" />
@@ -452,7 +452,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
           variant="outline"
           size="sm"
           onClick={handleCenter}
-          className="h-8 w-8 p-0 bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700"
+          className="h-8 w-8 p-0 bg-card border-border text-muted-foreground hover:bg-muted"
           title="Center"
         >
           <Locate className="h-4 w-4" />
@@ -460,10 +460,10 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
       </div>
 
       {/* Graph Container */}
-      <div ref={containerRef} className="h-[calc(100%-8rem)] w-full bg-gray-950 relative">
+      <div ref={containerRef} className="h-[calc(100%-8rem)] w-full bg-background relative">
         {loading && (
           <div className="flex items-center justify-center h-full">
-            <div className="text-gray-400">Loading schema...</div>
+            <div className="text-muted-foreground">Loading schema...</div>
           </div>
         )}
         {!loading && schemaData && schemaData.nodes && schemaData.nodes.length > 0 && (
@@ -521,7 +521,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
         }}
       >
         <div className="absolute right-0 top-1/2 -translate-y-1/2 -translate-x-1/2">
-          <GripVertical className="h-4 w-4 text-gray-600" />
+          <GripVertical className="h-4 w-4 text-border" />
         </div>
       </div>
     </div>

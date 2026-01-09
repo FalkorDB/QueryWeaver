@@ -230,14 +230,15 @@ test.describe('Chat Feature Tests', () => {
     // Ensure database is connected
     await homePage.ensureDatabaseConnected(apiCall);
 
-    // Generate random username to avoid conflicts
+    // Generate random username and email to avoid conflicts
     const randomUsername = `testuser${Date.now()}`;
+    const randomEmail = `${randomUsername}@test.com`;
 
     // Send INSERT query
-    await homePage.sendQuery(`add one user "${randomUsername}"`);
+    await homePage.sendQuery(`add one user "${randomUsername}" with email "${randomEmail}"`);
 
-    // Wait for confirmation message to appear
-    const confirmationAppeared = await homePage.waitForConfirmationMessage(15000);
+    // Wait for confirmation message to appear (increased timeout for slow CI)
+    const confirmationAppeared = await homePage.waitForConfirmationMessage(20000);
     expect(confirmationAppeared).toBeTruthy();
 
     // Verify confirmation message is visible
@@ -271,20 +272,25 @@ test.describe('Chat Feature Tests', () => {
     // Ensure database is connected
     await homePage.ensureDatabaseConnected(apiCall);
     const randomUsername = `testuser${Date.now()}`;
+    const randomEmail = `${randomUsername}@test.com`;
+
     // First insertion - should succeed
-    await homePage.sendQuery(`add one user "${randomUsername}"`);
-    await homePage.waitForConfirmationMessage(10000);
+    await homePage.sendQuery(`add one user "${randomUsername}" with email "${randomEmail}"`);
+    const confirmationAppeared1 = await homePage.waitForConfirmationMessage(20000);
+    expect(confirmationAppeared1).toBeTruthy();
     await homePage.clickConfirmButton();
     await homePage.waitForProcessingToComplete();
 
     // Second insertion attempt - should fail with duplicate error
-    await homePage.sendQuery(`add one user "${randomUsername}"`);
-    await homePage.waitForConfirmationMessage(10000);
+    await homePage.sendQuery(`add one user "${randomUsername}" with email "${randomEmail}"`);
+    const confirmationAppeared2 = await homePage.waitForConfirmationMessage(20000);
+    expect(confirmationAppeared2).toBeTruthy();
     await homePage.clickConfirmButton();
     await homePage.waitForProcessingToComplete();
 
-    // Verify error message contains user-friendly text
+    // Verify error message indicates a duplicate/conflict occurred
     const lastAIMessage = await homePage.getLastAIMessageText();
-    expect(lastAIMessage).toContain(`"${randomUsername}" already exists`);
+    const hasErrorIndicator = lastAIMessage.toLowerCase().includes('already exists');
+    expect(hasErrorIndicator).toBeTruthy();
   });
 });

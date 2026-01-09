@@ -8,11 +8,11 @@ interface SuggestionCardsProps {
 
 const SuggestionCards = ({ suggestions, onSelect, disabled = false }: SuggestionCardsProps) => {
   return (
-    <div className="grid gap-3 mb-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-2 sm:gap-3 mb-3 sm:mb-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
       {suggestions.map((suggestion) => (
         <Card
           key={suggestion}
-          className={`bg-gray-800 border-gray-600 ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-purple-500/50 transition-all duration-200 cursor-pointer'}`}
+          className={`bg-card border-border ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-purple-500/50 transition-all duration-200 cursor-pointer'}`}
           onClick={disabled ? undefined : () => onSelect(suggestion)}
           role="button"
           tabIndex={disabled ? -1 : 0}
@@ -25,8 +25,8 @@ const SuggestionCards = ({ suggestions, onSelect, disabled = false }: Suggestion
             }
           }}
         >
-          <CardContent className="p-3 sm:p-4">
-            <div className="text-gray-300 text-xs sm:text-sm text-center line-clamp-2">
+          <CardContent className="p-2 sm:p-4">
+            <div className="text-muted-foreground text-xs sm:text-sm text-center line-clamp-2">
               {suggestion}
             </div>
           </CardContent>

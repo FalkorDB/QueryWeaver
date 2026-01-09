@@ -5,7 +5,7 @@ name = "pypi"
 
 [packages]
 fastapi = "~=0.124.0"
-uvicorn = "~=0.38.0"
+uvicorn = "~=0.40.0"
 litellm = "~=1.80.9"
 falkordb = "~=1.2.2"
 psycopg2-binary = "~=2.9.11"
@@ -22,7 +22,7 @@ fastmcp = ">=2.13.1"
 [dev-packages]
 pytest = "~=8.4.2"
 pylint = "~=4.0.3"
-playwright = "~=1.56.0"
+playwright = "~=1.57.0"
 pytest-playwright = "~=0.7.1"
 pytest-asyncio = "~=1.2.0"
 

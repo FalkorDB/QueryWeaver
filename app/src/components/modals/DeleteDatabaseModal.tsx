@@ -32,7 +32,7 @@ const DeleteDatabaseModal = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
-        className="sm:max-w-md bg-gray-900 border-gray-700 text-gray-100"
+        className="sm:max-w-md bg-card border-border text-foreground"
         data-testid="delete-database-modal"
       >
         <DialogHeader>
@@ -40,7 +40,7 @@ const DeleteDatabaseModal = ({
             <AlertTriangle className="h-5 w-5" />
             Delete Database
           </DialogTitle>
-          <DialogDescription className="text-gray-300">
+          <DialogDescription className="text-muted-foreground">
             {isDemo ? (
               <div className="space-y-2">
                 <p className="font-semibold">Demo databases cannot be deleted.</p>
@@ -54,7 +54,7 @@ const DeleteDatabaseModal = ({
                 <p className="font-semibold">
                   Are you sure you want to delete "{databaseName}"?
                 </p>
-                <p className="text-sm text-gray-400">
+                <p className="text-sm text-muted-foreground">
                   This action cannot be undone. All data and schema information
                   for this database will be permanently removed.
                 </p>
@@ -67,7 +67,7 @@ const DeleteDatabaseModal = ({
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
-            className="bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700"
+            className="bg-card border-border text-muted-foreground hover:bg-muted"
             data-testid="delete-modal-cancel"
           >
             Cancel
