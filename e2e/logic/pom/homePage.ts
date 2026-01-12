@@ -1113,7 +1113,13 @@ export class HomePage extends BasePage {
     // No database exists, connect to test database
     const { postgres: postgresUrl } = getTestDatabases();
     const response = await apiCall.connectDatabase(postgresUrl);
-    await apiCall.parseStreamingResponse(response);
+    const messages = await apiCall.parseStreamingResponse(response);
+
+    // Check if connection was successful
+    const finalMessage = messages[messages.length - 1];
+    if (finalMessage.type === 'error' || !finalMessage.success) {
+      throw new Error(`Database connection failed: ${finalMessage.message || 'Unknown error'}`);
+    }
 
     // Refresh the page so the frontend can fetch the updated database list
     await this.page.reload();
