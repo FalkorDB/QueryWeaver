@@ -93,23 +93,21 @@ postgresql://[username[:password]@][host[:port]][/database][?options]
 
 ### Custom Schema Configuration
 
-By default, the loader extracts tables from the `public` schema. To use a different schema, add the `search_path` option to your connection URL using PostgreSQL's standard `options` parameter. More info here: https://www.postgresql.org/docs/18/runtime-config-client.html#GUC-SEARCH-PATH
+By default, the loader extracts tables from the `public` schema. To use a different schema, add the `search_path` option to your connection URL using PostgreSQL's standard `options` parameter. 
+More info [here](https://www.postgresql.org/docs/18/runtime-config-client.html#GUC-SEARCH-PATH).
 
 **Format:**
+```
 postgresql://user:pass@host:port/database?options=-csearch_path%3Dschema_name
+```
 
 **Examples:**
-Extract from 'sales' schema
-
-postgresql://postgres:password@localhost:5432/mydb?options=-csearch_path%3Dsales
-
-Extract from 'dbo' schema
-
-postgresql://user:pass@host:5432/enterprise_db?options=-csearch_path%3Ddbo
-
-Extract from 'inventory' schema
-
-postgresql://admin:secret@192.168.1.100:5432/warehouse?options=-csearch_path%3Dinventory
+- Extract from 'sales' schema
+  `postgresql://postgres:password@localhost:5432/mydb?options=-csearch_path=sales`
+- Extract from 'dbo' schema
+  `postgresql://user:pass@host:5432/enterprise_db?options=-csearch_path=dbo`
+- Extract from 'inventory' schema
+  `postgresql://admin:secret@192.168.1.100:5432/warehouse?options=-csearch_path%3Dinventory`
 
 **Notes:**
 - The `%3D` is the URL-encoded form of `=`
