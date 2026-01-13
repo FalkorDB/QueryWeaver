@@ -102,11 +102,11 @@ postgresql://user:pass@host:port/database?options=-csearch_path%3Dschema_name
 ```
 
 **Examples:**
-- Extract from 'sales' schema
+- Extract from `sales` schema
   `postgresql://postgres:password@localhost:5432/mydb?options=-csearch_path=sales`
-- Extract from 'dbo' schema
+- Extract from `dbo` schema
   `postgresql://user:pass@host:5432/enterprise_db?options=-csearch_path=dbo`
-- Extract from 'inventory' schema
+- Extract from `inventory` schema
   `postgresql://admin:secret@192.168.1.100:5432/warehouse?options=-csearch_path%3Dinventory`
 
 **Notes:**
@@ -276,11 +276,11 @@ PostgreSQL schema loaded successfully. Found 15 tables.
 
 To verify which schema will be used, you can test the search_path parsing:
 
-{% capture python_1 %}
+{% capture python_2 %}
 from api.loaders.postgres_loader import PostgresLoader
 
 # Test URL parsing
-url = "postgresql://user:pass@localhost:5432/mydb?options=-csearch_path%3Dmy_schema"
+url = "postgresql://user:pass@localhost:5432/mydatabase?options=-c search_path=my_schema"
 schema = PostgresLoader._parse_schema_from_url(url)
 print(f"Schema to be used: {schema}")  # Output: my_schema
 {% endcapture %}

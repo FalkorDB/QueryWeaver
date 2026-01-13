@@ -8,6 +8,7 @@ schemas
 psycopg
 html
 PostgreSQLLoader
+PostgresLoader
 api
 postgres
 postgresql
