@@ -94,13 +94,13 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
         const builtUrl = new URL(`${protocol}://${host}:${port}/${database}`);
         builtUrl.username = username;
         builtUrl.password = password;
-        dbUrl = builtUrl.toString();
-
+        
         // Append schema option for PostgreSQL if provided
         if (selectedDatabase === 'postgresql' && schema.trim()) {
-          const schemaOption = `options=-csearch_path%3D${encodeURIComponent(schema.trim())}`;
-          dbUrl += (dbUrl.includes('?') ? '&' : '?') + schemaOption;
+          builtUrl.searchParams.set('options', `-csearch_path=${schema.trim()}`);
         }
+
+        dbUrl = builtUrl.toString();
       }
 
       // Make streaming request
