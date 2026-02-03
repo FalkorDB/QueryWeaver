@@ -18,6 +18,8 @@ export const API_CONFIG = {
     AUTH_STATUS: '/auth-status',
     LOGIN_GOOGLE: '/login/google',
     LOGIN_GITHUB: '/login/github',
+    LOGIN_EMAIL: '/login/email',
+    SIGNUP_EMAIL: '/signup/email',
     LOGOUT: '/logout',
     
     // Graph/Database management
