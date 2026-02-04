@@ -161,8 +161,8 @@ class TestQuery:
         conn_result = await qw.connect_database(postgres_url)
         assert conn_result.success
         
-        # First query
-        result1 = await qw.query(
+        # First query (result unused, but needed to establish conversation context)
+        await qw.query(
             conn_result.database_id,
             "Show me all customers"
         )

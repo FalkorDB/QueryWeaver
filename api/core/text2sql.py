@@ -1033,7 +1033,8 @@ async def query_database_sync(  # pylint: disable=too-many-locals,too-many-state
         try:
             await find_task
         except asyncio.CancelledError:
-            pass
+            # Expected: find_task was cancelled because the query was off-topic
+            logging.debug("Cancelled find_task after determining query was off-topic")
         
         return QueryResult(
             sql_query="",
