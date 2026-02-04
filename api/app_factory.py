@@ -43,6 +43,14 @@ class SecurityMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-
                 return JSONResponse(status_code=403, content={"detail": "Forbidden"})
 
         response = await call_next(request)
+
+        # Add HSTS header to prevent man-in-the-middle attacks
+        # max-age=31536000: 1 year in seconds
+        # includeSubDomains: apply to all subdomains
+        # preload: eligible for browser HSTS preload lists
+        hsts_value = "max-age=31536000; includeSubDomains; preload"
+        response.headers["Strict-Transport-Security"] = hsts_value
+
         return response
 
 
