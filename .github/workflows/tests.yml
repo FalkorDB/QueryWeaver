@@ -63,8 +63,80 @@ jobs:
 
     - name: Run unit tests
       run: |
-        pipenv run pytest tests/ -k "not e2e" --verbose
+        pipenv run pytest tests/ -k "not e2e and not test_sdk" --verbose
 
     - name: Run lint
       run: |
         make lint
+
+  sdk-tests:
+    runs-on: ubuntu-latest
+
+    services:
+      falkordb:
+        image: falkordb/falkordb:latest
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: testdb
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install pipenv
+      run: |
+        python -m pip install --upgrade pip
+        pip install pipenv
+
+    - name: Install dependencies
+      run: |
+        pipenv sync --dev
+
+    - name: Create test environment file
+      run: |
+        cp .env.example .env
+        echo "FASTAPI_SECRET_KEY=test-secret-key" >> .env
+
+    - name: Run SDK tests
+      env:
+        FALKORDB_URL: redis://localhost:6379
+        TEST_POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/testdb
+        TEST_MYSQL_URL: mysql://root:root@localhost:3306/testdb
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: |
+        pipenv run pytest tests/test_sdk/ -v

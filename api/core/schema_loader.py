@@ -162,3 +162,76 @@ async def list_databases(user_id: str, general_prefix: Optional[str] = None) -> 
         filtered_graphs = filtered_graphs + demo_graphs
 
     return filtered_graphs
+
+
+# =============================================================================
+# SDK Non-Streaming Functions
+# =============================================================================
+
+async def load_database_sync(url: str, user_id: str):
+    """
+    Load a database schema and return structured result (non-streaming).
+    
+    SDK-friendly version that returns DatabaseConnection instead of streaming.
+    
+    Args:
+        url: Database connection URL (PostgreSQL or MySQL).
+        user_id: User identifier for namespacing.
+        
+    Returns:
+        DatabaseConnection with connection status.
+    """
+    from queryweaver_sdk.models import DatabaseConnection
+    
+    # Validate URL format
+    if not url or len(url.strip()) == 0:
+        raise InvalidArgumentError("Invalid URL format")
+    
+    # Determine database type and loader
+    loader: type[BaseLoader] = BaseLoader
+    if url.startswith("postgres://") or url.startswith("postgresql://"):
+        loader = PostgresLoader
+    elif url.startswith("mysql://"):
+        loader = MySQLLoader
+    else:
+        raise InvalidArgumentError("Invalid database URL format. Must be PostgreSQL or MySQL.")
+    
+    tables_loaded = 0
+    last_message = ""
+    success = False
+    
+    try:
+        async for progress_success, progress_message in loader.load(user_id, url):
+            success = progress_success
+            last_message = progress_message
+            if success and "table" in progress_message.lower():
+                # Try to extract table count from message
+                tables_loaded += 1
+        
+        if success:
+            # Extract database name from the message or URL
+            # The loader typically returns the graph_id in the final message
+            db_name = url.split("/")[-1].split("?")[0]  # Extract DB name from URL
+            
+            return DatabaseConnection(
+                database_id=db_name,
+                success=True,
+                tables_loaded=tables_loaded,
+                message="Database connected and schema loaded successfully",
+            )
+        else:
+            return DatabaseConnection(
+                database_id="",
+                success=False,
+                tables_loaded=0,
+                message=last_message or "Failed to load database schema",
+            )
+            
+    except Exception as e:
+        logging.exception("Error loading database: %s", str(e))
+        return DatabaseConnection(
+            database_id="",
+            success=False,
+            tables_loaded=0,
+            message=f"Error connecting to database: {str(e)}",
+        )

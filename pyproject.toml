@@ -1,0 +1,129 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "queryweaver"
+version = "0.1.0"
+description = "Text2SQL tool that transforms natural language into SQL using graph-powered schema understanding"
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.12"
+authors = [
+    { name = "FalkorDB", email = "support@falkordb.com" }
+]
+keywords = ["text2sql", "sql", "nlp", "llm", "database", "falkordb"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# Core dependencies required for SDK (minimal)
+dependencies = [
+    "litellm>=1.80.9",
+    "falkordb>=1.2.2",
+    "psycopg2-binary>=2.9.11",
+    "pymysql>=1.1.0",
+    "jsonschema>=4.25.0",
+    "tqdm>=4.67.1",
+]
+
+[project.optional-dependencies]
+# Server dependencies (FastAPI, auth, etc.)
+server = [
+    "fastapi>=0.124.0",
+    "uvicorn>=0.40.0",
+    "authlib>=1.6.4",
+    "itsdangerous>=2.2.0",
+    "python-multipart>=0.0.10",
+    "jinja2>=3.1.4",
+    "fastmcp>=2.13.1",
+    "graphiti-core @ git+https://github.com/FalkorDB/graphiti.git@staging",
+]
+
+# Development dependencies
+dev = [
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "pylint>=4.0.3",
+    "playwright>=1.57.0",
+    "pytest-playwright>=0.7.1",
+]
+
+# All dependencies (server + dev)
+all = [
+    "queryweaver[server]",
+    "queryweaver[dev]",
+]
+
+[project.urls]
+Homepage = "https://github.com/FalkorDB/QueryWeaver"
+Documentation = "https://github.com/FalkorDB/QueryWeaver#readme"
+Repository = "https://github.com/FalkorDB/QueryWeaver"
+Issues = "https://github.com/FalkorDB/QueryWeaver/issues"
+
+[project.scripts]
+queryweaver = "api.index:main"
+
+# Hatch build configuration
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["queryweaver_sdk", "api"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/queryweaver_sdk",
+    "/api",
+    "/README.md",
+    "/LICENSE",
+]
+
+# uv configuration - use dependency-groups instead of tool.uv.dev-dependencies
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "pylint>=4.0.3",
+    "playwright>=1.57.0",
+    "pytest-playwright>=0.7.1",
+]
+
+# pytest configuration (migrate from pytest.ini)
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "e2e: marks tests as end-to-end tests",
+    "slow: marks tests as slow running",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:litellm.*",
+    "ignore::pydantic.warnings.PydanticDeprecatedSince20",
+]
+
+# pylint configuration
+[tool.pylint.main]
+ignore-patterns = ["test_.*\\.py", "conftest\\.py"]
+
+[tool.pylint.messages_control]
+disable = [
+    "C0114",  # missing-module-docstring
+    "C0115",  # missing-class-docstring
+    "C0116",  # missing-function-docstring
+    "R0903",  # too-few-public-methods
+]
+
+[tool.pylint.format]
+max-line-length = 120
