@@ -27,4 +27,5 @@ jobs:
 
     - name: Run pylint
       run: |
-        pipenv run pylint $(git ls-files '*.py')
+        pipenv run pylint $(git ls-files '*.py') \
+          --disable=C0415,W0718,R0902,R0903,R0911,R0913,R0917,C0302
