@@ -1,6 +1,7 @@
 """Test fixtures for QueryWeaver SDK integration tests."""
 
 import os
+import asyncio
 import pytest
 
 
@@ -15,6 +16,14 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "requires_mysql: mark test as requiring MySQL"
     )
+
+
+@pytest.fixture(scope="session")
+def event_loop():
+    """Create a session-scoped event loop to avoid 'Event loop is closed' errors."""
+    loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()
 
 
 @pytest.fixture(scope="session")
