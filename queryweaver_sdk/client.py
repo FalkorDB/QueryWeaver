@@ -64,9 +64,11 @@ class QueryWeaver:
         self._setup_connection()
 
     def _setup_connection(self) -> None:
-        """Set up the connection for use by core modules."""
-        # Import here to avoid circular imports and to allow
-        # the connection to be set before other modules use it
+        """Set up the connection for use by core modules.
+        
+        Note: api.extensions is imported lazily to allow SDK import
+        without requiring FalkorDB connection at module load time.
+        """
         import api.extensions
         api.extensions.db = self._connection.db
 
@@ -111,7 +113,6 @@ class QueryWeaver:
             ValueError: If the database URL format is invalid.
         """
         from api.core.schema_loader import load_database_sync
-
         return await load_database_sync(db_url, self._user_id)
 
     async def query(
@@ -173,7 +174,6 @@ class QueryWeaver:
             ValueError: If the database is not found.
         """
         from api.core.text2sql import get_schema as _get_schema
-
         schema = await _get_schema(self._user_id, database)
         return SchemaResult(
             nodes=schema.get("nodes", []),
@@ -187,7 +187,6 @@ class QueryWeaver:
             List of database identifiers.
         """
         from api.core.schema_loader import list_databases as _list_databases
-
         return await _list_databases(self._user_id, self._general_prefix)
 
     async def delete_database(self, database: str) -> bool:
@@ -206,7 +205,6 @@ class QueryWeaver:
             ValueError: If the database is not found or cannot be deleted.
         """
         from api.core.text2sql import delete_database as _delete_database
-
         result = await _delete_database(self._user_id, database)
         return result.get("success", False)
 
@@ -226,7 +224,6 @@ class QueryWeaver:
             ValueError: If the database is not found.
         """
         from api.core.text2sql import refresh_database_schema_sync
-
         return await refresh_database_schema_sync(self._user_id, database)
 
     async def execute_confirmed(
