@@ -29,8 +29,8 @@ interface SettingsModalProps {
 // AI Vendor configurations
 const AI_VENDORS = [
   { value: 'openai' as AIVendor, label: 'OpenAI', keyPrefix: 'sk-', exampleModel: 'gpt-4.1' },
-  { value: 'google' as AIVendor, label: 'Google', keyPrefix: '', exampleModel: 'gemini-2.5-pro' },
-  { value: 'anthropic' as AIVendor, label: 'Anthropic', keyPrefix: 'sk-ant-', exampleModel: 'claude-4-5-sonnet-20241022' },
+  { value: 'google' as AIVendor, label: 'Google', keyPrefix: '', exampleModel: 'gemini-3-pro-preview' },
+  { value: 'anthropic' as AIVendor, label: 'Anthropic', keyPrefix: 'sk-ant-', exampleModel: 'claude-sonnet-4-5-20250929' },
 ];
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {

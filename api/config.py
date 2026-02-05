@@ -63,14 +63,53 @@ class Config:
     """
     Configuration class for the text2sql module.
     """
+    
     AZURE_FLAG = True
-    if not os.getenv("OPENAI_API_KEY"):
-        EMBEDDING_MODEL_NAME = "azure/text-embedding-ada-002"
-        COMPLETION_MODEL = "azure/gpt-4.1"
-    else:
+    # Check if user explicitly set models via environment variables
+    _user_completion = os.getenv("COMPLETION_MODEL", "")
+    _user_embedding = os.getenv("EMBEDDING_MODEL", "")
+    
+    # Determine the completion model based on available API keys
+    # Priority: OpenAI > Google (Gemini) > Anthropic > Azure (default)
+    if os.getenv("OPENAI_API_KEY"):
         AZURE_FLAG = False
-        EMBEDDING_MODEL_NAME = "openai/text-embedding-ada-002"
-        COMPLETION_MODEL = "openai/gpt-4.1"
+        if "openai" in _user_completion and "openai" in _user_embedding:
+            COMPLETION_MODEL = _user_completion
+            EMBEDDING_MODEL_NAME = _user_embedding
+        else:
+            COMPLETION_MODEL = "openai/gpt-4.1"
+            EMBEDDING_MODEL_NAME = "openai/text-embedding-ada-002"
+    elif os.getenv("GEMINI_API_KEY"):
+        AZURE_FLAG = False
+        if "gemini" in _user_completion and "gemini" in _user_embedding:
+            COMPLETION_MODEL = _user_completion
+            EMBEDDING_MODEL_NAME = _user_embedding
+        else:
+            COMPLETION_MODEL = "gemini/gemini-3-pro-preview"
+            EMBEDDING_MODEL_NAME = "gemini/gemini-embedding-001"
+    elif os.getenv("ANTHROPIC_API_KEY"):
+        AZURE_FLAG = False
+        if "anthropic" in _user_completion:
+            COMPLETION_MODEL = _user_completion
+        else:
+            COMPLETION_MODEL = "anthropic/claude-sonnet-4-5-20250929"
+        if os.getenv("VOYAGE_API_KEY"):
+            if "voyage" in _user_embedding:
+                EMBEDDING_MODEL_NAME = _user_embedding
+            else:
+                EMBEDDING_MODEL_NAME = "voyage/voyage-3"
+        else:
+            # Anthropic has no native embeddings, fall back to Azure embeddings
+            EMBEDDING_MODEL_NAME = "azure/text-embedding-ada-002"
+    else:
+        # Default to Azure
+        AZURE_FLAG = True
+        if "azure" in _user_completion and "azure" in _user_embedding:
+            COMPLETION_MODEL = _user_completion
+            EMBEDDING_MODEL_NAME = _user_embedding
+        else:
+            COMPLETION_MODEL = "azure/gpt-4.1"
+            EMBEDDING_MODEL_NAME = "azure/text-embedding-ada-002"
 
     DB_MAX_DISTINCT: int = 100  # pylint: disable=invalid-name
     DB_UNIQUENESS_THRESHOLD: float = 0.5  # pylint: disable=invalid-name
