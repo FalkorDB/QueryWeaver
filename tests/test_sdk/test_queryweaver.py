@@ -390,16 +390,18 @@ class TestModels:
     
     def test_query_result_to_dict(self):
         """Test QueryResult serialization."""
-        from queryweaver_sdk.models import QueryResult
-        
+        from queryweaver_sdk.models import QueryResult, QueryMetadata
+
         result = QueryResult(
             sql_query="SELECT * FROM customers",
             results=[{"id": 1, "name": "Alice"}],
             ai_response="Found 1 customer",
-            confidence=0.95,
-            is_destructive=False,
-            requires_confirmation=False,
-            execution_time=0.5,
+            metadata=QueryMetadata(
+                confidence=0.95,
+                is_destructive=False,
+                requires_confirmation=False,
+                execution_time=0.5,
+            ),
         )
         
         d = result.to_dict()
@@ -446,13 +448,13 @@ class TestModels:
     
     def test_query_result_default_values(self):
         """Test QueryResult with minimal required values."""
-        from queryweaver_sdk.models import QueryResult
-        
+        from queryweaver_sdk.models import QueryResult, QueryMetadata
+
         result = QueryResult(
             sql_query="SELECT 1",
             results=[],
             ai_response="Test",
-            confidence=0.8,
+            metadata=QueryMetadata(confidence=0.8),
         )
         
         # Check defaults for optional fields

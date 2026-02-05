@@ -222,6 +222,105 @@ Notes & tips
 - The streaming response includes intermediate reasoning steps, follow-up questions (if the query is ambiguous or off-topic), and the final SQL. The frontend expects the boundary string `|||FALKORDB_MESSAGE_BOUNDARY|||` between messages.
 - For destructive SQL (INSERT/UPDATE/DELETE etc) the service will include a confirmation step in the stream; the frontend handles this flow. If you automate destructive operations, ensure you handle confirmation properly (see the `ConfirmRequest` model in the code).
 
+## Python SDK
+
+The QueryWeaver Python SDK allows you to use Text2SQL functionality directly in your Python applications **without running a web server**.
+
+### Installation
+
+```bash
+# SDK only (minimal dependencies)
+pip install queryweaver
+
+# With server dependencies (FastAPI, etc.)
+pip install queryweaver[server]
+
+# Development (includes testing tools)
+pip install queryweaver[dev]
+```
+
+### Quick Start
+
+```python
+import asyncio
+from queryweaver_sdk import QueryWeaver
+
+async def main():
+    # Initialize with FalkorDB connection
+    qw = QueryWeaver(falkordb_url="redis://localhost:6379")
+
+    # Connect a PostgreSQL or MySQL database
+    conn = await qw.connect_database("postgresql://user:pass@host:5432/mydb")
+    print(f"Connected: {conn.tables_loaded} tables loaded")
+
+    # Convert natural language to SQL and execute
+    result = await qw.query("mydb", "Show me all customers from NYC")
+    print(result.sql_query)    # SELECT * FROM customers WHERE city = 'NYC'
+    print(result.results)       # [{"id": 1, "name": "Alice", "city": "NYC"}, ...]
+    print(result.ai_response)   # "Found 42 customers from NYC..."
+
+    await qw.close()
+
+asyncio.run(main())
+```
+
+### Context Manager
+
+```python
+async with QueryWeaver(falkordb_url="redis://localhost:6379") as qw:
+    await qw.connect_database("postgresql://user:pass@host/mydb")
+    result = await qw.query("mydb", "Count orders by status")
+```
+
+### Available Methods
+
+| Method | Description |
+|--------|-------------|
+| `connect_database(db_url)` | Connect PostgreSQL/MySQL and load schema |
+| `query(database, question)` | Convert natural language to SQL and execute |
+| `get_schema(database)` | Retrieve database schema (tables and relationships) |
+| `list_databases()` | List all connected databases |
+| `delete_database(database)` | Remove database from FalkorDB |
+| `refresh_schema(database)` | Re-sync schema after database changes |
+| `execute_confirmed(database, sql)` | Execute confirmed destructive operations |
+
+### Advanced Query Options
+
+For multi-turn conversations or custom instructions:
+
+```python
+from queryweaver_sdk import QueryWeaver
+from queryweaver_sdk.models import QueryRequest
+
+request = QueryRequest(
+    question="Show their recent orders",
+    chat_history=["Show all customers from NYC"],
+    result_history=["Found 42 customers..."],
+    instructions="Use created_at for date filtering",
+)
+
+result = await qw.query("mydb", request)
+```
+
+### Handling Destructive Operations
+
+INSERT, UPDATE, DELETE operations require confirmation:
+
+```python
+result = await qw.query("mydb", "Delete inactive users")
+
+if result.requires_confirmation:
+    print(f"Destructive SQL: {result.sql_query}")
+    # Execute after user confirms
+    confirmed = await qw.execute_confirmed("mydb", result.sql_query)
+```
+
+### Requirements
+
+- Python 3.12+
+- FalkorDB instance (local or remote)
+- OpenAI or Azure OpenAI API key (for LLM)
+- Target SQL database (PostgreSQL or MySQL)
 
 ## Development
 
