@@ -27,6 +27,8 @@ Requirements:
 from queryweaver_sdk.client import QueryWeaver
 from queryweaver_sdk.models import (
     QueryResult,
+    QueryMetadata,
+    QueryAnalysis,
     SchemaResult,
     DatabaseConnection,
     RefreshResult,
@@ -38,6 +40,8 @@ from queryweaver_sdk.connection import FalkorDBConnection
 __all__ = [
     "QueryWeaver",
     "QueryResult",
+    "QueryMetadata",
+    "QueryAnalysis",
     "SchemaResult", 
     "DatabaseConnection",
     "RefreshResult",

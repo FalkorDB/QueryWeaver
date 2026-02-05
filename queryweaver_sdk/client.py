@@ -3,6 +3,13 @@
 This module provides the main QueryWeaver class for converting natural
 language questions to SQL queries without requiring a web server.
 
+Note: This module uses lazy imports (import-outside-toplevel) intentionally.
+The api.* modules require FalkorDB connection at import time, so we defer
+importing them until methods are called. This allows:
+- `from queryweaver_sdk import QueryWeaver` to succeed without FalkorDB
+- Type hints to work via TYPE_CHECKING block
+- Runtime imports only when SDK methods are actually used
+
 Example usage:
     ```python
     from queryweaver_sdk import QueryWeaver
@@ -16,9 +23,11 @@ Example usage:
         print(result.results)
     ```
 """
+# pylint: disable=import-outside-toplevel
+# Lazy imports are required - see module docstring for explanation
 
 import os
-from typing import Optional
+from typing import Optional, Union
 
 from queryweaver_sdk.connection import FalkorDBConnection
 from queryweaver_sdk.models import (
@@ -26,6 +35,7 @@ from queryweaver_sdk.models import (
     SchemaResult,
     DatabaseConnection,
     RefreshResult,
+    QueryRequest,
 )
 
 
@@ -118,45 +128,59 @@ class QueryWeaver:
     async def query(
         self,
         database: str,
-        question: str,
-        chat_history: Optional[list[str]] = None,
-        result_history: Optional[list[str]] = None,
-        instructions: Optional[str] = None,
-        use_user_rules: bool = True,
-        use_memory: bool = False,
+        question: Union[str, QueryRequest],
     ) -> QueryResult:
         """Convert natural language to SQL and execute.
 
+        Can be called with a simple question string or a QueryRequest for advanced options.
+
         Args:
             database: The database identifier to query.
-            question: Natural language question to convert to SQL.
-            chat_history: Previous questions for conversation context.
-            result_history: Previous results for context.
-            instructions: Additional instructions for query generation.
-            use_user_rules: Whether to apply user-defined rules.
-            use_memory: Whether to use long-term memory for context.
+            question: Either a natural language question string, or a QueryRequest
+                     object with full conversation context and options.
 
         Returns:
             QueryResult with SQL query, results, and AI response.
 
         Raises:
             ValueError: If the question is empty or database not found.
-        """
-        from api.core.text2sql import query_database_sync, ChatRequest
 
-        if not question or not question.strip():
-            raise ValueError("Question cannot be empty")
+        Examples:
+            Simple usage:
+                result = await qw.query("mydb", "Show all customers")
+
+            Advanced usage with context:
+                request = QueryRequest(
+                    question="Show their orders",
+                    chat_history=["Show all customers"],
+                    result_history=["Found 10 customers"],
+                    instructions="Use customer_id for joins",
+                )
+                result = await qw.query("mydb", request)
+        """
+        from api.core.text2sql_sync import query_database_sync
+        from api.core.text2sql import ChatRequest
+
+        # Handle both string and QueryRequest inputs
+        if isinstance(question, str):
+            if not question or not question.strip():
+                raise ValueError("Question cannot be empty")
+            request = QueryRequest(question=question)
+        else:
+            request = question
+            if not request.question or not request.question.strip():
+                raise ValueError("Question cannot be empty")
 
         # Build chat history with current question
-        history = list(chat_history or [])
-        history.append(question)
+        history = list(request.chat_history or [])
+        history.append(request.question)
 
         chat_data = ChatRequest(
             chat=history,
-            result=result_history,
-            instructions=instructions,
-            use_user_rules=use_user_rules,
-            use_memory=use_memory,
+            result=request.result_history,
+            instructions=request.instructions,
+            use_user_rules=request.use_user_rules,
+            use_memory=request.use_memory,
         )
 
         return await query_database_sync(self._user_id, database, chat_data)
@@ -223,7 +247,7 @@ class QueryWeaver:
         Raises:
             ValueError: If the database is not found.
         """
-        from api.core.text2sql import refresh_database_schema_sync
+        from api.core.text2sql_sync import refresh_database_schema_sync
         return await refresh_database_schema_sync(self._user_id, database)
 
     async def execute_confirmed(
@@ -245,7 +269,8 @@ class QueryWeaver:
         Returns:
             QueryResult with execution results.
         """
-        from api.core.text2sql import execute_destructive_operation_sync, ConfirmRequest
+        from api.core.text2sql_sync import execute_destructive_operation_sync
+        from api.core.text2sql import ConfirmRequest
 
         confirm_data = ConfirmRequest(
             sql_query=sql_query,

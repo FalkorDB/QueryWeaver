@@ -5,20 +5,17 @@ from typing import Any
 
 
 @dataclass
-class QueryResult:
-    """Result from a text-to-SQL query execution."""
+class QueryMetadata:
+    """Metadata about query execution."""
 
-    sql_query: str
-    """The generated SQL query."""
-
-    results: list[dict[str, Any]]
-    """Query execution results as list of row dictionaries."""
-
-    ai_response: str
-    """Human-readable AI-generated response summarizing the results."""
-
-    confidence: float
+    confidence: float = 0.0
     """Confidence score (0-1) for the generated SQL query."""
+
+    execution_time: float = 0.0
+    """Total execution time in seconds."""
+
+    is_valid: bool = True
+    """Whether the query was successfully translated to valid SQL."""
 
     is_destructive: bool = False
     """Whether the query is a destructive operation (INSERT/UPDATE/DELETE/DROP)."""
@@ -26,11 +23,14 @@ class QueryResult:
     requires_confirmation: bool = False
     """Whether the operation requires user confirmation before execution."""
 
-    execution_time: float = 0.0
-    """Total execution time in seconds."""
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return asdict(self)
 
-    is_valid: bool = True
-    """Whether the query was successfully translated to valid SQL."""
+
+@dataclass
+class QueryAnalysis:
+    """Analysis information from query processing."""
 
     missing_information: str = ""
     """Any information that was missing to fully answer the query."""
@@ -44,6 +44,78 @@ class QueryResult:
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return asdict(self)
+
+
+@dataclass
+class QueryResult:
+    """Result from a text-to-SQL query execution."""
+
+    sql_query: str
+    """The generated SQL query."""
+
+    results: list[dict[str, Any]]
+    """Query execution results as list of row dictionaries."""
+
+    ai_response: str
+    """Human-readable AI-generated response summarizing the results."""
+
+    metadata: QueryMetadata = field(default_factory=QueryMetadata)
+    """Query execution metadata (confidence, timing, flags)."""
+
+    analysis: QueryAnalysis = field(default_factory=QueryAnalysis)
+    """Query analysis information (missing info, ambiguities, explanation)."""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary with flattened structure for compatibility."""
+        result = {
+            "sql_query": self.sql_query,
+            "results": self.results,
+            "ai_response": self.ai_response,
+        }
+        result.update(self.metadata.to_dict())
+        result.update(self.analysis.to_dict())
+        return result
+
+    # Compatibility properties for existing code
+    @property
+    def confidence(self) -> float:
+        """Confidence score (0-1) for the generated SQL query."""
+        return self.metadata.confidence
+
+    @property
+    def execution_time(self) -> float:
+        """Total execution time in seconds."""
+        return self.metadata.execution_time
+
+    @property
+    def is_valid(self) -> bool:
+        """Whether the query was successfully translated to valid SQL."""
+        return self.metadata.is_valid
+
+    @property
+    def is_destructive(self) -> bool:
+        """Whether the query is a destructive operation."""
+        return self.metadata.is_destructive
+
+    @property
+    def requires_confirmation(self) -> bool:
+        """Whether the operation requires user confirmation."""
+        return self.metadata.requires_confirmation
+
+    @property
+    def missing_information(self) -> str:
+        """Any information that was missing to fully answer the query."""
+        return self.analysis.missing_information
+
+    @property
+    def ambiguities(self) -> str:
+        """Any ambiguities detected in the user's question."""
+        return self.analysis.ambiguities
+
+    @property
+    def explanation(self) -> str:
+        """Explanation of the SQL query logic."""
+        return self.analysis.explanation
 
 
 @dataclass

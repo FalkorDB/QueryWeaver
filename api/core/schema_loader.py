@@ -6,6 +6,7 @@ import time
 from typing import AsyncGenerator, Optional
 
 from pydantic import BaseModel
+from redis import RedisError
 
 from api.extensions import db
 
@@ -13,6 +14,7 @@ from api.core.errors import InvalidArgumentError
 from api.loaders.base_loader import BaseLoader
 from api.loaders.postgres_loader import PostgresLoader
 from api.loaders.mysql_loader import MySQLLoader
+from queryweaver_sdk.models import DatabaseConnection
 
 # Use the same delimiter as in the JavaScript frontend for streaming chunks
 MESSAGE_DELIMITER = "|||FALKORDB_MESSAGE_BOUNDARY|||"
@@ -181,8 +183,6 @@ async def load_database_sync(url: str, user_id: str):
     Returns:
         DatabaseConnection with connection status.
     """
-    from queryweaver_sdk.models import DatabaseConnection
-
     # Validate URL format
     if not url or len(url.strip()) == 0:
         raise InvalidArgumentError("Invalid URL format")
@@ -227,7 +227,7 @@ async def load_database_sync(url: str, user_id: str):
             message=last_message or "Failed to load database schema",
         )
 
-    except Exception as e:
+    except (RedisError, ConnectionError, OSError) as e:
         logging.exception("Error loading database: %s", str(e))
         return DatabaseConnection(
             database_id="",
