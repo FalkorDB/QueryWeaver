@@ -43,8 +43,20 @@ class ResponseFormatterAgent:
     # pylint: disable=too-few-public-methods
     """Agent for generating user-readable responses from SQL query results."""
 
-    def __init__(self):
-        """Initialize the response formatter agent."""
+    def __init__(self, queries_history: List[str] = None, result_history: List[str] = None,
+                 custom_api_key: str = None, custom_model: str = None):
+        """Initialize the response formatter agent.
+        
+        Args:
+            queries_history: List of previous user queries (for context)
+            result_history: List of previous results (for context)
+            custom_api_key: Optional custom API key for LLM calls
+            custom_model: Optional custom model name for LLM calls
+        """
+        self.queries_history = queries_history or []
+        self.result_history = result_history or []
+        self.custom_api_key = custom_api_key
+        self.custom_model = custom_model
 
     def format_response(self, user_query: str, sql_query: str,
                        query_results: List[Dict], db_description: str = "") -> str:

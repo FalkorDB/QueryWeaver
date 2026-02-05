@@ -9,7 +9,6 @@ import LoginModal from "@/components/modals/LoginModal";
 import DatabaseModal from "@/components/modals/DatabaseModal";
 import DeleteDatabaseModal from "@/components/modals/DeleteDatabaseModal";
 import TokensModal from "@/components/modals/TokensModal";
-import SettingsModal from "@/components/modals/SettingsModal";
 import SchemaViewer from "@/components/schema";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -33,7 +32,6 @@ const Index = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showSchemaViewer, setShowSchemaViewer] = useState(false);
   const [showTokensModal, setShowTokensModal] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
   // userRulesSpec is now fetched from the graph database per query
   const [useMemory, setUseMemory] = useState(() => {
     // Load from localStorage on init, default to true
@@ -350,7 +348,6 @@ const Index = () => {
         isSchemaOpen={showSchemaViewer}
         isCollapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-        onSettingsClick={() => setShowSettingsModal(true)}
       />
       
       {/* Schema Viewer */}
@@ -660,7 +657,6 @@ const Index = () => {
         isDemo={databaseToDelete?.isDemo || false}
       />
       <TokensModal open={showTokensModal} onOpenChange={setShowTokensModal} />
-      <SettingsModal isOpen={showSettingsModal} onClose={() => setShowSettingsModal(false)} />
     </div>
   );
 };
