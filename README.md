@@ -13,7 +13,7 @@ Connect and ask questions: [![Discord](https://img.shields.io/badge/Discord-%235
 [![Swagger UI](https://img.shields.io/badge/API-Swagger-11B48A?logo=swagger&logoColor=white)](https://app.queryweaver.ai/docs)
 </div>
 
-![queryweaver-demo-video-ui](https://github.com/user-attachments/assets/b66018cb-0e42-4907-8ac1-c169762ff22d)
+![new-qw-ui-gif](https://github.com/user-attachments/assets/87bb6a50-5bf4-4217-ad05-f99e32ed2dd0)
 
 ## Get Started
 ### Docker

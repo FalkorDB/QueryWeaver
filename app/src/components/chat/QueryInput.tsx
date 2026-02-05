@@ -21,19 +21,20 @@ const QueryInput = ({ onSubmit, placeholder = "Ask me anything about your databa
   };
 
   return (
-    <form onSubmit={handleSubmit} className="relative">
+    <form onSubmit={handleSubmit} className="relative" data-testid="query-input-form">
       <Textarea
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder={placeholder}
         disabled={disabled}
-        className="min-h-[60px] bg-gray-800 border-gray-600 text-gray-200 placeholder-gray-500 resize-none pr-12 focus:border-purple-500 focus:ring-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="min-h-[60px] bg-card border-border text-foreground placeholder-muted-foreground resize-none pr-12 focus-visible:border-purple-500 focus-visible:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey && !disabled) {
             e.preventDefault();
             handleSubmit(e);
           }
         }}
+        data-testid="query-textarea"
       />
       <Button
         type="submit"
@@ -41,6 +42,7 @@ const QueryInput = ({ onSubmit, placeholder = "Ask me anything about your databa
         className="absolute right-2 bottom-2 bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
         disabled={!query.trim() || disabled}
         aria-label="Send query"
+        data-testid="send-query-btn"
       >
         <Send className="w-4 h-4" />
       </Button>
