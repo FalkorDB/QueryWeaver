@@ -6,7 +6,7 @@ name = "pypi"
 [packages]
 fastapi = "~=0.124.0"
 uvicorn = "~=0.40.0"
-litellm = "~=1.80.9"
+litellm = "~=1.81.9"
 falkordb = "~=1.2.2"
 psycopg2-binary = "~=2.9.11"
 pymysql = "~=1.1.0"
