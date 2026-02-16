@@ -209,12 +209,12 @@ async def load_database_sync(url: str, user_id: str):
                 tables_loaded += 1
 
         if success:
-            # Extract database name from the message or URL
-            # The loader typically returns the graph_id in the final message
-            db_name = url.split("/")[-1].split("?")[0]  # Extract DB name from URL
+            # Extract database name from URL and namespace it to the user
+            db_name = url.split("/")[-1].split("?")[0]
+            namespaced_id = f"{user_id}_{db_name}"
 
             return DatabaseConnection(
-                database_id=db_name,
+                database_id=namespaced_id,
                 success=True,
                 tables_loaded=tables_loaded,
                 message="Database connected and schema loaded successfully",
@@ -224,7 +224,7 @@ async def load_database_sync(url: str, user_id: str):
             database_id="",
             success=False,
             tables_loaded=0,
-            message=last_message or "Failed to load database schema",
+            message="Failed to load database schema",
         )
 
     except (RedisError, ConnectionError, OSError) as e:
@@ -233,5 +233,5 @@ async def load_database_sync(url: str, user_id: str):
             database_id="",
             success=False,
             tables_loaded=0,
-            message=f"Error connecting to database: {str(e)}",
+            message="Error connecting to database",
         )

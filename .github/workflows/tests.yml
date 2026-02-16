@@ -131,6 +131,7 @@ jobs:
       run: |
         cp .env.example .env
         echo "FASTAPI_SECRET_KEY=test-secret-key" >> .env
+        echo "FALKORDB_URL=redis://localhost:6379" >> .env
 
     - name: Run SDK tests
       env:

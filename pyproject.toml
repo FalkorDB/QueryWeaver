@@ -96,17 +96,21 @@ dev = [
     "pytest-playwright>=0.7.1",
 ]
 
-# pytest configuration (migrate from pytest.ini)
+# pytest configuration (consolidated from pytest.ini + pyproject.toml)
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+addopts = "--verbose --tb=short --strict-markers"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
-    "e2e: marks tests as end-to-end tests",
-    "slow: marks tests as slow running",
+    "e2e: End-to-end tests using Playwright",
+    "slow: Tests that take a long time to run",
+    "auth: Tests that require authentication",
+    "integration: Integration tests",
+    "unit: Unit tests",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning:litellm.*",

@@ -134,7 +134,7 @@ async def _execute_query_with_healing(
         )
 
         if not healing_result.get("success"):
-            raise exec_error
+            raise  # preserve original traceback
 
         return healing_result["sql_query"], healing_result["query_results"]
 

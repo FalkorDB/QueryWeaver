@@ -51,8 +51,8 @@ endif
 
 test: build-dev test-unit test-e2e ## Run all tests
 
-test-unit: ## Run unit tests only
-	$(RUN_CMD) python -m pytest tests/ -k "not e2e" --verbose
+test-unit: ## Run unit tests only (excludes SDK and E2E tests)
+	$(RUN_CMD) python -m pytest tests/ -k "not e2e and not test_sdk" --ignore=tests/test_sdk --verbose
 
 
 test-e2e: build-dev ## Run E2E tests headless
@@ -68,7 +68,7 @@ test-e2e-debug: build-dev ## Run E2E tests with debugging enabled
 
 lint: ## Run linting (backend + frontend)
 	@echo "Running backend lint (pylint)"
-	$(RUN_CMD) pylint $(shell git ls-files '*.py') || true
+	$(RUN_CMD) pylint $(shell git ls-files '*.py')
 	@echo "Running frontend lint (eslint)"
 	make lint-frontend
 

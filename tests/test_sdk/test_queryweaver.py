@@ -221,7 +221,7 @@ class TestQuery:
             assert "Alice Smith" in customer_names, f"Expected 'Alice Smith' in results, got {customer_names}"
             assert "Carol White" in customer_names, f"Expected 'Carol White' in results, got {customer_names}"
             # Bob Jones should NOT be in results (he's from Los Angeles)
-            assert "Bob Jones" not in customer_names, f"'Bob Jones' should not be in NYC results"
+            assert "Bob Jones" not in customer_names, "'Bob Jones' should not be in NYC results"
             
             # Cleanup
             await qw.delete_database(conn_result.database_id)

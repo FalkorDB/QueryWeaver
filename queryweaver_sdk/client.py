@@ -73,9 +73,13 @@ class QueryWeaver:
 
     def _setup_connection(self) -> None:
         """Set up the connection for use by core modules.
-        
+
         Note: api.extensions is imported lazily to allow SDK import
         without requiring FalkorDB connection at module load time.
+
+        Warning: This mutates the global ``api.extensions.db``. Only one
+        ``QueryWeaver`` instance should be active at a time; creating a
+        second instance will overwrite the connection used by the first.
         """
         import api.extensions
         api.extensions.db = self._connection.db

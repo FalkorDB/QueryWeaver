@@ -113,6 +113,9 @@ class FalkorDBConnection:
         if self._pool is not None:
             await self._pool.disconnect()
             self._pool = None
+        elif self._db is not None:
+            # Non-pooled connection (created via host/port) — close directly
+            await self._db.connection.aclose()
         self._db = None
 
     def select_graph(self, graph_id: str):
