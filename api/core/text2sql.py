@@ -4,7 +4,6 @@
 import asyncio
 import json
 import logging
-import os
 import time
 
 from pydantic import BaseModel
@@ -12,20 +11,25 @@ from redis import ResponseError, RedisError
 
 from api.core.errors import GraphNotFoundError, InternalError, InvalidArgumentError
 from api.core.schema_loader import load_database
+from api.core.text2sql_common import (
+    graph_name,
+    get_database_type_and_loader,
+    sanitize_query,
+    sanitize_log_input,
+    detect_destructive_operation,
+    auto_quote_sql_identifiers,
+    is_general_graph,
+    validate_and_truncate_chat,
+    check_schema_modification,
+)
 from api.agents import AnalysisAgent, RelevancyAgent, ResponseFormatterAgent, FollowUpAgent
 from api.agents.healer_agent import HealerAgent
-from api.config import Config
 from api.extensions import db
 from api.graph import find, get_db_description, get_user_rules
-from api.loaders.postgres_loader import PostgresLoader
-from api.loaders.mysql_loader import MySQLLoader
 from api.memory.graphiti_tool import MemoryTool
-from api.sql_utils import SQLIdentifierQuoter, DatabaseSpecificQuoter
 
 # Use the same delimiter as in the JavaScript
 MESSAGE_DELIMITER = "|||FALKORDB_MESSAGE_BOUNDARY|||"
-
-GENERAL_PREFIX = os.getenv("GENERAL_PREFIX")
 
 class GraphData(BaseModel):
     """Graph data model.
@@ -60,53 +64,6 @@ class ConfirmRequest(BaseModel):
     chat: list = []
 
 
-def get_database_type_and_loader(db_url: str):
-    """
-    Determine the database type from URL and return appropriate loader class.
-
-    Args:
-        db_url: Database connection URL
-
-    Returns:
-        tuple: (database_type, loader_class)
-    """
-    if not db_url or db_url == "No URL available for this database.":
-        return None, None
-
-    db_url_lower = db_url.lower()
-
-    if db_url_lower.startswith('postgresql://') or db_url_lower.startswith('postgres://'):
-        return 'postgresql', PostgresLoader
-    if db_url_lower.startswith('mysql://'):
-        return 'mysql', MySQLLoader
-
-    # Default to PostgresLoader for backward compatibility
-    return 'postgresql', PostgresLoader
-
-def sanitize_query(query: str) -> str:
-    """Sanitize the query to prevent injection attacks."""
-    return query.replace('\n', ' ').replace('\r', ' ')[:500]
-
-def sanitize_log_input(value: str) -> str:
-    """
-    Sanitize input for safe logging—remove newlines, 
-    carriage returns, tabs, and wrap in repr().
-    """
-    if not isinstance(value, str):
-        value = str(value)
-
-    return value.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
-
-def _graph_name(user_id: str, graph_id:str) -> str:
-
-    graph_id = graph_id.strip()[:200]
-    if not graph_id:
-        raise GraphNotFoundError("Invalid graph_id, must be less than 200 characters.")
-
-    if GENERAL_PREFIX and graph_id.startswith(GENERAL_PREFIX):
-        return graph_id
-
-    return f"{user_id}_{graph_id}"
 
 async def get_schema(user_id: str, graph_id: str):  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     """Return all nodes and edges for the specified database schema (namespaced to the user).
@@ -118,7 +75,7 @@ async def get_schema(user_id: str, graph_id: str):  # pylint: disable=too-many-l
         args:
             graph_id (str): The ID of the graph to query (the database name).
     """
-    namespaced = _graph_name(user_id, graph_id)
+    namespaced = graph_name(user_id, graph_id)
     try:
         graph = db.select_graph(namespaced)
     except Exception as e:  # pylint: disable=broad-exception-caught
@@ -210,29 +167,11 @@ async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  
             graph_id (str): The ID of the graph to query.
             chat_data (ChatRequest): The chat data containing user queries and context.
     """
-    graph_id = _graph_name(user_id, graph_id)
+    graph_id = graph_name(user_id, graph_id)
 
-    queries_history = chat_data.chat if hasattr(chat_data, 'chat') else None
-    result_history = chat_data.result if hasattr(chat_data, 'result') else None
-    instructions = chat_data.instructions if hasattr(chat_data, 'instructions') else None
-    use_user_rules = chat_data.use_user_rules if hasattr(chat_data, 'use_user_rules') else True
-
-    if not queries_history or not isinstance(queries_history, list):
-        raise InvalidArgumentError("Invalid or missing chat history")
-
-    if len(queries_history) == 0:
-        raise InvalidArgumentError("Empty chat history")
-
-    # Truncate history to keep only the last N questions maximum (configured in Config)
-    if len(queries_history) > Config.SHORT_MEMORY_LENGTH:
-        queries_history = queries_history[-Config.SHORT_MEMORY_LENGTH:]
-        # Keep corresponding results (one less than queries since current query has no result yet)
-        if result_history and len(result_history) > 0:
-            max_results = Config.SHORT_MEMORY_LENGTH - 1
-            if max_results > 0:
-                result_history = result_history[-max_results:]
-            else:
-                result_history = []
+    queries_history, result_history, instructions, use_user_rules = (
+        validate_and_truncate_chat(chat_data)
+    )
 
     logging.info("User Query: %s", sanitize_query(queries_history[-1]))
 
@@ -348,37 +287,21 @@ async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  
             # If the SQL query is valid, execute it using the configured database and db_url
             if answer_an["is_sql_translatable"]:
                 # Auto-quote table names with special characters (like dashes)
-                # Extract known table names from the result schema
                 known_tables = {table[0] for table in result} if result else set()
-
-                # Determine database type and get appropriate quote character
-                quote_char = DatabaseSpecificQuoter.get_quote_char(
-                    db_type or 'postgresql'
+                sanitized_sql, was_modified = auto_quote_sql_identifiers(
+                    answer_an['sql_query'], known_tables, db_type
                 )
-
-                # Auto-quote identifiers with special characters
-                sanitized_sql, was_modified = (
-                    SQLIdentifierQuoter.auto_quote_identifiers(
-                        answer_an['sql_query'], known_tables, quote_char
-                    )
-                )
-
                 if was_modified:
-                    msg = (
+                    logging.info(
                         "SQL query auto-sanitized: quoted table names with "
                         "special characters"
                     )
-                    logging.info(msg)
                     answer_an['sql_query'] = sanitized_sql
 
                 # Check if this is a destructive operation that requires confirmation
                 sql_query = answer_an["sql_query"]
-                sql_type = sql_query.strip().split()[0].upper() if sql_query else ""
-
-                destructive_ops = ['INSERT', 'UPDATE', 'DELETE', 'DROP',
-                                  'CREATE', 'ALTER', 'TRUNCATE']
-                is_destructive = sql_type in destructive_ops
-                general_graph = graph_id.startswith(GENERAL_PREFIX) if GENERAL_PREFIX else False
+                sql_type, is_destructive = detect_destructive_operation(sql_query)
+                general_graph = is_general_graph(graph_id)
                 if is_destructive and not general_graph:
                     # This is a destructive operation - ask for user confirmation
                     confirmation_message = f"""⚠️ DESTRUCTIVE OPERATION DETECTED ⚠️
@@ -449,7 +372,7 @@ What this will do:
                         # Check if this query modifies the database schema
                         # using the appropriate loader
                         is_schema_modifying, operation_type = (
-                            loader_class.is_schema_modifying_query(sql_query)
+                            check_schema_modification(sql_query, loader_class)
                         )
 
                         # Try executing the SQL query first
@@ -706,7 +629,7 @@ async def execute_destructive_operation(  # pylint: disable=too-many-statements
     Handle user confirmation for destructive SQL operations
     """
 
-    graph_id = _graph_name(user_id, graph_id)
+    graph_id = graph_name(user_id, graph_id)
 
     if hasattr(confirm_data, 'confirmation'):
         confirmation = confirm_data.confirmation.strip().upper()
@@ -759,25 +682,18 @@ async def execute_destructive_operation(  # pylint: disable=too-many-statements
                     except Exception:  # pylint: disable=broad-exception-caught
                         known_tables = set()
 
-                    # Determine database type and get appropriate quote character
-                    db_type, _ = get_database_type_and_loader(db_url)
-                    quote_char = DatabaseSpecificQuoter.get_quote_char(
-                        db_type or 'postgresql'
-                    )
-
                     # Auto-quote identifiers
-                    sanitized_sql, was_modified = (
-                        SQLIdentifierQuoter.auto_quote_identifiers(
-                            sql_query, known_tables, quote_char
-                        )
+                    db_type, _ = get_database_type_and_loader(db_url)
+                    sanitized_sql, was_modified = auto_quote_sql_identifiers(
+                        sql_query, known_tables, db_type
                     )
                     if was_modified:
                         logging.info("Confirmed SQL query auto-sanitized")
                         sql_query = sanitized_sql
 
                 # Check if this query modifies the database schema using appropriate loader
-                is_schema_modifying, operation_type = (
-                    loader_class.is_schema_modifying_query(sql_query)
+                is_schema_modifying, operation_type = check_schema_modification(
+                    sql_query, loader_class
                 )
                 query_results = loader_class.execute_sql_query(sql_query, db_url)
                 yield json.dumps(
@@ -896,10 +812,10 @@ async def refresh_database_schema(user_id: str, graph_id: str):
     This endpoint allows users to manually trigger a schema refresh
     if they suspect the graph is out of sync with the database.
     """
-    graph_id = _graph_name(user_id, graph_id)
+    graph_id = graph_name(user_id, graph_id)
 
     # Prevent refresh of demo databases
-    if GENERAL_PREFIX and graph_id.startswith(GENERAL_PREFIX):
+    if is_general_graph(graph_id):
         raise InvalidArgumentError("Demo graphs cannot be refreshed")
 
     try:
@@ -925,8 +841,8 @@ async def delete_database(user_id: str, graph_id: str):
     namespace and will be namespaced using the user's id from the request
     state.
     """
-    namespaced = _graph_name(user_id, graph_id)
-    if GENERAL_PREFIX and graph_id.startswith(GENERAL_PREFIX):
+    namespaced = graph_name(user_id, graph_id)
+    if is_general_graph(graph_id):
         raise InvalidArgumentError("Demo graphs cannot be deleted")
 
     try:

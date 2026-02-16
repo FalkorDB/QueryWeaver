@@ -6,7 +6,6 @@ structured results instead of async generators.
 
 import asyncio
 import logging
-import os
 import time
 from dataclasses import dataclass, field
 from typing import Optional, Type
@@ -15,18 +14,21 @@ from redis import RedisError
 
 from api.agents import AnalysisAgent, RelevancyAgent, ResponseFormatterAgent, FollowUpAgent
 from api.agents.healer_agent import HealerAgent
-from api.config import Config
 from api.core.errors import InvalidArgumentError
+from api.core.text2sql_common import (
+    graph_name,
+    get_database_type_and_loader,
+    truncate_for_log,
+    detect_destructive_operation,
+    auto_quote_sql_identifiers,
+    is_general_graph,
+    validate_and_truncate_chat,
+    check_schema_modification,
+)
 from api.graph import find, get_db_description, get_user_rules
 from api.loaders.base_loader import BaseLoader
-from api.loaders.mysql_loader import MySQLLoader
-from api.loaders.postgres_loader import PostgresLoader
 from api.memory.graphiti_tool import MemoryTool
-from api.sql_utils import SQLIdentifierQuoter, DatabaseSpecificQuoter
 from queryweaver_sdk.models import QueryResult, QueryMetadata, QueryAnalysis, RefreshResult
-
-
-GENERAL_PREFIX = os.getenv("GENERAL_PREFIX")
 
 
 def _build_query_result(
@@ -55,69 +57,6 @@ def _build_query_result(
     )
 
 
-def _graph_name(user_id: str, graph_id: str) -> str:
-    """Generate namespaced graph name."""
-    return f"{user_id}_{graph_id}"
-
-
-def _get_database_type_and_loader(
-    db_url: str
-) -> tuple[Optional[str], Optional[Type[BaseLoader]]]:
-    """Determine database type and loader from URL."""
-    if db_url.startswith(('postgresql://', 'postgres://')):
-        return 'postgresql', PostgresLoader
-    if db_url.startswith('mysql://'):
-        return 'mysql', MySQLLoader
-    return None, None
-
-
-def _sanitize_query(query: str) -> str:
-    """Sanitize query for logging."""
-    if len(query) > 200:
-        return query[:200] + "..."
-    return query
-
-
-def _validate_chat_data(chat_data) -> tuple[list, Optional[list], Optional[str], bool]:
-    """
-    Validate and extract chat data fields.
-    
-    Returns:
-        Tuple of (queries_history, result_history, instructions, use_user_rules)
-        
-    Raises:
-        InvalidArgumentError: If chat data is invalid.
-    """
-    queries_history = getattr(chat_data, 'chat', None)
-    result_history = getattr(chat_data, 'result', None)
-    instructions = getattr(chat_data, 'instructions', None)
-    use_user_rules = getattr(chat_data, 'use_user_rules', True)
-
-    if not queries_history or not isinstance(queries_history, list):
-        raise InvalidArgumentError("Invalid or missing chat history")
-
-    if len(queries_history) == 0:
-        raise InvalidArgumentError("Empty chat history")
-
-    return queries_history, result_history, instructions, use_user_rules
-
-
-def _truncate_history(
-    queries_history: list,
-    result_history: Optional[list]
-) -> tuple[list, Optional[list]]:
-    """Truncate history to configured length."""
-    if len(queries_history) > Config.SHORT_MEMORY_LENGTH:
-        queries_history = queries_history[-Config.SHORT_MEMORY_LENGTH:]
-        if result_history and len(result_history) > 0:
-            max_results = Config.SHORT_MEMORY_LENGTH - 1
-            if max_results > 0:
-                result_history = result_history[-max_results:]
-            else:
-                result_history = []
-    return queries_history, result_history
-
-
 @dataclass
 class _ExecutionContext:
     """Context for SQL query execution."""
@@ -143,14 +82,13 @@ class _AnalysisResult:
 def _parse_analysis_result(answer_an: dict, sql_query_raw: str) -> _AnalysisResult:
     """Parse analysis agent response into structured result."""
     sql_query = answer_an.get("sql_query", sql_query_raw)
-    sql_type = sql_query.strip().split()[0].upper() if sql_query else ""
-    destructive_ops = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE']
+    _, is_destructive = detect_destructive_operation(sql_query)
 
     return _AnalysisResult(
         sql_query=sql_query,
         confidence=answer_an.get("confidence", 0.0),
         is_valid=answer_an.get("is_sql_translatable", False),
-        is_destructive=sql_type in destructive_ops,
+        is_destructive=is_destructive,
         missing_info=answer_an.get("missing_information", ""),
         ambiguities=answer_an.get("ambiguities", ""),
         explanation=answer_an.get("explanation", ""),
@@ -171,9 +109,8 @@ async def _execute_query_with_healing(
     Raises:
         Exception: If query fails and cannot be healed.
     """
-    quote_char = DatabaseSpecificQuoter.get_quote_char(context.db_type or 'postgresql')
-    sanitized_sql, was_modified = SQLIdentifierQuoter.auto_quote_identifiers(
-        sql_query, context.known_tables, quote_char
+    sanitized_sql, was_modified = auto_quote_sql_identifiers(
+        sql_query, context.known_tables, context.db_type
     )
     if was_modified:
         sql_query = sanitized_sql
@@ -233,14 +170,13 @@ async def _initialize_query_context(
     user_id: str, graph_id: str, chat_data
 ) -> _QueryContext:
     """Initialize query context with database info."""
-    graph_id = _graph_name(user_id, graph_id)
-    queries_history, result_history, instructions, use_user_rules = _validate_chat_data(
-        chat_data
+    graph_id = graph_name(user_id, graph_id)
+    queries_history, result_history, instructions, use_user_rules = (
+        validate_and_truncate_chat(chat_data)
     )
-    queries_history, result_history = _truncate_history(queries_history, result_history)
 
     overall_start = time.perf_counter()
-    logging.info("SDK Query: %s", _sanitize_query(queries_history[-1]))
+    logging.info("SDK Query: %s", truncate_for_log(queries_history[-1]))
 
     memory_tool = None
     if getattr(chat_data, 'use_memory', False):
@@ -301,6 +237,48 @@ async def _check_relevancy_and_find_tables(
     return None, result
 
 
+def _save_memory_background(
+    memory_tool: MemoryTool,
+    question: str,
+    sql_query: str,
+    success: bool,
+    error: str,
+    full_response: Optional[dict] = None,
+    chat_histories: Optional[list] = None,
+):
+    """Fire-and-forget memory persistence (mirrors text2sql.py streaming path)."""
+    # Save query memory
+    save_query_task = asyncio.create_task(
+        memory_tool.save_query_memory(
+            query=question,
+            sql_query=sql_query,
+            success=success,
+            error=error,
+        )
+    )
+    save_query_task.add_done_callback(
+        lambda t: logging.error("Query memory save failed: %s", t.exception())  # nosemgrep
+        if t.exception() else logging.info("Query memory saved successfully")
+    )
+
+    # Save full conversation memory if provided
+    if full_response is not None and chat_histories is not None:
+        save_task = asyncio.create_task(
+            memory_tool.add_new_memory(full_response, chat_histories)
+        )
+        save_task.add_done_callback(
+            lambda t: logging.error("Memory save failed: %s", t.exception())  # nosemgrep
+            if t.exception() else logging.info("Conversation saved to memory tool")
+        )
+
+    # Clean old memory in background
+    clean_memory_task = asyncio.create_task(memory_tool.clean_memory())
+    clean_memory_task.add_done_callback(
+        lambda t: logging.error("Memory cleanup failed: %s", t.exception())  # nosemgrep
+        if t.exception() else logging.info("Memory cleanup completed successfully")
+    )
+
+
 async def _execute_and_format_query(
     ctx: _QueryContext,
     analysis: _AnalysisResult,
@@ -322,6 +300,27 @@ async def _execute_and_format_query(
         analysis.sql_query, exec_context, ctx.chat.queries_history[-1]
     )
 
+    # Check for schema modifications and refresh if needed
+    is_schema_modifying, operation_type = check_schema_modification(
+        final_sql, loader_class
+    )
+    if is_schema_modifying:
+        logging.info(
+            "Schema modification detected (%s). Refreshing graph schema.",
+            operation_type,
+        )
+        try:
+            refresh_success, refresh_message = await loader_class.refresh_graph_schema(
+                ctx.db.graph_id, ctx.db.db_url
+            )
+            if not refresh_success:
+                logging.warning(
+                    "Schema refresh failed after %s: %s",
+                    operation_type, refresh_message,
+                )
+        except (RedisError, ConnectionError, OSError) as refresh_err:
+            logging.error("Error refreshing schema: %s", str(refresh_err))
+
     # Generate AI response
     response_agent = ResponseFormatterAgent()
     ai_response = response_agent.format_response(
@@ -333,15 +332,22 @@ async def _execute_and_format_query(
 
     execution_time = time.perf_counter() - ctx.overall_start
 
-    # Save to memory in background if enabled
+    # Save to memory in background if enabled (full persistence)
     if ctx.memory_tool:
-        asyncio.create_task(
-            ctx.memory_tool.save_query_memory(
-                query=ctx.chat.queries_history[-1],
-                sql_query=final_sql,
-                success=True,
-                error=""
-            )
+        full_response = {
+            "question": ctx.chat.queries_history[-1],
+            "generated_sql": final_sql,
+            "answer": ai_response,
+            "success": True,
+        }
+        _save_memory_background(
+            memory_tool=ctx.memory_tool,
+            question=ctx.chat.queries_history[-1],
+            sql_query=final_sql,
+            success=True,
+            error="",
+            full_response=full_response,
+            chat_histories=[ctx.chat.queries_history, ctx.chat.result_history],
         )
 
     return _build_query_result(
@@ -381,7 +387,7 @@ async def query_database_sync(
     ctx = await _initialize_query_context(user_id, graph_id, chat_data)
 
     # Determine database type early for validation
-    db_type, loader_class = _get_database_type_and_loader(ctx.db.db_url)
+    db_type, loader_class = get_database_type_and_loader(ctx.db.db_url)
 
     if not loader_class:
         return _build_query_result(
@@ -444,9 +450,7 @@ async def query_database_sync(
         )
 
     # Check if requires confirmation
-    if analysis.is_destructive and not (
-        GENERAL_PREFIX and ctx.db.graph_id.startswith(GENERAL_PREFIX)
-    ):
+    if analysis.is_destructive and not is_general_graph(ctx.db.graph_id):
         return _build_query_result(
             sql_query=analysis.sql_query,
             results=[],
@@ -471,6 +475,17 @@ async def query_database_sync(
         )
     except (RedisError, ConnectionError, OSError) as e:
         logging.error("Error executing SQL query: %s", str(e))
+
+        # Save error to memory
+        if ctx.memory_tool:
+            _save_memory_background(
+                memory_tool=ctx.memory_tool,
+                question=ctx.chat.queries_history[-1],
+                sql_query=analysis.sql_query,
+                success=False,
+                error=str(e),
+            )
+
         return _build_query_result(
             sql_query=analysis.sql_query,
             results=[],
@@ -504,7 +519,7 @@ async def execute_destructive_operation_sync(
     Returns:
         QueryResult with execution results.
     """
-    graph_id = _graph_name(user_id, graph_id)
+    graph_id = graph_name(user_id, graph_id)
 
     confirmation = getattr(confirm_data, 'confirmation', "")
     if confirmation:
@@ -531,9 +546,12 @@ async def execute_destructive_operation_sync(
             ),
         )
 
+    # Create memory tool for saving query results
+    memory_tool = await MemoryTool.create(user_id, graph_id)
+
     try:
         db_description, db_url = await get_db_description(graph_id)
-        _, loader_class = _get_database_type_and_loader(db_url)
+        _, loader_class = get_database_type_and_loader(db_url)
 
         if not loader_class:
             return _build_query_result(
@@ -550,6 +568,27 @@ async def execute_destructive_operation_sync(
         # Execute SQL
         query_results = loader_class.execute_sql_query(sql_query, db_url)
 
+        # Check for schema modifications and refresh if needed
+        is_schema_modifying, operation_type = check_schema_modification(
+            sql_query, loader_class
+        )
+        if is_schema_modifying:
+            logging.info(
+                "Schema modification detected (%s). Refreshing graph schema.",
+                operation_type,
+            )
+            try:
+                refresh_success, refresh_message = (
+                    await loader_class.refresh_graph_schema(graph_id, db_url)
+                )
+                if not refresh_success:
+                    logging.warning(
+                        "Schema refresh failed after %s: %s",
+                        operation_type, refresh_message,
+                    )
+            except (RedisError, ConnectionError, OSError) as refresh_err:
+                logging.error("Error refreshing schema: %s", str(refresh_err))
+
         # Generate response
         response_agent = ResponseFormatterAgent()
         ai_response = response_agent.format_response(
@@ -557,6 +596,19 @@ async def execute_destructive_operation_sync(
             sql_query=sql_query,
             query_results=query_results,
             db_description=db_description
+        )
+
+        # Save successful query to memory
+        question = (
+            queries_history[-1] if queries_history
+            else "Destructive operation confirmation"
+        )
+        _save_memory_background(
+            memory_tool=memory_tool,
+            question=question,
+            sql_query=sql_query,
+            success=True,
+            error="",
         )
 
         return _build_query_result(
@@ -574,6 +626,20 @@ async def execute_destructive_operation_sync(
 
     except (RedisError, ConnectionError, OSError) as e:
         logging.error("Error executing confirmed SQL: %s", str(e))
+
+        # Save failed query to memory
+        question = (
+            queries_history[-1] if queries_history
+            else "Destructive operation confirmation"
+        )
+        _save_memory_background(
+            memory_tool=memory_tool,
+            question=question,
+            sql_query=sql_query,
+            success=False,
+            error=str(e),
+        )
+
         return _build_query_result(
             sql_query=sql_query,
             results=[],
@@ -604,9 +670,9 @@ async def refresh_database_schema_sync(user_id: str, graph_id: str) -> RefreshRe
     # Imported here to break circular dependency between text2sql_sync and schema_loader
     from api.core.schema_loader import load_database_sync  # pylint: disable=import-outside-toplevel
 
-    namespaced = _graph_name(user_id, graph_id)
+    namespaced = graph_name(user_id, graph_id)
 
-    if GENERAL_PREFIX and graph_id.startswith(GENERAL_PREFIX):
+    if is_general_graph(graph_id):
         raise InvalidArgumentError("Demo graphs cannot be refreshed")
 
     try:

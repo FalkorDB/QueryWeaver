@@ -26,7 +26,6 @@ Example usage:
 # pylint: disable=import-outside-toplevel
 # Lazy imports are required - see module docstring for explanation
 
-import os
 from typing import Optional, Union
 
 from queryweaver_sdk.connection import FalkorDBConnection
@@ -67,7 +66,6 @@ class QueryWeaver:
         """
         self._user_id = user_id
         self._connection = FalkorDBConnection(url=falkordb_url)
-        self._general_prefix = os.getenv("GENERAL_PREFIX")
 
         # Inject our connection into the api.extensions module
         # This allows the existing core functions to use our connection
@@ -90,20 +88,23 @@ class QueryWeaver:
     def _graph_name(self, graph_id: str) -> str:
         """Get the namespaced graph name.
 
+        Delegates to the shared ``graph_name`` implementation in
+        ``text2sql_common`` and re-raises ``GraphNotFoundError`` as
+        ``ValueError`` for the SDK public API.
+
         Args:
             graph_id: The user-facing graph/database identifier.
 
         Returns:
             The namespaced graph name for internal use.
         """
-        graph_id = graph_id.strip()[:200]
-        if not graph_id:
-            raise ValueError("Invalid graph_id, must be non-empty and less than 200 characters.")
+        from api.core.text2sql_common import graph_name as _common_graph_name  # pylint: disable=import-outside-toplevel
+        from api.core.errors import GraphNotFoundError  # pylint: disable=import-outside-toplevel
 
-        if self._general_prefix and graph_id.startswith(self._general_prefix):
-            return graph_id
-
-        return f"{self._user_id}_{graph_id}"
+        try:
+            return _common_graph_name(self._user_id, graph_id)
+        except GraphNotFoundError as e:
+            raise ValueError(str(e)) from e
 
     async def connect_database(self, db_url: str) -> DatabaseConnection:
         """Connect to a SQL database and load its schema.
@@ -210,8 +211,9 @@ class QueryWeaver:
         Returns:
             List of database identifiers.
         """
-        from api.core.schema_loader import list_databases as _list_databases
-        return await _list_databases(self._user_id, self._general_prefix)
+        from api.core.schema_loader import list_databases as _list_databases  # pylint: disable=import-outside-toplevel
+        from api.core.text2sql_common import GENERAL_PREFIX  # pylint: disable=import-outside-toplevel
+        return await _list_databases(self._user_id, GENERAL_PREFIX)
 
     async def delete_database(self, database: str) -> bool:
         """Delete a connected database.
