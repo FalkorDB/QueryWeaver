@@ -57,6 +57,17 @@ docker run -p 5000:5000 -it \
 
 > For a full list of configuration options, consult `.env.example`.
 
+## Memory TTL (optional)
+
+QueryWeaver stores per-user conversation memory in FalkorDB. By default these graphs persist indefinitely. Set `MEMORY_TTL_SECONDS` to apply a Redis TTL (in seconds) so idle memory graphs are automatically cleaned up.
+
+```bash
+# Expire memory graphs after 1 week of inactivity
+MEMORY_TTL_SECONDS=604800
+```
+
+The TTL is refreshed on every user interaction, so active users keep their memory.
+
 ## MCP server: host or connect (optional)
 
 QueryWeaver includes optional support for the Model Context Protocol (MCP). You can either have QueryWeaver expose an MCP-compatible HTTP surface (so other services can call QueryWeaver as an MCP server), or configure QueryWeaver to call an external MCP server for model/context services.

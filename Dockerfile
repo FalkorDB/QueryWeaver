@@ -19,6 +19,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     netcat-openbsd \
     git \
     build-essential \
+    curl \
+    ca-certificates \
+    gnupg \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/local/bin/python3.12 /usr/bin/python3 \
     && ln -sf /usr/local/bin/python3.12 /usr/bin/python
@@ -36,9 +39,15 @@ RUN PIP_BREAK_SYSTEM_PACKAGES=1 pipenv sync --system
 
 # Install Node.js (Node 22) so we can build the frontend inside the image.
 # Use NodeSource setup script to get a recent Node version on Debian-based images.
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get update && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/*
+# Remove any pre-installed nodejs first to avoid conflicts.
+RUN apt-get update \
+    && apt-get remove -y nodejs || true \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get update \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && node --version && npm --version
 
 # Copy only frontend package files so Docker can cache npm installs when
 # package.json / package-lock.json don't change.
@@ -57,7 +66,7 @@ COPY ./app ./app
 
 RUN npm --prefix ./app run build
 
-# Copy application code
+# Copy application code 
 COPY . .
 
 # Copy and make start.sh executable
