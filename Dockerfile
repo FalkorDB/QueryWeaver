@@ -28,14 +28,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install pipenv
-RUN python3 -m pip install --no-cache-dir --break-system-packages pipenv
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Copy Pipfile and Pipfile.lock
-COPY Pipfile Pipfile.lock ./
+# Copy pyproject.toml and uv.lock
+COPY pyproject.toml uv.lock* ./
 
-# Install Python dependencies from Pipfile
-RUN PIP_BREAK_SYSTEM_PACKAGES=1 pipenv sync --system
+# Install Python dependencies from pyproject.toml
+RUN uv sync --frozen --no-dev
 
 # Install Node.js (Node 22) so we can build the frontend inside the image.
 # Use NodeSource setup script to get a recent Node version on Debian-based images.

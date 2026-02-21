@@ -1,0 +1,59 @@
+[project]
+name = "queryweaver"
+version = "0.1.0"
+description = "QueryWeaver - Text2SQL using graph-powered schema understanding"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi~=0.124.0",
+    "uvicorn~=0.40.0",
+    "litellm~=1.80.9",
+    "falkordb~=1.2.2",
+    "psycopg2-binary~=2.9.11",
+    "pymysql~=1.1.0",
+    "authlib~=1.6.4",
+    "itsdangerous~=2.2.0",
+    "jsonschema~=4.26.0",
+    "tqdm~=4.67.1",
+    "python-multipart~=0.0.10",
+    "jinja2~=3.1.4",
+    "graphiti-core @ git+https://github.com/FalkorDB/graphiti.git@staging",
+    "fastmcp>=2.13.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest~=8.4.2",
+    "pylint~=4.0.3",
+    "playwright~=1.57.0",
+    "pytest-playwright~=0.7.1",
+    "pytest-asyncio~=1.2.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest~=8.4.2",
+    "pylint~=4.0.3",
+    "playwright~=1.57.0",
+    "pytest-playwright~=0.7.1",
+    "pytest-asyncio~=1.2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v"
+
+[tool.pylint.main]
+max-line-length = 120
+disable = [
+    "C0114",  # missing-module-docstring
+    "C0115",  # missing-class-docstring
+    "C0116",  # missing-function-docstring
+]
