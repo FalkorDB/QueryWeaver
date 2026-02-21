@@ -34,14 +34,14 @@ dev = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["api"]
+
 [tool.uv]
-dev-dependencies = [
-    "pytest~=8.4.2",
-    "pylint~=4.0.3",
-    "playwright~=1.57.0",
-    "pytest-playwright~=0.7.1",
-    "pytest-asyncio~=1.2.0",
-]
+package = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
