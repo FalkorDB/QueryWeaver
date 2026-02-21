@@ -63,7 +63,7 @@ jobs:
 
     - name: Run unit tests
       run: |
-        uv run pytest tests/ -k "not e2e" --verbose
+        uv run python -m pytest tests/ -k "not e2e" --verbose
 
     - name: Run lint
       run: |

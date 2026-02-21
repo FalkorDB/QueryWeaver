@@ -27,4 +27,4 @@ jobs:
 
     - name: Run pylint
       run: |
-        uv run pylint $(git ls-files '*.py')
+        uv run python -m pylint $(git ls-files '*.py')

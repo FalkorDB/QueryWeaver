@@ -26,23 +26,23 @@ build-prod:
 test: build-dev test-unit test-e2e ## Run all tests
 
 test-unit: ## Run unit tests only
-	uv run pytest tests/ -k "not e2e" --verbose
+	uv run python -m pytest tests/ -k "not e2e" --verbose
 
 
 test-e2e: build-dev ## Run E2E tests headless
-	uv run pytest tests/e2e/ --browser chromium --video=on --screenshot=on
+	uv run python -m pytest tests/e2e/ --browser chromium --video=on --screenshot=on
 
 
 test-e2e-headed: build-dev ## Run E2E tests with browser visible
-	uv run pytest tests/e2e/ --browser chromium --headed
+	uv run python -m pytest tests/e2e/ --browser chromium --headed
 
 
 test-e2e-debug: build-dev ## Run E2E tests with debugging enabled
-	uv run pytest tests/e2e/ --browser chromium --slowmo=1000
+	uv run python -m pytest tests/e2e/ --browser chromium --slowmo=1000
 
 lint: ## Run linting (backend + frontend)
 	@echo "Running backend lint (pylint)"
-	uv run pylint $(shell git ls-files '*.py') || true
+	uv run python -m pylint $(shell git ls-files '*.py') || true
 	@echo "Running frontend lint (eslint)"
 	make lint-frontend
 

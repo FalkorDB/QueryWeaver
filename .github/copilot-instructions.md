@@ -201,7 +201,7 @@ cp .env.example .env
 **Solution**: Ensure you're using uv and dependencies are installed:
 ```bash
 uv sync
-uv run pytest tests/ -k "not e2e"
+uv run python -m pytest tests/ -k "not e2e"
 ```
 
 ### 5. Port Conflicts

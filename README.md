@@ -408,7 +408,7 @@ make test-e2e-headed
 
 ### Test types
 
-- Unit tests: focus on individual modules and utilities. Run with `make test-unit` or `uv run pytest tests/ -k "not e2e"`.
+- Unit tests: focus on individual modules and utilities. Run with `make test-unit` or `uv run python -m pytest tests/ -k "not e2e"`.
 - End-to-end (E2E) tests: run via Playwright and exercise UI flows, OAuth, file uploads, schema processing, chat queries, and API endpoints. Use `make test-e2e`.
 
 See `tests/e2e/README.md` for full E2E test instructions.
