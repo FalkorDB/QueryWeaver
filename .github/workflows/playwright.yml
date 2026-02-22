@@ -148,7 +148,7 @@ jobs:
         CI: true
     
     # Upload test results on failure
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v6
       if: failure()
       with:
         name: playwright-report
@@ -156,7 +156,7 @@ jobs:
         retention-days: 30
     
     # Upload test screenshots on failure
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v6
       if: failure()
       with:
         name: test-results
