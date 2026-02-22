@@ -23,16 +23,16 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     
     # Setup Python
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ env.PYTHON_VERSION }}
     
     # Setup Node.js
-    - uses: actions/setup-node@v4
+    - uses: actions/setup-node@v6
       with:
         node-version: ${{ env.NODE_VERSION }}
     
@@ -148,7 +148,7 @@ jobs:
         CI: true
     
     # Upload test results on failure
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v6
       if: failure()
       with:
         name: playwright-report
@@ -156,7 +156,7 @@ jobs:
         retention-days: 30
     
     # Upload test screenshots on failure
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v6
       if: failure()
       with:
         name: test-results
