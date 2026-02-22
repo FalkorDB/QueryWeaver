@@ -27,12 +27,12 @@ jobs:
     
     # Setup Python
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ env.PYTHON_VERSION }}
     
     # Setup Node.js
-    - uses: actions/setup-node@v4
+    - uses: actions/setup-node@v6
       with:
         node-version: ${{ env.NODE_VERSION }}
     
