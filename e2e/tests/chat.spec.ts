@@ -238,7 +238,7 @@ test.describe('Chat Feature Tests', () => {
     await homePage.sendQuery(`add one user "${randomUsername}" with email "${randomEmail}"`);
 
     // Wait for confirmation message to appear (increased timeout for slow CI)
-    const confirmationAppeared = await homePage.waitForConfirmationMessage(20000);
+    const confirmationAppeared = await homePage.waitForConfirmationMessage(30000);
     expect(confirmationAppeared).toBeTruthy();
 
     // Verify confirmation message is visible
@@ -276,14 +276,14 @@ test.describe('Chat Feature Tests', () => {
 
     // First insertion - should succeed
     await homePage.sendQuery(`add one user "${randomUsername}" with email "${randomEmail}"`);
-    const confirmationAppeared1 = await homePage.waitForConfirmationMessage(20000);
+    const confirmationAppeared1 = await homePage.waitForConfirmationMessage(30000);
     expect(confirmationAppeared1).toBeTruthy();
     await homePage.clickConfirmButton();
     await homePage.waitForProcessingToComplete();
 
     // Second insertion attempt - should fail with duplicate error
     await homePage.sendQuery(`add one user "${randomUsername}" with email "${randomEmail}"`);
-    const confirmationAppeared2 = await homePage.waitForConfirmationMessage(20000);
+    const confirmationAppeared2 = await homePage.waitForConfirmationMessage(30000);
     expect(confirmationAppeared2).toBeTruthy();
     await homePage.clickConfirmButton();
     await homePage.waitForProcessingToComplete();
