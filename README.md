@@ -17,7 +17,9 @@ Connect and ask questions: [![Discord](https://img.shields.io/badge/Discord-%235
 
 
 ## Get Started
+
 ### Docker
+
 > 💡 Recommended for evaluation purposes (Local Python or Node are not required)
 ```bash
 docker run -p 5000:5000 -it falkordb/queryweaver
@@ -92,6 +94,7 @@ Disable the built-in MCP when running with Docker:
 ```bash
 docker run -p 5000:5000 -it --env DISABLE_MCP=true falkordb/queryweaver
 ```
+
 Calling the built-in MCP endpoints (example)
 - The MCP surface is exposed as HTTP endpoints. 
 
