@@ -44,12 +44,37 @@ class SecurityMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-
 
         response = await call_next(request)
 
-        # Add HSTS header to prevent man-in-the-middle attacks
-        # max-age=31536000: 1 year in seconds
-        # includeSubDomains: apply to all subdomains
-        # preload: eligible for browser HSTS preload lists
-        hsts_value = "max-age=31536000; includeSubDomains; preload"
-        response.headers["Strict-Transport-Security"] = hsts_value
+        # HSTS: prevent man-in-the-middle attacks
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains; preload"
+        )
+
+        # Prevent MIME-sniffing attacks
+        response.headers["X-Content-Type-Options"] = "nosniff"
+
+        # Prevent clickjacking
+        response.headers["X-Frame-Options"] = "DENY"
+
+        # XSS mitigation via Content Security Policy
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "font-src 'self'; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'; "
+            "object-src 'none'; "
+            "base-uri 'self'"
+        )
+
+        # Prevent referrer data leaks to third parties
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        # Restrict browser features
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), payment=()"
+        )
 
         return response
 
