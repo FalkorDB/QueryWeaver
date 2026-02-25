@@ -1,5 +1,5 @@
 <div align="center">  
-  <h1>QueryWeaver</h1>
+  <h1>QueryWeaver (Text2SQL)</h1>
 
 **REST API · MCP · Graph-powered** 
 
@@ -13,10 +13,13 @@ Connect and ask questions: [![Discord](https://img.shields.io/badge/Discord-%235
 [![Swagger UI](https://img.shields.io/badge/API-Swagger-11B48A?logo=swagger&logoColor=white)](https://app.queryweaver.ai/docs)
 </div>
 
-![new-qw-ui-gif](https://github.com/user-attachments/assets/87bb6a50-5bf4-4217-ad05-f99e32ed2dd0)
+![new-qw-ui-gif](https://github.com/user-attachments/assets/34663279-0273-4c21-88a8-d20700020a07)
+
 
 ## Get Started
+
 ### Docker
+
 > 💡 Recommended for evaluation purposes (Local Python or Node are not required)
 ```bash
 docker run -p 5000:5000 -it falkordb/queryweaver
@@ -91,6 +94,7 @@ Disable the built-in MCP when running with Docker:
 ```bash
 docker run -p 5000:5000 -it --env DISABLE_MCP=true falkordb/queryweaver
 ```
+
 Calling the built-in MCP endpoints (example)
 - The MCP surface is exposed as HTTP endpoints. 
 
