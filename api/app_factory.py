@@ -55,7 +55,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-
         return response
 
 
-def create_app():
+def create_app():  # pylint: disable=too-many-statements
     """Create and configure the FastAPI application."""
 
     # Create the FastAPI app instance just to set the o routes
@@ -245,9 +245,27 @@ def create_app():
     @app.exception_handler(RequestValidationError)
     async def handle_validation_error(
         request: Request, exc: RequestValidationError
-    ):  # pylint: disable=unused-argument
-        """Return a generic 400 instead of leaking Pydantic validation details."""
-        return JSONResponse(status_code=400, content={"detail": "Bad request"})
+    ):
+        """Sanitize validation errors from the SPA catch-all route.
+
+        The catch-all ``/{full_path:path}`` can expose internal Pydantic
+        details when hit directly.  For that route we return a generic 400.
+        All other routes keep FastAPI's default 422 response so API
+        consumers still receive actionable field-level feedback.
+        """
+        for error in exc.errors():
+            if error.get("loc") == ("query", "_full_path"):
+                logging.warning(
+                    "Validation error on %s: %s", request.url.path, exc.errors()
+                )
+                return JSONResponse(
+                    status_code=400, content={"detail": "Bad request"}
+                )
+
+        # API routes: return the standard FastAPI 422 with field details
+        return JSONResponse(
+            status_code=422, content={"detail": exc.errors()}
+        )
 
     @app.exception_handler(Exception)
     async def handle_oauth_error(
