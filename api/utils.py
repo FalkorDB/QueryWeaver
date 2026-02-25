@@ -1,11 +1,107 @@
 """Utility functions for the text2sql API."""
+import json
+from typing import Dict, List, Optional, TypedDict
 
-from typing import List
-
-from litellm import completion
+from litellm import completion, batch_completion
 
 from api.config import Config
 
+
+class ForeignKeyInfo(TypedDict):
+    """Foreign key constraint information."""
+    constraint_name: str
+    column: str
+    referenced_table: str
+    referenced_column: str
+
+
+class ColumnInfo(TypedDict):
+    """Column metadata information."""
+    type: str
+    null: str
+    key: str
+    description: str
+    default: Optional[str]
+    sample_values: List[str]
+
+
+class TableInfo(TypedDict):
+    """Table metadata information."""
+    description: str
+    columns: Dict[str, ColumnInfo]
+    foreign_keys: List[ForeignKeyInfo]
+    col_descriptions: List[str]
+
+
+def create_combined_description(  # pylint: disable=too-many-locals
+    table_info: Dict[str, TableInfo], batch_size: int = 10
+) -> Dict[str, TableInfo]:
+    """
+    Create a combined description from a dictionary of table descriptions.
+
+    Args:
+        table_info (Dict[str, TableInfo]): Mapping of table names to their metadata.
+        batch_size (int): Number of tables to process per batch when calling the LLM (default: 10).
+    Returns:
+        Dict[str, TableInfo]: Updated mapping containing descriptions.
+    """
+    if not isinstance(table_info, dict):
+        raise TypeError("table_info must be a dictionary keyed by table name.")
+
+    messages_list = []
+    table_keys = []
+
+    system_prompt = (
+        "You are a database table description generator. "
+        "Generate ONE concise sentence starting with the table name, "
+        "describing what the table stores, using present tense. "
+        "Do not add explanations."
+    )
+
+    user_prompt_template = (
+        "Table Name: {table_name}\n"
+        "Table Schema: {table_prop}\n"
+        "Provide a concise description of this table."
+    )
+
+    for table_name, table_prop in table_info.items():
+        # The col_descriptions property is duplicated in the schema (columns has it)
+        table_prop = table_prop.copy()
+        table_prop.pop("col_descriptions", None)
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": user_prompt_template.format(
+                    table_name=table_name, table_prop=json.dumps(table_prop)
+                ),
+            },
+        ]
+
+        messages_list.append(messages)
+        table_keys.append(table_name)
+
+    for batch_start in range(0, len(messages_list), batch_size):
+        batch_messages = messages_list[batch_start : batch_start + batch_size]
+        response = batch_completion(
+            model=Config.COMPLETION_MODEL,
+            messages=batch_messages,
+            temperature=0,
+            max_tokens=50,
+        )
+
+        for offset, batch_response in enumerate(response):
+            table_index = batch_start + offset
+            if table_index >= len(table_keys):
+                break
+            table_name = table_keys[table_index]
+            if isinstance(batch_response, Exception):
+                table_info[table_name]["description"] = table_name
+            else:
+                content = batch_response.choices[0].message["content"].strip()
+                table_info[table_name]["description"] = content
+
+    return table_info
 
 def generate_db_description(
     db_name: str,

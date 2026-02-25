@@ -12,8 +12,9 @@ type Theme = "light" | "dark";
 const ThemeToggle = () => {
   const [theme, setTheme] = useState<Theme>(() => {
     try {
-      const savedTheme = localStorage.getItem("theme") as Theme;
-      return savedTheme || "dark";
+      const savedTheme = localStorage.getItem("theme");
+      // Normalize: only accept "light" or "dark", default to "dark"
+      return (savedTheme === "light" || savedTheme === "dark") ? savedTheme : "dark";
     } catch {
       return "dark";
     }
@@ -47,7 +48,7 @@ const ThemeToggle = () => {
         <TooltipTrigger asChild>
           <button
             onClick={toggleTheme}
-            className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
             aria-label="Toggle theme"
             data-testid="theme-toggle"
           >

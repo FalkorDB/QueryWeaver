@@ -5,6 +5,11 @@
 
 version: 2
 updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "staging"
+    schedule:
+      interval: "weekly"
   - package-ecosystem: "pip"
     directory: "/"
     target-branch: "staging"
@@ -15,3 +20,7 @@ updates:
     target-branch: "staging"
     schedule:
       interval: "weekly"
+    groups:
+      npm-minor-patch:
+        update-types:
+          - "patch"

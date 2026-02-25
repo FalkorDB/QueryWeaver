@@ -72,7 +72,10 @@ test.describe('User Profile Tests', () => {
     const isLogoutVisible = await userProfile.isLogoutMenuItemVisible();
     expect(isLogoutVisible).toBeTruthy();
 
+    // We need to wait for the navigation event that occurs when the page reloads
+    const navigationPromise = page.waitForEvent('load', { timeout: 10000 });
     await userProfile.clickOnLogout();
+    await navigationPromise;
 
     // Verify user is logged out - user menu should not be visible
     const isUserMenuVisible = await userProfile.isUserMenuVisible();
