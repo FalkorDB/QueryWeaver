@@ -12,10 +12,20 @@ const CSRF_COOKIE_NAME = 'csrf_token';
  * Read the CSRF token from the cookie jar.
  */
 export function getCsrfToken(): string {
+  if (typeof document === 'undefined') {
+    return '';
+  }
   const match = document.cookie.match(
     new RegExp(`(?:^|;\\s*)${CSRF_COOKIE_NAME}=([^;]*)`)
   );
-  return match ? decodeURIComponent(match[1]) : '';
+  if (!match) {
+    console.warn(
+      `CSRF token cookie "${CSRF_COOKIE_NAME}" not found. ` +
+        'State-changing requests may fail with 403 until the cookie is set.'
+    );
+    return '';
+  }
+  return decodeURIComponent(match[1]);
 }
 
 /**

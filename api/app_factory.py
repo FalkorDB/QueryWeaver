@@ -77,7 +77,8 @@ class CSRFMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-meth
     CSRF_COOKIE = "csrf_token"
     CSRF_HEADER = "x-csrf-token"
 
-    # Paths exempt from CSRF validation (auth flow endpoints)
+    # Paths exempt from CSRF validation (auth flow endpoints).
+    # "/mcp" has no trailing slash so it also covers sub-paths like /mcp/sse.
     EXEMPT_PREFIXES = (
         "/login/",
         "/signup/",
@@ -112,14 +113,19 @@ class CSRFMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-meth
             or not header_token
             or not hmac.compare_digest(cookie_token, header_token)
         ):
-            return JSONResponse(
+            response = JSONResponse(
                 status_code=403,
                 content={"detail": "CSRF token missing or invalid"},
             )
+            self._ensure_csrf_cookie(request, response)
+            return response
 
         response = await call_next(request)
         self._ensure_csrf_cookie(request, response)
         return response
+
+    # Match the session cookie lifetime (14 days in seconds)
+    CSRF_COOKIE_MAX_AGE = 60 * 60 * 24 * 14
 
     def _ensure_csrf_cookie(self, request: Request, response):
         """Set the CSRF cookie if it is not already present."""
@@ -132,6 +138,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-meth
                 samesite="lax",
                 secure=_is_secure_request(request),
                 path="/",
+                max_age=self.CSRF_COOKIE_MAX_AGE,
             )
 
 
