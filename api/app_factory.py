@@ -5,6 +5,7 @@ import os
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
@@ -240,6 +241,13 @@ def create_app():
         if os.path.exists(favicon_path):
             return FileResponse(favicon_path, media_type="image/x-icon")
         return JSONResponse({"error": "Favicon not found"}, status_code=404)
+
+    @app.exception_handler(RequestValidationError)
+    async def handle_validation_error(
+        request: Request, exc: RequestValidationError
+    ):  # pylint: disable=unused-argument
+        """Return a generic 400 instead of leaking Pydantic validation details."""
+        return JSONResponse(status_code=400, content={"detail": "Bad request"})
 
     @app.exception_handler(Exception)
     async def handle_oauth_error(
