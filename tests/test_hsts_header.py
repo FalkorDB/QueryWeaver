@@ -67,6 +67,7 @@ class TestSecurityHeaders:
         assert "camera=()" in policy
         assert "microphone=()" in policy
         assert "geolocation=()" in policy
+        assert "payment=()" in policy
 
     def test_security_headers_on_api_endpoints(self, client):
         """Test that all security headers are present on API endpoints."""
@@ -76,3 +77,30 @@ class TestSecurityHeaders:
         assert "content-security-policy" in response.headers
         assert "referrer-policy" in response.headers
         assert "permissions-policy" in response.headers
+
+    def test_csp_allows_github_api(self, client):
+        """Test that CSP connect-src allows GitHub API for star counts."""
+        response = client.get("/")
+        csp = response.headers.get("content-security-policy")
+        assert "https://api.github.com" in csp
+
+    def test_csp_allows_google_fonts(self, client):
+        """Test that CSP allows Google Fonts for styles and font files."""
+        response = client.get("/")
+        csp = response.headers.get("content-security-policy")
+        assert "https://fonts.googleapis.com" in csp
+        assert "https://fonts.gstatic.com" in csp
+
+    def test_csp_docs_allows_cdn(self, client):
+        """Test that /docs gets a permissive CSP for CDN assets."""
+        response = client.get("/docs")
+        csp = response.headers.get("content-security-policy")
+        assert "https://cdn.jsdelivr.net" in csp
+
+    def test_security_headers_on_forbidden_static(self, client):
+        """Test that early-return 403 responses also include security headers."""
+        response = client.get("/static/")
+        assert response.status_code == 403
+        assert "strict-transport-security" in response.headers
+        assert "x-content-type-options" in response.headers
+        assert "content-security-policy" in response.headers

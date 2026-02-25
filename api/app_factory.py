@@ -33,49 +33,72 @@ class SecurityMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-
 
     STATIC_PREFIX = "/static/"
 
-    async def dispatch(self, request: Request, call_next):
-        # Block directory access in static files
-        if request.url.path.startswith(self.STATIC_PREFIX):
-            # Remove /static/ prefix to get the actual path
-            filename = request.url.path[len(self.STATIC_PREFIX) :]
-            # Basic security check for directory traversal
-            if not filename or "../" in filename or filename.endswith("/"):
-                return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    # CSP for FastAPI interactive docs (/docs, /redoc) which load CDN assets
+    DOCS_CSP = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
+        "https://cdn.jsdelivr.net https://unpkg.com; "
+        "style-src 'self' 'unsafe-inline' "
+        "https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+        "img-src 'self' data: https://cdn.jsdelivr.net; "
+        "font-src 'self' https://fonts.gstatic.com data:; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none'; "
+        "object-src 'none'; "
+        "base-uri 'self'"
+    )
 
-        response = await call_next(request)
+    # CSP for the SPA and all other routes
+    DEFAULT_CSP = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "img-src 'self' data:; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "connect-src 'self' https://api.github.com; "
+        "frame-ancestors 'none'; "
+        "object-src 'none'; "
+        "base-uri 'self'"
+    )
 
-        # HSTS: prevent man-in-the-middle attacks
+    @staticmethod
+    def _apply_security_headers(response, path: str):
+        """Apply all security headers to a response."""
         response.headers["Strict-Transport-Security"] = (
             "max-age=31536000; includeSubDomains; preload"
         )
-
-        # Prevent MIME-sniffing attacks
         response.headers["X-Content-Type-Options"] = "nosniff"
-
-        # Prevent clickjacking
         response.headers["X-Frame-Options"] = "DENY"
-
-        # XSS mitigation via Content Security Policy
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data:; "
-            "font-src 'self'; "
-            "connect-src 'self'; "
-            "frame-ancestors 'none'; "
-            "object-src 'none'; "
-            "base-uri 'self'"
-        )
-
-        # Prevent referrer data leaks to third parties
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-
-        # Restrict browser features
         response.headers["Permissions-Policy"] = (
             "camera=(), microphone=(), geolocation=(), payment=()"
         )
 
+        # Use a more permissive CSP for FastAPI docs pages
+        if path.startswith(("/docs", "/redoc", "/openapi")):
+            response.headers["Content-Security-Policy"] = (
+                SecurityMiddleware.DOCS_CSP
+            )
+        else:
+            response.headers["Content-Security-Policy"] = (
+                SecurityMiddleware.DEFAULT_CSP
+            )
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+
+        # Block directory access in static files
+        if path.startswith(self.STATIC_PREFIX):
+            filename = path[len(self.STATIC_PREFIX) :]
+            if not filename or "../" in filename or filename.endswith("/"):
+                response = JSONResponse(
+                    status_code=403, content={"detail": "Forbidden"}
+                )
+                self._apply_security_headers(response, path)
+                return response
+
+        response = await call_next(request)
+        self._apply_security_headers(response, path)
         return response
 
 
