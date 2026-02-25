@@ -1,4 +1,5 @@
 import { API_CONFIG, buildApiUrl } from '@/config/api';
+import { csrfHeaders } from '@/lib/csrf';
 import type { AuthStatus, User } from '@/types/api';
 
 /**
@@ -93,6 +94,9 @@ export class AuthService {
       await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.LOGOUT), {
         method: 'POST',
         credentials: 'include',
+        headers: {
+          ...csrfHeaders(),
+        },
       });
     } catch (error) {
       console.error('Failed to logout:', error);

@@ -3,6 +3,7 @@
  */
 
 import { buildApiUrl } from '@/config/api';
+import { csrfHeaders } from '@/lib/csrf';
 
 export interface Token {
   token_id: string;
@@ -27,6 +28,7 @@ export class TokenService {
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
+          ...csrfHeaders(),
         },
         signal: controller.signal,
       });
@@ -93,6 +95,7 @@ export class TokenService {
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
+          ...csrfHeaders(),
         },
         signal: controller.signal,
       });
