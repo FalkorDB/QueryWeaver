@@ -121,3 +121,50 @@ class TestCSRFMiddleware:
             },
         )
         assert response.json().get("detail") != "CSRF token missing or invalid"
+
+    # ---- DELETE and PATCH methods ----
+
+    def test_delete_without_csrf_is_blocked(self, client):
+        """DELETE without CSRF header/cookie must return 403."""
+        response = client.delete("/graphs/test-graph")
+        assert response.status_code == 403
+        assert response.json()["detail"] == "CSRF token missing or invalid"
+
+    def test_delete_with_valid_csrf_passes(self, client):
+        """DELETE with matching cookie + header must pass CSRF check."""
+        get_resp = client.get("/auth-status")
+        csrf = get_resp.cookies["csrf_token"]
+
+        response = client.delete(
+            "/graphs/test-graph",
+            headers={"X-CSRF-Token": csrf},
+            cookies={"csrf_token": csrf},
+        )
+        assert response.status_code != 403
+
+    def test_patch_without_csrf_is_blocked(self, client):
+        """PATCH without CSRF header/cookie must return 403."""
+        response = client.patch("/graphs/test-graph")
+        assert response.status_code == 403
+        assert response.json()["detail"] == "CSRF token missing or invalid"
+
+    def test_patch_with_valid_csrf_passes(self, client):
+        """PATCH with matching cookie + header must pass CSRF check."""
+        get_resp = client.get("/auth-status")
+        csrf = get_resp.cookies["csrf_token"]
+
+        response = client.patch(
+            "/graphs/test-graph",
+            headers={"X-CSRF-Token": csrf},
+            cookies={"csrf_token": csrf},
+        )
+        assert response.status_code != 403
+
+    # ---- Secure flag based on scheme ----
+
+    def test_csrf_cookie_not_secure_on_http(self, client):
+        """Over plain HTTP the csrf_token cookie must NOT have the Secure flag."""
+        response = client.get("/auth-status")
+        set_cookie = response.headers.get("set-cookie", "")
+        assert "csrf_token=" in set_cookie
+        assert "; secure" not in set_cookie.lower()

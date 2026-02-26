@@ -15,15 +15,27 @@ function extractCsrfToken(setCookieHeaders: string[]): string | undefined {
 }
 
 /**
+ * Per-context CSRF token cache.  After the first seed request the token is
+ * stored and reused for subsequent calls on the same APIRequestContext,
+ * avoiding an extra GET /auth-status on every state-changing request.
+ */
+const csrfCache = new WeakMap<APIRequestContext, string>();
+
+/**
  * Seed the CSRF cookie on the given request context by making a lightweight
- * GET, then return the token value so callers can include it as a header.
+ * GET (only on the first call), then return the cached token value.
  */
 async function getCsrfToken(baseUrl: string, ctx: APIRequestContext): Promise<string | undefined> {
+  const cached = csrfCache.get(ctx);
+  if (cached) return cached;
+
   const seedResp = await ctx.get(`${baseUrl}/auth-status`);
   const setCookies = seedResp.headersArray()
     .filter(h => h.name.toLowerCase() === 'set-cookie')
     .map(h => h.value);
-  return extractCsrfToken(setCookies);
+  const token = extractCsrfToken(setCookies);
+  if (token) csrfCache.set(ctx, token);
+  return token;
 }
 
 /**

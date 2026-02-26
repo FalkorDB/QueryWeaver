@@ -86,39 +86,26 @@ class CSRFMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-meth
     )
 
     async def dispatch(self, request: Request, call_next):
-        if request.method in self.SAFE_METHODS:
-            response = await call_next(request)
-            self._ensure_csrf_cookie(request, response)
-            return response
-
-        # Exempt auth-flow and MCP paths
-        if request.url.path.startswith(self.EXEMPT_PREFIXES):
-            response = await call_next(request)
-            self._ensure_csrf_cookie(request, response)
-            return response
-
-        # Bearer token auth is not vulnerable to CSRF — skip check
-        auth_header = request.headers.get("authorization", "")
-        if auth_header.lower().startswith("bearer "):
-            response = await call_next(request)
-            self._ensure_csrf_cookie(request, response)
-            return response
-
-        # Validate double-submit cookie
-        cookie_token = request.cookies.get(self.CSRF_COOKIE)
-        header_token = request.headers.get(self.CSRF_HEADER)
-
+        # Validate CSRF for unsafe, non-exempt, non-Bearer requests
         if (
-            not cookie_token
-            or not header_token
-            or not hmac.compare_digest(cookie_token, header_token)
+            request.method not in self.SAFE_METHODS
+            and not request.url.path.startswith(self.EXEMPT_PREFIXES)
+            and not request.headers.get("authorization", "").lower().startswith("bearer ")
         ):
-            response = JSONResponse(
-                status_code=403,
-                content={"detail": "CSRF token missing or invalid"},
-            )
-            self._ensure_csrf_cookie(request, response)
-            return response
+            cookie_token = request.cookies.get(self.CSRF_COOKIE)
+            header_token = request.headers.get(self.CSRF_HEADER)
+
+            if (
+                not cookie_token
+                or not header_token
+                or not hmac.compare_digest(cookie_token, header_token)
+            ):
+                response = JSONResponse(
+                    status_code=403,
+                    content={"detail": "CSRF token missing or invalid"},
+                )
+                self._ensure_csrf_cookie(request, response)
+                return response
 
         response = await call_next(request)
         self._ensure_csrf_cookie(request, response)

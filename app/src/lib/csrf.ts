@@ -19,7 +19,7 @@ export function getCsrfToken(): string {
     new RegExp(`(?:^|;\\s*)${CSRF_COOKIE_NAME}=([^;]*)`)
   );
   if (!match) {
-    console.warn(
+    console.debug(
       `CSRF token cookie "${CSRF_COOKIE_NAME}" not found. ` +
         'State-changing requests may fail with 403 until the cookie is set.'
     );
