@@ -5,7 +5,6 @@ import os
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.exceptions import RequestValidationError
 from fastapi.responses import RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
@@ -55,7 +54,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-
         return response
 
 
-def create_app():  # pylint: disable=too-many-statements
+def create_app():
     """Create and configure the FastAPI application."""
 
     # Create the FastAPI app instance just to set the o routes
@@ -241,31 +240,6 @@ def create_app():  # pylint: disable=too-many-statements
         if os.path.exists(favicon_path):
             return FileResponse(favicon_path, media_type="image/x-icon")
         return JSONResponse({"error": "Favicon not found"}, status_code=404)
-
-    @app.exception_handler(RequestValidationError)
-    async def handle_validation_error(
-        request: Request, exc: RequestValidationError
-    ):
-        """Sanitize validation errors from the SPA catch-all route.
-
-        The catch-all ``/{full_path:path}`` can expose internal Pydantic
-        details when hit directly.  For that route we return a generic 400.
-        All other routes keep FastAPI's default 422 response so API
-        consumers still receive actionable field-level feedback.
-        """
-        for error in exc.errors():
-            if error.get("loc") == ("query", "_full_path"):
-                logging.warning(
-                    "Validation error on %s: %s", request.url.path, exc.errors()
-                )
-                return JSONResponse(
-                    status_code=400, content={"detail": "Bad request"}
-                )
-
-        # API routes: return the standard FastAPI 422 with field details
-        return JSONResponse(
-            status_code=422, content={"detail": exc.errors()}
-        )
 
     @app.exception_handler(Exception)
     async def handle_oauth_error(
