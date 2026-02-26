@@ -352,7 +352,7 @@ def create_app():
 
     # Serve React app for all non-API routes (SPA catch-all)
     @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_react_app(_full_path: str):
+    async def serve_react_app(full_path: str):  # pylint: disable=unused-argument
         """Serve the React app for all routes not handled by API endpoints."""
         # Serve index.html for the React SPA
         index_path = os.path.join(dist_path, "index.html")
