@@ -15,6 +15,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useDatabase } from "@/contexts/DatabaseContext";
 import { DatabaseService } from "@/services/database";
 import { useToast } from "@/components/ui/use-toast";
+import { csrfHeaders } from "@/lib/csrf";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -255,6 +256,9 @@ const Index = () => {
       setIsRefreshingSchema(true);
       const response = await fetch(`/graphs/${selectedGraph.id}/refresh`, {
         method: 'POST',
+        headers: {
+          ...csrfHeaders(),
+        },
         credentials: 'include',
       });
 
