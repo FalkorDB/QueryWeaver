@@ -24,11 +24,24 @@ const csrfCache = new WeakMap<APIRequestContext, string>();
 /**
  * Seed the CSRF cookie on the given request context by making a lightweight
  * GET (only on the first call), then return the cached token value.
+ *
+ * When the context already carries the csrf_token cookie (e.g. loaded from
+ * storageState), the server won't emit a new Set-Cookie header.  In that
+ * case we read the token directly from the context's stored cookies.
  */
 async function getCsrfToken(baseUrl: string, ctx: APIRequestContext): Promise<string | undefined> {
   const cached = csrfCache.get(ctx);
   if (cached) return cached;
 
+  // Check if the csrf_token cookie already exists in the context (from storageState)
+  const state = await ctx.storageState();
+  const existingCookie = state.cookies.find(c => c.name === 'csrf_token');
+  if (existingCookie) {
+    csrfCache.set(ctx, existingCookie.value);
+    return existingCookie.value;
+  }
+
+  // No existing cookie — seed it with a lightweight GET request
   const seedResp = await ctx.get(`${baseUrl}/auth-status`);
   const setCookies = seedResp.headersArray()
     .filter(h => h.name.toLowerCase() === 'set-cookie')
