@@ -4,7 +4,7 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-fastapi = "~=0.133.0"
+fastapi = "~=0.135.0"
 uvicorn = "~=0.41.0"
 litellm = "~=1.81.15"
 falkordb = "~=1.6.0"
