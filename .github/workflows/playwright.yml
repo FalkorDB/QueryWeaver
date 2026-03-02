@@ -36,6 +36,9 @@ jobs:
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
+        cache-dependency-path: |
+          package-lock.json
+          app/package-lock.json
     
     # Install pipenv
     - name: Install pipenv
