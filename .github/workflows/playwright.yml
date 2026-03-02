@@ -30,6 +30,8 @@ jobs:
       uses: actions/setup-python@v6
       with:
         python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+        cache-dependency-path: Pipfile.lock
     
     # Setup Node.js
     - uses: actions/setup-node@v6
