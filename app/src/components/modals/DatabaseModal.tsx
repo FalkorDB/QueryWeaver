@@ -8,6 +8,7 @@ import { useDatabase } from "@/contexts/DatabaseContext";
 import { useToast } from "@/components/ui/use-toast";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { buildApiUrl, API_CONFIG } from "@/config/api";
+import { csrfHeaders } from "@/lib/csrf";
 
 interface DatabaseModalProps {
   open: boolean;
@@ -101,6 +102,7 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...csrfHeaders(),
         },
         body: JSON.stringify({ url: dbUrl }),
         credentials: 'include',

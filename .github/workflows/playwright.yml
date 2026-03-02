@@ -30,11 +30,17 @@ jobs:
       uses: actions/setup-python@v6
       with:
         python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+        cache-dependency-path: Pipfile.lock
     
     # Setup Node.js
     - uses: actions/setup-node@v6
       with:
         node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: |
+          package-lock.json
+          app/package-lock.json
     
     # Install pipenv
     - name: Install pipenv
@@ -47,6 +53,14 @@ jobs:
     # Install Node dependencies (root - for Playwright)
     - name: Install root dependencies
       run: npm ci
+
+    # Cache Playwright browsers
+    - name: Cache Playwright browsers
+      id: playwright-cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-browsers-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
     # Install Node dependencies (frontend)
     - name: Install frontend dependencies
@@ -61,13 +75,8 @@ jobs:
     # Start Docker Compose services (test databases)
     - name: Start test databases
       run: |
-        docker compose -f e2e/docker-compose.test.yml up -d
-        # Wait for databases to be healthy
-        echo "Waiting for databases to be ready..."
-        sleep 20
+        docker compose -f e2e/docker-compose.test.yml up -d --wait --wait-timeout 120
         docker ps -a
-        # Verify all containers are running
-        docker compose -f e2e/docker-compose.test.yml ps
     
     # Start FalkorDB (Redis graph database)
     - name: Start FalkorDB
@@ -133,9 +142,14 @@ jobs:
         AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
         AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
     
-    # Install Playwright browsers
+    # Install Playwright browsers (Chromium only in CI)
     - name: Install Playwright Browsers
-      run: npx playwright install --with-deps chromium firefox
+      if: steps.playwright-cache.outputs.cache-hit != 'true'
+      run: npx playwright install --with-deps chromium
+
+    - name: Install Playwright system deps
+      if: steps.playwright-cache.outputs.cache-hit == 'true'
+      run: npx playwright install-deps chromium
     
     # Create auth directory for storage state
     - name: Create auth directory
@@ -148,7 +162,7 @@ jobs:
         CI: true
     
     # Upload test results on failure
-    - uses: actions/upload-artifact@v6
+    - uses: actions/upload-artifact@v7
       if: failure()
       with:
         name: playwright-report
@@ -156,7 +170,7 @@ jobs:
         retention-days: 30
     
     # Upload test screenshots on failure
-    - uses: actions/upload-artifact@v6
+    - uses: actions/upload-artifact@v7
       if: failure()
       with:
         name: test-results
