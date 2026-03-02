@@ -71,28 +71,7 @@ jobs:
     # Start Docker Compose services (test databases)
     - name: Start test databases
       run: |
-        docker compose -f e2e/docker-compose.test.yml up -d
-        echo "Waiting for databases to be healthy..."
-        for i in {1..60}; do
-          if docker compose -f e2e/docker-compose.test.yml ps --format json | python3 -c "
-import sys, json
-services = [json.loads(line) for line in sys.stdin if line.strip()]
-if not services:
-    sys.exit(1)
-healthy = all(s.get('Health','') == 'healthy' for s in services)
-sys.exit(0 if healthy else 1)
-" 2>/dev/null; then
-            echo "All databases healthy!"
-            break
-          fi
-          echo "Waiting for databases... attempt $i/60"
-          sleep 2
-          if [ $i -eq 60 ]; then
-            echo "Databases failed to become healthy"
-            docker compose -f e2e/docker-compose.test.yml ps
-            exit 1
-          fi
-        done
+        docker compose -f e2e/docker-compose.test.yml up -d --wait --wait-timeout 120
         docker ps -a
     
     # Start FalkorDB (Redis graph database)
