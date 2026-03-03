@@ -71,10 +71,16 @@ class Config:
     elif os.getenv("ANTHROPIC_API_KEY"):
         AZURE_FLAG = False
         COMPLETION_MODEL = "anthropic/" + os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6").removeprefix("anthropic/")
-        if os.getenv("VOYAGE_API_KEY"):
-            EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "voyage/voyage-4-lite")
+        if os.getenv("EMBEDDING_MODEL"):
+            EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL")
+        elif os.getenv("VOYAGE_API_KEY"):
+            EMBEDDING_MODEL_NAME = "voyage/voyage-4-lite"
+        elif os.getenv("OPENAI_API_KEY"):
+            EMBEDDING_MODEL_NAME = "openai/text-embedding-ada-002"
         else:
-            EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "openai/text-embedding-ada-002")
+            raise ValueError(
+                "Anthropic requires EMBEDDING_MODEL or VOYAGE_API_KEY or OPENAI_API_KEY for embeddings."
+            )
     elif os.getenv("GEMINI_API_KEY"):
         AZURE_FLAG = False
         COMPLETION_MODEL = "gemini/" + os.getenv("GEMINI_MODEL", "gemini-2.5-flash").removeprefix("gemini/")
