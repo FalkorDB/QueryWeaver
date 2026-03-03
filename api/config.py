@@ -64,13 +64,32 @@ class Config:
     Configuration class for the text2sql module.
     """
     AZURE_FLAG = True
-    if not os.getenv("OPENAI_API_KEY"):
-        EMBEDDING_MODEL_NAME = "azure/text-embedding-ada-002"
-        COMPLETION_MODEL = "azure/gpt-4.1"
-    else:
+    if os.getenv("OLLAMA_MODEL"):
         AZURE_FLAG = False
-        EMBEDDING_MODEL_NAME = "openai/text-embedding-ada-002"
-        COMPLETION_MODEL = "openai/gpt-4.1"
+        COMPLETION_MODEL = "ollama/" + os.getenv("OLLAMA_MODEL").removeprefix("ollama/")
+        EMBEDDING_MODEL_NAME = "ollama/" + os.getenv("OLLAMA_EMBEDDING_MODEL", "embeddinggemma").removeprefix("ollama/")
+    elif os.getenv("ANTHROPIC_API_KEY"):
+        AZURE_FLAG = False
+        COMPLETION_MODEL = "anthropic/" + os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6").removeprefix("anthropic/")
+        if os.getenv("VOYAGE_API_KEY"):
+            EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "voyage/voyage-4-lite")
+        else:
+            EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "openai/text-embedding-ada-002")
+    elif os.getenv("GEMINI_API_KEY"):
+        AZURE_FLAG = False
+        COMPLETION_MODEL = "gemini/" + os.getenv("GEMINI_MODEL", "gemini-2.5-flash").removeprefix("gemini/")
+        EMBEDDING_MODEL_NAME = "gemini/" + os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001").removeprefix("gemini/")
+    elif os.getenv("COHERE_API_KEY"):
+        AZURE_FLAG = False
+        COMPLETION_MODEL = "cohere/" + os.getenv("COHERE_MODEL", "command-a-03-2025").removeprefix("cohere/")
+        EMBEDDING_MODEL_NAME = "cohere/" + os.getenv("COHERE_EMBEDDING_MODEL", "embed-v4.0").removeprefix("cohere/")
+    elif os.getenv("OPENAI_API_KEY"):
+        AZURE_FLAG = False
+        EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "openai/text-embedding-ada-002")
+        COMPLETION_MODEL = os.getenv("COMPLETION_MODEL", "openai/gpt-4.1")
+    else:
+        EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "azure/text-embedding-ada-002")
+        COMPLETION_MODEL = os.getenv("COMPLETION_MODEL", "azure/gpt-4.1")
 
     DB_MAX_DISTINCT: int = 100  # pylint: disable=invalid-name
     DB_UNIQUENESS_THRESHOLD: float = 0.5  # pylint: disable=invalid-name
