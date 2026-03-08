@@ -110,10 +110,12 @@ jobs:
     
     # Start the FastAPI application
     - name: Start FastAPI application
+      id: start-server
       run: |
         # Start server in background with uv
         uv run uvicorn api.index:app --host localhost --port 5000 > /tmp/uvicorn.log 2>&1 &
         UVICORN_PID=$!
+        echo "pid=$UVICORN_PID" >> "$GITHUB_OUTPUT"
         echo "Started server with PID: $UVICORN_PID"
         # Wait for app to start
         echo "Waiting for application to start..."
@@ -178,10 +180,11 @@ jobs:
         path: test-results/
         retention-days: 30
     
-    # Cleanup - Stop all containers
-    - name: Cleanup Docker containers
+    # Cleanup - Stop all containers and background processes
+    - name: Cleanup
       if: always()
       run: |
+        kill ${{ steps.start-server.outputs.pid }} || true
         docker compose -f e2e/docker-compose.test.yml down -v || true
         docker stop falkordb-test || true
         docker rm falkordb-test || true
