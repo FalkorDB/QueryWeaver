@@ -71,6 +71,7 @@ namespace
 namespaced
 
 CSRF
+Anthropic
 LLM
 OpenAI
 OpenAI's

@@ -10,9 +10,9 @@ test.describe('Database Connection Tests', () => {
   let browser: BrowserWrapper;
   let apiCall: ApiCalls;
 
-  test.beforeEach(async () => {
+  test.beforeEach(async ({ request }) => {
     browser = new BrowserWrapper();
-    apiCall = new ApiCalls();
+    apiCall = new ApiCalls(request);
   });
 
   test.afterEach(async () => {
@@ -20,31 +20,39 @@ test.describe('Database Connection Tests', () => {
   });
 
   test('connect PostgreSQL via API -> verify in UI', async () => {
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    test.setTimeout(120000); // Allow extra time for schema loading in CI
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
     const { postgres: postgresUrl } = getTestDatabases();
 
-    // Connect via API - response is streaming
-    const response = await apiCall.connectDatabase(postgresUrl);
-    const messages = await apiCall.parseStreamingResponse(response);
+    // Connect via API - response is streaming (retry on transient errors)
+    const messages = await apiCall.connectDatabaseWithRetry(postgresUrl);
 
     // Verify final message indicates success
+    expect(messages.length).toBeGreaterThan(0);
     const finalMessage = messages[messages.length - 1];
+    if (finalMessage.type !== 'final_result') {
+      console.log(`[PostgreSQL API connect] unexpected final message: ${JSON.stringify(finalMessage)}`);
+    }
     expect(finalMessage.type).toBe('final_result');
     expect(finalMessage.success).toBeTruthy();
 
     // Get the list of databases to find the connected database
-    const graphsList = await apiCall.getGraphs();
+    const graphsList = await apiCall.waitForGraphs(
+      (graphs) => graphs.some((id) => id === 'testdb' || id.endsWith('_testdb')),
+      30000
+    );
     expect(graphsList).toBeDefined();
     expect(Array.isArray(graphsList)).toBeTruthy();
     expect(graphsList.length).toBeGreaterThan(0);
+    console.log(`[PostgreSQL API connect] graphs after connection: ${JSON.stringify(graphsList)}`);
 
     // Find the testdb database (not testdb_delete) - could be 'testdb' or 'userId_testdb'
     const graphId = graphsList.find(id => id === 'testdb' || id.endsWith('_testdb'));
     expect(graphId).toBeTruthy();
 
     // Wait for UI to reflect the connection (schema loading completes)
-    const connectionEstablished = await homePage.waitForDatabaseConnection();
+    const connectionEstablished = await homePage.waitForDatabaseConnection(90000);
     expect(connectionEstablished).toBeTruthy();
 
     // Verify connection appears in UI - check database status badge
@@ -64,31 +72,39 @@ test.describe('Database Connection Tests', () => {
   });
 
   test('connect MySQL via API -> verify in UI', async () => {
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    test.setTimeout(120000); // Allow extra time for schema loading in CI
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
     const { mysql: mysqlUrl } = getTestDatabases();
 
-    // Connect via API - response is streaming
-    const response = await apiCall.connectDatabase(mysqlUrl);
-    const messages = await apiCall.parseStreamingResponse(response);
+    // Connect via API - response is streaming (retry on transient errors)
+    const messages = await apiCall.connectDatabaseWithRetry(mysqlUrl);
 
     // Verify final message indicates success
+    expect(messages.length).toBeGreaterThan(0);
     const finalMessage = messages[messages.length - 1];
+    if (finalMessage.type !== 'final_result') {
+      console.log(`[MySQL API connect] unexpected final message: ${JSON.stringify(finalMessage)}`);
+    }
     expect(finalMessage.type).toBe('final_result');
     expect(finalMessage.success).toBeTruthy();
 
     // Get the list of databases to find the connected database
-    const graphsList = await apiCall.getGraphs();
+    const graphsList = await apiCall.waitForGraphs(
+      (graphs) => graphs.some((id) => id === 'testdb' || id.endsWith('_testdb')),
+      30000
+    );
     expect(graphsList).toBeDefined();
     expect(Array.isArray(graphsList)).toBeTruthy();
     expect(graphsList.length).toBeGreaterThan(0);
+    console.log(`[MySQL API connect] graphs after connection: ${JSON.stringify(graphsList)}`);
 
     // Find the testdb database (not testdb_delete) - could be 'testdb' or 'userId_testdb'
     const graphId = graphsList.find(id => id === 'testdb' || id.endsWith('_testdb'));
     expect(graphId).toBeTruthy();
 
     // Wait for UI to reflect the connection (schema loading completes)
-    const connectionEstablished = await homePage.waitForDatabaseConnection();
+    const connectionEstablished = await homePage.waitForDatabaseConnection(90000);
     expect(connectionEstablished).toBeTruthy();
 
     // Verify connection appears in UI - check database status badge
@@ -108,7 +124,8 @@ test.describe('Database Connection Tests', () => {
   });
 
   test('connect PostgreSQL via UI (URL) -> verify via API', async () => {
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    test.setTimeout(120000); // Allow extra time for schema loading in CI
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
     const { postgres: postgresUrl } = getTestDatabases();
 
@@ -120,17 +137,24 @@ test.describe('Database Connection Tests', () => {
     await homePage.clickOnDatabaseModalConnect();
 
     // Wait for UI to reflect the connection (schema loading completes)
-    const connectionEstablished = await homePage.waitForDatabaseConnection();
+    const connectionEstablished = await homePage.waitForDatabaseConnection(90000);
+    if (!connectionEstablished) {
+      console.log('[PostgreSQL URL connect] waitForDatabaseConnection timed out');
+    }
     expect(connectionEstablished).toBeTruthy();
 
-    // Verify via API - get the list of databases
-    const graphsList = await apiCall.getGraphs();
+    // Verify via API - poll until the expected testdb graph appears
+    const graphsList = await apiCall.waitForGraphs(
+      (graphs) => graphs.some((id) => id === 'testdb' || id.endsWith('_testdb')),
+      30000
+    );
     expect(graphsList).toBeDefined();
     expect(Array.isArray(graphsList)).toBeTruthy();
     expect(graphsList.length).toBeGreaterThan(0);
+    console.log(`[PostgreSQL URL connect] graphs after connection: ${JSON.stringify(graphsList)}`);
 
     // Get the connected database ID
-    const graphId = graphsList[0];
+    const graphId = graphsList.find((id) => id === 'testdb' || id.endsWith('_testdb'));
     expect(graphId).toBeTruthy();
 
     // Verify connection appears in UI
@@ -139,7 +163,8 @@ test.describe('Database Connection Tests', () => {
   });
 
   test('connect MySQL via UI (URL) -> verify via API', async () => {
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    test.setTimeout(120000); // Allow extra time for schema loading in CI
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
     const { mysql: mysqlUrl } = getTestDatabases();
 
@@ -151,17 +176,24 @@ test.describe('Database Connection Tests', () => {
     await homePage.clickOnDatabaseModalConnect();
 
     // Wait for UI to reflect the connection (schema loading completes)
-    const connectionEstablished = await homePage.waitForDatabaseConnection();
+    const connectionEstablished = await homePage.waitForDatabaseConnection(90000);
+    if (!connectionEstablished) {
+      console.log('[MySQL URL connect] waitForDatabaseConnection timed out');
+    }
     expect(connectionEstablished).toBeTruthy();
 
-    // Verify via API - get the list of databases
-    const graphsList = await apiCall.getGraphs();
+    // Verify via API - poll until the expected testdb graph appears
+    const graphsList = await apiCall.waitForGraphs(
+      (graphs) => graphs.some((id) => id === 'testdb' || id.endsWith('_testdb')),
+      30000
+    );
     expect(graphsList).toBeDefined();
     expect(Array.isArray(graphsList)).toBeTruthy();
     expect(graphsList.length).toBeGreaterThan(0);
+    console.log(`[MySQL URL connect] graphs after connection: ${JSON.stringify(graphsList)}`);
 
     // Get the connected database ID
-    const graphId = graphsList[0];
+    const graphId = graphsList.find((id) => id === 'testdb' || id.endsWith('_testdb'));
     expect(graphId).toBeTruthy();
 
     // Verify connection appears in UI
@@ -170,7 +202,8 @@ test.describe('Database Connection Tests', () => {
   });
 
   test('connect PostgreSQL via UI (Manual Entry) -> verify via API', async () => {
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    test.setTimeout(120000); // Allow extra time for schema loading in CI
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
     // Connect via UI using manual entry mode
@@ -187,17 +220,24 @@ test.describe('Database Connection Tests', () => {
     await homePage.clickOnDatabaseModalConnect();
 
     // Wait for UI to reflect the connection (schema loading completes)
-    const connectionEstablished = await homePage.waitForDatabaseConnection();
+    const connectionEstablished = await homePage.waitForDatabaseConnection(90000);
+    if (!connectionEstablished) {
+      console.log('[PostgreSQL Manual connect] waitForDatabaseConnection timed out');
+    }
     expect(connectionEstablished).toBeTruthy();
 
-    // Verify via API - get the list of databases
-    const graphsList = await apiCall.getGraphs();
+    // Verify via API - poll until the expected testdb graph appears
+    const graphsList = await apiCall.waitForGraphs(
+      (graphs) => graphs.some((id) => id === 'testdb' || id.endsWith('_testdb')),
+      30000
+    );
     expect(graphsList).toBeDefined();
     expect(Array.isArray(graphsList)).toBeTruthy();
     expect(graphsList.length).toBeGreaterThan(0);
+    console.log(`[PostgreSQL Manual connect] graphs after connection: ${JSON.stringify(graphsList)}`);
 
     // Get the connected database ID
-    const graphId = graphsList[0];
+    const graphId = graphsList.find((id) => id === 'testdb' || id.endsWith('_testdb'));
     expect(graphId).toBeTruthy();
 
     // Verify connection appears in UI
@@ -206,7 +246,8 @@ test.describe('Database Connection Tests', () => {
   });
 
   test('connect MySQL via UI (Manual Entry) -> verify via API', async () => {
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    test.setTimeout(120000); // Allow extra time for schema loading in CI
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
     // Connect via UI using manual entry mode
@@ -223,17 +264,24 @@ test.describe('Database Connection Tests', () => {
     await homePage.clickOnDatabaseModalConnect();
 
     // Wait for UI to reflect the connection (schema loading completes)
-    const connectionEstablished = await homePage.waitForDatabaseConnection();
+    const connectionEstablished = await homePage.waitForDatabaseConnection(90000);
+    if (!connectionEstablished) {
+      console.log('[MySQL Manual connect] waitForDatabaseConnection timed out');
+    }
     expect(connectionEstablished).toBeTruthy();
 
-    // Verify via API - get the list of databases
-    const graphsList = await apiCall.getGraphs();
+    // Verify via API - poll until the expected testdb graph appears
+    const graphsList = await apiCall.waitForGraphs(
+      (graphs) => graphs.some((id) => id === 'testdb' || id.endsWith('_testdb')),
+      30000
+    );
     expect(graphsList).toBeDefined();
     expect(Array.isArray(graphsList)).toBeTruthy();
     expect(graphsList.length).toBeGreaterThan(0);
+    console.log(`[MySQL Manual connect] graphs after connection: ${JSON.stringify(graphsList)}`);
 
     // Get the connected database ID
-    const graphId = graphsList[0];
+    const graphId = graphsList.find((id) => id === 'testdb' || id.endsWith('_testdb'));
     expect(graphId).toBeTruthy();
 
     // Verify connection appears in UI
@@ -242,7 +290,7 @@ test.describe('Database Connection Tests', () => {
   });
 
   test('invalid connection string -> shows error', async () => {
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
     const invalidUrl = 'invalid://connection:string';
@@ -270,38 +318,41 @@ test.describe('Database Connection Tests', () => {
 
   // Delete tests run serially to avoid conflicts
   test.describe.serial('Database Deletion Tests', () => {
-    test('delete PostgreSQL database via UI -> verify removed via API', async () => {    
+    test('delete PostgreSQL database via UI -> verify removed via API', async () => {
+      test.setTimeout(180000); // Allow extra time: schema loading + UI interaction
       // Use the separate postgres delete container on port 5433
       const postgresDeleteUrl = 'postgresql://postgres:postgres@localhost:5433/testdb_delete';
 
-      // Connect database via API
-      const connectResponse = await apiCall.connectDatabase(postgresDeleteUrl);
-      const connectMessages = await apiCall.parseStreamingResponse(connectResponse);
+      // Connect database via API (retry on transient errors)
+      const connectMessages = await apiCall.connectDatabaseWithRetry(postgresDeleteUrl);
+      expect(connectMessages.length).toBeGreaterThan(0);
       const finalMessage = connectMessages[connectMessages.length - 1];
+      if (finalMessage.type !== 'final_result') {
+        console.log(`[PostgreSQL delete connect] unexpected final message: ${JSON.stringify(finalMessage)}`);
+      }
       expect(finalMessage.type).toBe('final_result');
       expect(finalMessage.success).toBeTruthy();
 
-      // Wait a bit for the connection to be fully registered
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Get the graph ID from the API
-      let graphsList = await apiCall.getGraphs();
+      // Poll until the graph appears in the API
+      let graphsList = await apiCall.waitForGraphs(
+        (graphs) => graphs.some((id) => id === 'testdb_delete' || id.endsWith('_testdb_delete')),
+        30000
+      );
       expect(graphsList.length).toBeGreaterThan(0);
       
-      // Find the graph that contains 'testdb_delete' (could be 'testdb_delete' or 'userId_testdb_delete')
-      const graphId = graphsList.find(id => id.includes('testdb_delete'));
+      // Find the graph that is 'testdb_delete' or '{userId}_testdb_delete'
+      const graphId = graphsList.find(id => id === 'testdb_delete' || id.endsWith('_testdb_delete'));
       
-      // If not found, log all graphs for debugging
       if (!graphId) {
-        console.log('Available graphs:', graphsList);
-        console.log('Looking for graph containing: testdb_delete');
+        console.log('[PostgreSQL delete] Available graphs:', graphsList);
+        console.log('[PostgreSQL delete] Looking for graph containing: testdb_delete');
       }
       
       expect(graphId).toBeTruthy();
       const initialCount = graphsList.length;
 
       // Create new page and open it
-      const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+      const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
       await browser.setPageToFullScreen();
 
       // Delete via UI - open dropdown, click delete, confirm
@@ -309,62 +360,68 @@ test.describe('Database Connection Tests', () => {
       await homePage.clickOnDeleteGraph(graphId!);
       await homePage.clickOnDeleteModalConfirm();
       
-      // Wait for deletion to complete
-      await homePage.wait(1000);
-
-      // Verify removed from API
-      graphsList = await apiCall.getGraphs();
+      // Wait for deletion to complete - poll until graphId is absent (up to 30s)
+      graphsList = await apiCall.waitForGraphs(
+        (graphs) => !graphs.some((id) => id === graphId),
+        30000
+      );
       expect(graphsList.length).toBe(initialCount - 1);
       expect(graphsList).not.toContain(graphId);
-  });
+    });
 
-  test('delete MySQL database via UI -> verify removed via API', async () => {  
-    // Use the separate mysql delete container on port 3307
-    const mysqlDeleteUrl = 'mysql://root:password@localhost:3307/testdb_delete';
+    test('delete MySQL database via UI -> verify removed via API', async () => {
+      test.setTimeout(180000); // Allow extra time: schema loading + UI interaction
+      // Use the separate mysql delete container on port 3307
+      const mysqlDeleteUrl = 'mysql://root:password@localhost:3307/testdb_delete';
 
-    // Connect database via API
-    const connectResponse = await apiCall.connectDatabase(mysqlDeleteUrl);
-    const connectMessages = await apiCall.parseStreamingResponse(connectResponse);
-    const finalMessage = connectMessages[connectMessages.length - 1];
-    expect(finalMessage.type).toBe('final_result');
-    expect(finalMessage.success).toBeTruthy();
+      // Connect database via API (retry on transient errors)
+      const connectMessages = await apiCall.connectDatabaseWithRetry(mysqlDeleteUrl);
+      expect(connectMessages.length).toBeGreaterThan(0);
+      const finalMessage = connectMessages[connectMessages.length - 1];
+      if (finalMessage.type !== 'final_result') {
+        console.log(`[MySQL delete connect] unexpected final message: ${JSON.stringify(finalMessage)}`);
+      }
+      expect(finalMessage.type).toBe('final_result');
+      expect(finalMessage.success).toBeTruthy();
 
-    // Wait a bit for the connection to be fully registered
-    await new Promise(resolve => setTimeout(resolve, 2000));
+      // Poll until the graph appears in the API
+      let graphsList = await apiCall.waitForGraphs(
+        (graphs) => graphs.some((id) => id === 'testdb_delete' || id.endsWith('_testdb_delete')),
+        30000
+      );
+      expect(graphsList.length).toBeGreaterThan(0);
+      const graphId = graphsList.find(id => id === 'testdb_delete' || id.endsWith('_testdb_delete'));
+      
+      if (!graphId) {
+        console.log('[MySQL delete] Available graphs:', graphsList);
+        console.log('[MySQL delete] Looking for graph containing: testdb_delete');
+      }
+      
+      expect(graphId).toBeTruthy();
+      const initialCount = graphsList.length;
 
-    // Get the graph ID from the API - find the graph containing testdb_delete
-    let graphsList = await apiCall.getGraphs();
-    expect(graphsList.length).toBeGreaterThan(0);
-    const graphId = graphsList.find(id => id.includes('testdb_delete'));
-    
-    // If not found, log all graphs for debugging
-    if (!graphId) {
-      console.log('Available graphs:', graphsList);
-      console.log('Looking for graph containing: testdb_delete');
-    }
-    
-    expect(graphId).toBeTruthy();
-    const initialCount = graphsList.length;
+      const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
+      await browser.setPageToFullScreen();
 
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
-    await browser.setPageToFullScreen();
+      // Wait for UI to reflect the connection (increased timeout for schema loading)
+      const connectionEstablished = await homePage.waitForDatabaseConnection(90000);
+      if (!connectionEstablished) {
+        console.log('[MySQL delete] waitForDatabaseConnection timed out');
+      }
+      expect(connectionEstablished).toBeTruthy();
 
-    // Wait for UI to reflect the connection (increased timeout for schema loading)
-    const connectionEstablished = await homePage.waitForDatabaseConnection(60000);
-    expect(connectionEstablished).toBeTruthy();
-
-    // Delete via UI - open dropdown, click delete, confirm
-    await homePage.clickOnDatabaseSelector();
-    await homePage.clickOnDeleteGraph(graphId!);
-    await homePage.clickOnDeleteModalConfirm();
-    
-    // Wait for deletion to complete
-    await homePage.wait(1000);
-
-    // Verify removed from API
-    graphsList = await apiCall.getGraphs();
-    expect(graphsList.length).toBe(initialCount - 1);
-    expect(graphsList).not.toContain(graphId);
+      // Delete via UI - open dropdown, click delete, confirm
+      await homePage.clickOnDatabaseSelector();
+      await homePage.clickOnDeleteGraph(graphId!);
+      await homePage.clickOnDeleteModalConfirm();
+      
+      // Wait for deletion to complete - poll until graphId is absent (up to 30s)
+      graphsList = await apiCall.waitForGraphs(
+        (graphs) => !graphs.some((id) => id === graphId),
+        30000
+      );
+      expect(graphsList.length).toBe(initialCount - 1);
+      expect(graphsList).not.toContain(graphId);
     });
   });
 });

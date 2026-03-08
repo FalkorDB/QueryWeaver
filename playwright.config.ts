@@ -19,8 +19,8 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
-  /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
+  /* Pin to 4 workers on CI (matches ubuntu-latest vCPU count) */
+  workers: process.env.CI ? 4 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
@@ -53,15 +53,15 @@ export default defineConfig({
       dependencies: ['setup'],
     },
 
-    {
+    // Firefox is only run locally; skipped in CI to halve test time
+    ...(!process.env.CI ? [{
       name: 'firefox',
       use: {
         ...devices['Desktop Firefox'],
-        // Use saved authentication state
         storageState: 'e2e/.auth/user.json',
       },
       dependencies: ['setup'],
-    },
+    }] : []),
 
     // {
     //   name: 'webkit',

@@ -1,4 +1,5 @@
 import { API_CONFIG, buildApiUrl } from '@/config/api';
+import { csrfHeaders } from '@/lib/csrf';
 import type { ChatRequest, StreamMessage, ConfirmRequest } from '@/types/api';
 
 /**
@@ -58,6 +59,7 @@ export class ChatService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...csrfHeaders(),
         },
         body: JSON.stringify({
           ...requestBody,
@@ -188,6 +190,7 @@ export class ChatService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...csrfHeaders(),
         },
         body: JSON.stringify(request),
         credentials: 'include',
