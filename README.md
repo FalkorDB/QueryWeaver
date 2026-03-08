@@ -245,7 +245,7 @@ Follow these steps to run and develop QueryWeaver from source.
 ### Prerequisites
 
 - Python 3.12+
-- pipenv
+- uv (Python package manager)
 - A FalkorDB instance (local or remote)
 - Node.js and npm (for the React frontend)
 
@@ -263,11 +263,11 @@ make install
 make run-dev
 ```
 
-If you prefer to set up manually or need a custom environment, use Pipenv:
+If you prefer to set up manually or need a custom environment, use uv:
 
 ```bash
 # Install Python (backend) and frontend dependencies
-pipenv sync --dev
+uv sync
 
 # Create a local environment file
 cp .env.example .env
@@ -277,7 +277,7 @@ cp .env.example .env
 ### Run the app locally
 
 ```bash
-pipenv run uvicorn api.index:app --host 0.0.0.0 --port 5000 --reload
+uv run uvicorn api.index:app --host 0.0.0.0 --port 5000 --reload
 ```
 
 The server will be available at http://localhost:5000
@@ -378,9 +378,9 @@ docker run -p 5000:5000 -it \
 
 ### Prerequisites
 
-- Install dev dependencies: `pipenv sync --dev`
+- Install dev dependencies: `uv sync`
 - Start FalkorDB (see `make docker-falkordb`)
-- Install Playwright browsers: `pipenv run playwright install`
+- Install Playwright browsers: `uv run playwright install`
 
 ### Quick commands
 
@@ -412,7 +412,7 @@ make test-e2e-headed
 
 ### Test types
 
-- Unit tests: focus on individual modules and utilities. Run with `make test-unit` or `pipenv run pytest tests/ -k "not e2e"`.
+- Unit tests: focus on individual modules and utilities. Run with `make test-unit` or `uv run python -m pytest tests/ -k "not e2e"`.
 - End-to-end (E2E) tests: run via Playwright and exercise UI flows, OAuth, file uploads, schema processing, chat queries, and API endpoints. Use `make test-e2e`.
 
 See `tests/e2e/README.md` for full E2E test instructions.
@@ -424,7 +424,7 @@ GitHub Actions run unit and E2E tests on pushes and pull requests. Failures capt
 ## Troubleshooting
 
 - FalkorDB connection issues: start the DB helper `make docker-falkordb` or check network/host settings.
-- Playwright/browser failures: install browsers with `pipenv run playwright install` and ensure system deps are present.
+- Playwright/browser failures: install browsers with `uv run playwright install` and ensure system deps are present.
 - Missing environment variables: copy `.env.example` and fill required values.
 - **OAuth "mismatching_state: CSRF Warning!" errors**: Set `APP_ENV=production` (or `staging`) in your environment for HTTPS deployments, or `APP_ENV=development` for HTTP development environments. This ensures session cookies are configured correctly for your deployment type.
 
