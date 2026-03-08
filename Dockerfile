@@ -37,6 +37,9 @@ COPY pyproject.toml uv.lock* README.md ./
 # Install packages into system Python (no virtualenv in container)
 ENV UV_SYSTEM_PYTHON=1
 
+# Ensure venv binaries are on PATH (uv sync always creates .venv)
+ENV PATH="/app/.venv/bin:$PATH"
+
 # Install Python dependencies from pyproject.toml
 RUN uv sync --frozen --no-dev
 
