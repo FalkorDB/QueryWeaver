@@ -1,0 +1,13 @@
+.venv
+node_modules
+dist
+.git
+.github
+*.md
+!README.md
+__pycache__
+*.pyc
+.env
+.env.*
+e2e
+tests
