@@ -35,10 +35,13 @@ async def validate_api_key(request: Request, data: ValidateKeyRequest):  # pylin
         )
 
     # Validate vendor is supported
-    supported_vendors = ("openai", "anthropic", "gemini", "azure", "ollama", "cohere")
+    supported_vendors = (
+        "openai", "anthropic", "gemini", "azure", "ollama", "cohere",
+    )
     if vendor not in supported_vendors:
+        allowed = ", ".join(supported_vendors)
         return JSONResponse(
-            content={"valid": False, "error": f"Unsupported vendor '{vendor}'. Supported: {', '.join(supported_vendors)}"},
+            content={"valid": False, "error": f"Unsupported vendor. Supported: {allowed}"},
             status_code=400
         )
 
@@ -84,16 +87,16 @@ async def validate_api_key(request: Request, data: ValidateKeyRequest):  # pylin
         )
 
     except Exception as e:  # pylint: disable=broad-except
-        error_msg = str(e)
-        logging.warning("%s API key validation failed: %s", vendor.capitalize(), error_msg)
+        error_lower = str(e).lower()
+        logging.warning("API key validation failed for vendor=%s", vendor)
 
-        # Check for common error messages
-        if "invalid" in error_msg.lower() or "authentication" in error_msg.lower():
+        # Return generic messages — never expose exception details
+        if "invalid" in error_lower or "authentication" in error_lower:
             return JSONResponse(
                 content={"valid": False, "error": "Invalid API key"},
                 status_code=401
             )
-        if "quota" in error_msg.lower() or "rate" in error_msg.lower():
+        if "quota" in error_lower or "rate" in error_lower:
             return JSONResponse(
                 content={"valid": False, "error": "API quota exceeded or rate limited"},
                 status_code=429
