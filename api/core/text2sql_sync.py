@@ -237,7 +237,7 @@ async def _check_relevancy_and_find_tables(
     return None, result
 
 
-def _save_memory_background(
+def _save_memory_background(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     memory_tool: MemoryTool,
     question: str,
     sql_query: str,
@@ -279,7 +279,7 @@ def _save_memory_background(
     )
 
 
-async def _execute_and_format_query(
+async def _execute_and_format_query(  # pylint: disable=too-many-locals
     ctx: _QueryContext,
     analysis: _AnalysisResult,
     tables: Optional[list],
@@ -501,7 +501,7 @@ async def query_database_sync(
         )
 
 
-async def execute_destructive_operation_sync(
+async def execute_destructive_operation_sync(  # pylint: disable=too-many-locals
     user_id: str,
     graph_id: str,
     confirm_data,

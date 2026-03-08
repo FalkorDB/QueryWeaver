@@ -197,13 +197,11 @@ async def load_database_sync(url: str, user_id: str):
         raise InvalidArgumentError("Invalid database URL format. Must be PostgreSQL or MySQL.")
 
     tables_loaded = 0
-    last_message = ""
     success = False
 
     try:
         async for progress_success, progress_message in loader.load(user_id, url):
             success = progress_success
-            last_message = progress_message
             if success and "table" in progress_message.lower():
                 # Try to extract table count from message
                 tables_loaded += 1

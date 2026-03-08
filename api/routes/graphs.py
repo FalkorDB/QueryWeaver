@@ -7,19 +7,16 @@ from pydantic import BaseModel
 
 from api.core.schema_loader import list_databases
 from api.core.text2sql import (
-    GENERAL_PREFIX,
     ChatRequest,
     ConfirmRequest,
-    GraphNotFoundError,
-    InternalError,
-    InvalidArgumentError,
     delete_database,
     execute_destructive_operation,
     get_schema,
     query_database,
     refresh_database_schema,
-    _graph_name,
 )
+from api.core.text2sql_common import GENERAL_PREFIX, graph_name
+from api.core.errors import GraphNotFoundError, InternalError, InvalidArgumentError
 from api.graph import get_user_rules, set_user_rules
 from api.auth.user_management import token_required
 from api.routes.tokens import UNAUTHORIZED_RESPONSE
@@ -239,7 +236,7 @@ class UserRulesRequest(BaseModel):
 async def get_graph_user_rules(request: Request, graph_id: str):
     """Get user rules for the specified graph."""
     try:
-        full_graph_id = _graph_name(request.state.user_id, graph_id)
+        full_graph_id = graph_name(request.state.user_id, graph_id)
         user_rules = await get_user_rules(full_graph_id)
         logging.info("Retrieved user rules length: %d", len(user_rules) if user_rules else 0)
         return JSONResponse(content={"user_rules": user_rules})
@@ -265,7 +262,7 @@ async def update_graph_user_rules(request: Request, graph_id: str, data: UserRul
         logging.info(
             "Received request to update user rules, content length: %d", len(data.user_rules)
         )
-        full_graph_id = _graph_name(request.state.user_id, graph_id)
+        full_graph_id = graph_name(request.state.user_id, graph_id)
         await set_user_rules(full_graph_id, data.user_rules)
         logging.info("User rules updated successfully")
         return JSONResponse(content={"success": True, "user_rules": data.user_rules})

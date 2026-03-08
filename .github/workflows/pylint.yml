@@ -23,7 +23,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv sync
+        uv sync --all-extras
 
     - name: Run pylint
       run: |
