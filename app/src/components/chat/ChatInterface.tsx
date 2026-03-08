@@ -12,6 +12,7 @@ import QueryInput from "./QueryInput";
 import SuggestionCards from "../SuggestionCards";
 import { ChatService } from "@/services/chat";
 import type { ConfirmRequest } from "@/types/api";
+import { getVendorPrefix } from "@/utils/vendorConfig";
 
 interface ChatMessageData {
   id: string;
@@ -338,7 +339,6 @@ const ChatInterface = ({
       if (isApiKeyValid && apiKey) {
         confirmRequest.custom_api_key = apiKey;
         if (modelName && vendor) {
-          const { getVendorPrefix } = await import('@/utils/vendorConfig');
           const vendorPrefix = getVendorPrefix(vendor);
           confirmRequest.custom_model = modelName.startsWith(`${vendorPrefix}/`)
             ? modelName
