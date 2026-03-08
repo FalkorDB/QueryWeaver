@@ -1,6 +1,7 @@
 name: Close superseded Dependabot PRs
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - copilot/consolidate-dependabot-prs
