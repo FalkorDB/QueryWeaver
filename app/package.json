@@ -49,7 +49,7 @@
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.6.0",
     "input-otp": "^1.4.2",
-    "lucide-react": "^0.462.0",
+    "lucide-react": "^0.577.0",
     "next-themes": "^0.3.0",
     "preact": "^10.28.4",
     "react": "^18.3.1",
