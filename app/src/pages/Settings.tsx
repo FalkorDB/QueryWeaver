@@ -14,6 +14,8 @@ import { useDatabase } from "@/contexts/DatabaseContext";
 import { useSettings, AIVendor } from "@/contexts/SettingsContext";
 import { databaseService } from "@/services/database";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AI_VENDORS, getVendorConfig, DEFAULT_MODEL } from "@/utils/vendorConfig";
+import { useApiKeyValidation } from "@/hooks/useApiKeyValidation";
 import {
   Select,
   SelectContent,
@@ -30,13 +32,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import Sidebar from "@/components/layout/Sidebar";
 import SchemaViewer from "@/components/schema";
-
-// AI Vendor configurations
-const AI_VENDORS = [
-  { value: 'openai' as AIVendor, label: 'OpenAI', keyPrefix: 'sk-', exampleModel: 'gpt-4.1' },
-  { value: 'google' as AIVendor, label: 'Google', keyPrefix: '', exampleModel: 'gemini-3-pro-preview' },
-  { value: 'anthropic' as AIVendor, label: 'Anthropic', keyPrefix: 'sk-ant-', exampleModel: 'claude-sonnet-4-5-20250929' },
-];
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -59,9 +54,7 @@ const Settings = () => {
   const [tempVendor, setTempVendor] = useState<AIVendor>(vendor);
   const [tempApiKey, setTempApiKey] = useState(apiKey || '');
   const [tempModelName, setTempModelName] = useState(modelName);
-  const [isValidating, setIsValidating] = useState(false);
-  const [validationMessage, setValidationMessage] = useState<string | null>(null);
-  const [validationStatus, setValidationStatus] = useState<'success' | 'error' | null>(null);
+  const { message: validationMessage, status: validationStatus, isValidating, validateApiKey, clearValidation } = useApiKeyValidation();
 
   const [githubStars, setGithubStars] = useState<string>('-');
   const [rules, setRules] = useState('');
@@ -267,75 +260,19 @@ const Settings = () => {
     }
   }, [useRulesFromDatabase]);
 
-  // Update model placeholder when vendor changes
+  // Update model to example only when the user explicitly switches vendors
+  const prevVendorRef = useRef<AIVendor>(tempVendor);
   useEffect(() => {
+    if (tempVendor === prevVendorRef.current) return;
+    prevVendorRef.current = tempVendor;
     const vendorConfig = AI_VENDORS.find(v => v.value === tempVendor);
     if (vendorConfig) {
       setTempModelName(vendorConfig.exampleModel);
     }
   }, [tempVendor]);
 
-  const getVendorConfig = (vendorType: AIVendor) => {
-    return AI_VENDORS.find(v => v.value === vendorType);
-  };
-
-  const validateApiKey = async (key: string, vendorType: AIVendor) => {
-    if (!key.trim()) {
-      setValidationMessage('Please enter an API key');
-      setValidationStatus('error');
-      return false;
-    }
-
-    const vendorConfig = getVendorConfig(vendorType);
-    if (vendorConfig?.keyPrefix && !key.startsWith(vendorConfig.keyPrefix)) {
-      setValidationMessage(`Invalid API key format. ${vendorConfig.label} keys should start with "${vendorConfig.keyPrefix}"`);
-      setValidationStatus('error');
-      return false;
-    }
-
-    setIsValidating(true);
-    setValidationMessage(null);
-    setValidationStatus(null);
-
-    try {
-      const vendorPrefix = vendorType === 'google' ? 'gemini' : vendorType;
-      
-      const response = await fetch('/api/validate-api-key', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({ 
-          api_key: key,
-          vendor: vendorPrefix,
-          model: tempModelName,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (response.ok && result.valid) {
-        setValidationMessage('API key is valid!');
-        setValidationStatus('success');
-        setIsValidating(false);
-        return true;
-      } else {
-        setValidationMessage(result.error || 'Invalid API key');
-        setValidationStatus('error');
-        setIsValidating(false);
-        return false;
-      }
-    } catch (error) {
-      setValidationMessage('Failed to validate API key. Please try again.');
-      setValidationStatus('error');
-      setIsValidating(false);
-      return false;
-    }
-  };
-
   const handleSaveApiKey = async () => {
-    const isValid = await validateApiKey(tempApiKey, tempVendor);
+    const isValid = await validateApiKey(tempApiKey, tempVendor, tempModelName);
     
     if (isValid) {
       setVendor(tempVendor);
@@ -352,9 +289,8 @@ const Settings = () => {
   const handleClearApiKey = () => {
     setTempVendor('openai');
     setTempApiKey('');
-    setTempModelName('gpt-4o');
-    setValidationMessage(null);
-    setValidationStatus(null);
+    setTempModelName(DEFAULT_MODEL);
+    clearValidation();
     clearSettings();
     toast({
       title: "Cleared",
@@ -674,8 +610,7 @@ const Settings = () => {
                   value={tempApiKey}
                   onChange={(e) => {
                     setTempApiKey(e.target.value);
-                    setValidationMessage(null);
-                    setValidationStatus(null);
+                    clearValidation();
                   }}
                   className="h-11 font-mono text-sm bg-muted border-border"
                 />

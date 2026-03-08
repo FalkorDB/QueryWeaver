@@ -34,6 +34,21 @@ async def validate_api_key(request: Request, data: ValidateKeyRequest):  # pylin
             status_code=400
         )
 
+    # Validate vendor is supported
+    supported_vendors = ("openai", "anthropic", "gemini", "azure", "ollama", "cohere")
+    if vendor not in supported_vendors:
+        return JSONResponse(
+            content={"valid": False, "error": f"Unsupported vendor '{vendor}'. Supported: {', '.join(supported_vendors)}"},
+            status_code=400
+        )
+
+    # Validate model is not empty
+    if not model or not model.strip():
+        return JSONResponse(
+            content={"valid": False, "error": "Model name is required"},
+            status_code=400
+        )
+
     # Validate key format based on vendor
     if vendor == "openai" and not api_key.startswith('sk-'):
         return JSONResponse(
@@ -84,6 +99,6 @@ async def validate_api_key(request: Request, data: ValidateKeyRequest):  # pylin
                 status_code=429
             )
         return JSONResponse(
-            content={"valid": False, "error": f"Failed to validate API key: {error_msg}"},
+            content={"valid": False, "error": "Failed to validate API key"},
             status_code=500
         )

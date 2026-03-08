@@ -327,15 +327,28 @@ const ChatInterface = ({
       let finalContent = "";
       let queryResults: any[] | null = null;
 
+      // Build confirm request with custom credentials if available
+      const confirmRequest: any = {
+        sql_query: confirmMessage.confirmationData.sqlQuery,
+        confirmation: 'CONFIRM',
+        chat: confirmMessage.confirmationData.chatHistory,
+        use_user_rules: useRulesFromDatabase,
+      };
+      if (isApiKeyValid && apiKey) {
+        confirmRequest.custom_api_key = apiKey;
+        if (modelName && vendor) {
+          const { getVendorPrefix } = await import('@/utils/vendorConfig');
+          const vendorPrefix = getVendorPrefix(vendor);
+          confirmRequest.custom_model = modelName.startsWith(`${vendorPrefix}/`)
+            ? modelName
+            : `${vendorPrefix}/${modelName}`;
+        }
+      }
+
       // Stream the confirmation response
       for await (const message of ChatService.streamConfirmOperation(
         selectedGraph.id,
-        {
-          sql_query: confirmMessage.confirmationData.sqlQuery,
-          confirmation: 'CONFIRM',
-          chat: confirmMessage.confirmationData.chatHistory,
-          use_user_rules: useRulesFromDatabase, // Backend fetches from DB when true
-        }
+        confirmRequest
       )) {
         if (message.type === 'status' || message.type === 'reasoning' || message.type === 'reasoning_step') {
           // Add reasoning steps

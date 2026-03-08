@@ -253,8 +253,24 @@ async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  
                      sanitize_query(queries_history[-1]))  # nosemgrep
 
         # Extract custom API key and model from chat_data
-        custom_api_key = chat_data.custom_api_key if hasattr(chat_data, 'custom_api_key') else None
-        custom_model = chat_data.custom_model if hasattr(chat_data, 'custom_model') else None
+        custom_api_key = chat_data.custom_api_key
+        custom_model = chat_data.custom_model
+
+        # Validate custom model format (vendor/model)
+        SUPPORTED_VENDORS = ("openai", "anthropic", "gemini", "azure", "ollama", "cohere")
+        if custom_model:
+            parts = custom_model.split("/", 1)
+            if len(parts) != 2 or not parts[0] or not parts[1]:
+                raise InvalidArgumentError(
+                    "Invalid model format. Expected 'vendor/model' (e.g. 'openai/gpt-4.1')"
+                )
+            if parts[0] not in SUPPORTED_VENDORS:
+                raise InvalidArgumentError(
+                    f"Unsupported vendor '{parts[0]}'. Supported: {', '.join(SUPPORTED_VENDORS)}"
+                )
+
+        if custom_api_key is not None and len(custom_api_key.strip()) < 10:
+            raise InvalidArgumentError("API key is too short")
 
         agent_rel = RelevancyAgent(queries_history, result_history, custom_api_key, custom_model)
         agent_an = AnalysisAgent(queries_history, result_history, custom_api_key, custom_model)
@@ -725,8 +741,8 @@ async def execute_destructive_operation(  # pylint: disable=too-many-statements
 
     sql_query = confirm_data.sql_query if hasattr(confirm_data, 'sql_query') else ""
     queries_history = confirm_data.chat if hasattr(confirm_data, 'chat') else []
-    custom_api_key = confirm_data.custom_api_key if hasattr(confirm_data, 'custom_api_key') else None
-    custom_model = confirm_data.custom_model if hasattr(confirm_data, 'custom_model') else None
+    custom_api_key = confirm_data.custom_api_key
+    custom_model = confirm_data.custom_model
 
     if not sql_query:
         raise InvalidArgumentError("No SQL query provided")

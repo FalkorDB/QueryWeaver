@@ -1,13 +1,31 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { DEFAULT_MODEL } from '@/utils/vendorConfig';
 
 export type AIVendor = 'openai' | 'google' | 'anthropic';
 
-// Map UI vendor names to LiteLLM prefixes
-export const VENDOR_PREFIX_MAP: Record<AIVendor, string> = {
-  openai: 'openai',
-  google: 'gemini',
-  anthropic: 'anthropic',
-};
+const STORAGE_KEY = 'queryweaver_ai_settings';
+
+interface StoredSettings {
+  vendor: AIVendor;
+  modelName: string;
+}
+
+function loadStoredSettings(): StoredSettings {
+  if (typeof window === 'undefined') {
+    return { vendor: 'openai', modelName: DEFAULT_MODEL };
+  }
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        vendor: parsed.vendor || 'openai',
+        modelName: parsed.modelName || DEFAULT_MODEL,
+      };
+    }
+  } catch { /* ignore corrupt storage */ }
+  return { vendor: 'openai', modelName: DEFAULT_MODEL };
+}
 
 interface SettingsContextType {
   vendor: AIVendor;
@@ -36,16 +54,23 @@ interface SettingsProviderProps {
 }
 
 export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) => {
-  const [vendor, setVendor] = useState<AIVendor>('openai');
+  const stored = loadStoredSettings();
+  const [vendor, setVendor] = useState<AIVendor>(stored.vendor);
   const [apiKey, setApiKey] = useState<string | null>(null);
-  const [modelName, setModelName] = useState<string>('gpt-4o-mini');
+  const [modelName, setModelName] = useState<string>(stored.modelName);
   const [isApiKeyValid, setIsApiKeyValid] = useState<boolean>(false);
+
+  // Persist vendor + model to localStorage (never persist the API key)
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ vendor, modelName }));
+  }, [vendor, modelName]);
 
   const clearSettings = () => {
     setVendor('openai');
     setApiKey(null);
-    setModelName('gpt-4.1');
+    setModelName(DEFAULT_MODEL);
     setIsApiKeyValid(false);
+    localStorage.removeItem(STORAGE_KEY);
   };
 
   return (

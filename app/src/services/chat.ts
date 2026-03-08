@@ -1,6 +1,7 @@
 import { API_CONFIG, buildApiUrl } from '@/config/api';
 import { csrfHeaders } from '@/lib/csrf';
 import type { ChatRequest, StreamMessage, ConfirmRequest } from '@/types/api';
+import { getVendorPrefix } from '@/utils/vendorConfig';
 
 /**
  * Chat/Query Service
@@ -44,15 +45,17 @@ export class ChatService {
         // instructions: ""  // Additional instructions if needed
       };
       
-      // Add custom API key, model, and vendor if provided
+      // Add custom API key and model if provided
       if (request.customApiKey) {
         requestBody.custom_api_key = request.customApiKey;
       }
       if (request.customModel && request.customVendor) {
-        // Map vendor to LiteLLM prefix (google -> gemini)
-        const vendorPrefix = request.customVendor === 'google' ? 'gemini' : request.customVendor;
-        // Format model name with vendor prefix for LiteLLM
-        requestBody.custom_model = `${vendorPrefix}/${request.customModel}`;
+        const vendorPrefix = getVendorPrefix(request.customVendor);
+        // Avoid double-prefixing if model already contains the vendor prefix
+        const model = request.customModel;
+        requestBody.custom_model = model.startsWith(`${vendorPrefix}/`)
+          ? model
+          : `${vendorPrefix}/${model}`;
       }
       
       const response = await fetch(buildApiUrl(endpoint), {
