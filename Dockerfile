@@ -31,8 +31,8 @@ WORKDIR /app
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Copy pyproject.toml and uv.lock
-COPY pyproject.toml uv.lock* ./
+# Copy pyproject.toml, uv.lock, and README.md (needed by hatchling during install)
+COPY pyproject.toml uv.lock* README.md ./
 
 # Install packages into system Python (no virtualenv in container)
 ENV UV_SYSTEM_PYTHON=1
