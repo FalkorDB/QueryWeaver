@@ -76,11 +76,11 @@ class FollowUpAgent(BaseAgent):  # pylint: disable=too-few-public-methods
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.9
             }
-            
+
             # Add custom API key if provided
             if self.custom_api_key:
                 completion_args["api_key"] = self.custom_api_key
-            
+
             completion_result = completion(**completion_args)
 
             response = completion_result.choices[0].message.content.strip()

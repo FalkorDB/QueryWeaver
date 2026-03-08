@@ -63,12 +63,12 @@ class Config:
     """
     Configuration class for the text2sql module.
     """
-    
+
     AZURE_FLAG = True
     # Check if user explicitly set models via environment variables
     _user_completion = os.getenv("COMPLETION_MODEL", "")
     _user_embedding = os.getenv("EMBEDDING_MODEL", "")
-    
+
     # Determine the completion model based on available API keys
     # Priority: OpenAI > Google (Gemini) > Anthropic > Azure (default)
     if os.getenv("OPENAI_API_KEY"):

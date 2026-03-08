@@ -38,7 +38,7 @@ class AnalysisAgent(BaseAgent):
             instructions, memory_context, database_type, user_rules_spec
         )
         self.messages.append({"role": "user", "content": prompt})
-        
+
         # Prepare completion arguments
         completion_args = {
             "model": self.custom_model if self.custom_model else Config.COMPLETION_MODEL,
@@ -46,11 +46,11 @@ class AnalysisAgent(BaseAgent):
             "temperature": 0,
             "top_p": 1,
         }
-        
+
         # Add custom API key if provided
         if self.custom_api_key:
             completion_args["api_key"] = self.custom_api_key
-        
+
         completion_result = completion(**completion_args)
 
         response = completion_result.choices[0].message.content

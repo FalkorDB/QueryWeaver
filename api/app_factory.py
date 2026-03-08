@@ -130,7 +130,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-meth
             )
 
 
-def create_app():
+def create_app():  # pylint: disable=too-many-statements
     """Create and configure the FastAPI application."""
 
     # Create the FastAPI app instance just to set the o routes

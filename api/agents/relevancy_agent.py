@@ -82,18 +82,18 @@ class RelevancyAgent(BaseAgent):
                 ),
             }
         )
-        
+
         # Prepare completion arguments
         completion_args = {
             "model": self.custom_model if self.custom_model else Config.COMPLETION_MODEL,
             "messages": self.messages,
             "temperature": 0,
         }
-        
+
         # Add custom API key if provided
         if self.custom_api_key:
             completion_args["api_key"] = self.custom_api_key
-        
+
         completion_result = completion(**completion_args)
 
         answer = completion_result.choices[0].message.content
