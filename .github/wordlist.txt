@@ -32,6 +32,8 @@ CVSS
 falkordb
 pipenv
 Pipenv
+uv
+pyproject
 README
 md
 UI
