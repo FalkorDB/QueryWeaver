@@ -456,15 +456,6 @@ wheels = [
 ]
 
 [[package]]
-name = "diskcache"
-version = "5.6.3"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/3f/21/1c1ffc1a039ddcc459db43cc108658f32c57d271d7289a2794e401d0fdb6/diskcache-5.6.3.tar.gz", hash = "sha256:2c3a3fa2743d8535d832ec61c2054a1641f41775aa7c556758a109941e33e4fc", size = 67916, upload-time = "2023-08-31T06:12:00.316Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3f/27/4570e78fc0bf5ea0ca45eb1de3818a23787af9b390c0b0a0033a1b8236f9/diskcache-5.6.3-py3-none-any.whl", hash = "sha256:5e31b2d5fbad117cc363ebaf6b689474db18a1f6438bc82358b024abd4c2ca19", size = 45550, upload-time = "2023-08-31T06:11:58.822Z" },
-]
-
-[[package]]
 name = "distro"
 version = "1.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -734,10 +725,9 @@ wheels = [
 
 [[package]]
 name = "graphiti-core"
-version = "0.18.8"
-source = { git = "https://github.com/FalkorDB/graphiti.git?rev=staging#6e3c54ae2891e10a24d698a2f0733d65d148edf4" }
+version = "0.28.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "diskcache" },
     { name = "neo4j" },
     { name = "numpy" },
     { name = "openai" },
@@ -745,6 +735,10 @@ dependencies = [
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "tenacity" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a5/37/16fbfe70ac27be1eaffc024d4ff6cde93fd69937129aac058e02d530dad4/graphiti_core-0.28.1.tar.gz", hash = "sha256:8ce03b9d4d6f513e816dda8df84212e3a7d8cbfee215b0d19ed1604215d4c8a3", size = 6829248, upload-time = "2026-02-19T15:10:29.283Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/03/38/30ee63b4b07691f500e392929224368e0df78fa9ec3f5e743bde48461ce2/graphiti_core-0.28.1-py3-none-any.whl", hash = "sha256:c437362e092dc34933070d54c69232892b72bba6fea9a02c964bd769d9281ea4", size = 311602, upload-time = "2026-02-19T15:10:27.304Z" },
 ]
 
 [[package]]
@@ -2153,7 +2147,7 @@ requires-dist = [
     { name = "falkordb", specifier = "~=1.2.2" },
     { name = "fastapi", specifier = "~=0.124.0" },
     { name = "fastmcp", specifier = ">=2.13.1" },
-    { name = "graphiti-core", git = "https://github.com/FalkorDB/graphiti.git?rev=staging" },
+    { name = "graphiti-core", specifier = ">=0.28.1" },
     { name = "itsdangerous", specifier = "~=2.2.0" },
     { name = "jinja2", specifier = "~=3.1.4" },
     { name = "jsonschema", specifier = "~=4.26.0" },
