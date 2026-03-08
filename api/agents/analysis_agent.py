@@ -1,9 +1,7 @@
 """Analysis agent for analyzing user queries and generating database analysis."""
 
 from typing import List
-from litellm import completion
-from api.config import Config
-from .utils import BaseAgent, parse_response
+from .utils import BaseAgent, parse_response, run_completion
 
 
 class AnalysisAgent(BaseAgent):
@@ -39,21 +37,9 @@ class AnalysisAgent(BaseAgent):
         )
         self.messages.append({"role": "user", "content": prompt})
 
-        # Prepare completion arguments
-        completion_args = {
-            "model": self.custom_model if self.custom_model else Config.COMPLETION_MODEL,
-            "messages": self.messages,
-            "temperature": 0,
-            "top_p": 1,
-        }
-
-        # Add custom API key if provided
-        if self.custom_api_key:
-            completion_args["api_key"] = self.custom_api_key
-
-        completion_result = completion(**completion_args)
-
-        response = completion_result.choices[0].message.content
+        response = run_completion(
+            self.messages, self.custom_model, self.custom_api_key, temperature=0
+        )
         analysis = parse_response(response)
         if isinstance(analysis["ambiguities"], list):
             analysis["ambiguities"] = [

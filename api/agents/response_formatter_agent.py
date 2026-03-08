@@ -1,8 +1,7 @@
 """Response formatter agent for generating user-readable responses from SQL query results."""
 
 from typing import List, Dict
-from litellm import completion
-from api.config import Config
+from .utils import run_completion
 
 
 RESPONSE_FORMATTER_PROMPT = """
@@ -76,21 +75,10 @@ class ResponseFormatterAgent:
 
         messages = [{"role": "user", "content": prompt}]
 
-        # Prepare completion arguments
-        completion_args = {
-            "model": self.custom_model if self.custom_model else Config.COMPLETION_MODEL,
-            "messages": messages,
-            "temperature": 0.3,  # Slightly higher temperature for more natural responses
-            "top_p": 1,
-        }
-
-        # Add custom API key if provided
-        if self.custom_api_key:
-            completion_args["api_key"] = self.custom_api_key
-
-        completion_result = completion(**completion_args)
-
-        response = completion_result.choices[0].message.content
+        response = run_completion(
+            messages, self.custom_model, self.custom_api_key,
+            temperature=0.3  # Slightly higher temperature for more natural responses
+        )
         return response.strip()
 
     def _build_response_prompt(self, user_query: str, sql_query: str,
