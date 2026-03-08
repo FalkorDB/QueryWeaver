@@ -328,16 +328,18 @@ APP_ENV=development
 
 QueryWeaver supports multiple AI providers. Set one API key and QueryWeaver auto-detects which provider to use.
 
-**Priority order:** OpenAI > Gemini > Anthropic > Azure (default)
+**Priority order:** Ollama > OpenAI > Gemini > Anthropic > Cohere > Azure (default)
 
 | Provider | API Key | Default Models |
 |----------|---------|----------------|
+| Ollama | `OLLAMA_MODEL` | `ollama/<your-model>`, `ollama/nomic-embed-text` |
 | OpenAI | `OPENAI_API_KEY` | `openai/gpt-4.1`, `openai/text-embedding-ada-002` |
 | Google Gemini | `GEMINI_API_KEY` | `gemini/gemini-3-pro-preview`, `gemini/gemini-embedding-001` |
 | Anthropic | `ANTHROPIC_API_KEY` | `anthropic/claude-sonnet-4-5-20250929`, `voyage/voyage-3`* |
+| Cohere | `COHERE_API_KEY` | `cohere/command-a-03-2025`, `cohere/embed-v4.0` |
 | Azure OpenAI | `AZURE_API_KEY` | `azure/gpt-4.1`, `azure/text-embedding-ada-002` |
 
-\* Anthropic requires `VOYAGE_API_KEY` for embeddings, otherwise falls back to Azure embeddings.
+\* Anthropic has no native embeddings. You must set `VOYAGE_API_KEY` or `EMBEDDING_MODEL` for embeddings, otherwise startup will fail with an error.
 
 **Optional: Override default models**
 

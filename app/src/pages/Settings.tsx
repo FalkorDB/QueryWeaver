@@ -11,7 +11,8 @@ import { ArrowLeft, Star, PanelLeft, Sparkles, Key, Cpu, Loader2, CheckCircle2, 
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDatabase } from "@/contexts/DatabaseContext";
-import { useSettings, AIVendor } from "@/contexts/SettingsContext";
+import { useSettings } from "@/contexts/SettingsContext";
+import type { AIVendor } from "@/contexts/SettingsContext";
 import { databaseService } from "@/services/database";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AI_VENDORS, getVendorConfig, DEFAULT_MODEL } from "@/utils/vendorConfig";

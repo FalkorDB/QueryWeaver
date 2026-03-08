@@ -11,6 +11,7 @@ import ChatMessage from "./ChatMessage";
 import QueryInput from "./QueryInput";
 import SuggestionCards from "../SuggestionCards";
 import { ChatService } from "@/services/chat";
+import type { ConfirmRequest } from "@/types/api";
 
 interface ChatMessageData {
   id: string;
@@ -328,7 +329,7 @@ const ChatInterface = ({
       let queryResults: any[] | null = null;
 
       // Build confirm request with custom credentials if available
-      const confirmRequest: any = {
+      const confirmRequest: ConfirmRequest = {
         sql_query: confirmMessage.confirmationData.sqlQuery,
         confirmation: 'CONFIRM',
         chat: confirmMessage.confirmationData.chatHistory,

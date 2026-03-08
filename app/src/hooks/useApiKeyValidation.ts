@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { AIVendor } from '@/contexts/SettingsContext';
 import { getVendorPrefix, validateApiKeyFormat } from '@/utils/vendorConfig';
+import { buildApiUrl } from '@/config/api';
+import { csrfHeaders } from '@/lib/csrf';
 
 interface ValidationState {
   message: string | null;
@@ -30,15 +32,22 @@ export function useApiKeyValidation() {
 
     try {
       const vendorPrefix = getVendorPrefix(vendor);
+      // Strip vendor prefix if the user already included it
+      const model = modelName.startsWith(`${vendorPrefix}/`)
+        ? modelName.slice(vendorPrefix.length + 1)
+        : modelName;
 
-      const response = await fetch('/api/validate-api-key', {
+      const response = await fetch(buildApiUrl('/validate-api-key'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...csrfHeaders(),
+        },
         credentials: 'include',
         body: JSON.stringify({
           api_key: key,
           vendor: vendorPrefix,
-          model: modelName,
+          model,
         }),
       });
 
