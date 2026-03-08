@@ -9,6 +9,11 @@ from litellm import completion
 settings_router = APIRouter(tags=["Settings"])
 
 
+def _sanitize_for_log(value: str) -> str:
+    """Remove control characters that could enable log injection."""
+    return str(value).replace("\r", "").replace("\n", "").replace("\t", " ")
+
+
 class ValidateKeyRequest(BaseModel):
     """Request model for API key validation."""
     api_key: str
@@ -88,7 +93,8 @@ async def validate_api_key(request: Request, data: ValidateKeyRequest):  # pylin
 
     except Exception as e:  # pylint: disable=broad-except
         error_lower = str(e).lower()
-        logging.warning("API key validation failed for vendor=%s", vendor)
+        logging.warning("API key validation failed for vendor=%s",
+                        _sanitize_for_log(vendor))
 
         # Return generic messages — never expose exception details
         if "invalid" in error_lower or "authentication" in error_lower:
