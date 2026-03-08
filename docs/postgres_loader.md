@@ -12,15 +12,11 @@ This loader connects to a PostgreSQL database and extracts the complete schema i
 
 ## Installation
 
-{% capture shell_0 %}
-poetry add psycopg2-binary
-{% endcapture %}
+psycopg2-binary is already included in QueryWeaver's dependencies. If you need to add it manually:
 
-{% capture shell_1 %}
-pip install psycopg2-binary
-{% endcapture %}
-
-{% include code_tabs.html id="install_tabs" shell=shell_0 shell2=shell_1 %}
+```bash
+uv add psycopg2-binary
+```
 
 ## Usage
 

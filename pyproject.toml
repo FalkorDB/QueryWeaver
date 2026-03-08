@@ -1,7 +1,3 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [project]
 name = "queryweaver"
 version = "0.1.0"
@@ -26,34 +22,34 @@ classifiers = [
 
 # Core dependencies required for SDK (minimal)
 dependencies = [
-    "litellm>=1.80.9",
-    "falkordb>=1.2.2",
-    "psycopg2-binary>=2.9.11",
-    "pymysql>=1.1.0",
-    "jsonschema>=4.25.0",
-    "tqdm>=4.67.1",
+    "litellm~=1.80.9",
+    "falkordb~=1.2.2",
+    "psycopg2-binary~=2.9.11",
+    "pymysql~=1.1.0",
+    "jsonschema~=4.26.0",
+    "tqdm~=4.67.1",
 ]
 
 [project.optional-dependencies]
 # Server dependencies (FastAPI, auth, etc.)
 server = [
-    "fastapi>=0.124.0",
-    "uvicorn>=0.40.0",
-    "authlib>=1.6.4",
-    "itsdangerous>=2.2.0",
-    "python-multipart>=0.0.10",
-    "jinja2>=3.1.4",
+    "fastapi~=0.124.0",
+    "uvicorn~=0.40.0",
+    "authlib~=1.6.4",
+    "itsdangerous~=2.2.0",
+    "python-multipart~=0.0.10",
+    "jinja2~=3.1.4",
     "fastmcp>=2.13.1",
-    "graphiti-core @ git+https://github.com/FalkorDB/graphiti.git@staging",
+    "graphiti-core>=0.28.1",
 ]
 
 # Development dependencies
 dev = [
-    "pytest>=8.4.2",
-    "pytest-asyncio>=1.2.0",
-    "pylint>=4.0.3",
-    "playwright>=1.57.0",
-    "pytest-playwright>=0.7.1",
+    "pytest~=8.4.2",
+    "pytest-asyncio~=1.2.0",
+    "pylint~=4.0.3",
+    "playwright~=1.57.0",
+    "pytest-playwright~=0.7.1",
 ]
 
 # All dependencies (server + dev)
@@ -71,7 +67,19 @@ Issues = "https://github.com/FalkorDB/QueryWeaver/issues"
 [project.scripts]
 queryweaver = "api.index:main"
 
-# Hatch build configuration
+[dependency-groups]
+dev = [
+    "pytest~=8.4.2",
+    "pylint~=4.0.3",
+    "playwright~=1.57.0",
+    "pytest-playwright~=0.7.1",
+    "pytest-asyncio~=1.2.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [tool.hatch.metadata]
 allow-direct-references = true
 
@@ -86,23 +94,15 @@ include = [
     "/LICENSE",
 ]
 
-# uv configuration - use dependency-groups instead of tool.uv.dev-dependencies
-[dependency-groups]
-dev = [
-    "pytest>=8.4.2",
-    "pytest-asyncio>=1.2.0",
-    "pylint>=4.0.3",
-    "playwright>=1.57.0",
-    "pytest-playwright>=0.7.1",
-]
+[tool.uv]
+package = true
 
-# pytest configuration (consolidated from pytest.ini + pyproject.toml)
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "--verbose --tb=short --strict-markers"
+addopts = "--verbose --tb=short --strict-markers --disable-warnings"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
@@ -113,12 +113,12 @@ markers = [
     "unit: Unit tests",
 ]
 filterwarnings = [
-    "ignore::DeprecationWarning:litellm.*",
-    "ignore::pydantic.warnings.PydanticDeprecatedSince20",
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
 ]
 
-# pylint configuration
 [tool.pylint.main]
+max-line-length = 120
 ignore-patterns = ["test_.*\\.py", "conftest\\.py"]
 
 [tool.pylint.messages_control]
@@ -128,6 +128,3 @@ disable = [
     "C0116",  # missing-function-docstring
     "R0903",  # too-few-public-methods
 ]
-
-[tool.pylint.format]
-max-line-length = 120

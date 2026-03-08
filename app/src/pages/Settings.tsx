@@ -2,15 +2,28 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { ArrowLeft, Star, PanelLeft } from "lucide-react";
+import { ArrowLeft, Star, PanelLeft, Sparkles, Key, Cpu, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDatabase } from "@/contexts/DatabaseContext";
+import { useSettings } from "@/contexts/SettingsContext";
+import type { AIVendor } from "@/contexts/SettingsContext";
 import { databaseService } from "@/services/database";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AI_VENDORS, getVendorConfig, DEFAULT_MODEL } from "@/utils/vendorConfig";
+import { useApiKeyValidation } from "@/hooks/useApiKeyValidation";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,6 +39,24 @@ const Settings = () => {
   const { toast } = useToast();
   const { isAuthenticated, logout, user } = useAuth();
   const { selectedGraph } = useDatabase();
+  const {
+    vendor,
+    apiKey,
+    modelName,
+    isApiKeyValid,
+    setVendor,
+    setApiKey,
+    setModelName,
+    setIsApiKeyValid,
+    clearSettings,
+  } = useSettings();
+
+  // AI Model Configuration state
+  const [tempVendor, setTempVendor] = useState<AIVendor>(vendor);
+  const [tempApiKey, setTempApiKey] = useState(apiKey || '');
+  const [tempModelName, setTempModelName] = useState(modelName);
+  const { message: validationMessage, status: validationStatus, isValidating, validateApiKey, clearValidation } = useApiKeyValidation();
+
   const [githubStars, setGithubStars] = useState<string>('-');
   const [rules, setRules] = useState('');
   const [isLoadingRules, setIsLoadingRules] = useState(true);
@@ -229,6 +260,44 @@ const Settings = () => {
       localStorage.setItem('queryweaver_use_rules_from_database', String(useRulesFromDatabase));
     }
   }, [useRulesFromDatabase]);
+
+  // Update model to example only when the user explicitly switches vendors
+  const prevVendorRef = useRef<AIVendor>(tempVendor);
+  useEffect(() => {
+    if (tempVendor === prevVendorRef.current) return;
+    prevVendorRef.current = tempVendor;
+    const vendorConfig = AI_VENDORS.find(v => v.value === tempVendor);
+    if (vendorConfig) {
+      setTempModelName(vendorConfig.exampleModel);
+    }
+  }, [tempVendor]);
+
+  const handleSaveApiKey = async () => {
+    const isValid = await validateApiKey(tempApiKey, tempVendor, tempModelName);
+    
+    if (isValid) {
+      setVendor(tempVendor);
+      setApiKey(tempApiKey);
+      setModelName(tempModelName);
+      setIsApiKeyValid(true);
+      toast({
+        title: "Saved",
+        description: "AI model configuration saved successfully",
+      });
+    }
+  };
+
+  const handleClearApiKey = () => {
+    setTempVendor('openai');
+    setTempApiKey('');
+    setTempModelName(DEFAULT_MODEL);
+    clearValidation();
+    clearSettings();
+    toast({
+      title: "Cleared",
+      description: "AI model configuration cleared",
+    });
+  };
 
   const handleLogout = async () => {
     try {
@@ -493,6 +562,132 @@ const Settings = () => {
         {/* Content */}
         <div className="flex-1 overflow-auto p-4 md:p-6">
           <div className="max-w-4xl mx-auto space-y-6">
+            {/* AI Model Configuration */}
+            <div className="bg-card border border-border rounded-lg p-5 space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="h-5 w-5 text-purple-500" />
+                <h2 className="text-lg font-semibold text-foreground">AI Model Configuration</h2>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Connect your preferred AI provider to power natural language queries. Your credentials are stored only in memory.
+              </p>
+
+              {/* Provider Selection */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Cpu className="h-4 w-4 text-muted-foreground" />
+                  <Label htmlFor="vendor" className="text-sm font-medium">AI Provider</Label>
+                </div>
+                <Select
+                  value={tempVendor}
+                  onValueChange={(value) => setTempVendor(value as AIVendor)}
+                >
+                  <SelectTrigger id="vendor" className="h-11 bg-muted border-border">
+                    <SelectValue placeholder="Select a provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AI_VENDORS.map((v) => (
+                      <SelectItem key={v.value} value={v.value} className="py-3">
+                        <div className="flex flex-col items-start">
+                          <span className="font-medium">{v.label}</span>
+                          <span className="text-xs text-muted-foreground">Example: {v.exampleModel}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* API Key */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Key className="h-4 w-4 text-muted-foreground" />
+                  <Label htmlFor="api-key" className="text-sm font-medium">API Key</Label>
+                </div>
+                <Input
+                  id="api-key"
+                  type="password"
+                  placeholder={getVendorConfig(tempVendor)?.keyPrefix ? `${getVendorConfig(tempVendor)?.keyPrefix}...` : 'Enter your API key'}
+                  value={tempApiKey}
+                  onChange={(e) => {
+                    setTempApiKey(e.target.value);
+                    clearValidation();
+                  }}
+                  className="h-11 font-mono text-sm bg-muted border-border"
+                />
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <span className="inline-block w-1 h-1 rounded-full bg-green-500"></span>
+                  Session-only storage • Never persisted
+                </p>
+              </div>
+
+              {/* Model Name */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-muted-foreground" />
+                  <Label htmlFor="model" className="text-sm font-medium">Model Name</Label>
+                </div>
+                <Input
+                  id="model"
+                  type="text"
+                  placeholder={getVendorConfig(tempVendor)?.exampleModel || 'Enter model name'}
+                  value={tempModelName}
+                  onChange={(e) => setTempModelName(e.target.value)}
+                  disabled={!tempApiKey.trim()}
+                  className="h-11 font-mono text-sm bg-muted border-border"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {tempApiKey.trim() 
+                    ? `Any ${getVendorConfig(tempVendor)?.label} model (e.g., ${getVendorConfig(tempVendor)?.exampleModel})` 
+                    : 'Enter an API key first to enable model selection'}
+                </p>
+              </div>
+
+              {/* Validation Message */}
+              {validationMessage && (
+                <Alert variant={validationStatus === 'error' ? 'destructive' : 'default'} className="border-2">
+                  <div className="flex items-center gap-2">
+                    {validationStatus === 'success' ? (
+                      <CheckCircle2 className="h-5 w-5" />
+                    ) : (
+                      <XCircle className="h-5 w-5" />
+                    )}
+                    <AlertDescription className="font-medium">{validationMessage}</AlertDescription>
+                  </div>
+                </Alert>
+              )}
+
+              {/* Current Configuration Status */}
+              {isApiKeyValid && apiKey && (
+                <Alert className="border-2 border-green-200 bg-green-50 dark:bg-green-950 dark:border-green-800">
+                  <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  <AlertDescription className="text-green-800 dark:text-green-200 font-medium">
+                    Active: {getVendorConfig(vendor)?.label} • {modelName}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button 
+                  variant="outline" 
+                  onClick={handleClearApiKey}
+                  disabled={!apiKey && !tempApiKey}
+                  className="border-border"
+                >
+                  Clear
+                </Button>
+                <Button 
+                  onClick={handleSaveApiKey} 
+                  disabled={isValidating || !tempApiKey.trim() || !tempModelName.trim()}
+                  className="bg-purple-600 hover:bg-purple-700 text-white min-w-[120px]"
+                >
+                  {isValidating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {isValidating ? 'Validating...' : 'Save & Validate'}
+                </Button>
+              </div>
+            </div>
+
             {/* Memory Toggle */}
             <div className="bg-card border border-border rounded-lg p-4">
               <div className="flex items-center justify-between">

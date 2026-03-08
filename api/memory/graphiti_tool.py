@@ -819,10 +819,10 @@ def create_graphiti_client(falkor_driver: FalkorDriver) -> Graphiti:
                 client=llm_client_azure,
             ),
         )
-    else:  # Fallback to default OpenAI config but use Config's embedding model
-        # Extract just the model name without provider prefix for Graphiti
+    elif Config.LLM_PROVIDER == "openai":
+        # OpenAI provider — use OpenAIEmbedder with configured model
         embedding_model_name = extract_embedding_model_name(Config.EMBEDDING_MODEL_NAME)
-            
+
         graphiti_client = Graphiti(
             graph_driver=falkor_driver,
             embedder=OpenAIEmbedder(
@@ -831,6 +831,13 @@ def create_graphiti_client(falkor_driver: FalkorDriver) -> Graphiti:
                     embedding_dim=1536
                 )
             ),
+        )
+    else:
+        # Non-OpenAI/Azure providers (Gemini, Anthropic, Ollama, Cohere):
+        # Graphiti memory requires OpenAI-compatible embeddings.
+        # Use LiteLLM embeddings via Config instead.
+        graphiti_client = Graphiti(
+            graph_driver=falkor_driver,
         )
 
     return graphiti_client

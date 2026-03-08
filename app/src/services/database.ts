@@ -1,4 +1,5 @@
 import { API_CONFIG, buildApiUrl } from '@/config/api';
+import { csrfHeaders } from '@/lib/csrf';
 import type { Graph, GraphUploadResponse, SchemaUploadRequest } from '@/types/api';
 
 /**
@@ -128,6 +129,9 @@ export class DatabaseService {
         method: 'POST',
         body: formData,
         credentials: 'include',
+        headers: {
+          ...csrfHeaders(),
+        },
       });
 
       if (!response.ok) {
@@ -157,6 +161,9 @@ export class DatabaseService {
         {
           method: 'DELETE',
           credentials: 'include',
+          headers: {
+            ...csrfHeaders(),
+          },
         }
       );
 
@@ -182,6 +189,7 @@ export class DatabaseService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...csrfHeaders(),
         },
         body: JSON.stringify({
           url: config.connectionUrl,
@@ -240,6 +248,7 @@ export class DatabaseService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...csrfHeaders(),
         },
         body: JSON.stringify({
           url: connectionUrl,
@@ -317,6 +326,7 @@ export class DatabaseService {
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
+          ...csrfHeaders(),
         },
         body: JSON.stringify({ user_rules: userRules }),
       });
