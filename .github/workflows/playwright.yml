@@ -30,9 +30,13 @@ jobs:
       uses: actions/setup-python@v6
       with:
         python-version: ${{ env.PYTHON_VERSION }}
-        cache: 'pip'
-        cache-dependency-path: Pipfile.lock
-    
+
+    # Install uv
+    - name: Install uv
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      with:
+        version: "latest"
+
     # Setup Node.js
     - uses: actions/setup-node@v6
       with:
@@ -41,14 +45,11 @@ jobs:
         cache-dependency-path: |
           package-lock.json
           app/package-lock.json
-    
-    # Install pipenv
-    - name: Install pipenv
-      run: pip install pipenv
-    
+
+
     # Install Python dependencies
     - name: Install Python dependencies
-      run: pipenv sync --dev
+      run: uv sync
     
     # Install Node dependencies (root - for Playwright)
     - name: Install root dependencies
@@ -109,10 +110,12 @@ jobs:
     
     # Start the FastAPI application
     - name: Start FastAPI application
+      id: start-server
       run: |
-        # Start server in background directly with pipenv
-        pipenv run uvicorn api.index:app --host localhost --port 5000 > /tmp/uvicorn.log 2>&1 &
+        # Start server in background with uv
+        uv run uvicorn api.index:app --host localhost --port 5000 > /tmp/uvicorn.log 2>&1 &
         UVICORN_PID=$!
+        echo "pid=$UVICORN_PID" >> "$GITHUB_OUTPUT"
         echo "Started server with PID: $UVICORN_PID"
         # Wait for app to start
         echo "Waiting for application to start..."
@@ -177,10 +180,11 @@ jobs:
         path: test-results/
         retention-days: 30
     
-    # Cleanup - Stop all containers
-    - name: Cleanup Docker containers
+    # Cleanup - Stop all containers and background processes
+    - name: Cleanup
       if: always()
       run: |
+        kill ${{ steps.start-server.outputs.pid }} || true
         docker compose -f e2e/docker-compose.test.yml down -v || true
         docker stop falkordb-test || true
         docker rm falkordb-test || true

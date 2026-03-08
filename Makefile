@@ -7,13 +7,13 @@ help: ## Show this help message
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 install: ## Install dependencies
-	pipenv sync --dev
+	uv sync
 	npm ci --prefix ./app
 
 
 setup-dev: install ## Set up development environment
-	pipenv run playwright install chromium
-	pipenv run playwright install-deps
+	uv run playwright install chromium
+	uv run playwright install-deps
 	@echo "Development environment setup complete!"
 	@echo "Don't forget to copy .env.example to .env and configure your settings"
 
@@ -26,23 +26,23 @@ build-prod:
 test: build-dev test-unit test-e2e ## Run all tests
 
 test-unit: ## Run unit tests only
-	pipenv run python -m pytest tests/ -k "not e2e" --verbose
+	uv run python -m pytest tests/ -k "not e2e" --verbose
 
 
 test-e2e: build-dev ## Run E2E tests headless
-	pipenv run python -m pytest tests/e2e/ --browser chromium --video=on --screenshot=on
+	uv run python -m pytest tests/e2e/ --browser chromium --video=on --screenshot=on
 
 
 test-e2e-headed: build-dev ## Run E2E tests with browser visible
-	pipenv run python -m pytest tests/e2e/ --browser chromium --headed
+	uv run python -m pytest tests/e2e/ --browser chromium --headed
 
 
 test-e2e-debug: build-dev ## Run E2E tests with debugging enabled
-	pipenv run python -m pytest tests/e2e/ --browser chromium --slowmo=1000
+	uv run python -m pytest tests/e2e/ --browser chromium --slowmo=1000
 
 lint: ## Run linting (backend + frontend)
 	@echo "Running backend lint (pylint)"
-	pipenv run pylint $(shell git ls-files '*.py') || true
+	uv run python -m pylint $(shell git ls-files '*.py') || true
 	@echo "Running frontend lint (eslint)"
 	make lint-frontend
 
@@ -61,10 +61,10 @@ clean: ## Clean up test artifacts
 	find . -name "*.pyo" -delete
 
 run-dev: build-dev ## Run development server
-	pipenv run uvicorn api.index:app --host $${HOST:-127.0.0.1} --port $${PORT:-5000} --reload
+	uv run uvicorn api.index:app --host $${HOST:-127.0.0.1} --port $${PORT:-5000} --reload
 
 run-prod: build-prod ## Run production server
-	pipenv run uvicorn api.index:app --host $${HOST:-0.0.0.0} --port $${PORT:-5000}
+	uv run uvicorn api.index:app --host $${HOST:-0.0.0.0} --port $${PORT:-5000}
 
 docker-falkordb: ## Start FalkorDB in Docker for testing
 	docker run -d --name falkordb-test -p 6379:6379 falkordb/falkordb:latest
