@@ -1,8 +1,6 @@
 """Follow-up agent for generating helpful questions when queries fail or are off-topic."""
 
-from litellm import completion
-from api.config import Config
-from .utils import BaseAgent
+from .utils import BaseAgent, run_completion
 
 
 FOLLOW_UP_GENERATION_PROMPT = """
@@ -70,14 +68,11 @@ class FollowUpAgent(BaseAgent):  # pylint: disable=too-few-public-methods
         )
 
         try:
-            completion_result = completion(
-                model=Config.COMPLETION_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.9
+            response = run_completion(
+                [{"role": "user", "content": prompt}],
+                self.custom_model, self.custom_api_key, temperature=0.9
             )
-
-            response = completion_result.choices[0].message.content.strip()
-            return response
+            return response.strip()
 
         except Exception: # pylint: disable=broad-exception-caught
             # Fallback response if LLM call fails

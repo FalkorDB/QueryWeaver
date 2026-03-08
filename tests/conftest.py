@@ -40,9 +40,9 @@ def fastapi_app():
     # Use a different port for tests to avoid conflicts
     test_port = 5001
 
-    # Start the FastAPI app using pipenv, with output visible for debugging
+    # Start the FastAPI app using uv, with output visible for debugging
     process = subprocess.Popen([  # pylint: disable=consider-using-with
-        "pipenv", "run", "uvicorn", "api.index:app",
+        "uv", "run", "uvicorn", "api.index:app",
         "--host", "localhost", "--port", str(test_port)
     ], cwd=project_root)
 

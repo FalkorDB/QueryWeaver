@@ -56,7 +56,7 @@ docker run -p 5000:5000 -it \
   falkordb/queryweaver
 ```
 
-> Note: To use OpenAI directly instead of Azure OpenAI, replace `AZURE_API_KEY` with `OPENAI_API_KEY` in the above command.
+> Note: QueryWeaver supports multiple AI providers. You can use `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, or `AZURE_API_KEY`. See the [AI/LLM configuration](#aillm-configuration) section for details.
 
 > For a full list of configuration options, consult `.env.example`.
 
@@ -245,7 +245,7 @@ Follow these steps to run and develop QueryWeaver from source.
 ### Prerequisites
 
 - Python 3.12+
-- pipenv
+- uv (Python package manager)
 - A FalkorDB instance (local or remote)
 - Node.js and npm (for the React frontend)
 
@@ -263,11 +263,11 @@ make install
 make run-dev
 ```
 
-If you prefer to set up manually or need a custom environment, use Pipenv:
+If you prefer to set up manually or need a custom environment, use uv:
 
 ```bash
 # Install Python (backend) and frontend dependencies
-pipenv sync --dev
+uv sync
 
 # Create a local environment file
 cp .env.example .env
@@ -277,7 +277,7 @@ cp .env.example .env
 ### Run the app locally
 
 ```bash
-pipenv run uvicorn api.index:app --host 0.0.0.0 --port 5000 --reload
+uv run uvicorn api.index:app --host 0.0.0.0 --port 5000 --reload
 ```
 
 The server will be available at http://localhost:5000
@@ -326,33 +326,55 @@ APP_ENV=development
 
 ### AI/LLM configuration
 
-QueryWeaver uses AI models for Text2SQL conversion and supports both Azure OpenAI and OpenAI directly.
+QueryWeaver supports multiple AI providers. Set one API key and QueryWeaver auto-detects which provider to use.
 
-#### Default: Azure OpenAI
+**Priority order:** Ollama > OpenAI > Gemini > Anthropic > Cohere > Azure (default)
 
-By default, QueryWeaver is configured to use Azure OpenAI. You need to set all three Azure credentials:
+| Provider | API Key | Default Models |
+|----------|---------|----------------|
+| Ollama | `OLLAMA_MODEL` | `ollama/<your-model>`, `ollama/nomic-embed-text` |
+| OpenAI | `OPENAI_API_KEY` | `openai/gpt-4.1`, `openai/text-embedding-ada-002` |
+| Google Gemini | `GEMINI_API_KEY` | `gemini/gemini-3-pro-preview`, `gemini/gemini-embedding-001` |
+| Anthropic | `ANTHROPIC_API_KEY` | `anthropic/claude-sonnet-4-5-20250929`, `voyage/voyage-3`* |
+| Cohere | `COHERE_API_KEY` | `cohere/command-a-03-2025`, `cohere/embed-v4.0` |
+| Azure OpenAI | `AZURE_API_KEY` | `azure/gpt-4.1`, `azure/text-embedding-ada-002` |
+
+\* Anthropic has no native embeddings. You must set `VOYAGE_API_KEY` or `EMBEDDING_MODEL` for embeddings, otherwise startup will fail with an error.
+
+**Optional: Override default models**
 
 ```bash
-AZURE_API_KEY=your_azure_api_key
-AZURE_API_BASE=https://your-resource.openai.azure.com/
-AZURE_API_VERSION=2024-12-01-preview
+COMPLETION_MODEL=gemini/gemini-3-pro-preview
+EMBEDDING_MODEL=gemini/gemini-embedding-001
 ```
 
-#### Alternative: OpenAI directly
-
-To use OpenAI directly instead of Azure, simply set the `OPENAI_API_KEY` environment variable:
-
-```bash
-OPENAI_API_KEY=your_openai_api_key
-```
-
-When `OPENAI_API_KEY` is provided, QueryWeaver automatically switches to use OpenAI's models:
-- Embedding model: `openai/text-embedding-ada-002`
-- Completion model: `openai/gpt-4.1`
-
-This configuration is handled automatically in `api/config.py` - you only need to provide the appropriate API key.
+Both must match your API key's provider.
 
 #### Docker examples with AI configuration
+
+Using OpenAI:
+```bash
+docker run -p 5000:5000 -it \
+  -e FASTAPI_SECRET_KEY=your_secret_key \
+  -e OPENAI_API_KEY=your_openai_api_key \
+  falkordb/queryweaver
+```
+
+Using Google Gemini:
+```bash
+docker run -p 5000:5000 -it \
+  -e FASTAPI_SECRET_KEY=your_secret_key \
+  -e GEMINI_API_KEY=your_gemini_api_key \
+  falkordb/queryweaver
+```
+
+Using Anthropic:
+```bash
+docker run -p 5000:5000 -it \
+  -e FASTAPI_SECRET_KEY=your_secret_key \
+  -e ANTHROPIC_API_KEY=your_anthropic_api_key \
+  falkordb/queryweaver
+```
 
 Using Azure OpenAI:
 ```bash
@@ -364,23 +386,15 @@ docker run -p 5000:5000 -it \
   falkordb/queryweaver
 ```
 
-Using OpenAI directly:
-```bash
-docker run -p 5000:5000 -it \
-  -e FASTAPI_SECRET_KEY=your_secret_key \
-  -e OPENAI_API_KEY=your_openai_api_key \
-  falkordb/queryweaver
-```
-
 ## Testing
 
 > Quick note: many tests require FalkorDB to be available. Use the included helper to run a test DB in Docker if needed.
 
 ### Prerequisites
 
-- Install dev dependencies: `pipenv sync --dev`
+- Install dev dependencies: `uv sync`
 - Start FalkorDB (see `make docker-falkordb`)
-- Install Playwright browsers: `pipenv run playwright install`
+- Install Playwright browsers: `uv run playwright install`
 
 ### Quick commands
 
@@ -412,7 +426,7 @@ make test-e2e-headed
 
 ### Test types
 
-- Unit tests: focus on individual modules and utilities. Run with `make test-unit` or `pipenv run pytest tests/ -k "not e2e"`.
+- Unit tests: focus on individual modules and utilities. Run with `make test-unit` or `uv run python -m pytest tests/ -k "not e2e"`.
 - End-to-end (E2E) tests: run via Playwright and exercise UI flows, OAuth, file uploads, schema processing, chat queries, and API endpoints. Use `make test-e2e`.
 
 See `tests/e2e/README.md` for full E2E test instructions.
@@ -424,7 +438,7 @@ GitHub Actions run unit and E2E tests on pushes and pull requests. Failures capt
 ## Troubleshooting
 
 - FalkorDB connection issues: start the DB helper `make docker-falkordb` or check network/host settings.
-- Playwright/browser failures: install browsers with `pipenv run playwright install` and ensure system deps are present.
+- Playwright/browser failures: install browsers with `uv run playwright install` and ensure system deps are present.
 - Missing environment variables: copy `.env.example` and fill required values.
 - **OAuth "mismatching_state: CSRF Warning!" errors**: Set `APP_ENV=production` (or `staging`) in your environment for HTTPS deployments, or `APP_ENV=development` for HTTP development environments. This ensures session cookies are configured correctly for your deployment type.
 

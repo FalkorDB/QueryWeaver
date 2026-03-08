@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 import { useDatabase } from "@/contexts/DatabaseContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSettings } from "@/contexts/SettingsContext";
 import { useChat } from "@/contexts/ChatContext";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,6 +11,7 @@ import ChatMessage from "./ChatMessage";
 import QueryInput from "./QueryInput";
 import SuggestionCards from "../SuggestionCards";
 import { ChatService } from "@/services/chat";
+import type { ConfirmRequest } from "@/types/api";
 
 interface ChatMessageData {
   id: string;
@@ -53,6 +55,7 @@ const ChatInterface = ({
 }: ChatInterfaceProps) => {
   const { toast } = useToast();
   const { selectedGraph } = useDatabase();
+  const { vendor, apiKey, modelName, isApiKeyValid } = useSettings();
   const { messages, setMessages, conversationHistory, isProcessing, setIsProcessing } = useChat();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -146,13 +149,15 @@ const ChatInterface = ({
         explanation?: string;
         isValid?: boolean;
       } = {};
-
       // Stream the query
       for await (const message of ChatService.streamQuery({
         query,
         database: selectedGraph.id,
         history: historySnapshot,
-        use_user_rules: useRulesFromDatabase, // Backend fetches from DB when true
+        customApiKey: isApiKeyValid ? apiKey : undefined,
+        customModel: isApiKeyValid ? modelName : undefined,
+        customVendor: isApiKeyValid ? vendor : undefined,
+        use_user_rules: useRulesFromDatabase,
         use_memory: useMemory,
       })) {
         
@@ -323,15 +328,28 @@ const ChatInterface = ({
       let finalContent = "";
       let queryResults: any[] | null = null;
 
+      // Build confirm request with custom credentials if available
+      const confirmRequest: ConfirmRequest = {
+        sql_query: confirmMessage.confirmationData.sqlQuery,
+        confirmation: 'CONFIRM',
+        chat: confirmMessage.confirmationData.chatHistory,
+        use_user_rules: useRulesFromDatabase,
+      };
+      if (isApiKeyValid && apiKey) {
+        confirmRequest.custom_api_key = apiKey;
+        if (modelName && vendor) {
+          const { getVendorPrefix } = await import('@/utils/vendorConfig');
+          const vendorPrefix = getVendorPrefix(vendor);
+          confirmRequest.custom_model = modelName.startsWith(`${vendorPrefix}/`)
+            ? modelName
+            : `${vendorPrefix}/${modelName}`;
+        }
+      }
+
       // Stream the confirmation response
       for await (const message of ChatService.streamConfirmOperation(
         selectedGraph.id,
-        {
-          sql_query: confirmMessage.confirmationData.sqlQuery,
-          confirmation: 'CONFIRM',
-          chat: confirmMessage.confirmationData.chatHistory,
-          use_user_rules: useRulesFromDatabase, // Backend fetches from DB when true
-        }
+        confirmRequest
       )) {
         if (message.type === 'status' || message.type === 'reasoning' || message.type === 'reasoning_step') {
           // Add reasoning steps

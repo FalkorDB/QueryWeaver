@@ -5,14 +5,14 @@ import BrowserWrapper from '../infra/ui/browserWrapper';
 import ApiCalls from '../logic/api/apiCalls';
 
 // Database connection tests - uses authenticated storageState from auth.setup
-test.describe.serial('Database Connection Tests', () => {
+test.describe('Database Connection Tests', () => {
   
   let browser: BrowserWrapper;
   let apiCall: ApiCalls;
 
-  test.beforeEach(async () => {
+  test.beforeEach(async ({ request }) => {
     browser = new BrowserWrapper();
-    apiCall = new ApiCalls();
+    apiCall = new ApiCalls(request);
   });
 
   test.afterEach(async () => {
@@ -21,7 +21,7 @@ test.describe.serial('Database Connection Tests', () => {
 
   test('connect PostgreSQL via API -> verify in UI', async () => {
     test.setTimeout(120000); // Allow extra time for schema loading in CI
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
     const { postgres: postgresUrl } = getTestDatabases();
 
@@ -73,7 +73,7 @@ test.describe.serial('Database Connection Tests', () => {
 
   test('connect MySQL via API -> verify in UI', async () => {
     test.setTimeout(120000); // Allow extra time for schema loading in CI
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
     const { mysql: mysqlUrl } = getTestDatabases();
 
@@ -125,7 +125,7 @@ test.describe.serial('Database Connection Tests', () => {
 
   test('connect PostgreSQL via UI (URL) -> verify via API', async () => {
     test.setTimeout(120000); // Allow extra time for schema loading in CI
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
     const { postgres: postgresUrl } = getTestDatabases();
 
@@ -164,7 +164,7 @@ test.describe.serial('Database Connection Tests', () => {
 
   test('connect MySQL via UI (URL) -> verify via API', async () => {
     test.setTimeout(120000); // Allow extra time for schema loading in CI
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
     const { mysql: mysqlUrl } = getTestDatabases();
 
@@ -203,7 +203,7 @@ test.describe.serial('Database Connection Tests', () => {
 
   test('connect PostgreSQL via UI (Manual Entry) -> verify via API', async () => {
     test.setTimeout(120000); // Allow extra time for schema loading in CI
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
     // Connect via UI using manual entry mode
@@ -247,7 +247,7 @@ test.describe.serial('Database Connection Tests', () => {
 
   test('connect MySQL via UI (Manual Entry) -> verify via API', async () => {
     test.setTimeout(120000); // Allow extra time for schema loading in CI
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
     // Connect via UI using manual entry mode
@@ -290,7 +290,7 @@ test.describe.serial('Database Connection Tests', () => {
   });
 
   test('invalid connection string -> shows error', async () => {
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
     const invalidUrl = 'invalid://connection:string';
@@ -352,7 +352,7 @@ test.describe.serial('Database Connection Tests', () => {
       const initialCount = graphsList.length;
 
       // Create new page and open it
-      const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+      const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
       await browser.setPageToFullScreen();
 
       // Delete via UI - open dropdown, click delete, confirm
@@ -400,7 +400,7 @@ test.describe.serial('Database Connection Tests', () => {
       expect(graphId).toBeTruthy();
       const initialCount = graphsList.length;
 
-      const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+      const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
       await browser.setPageToFullScreen();
 
       // Wait for UI to reflect the connection (increased timeout for schema loading)

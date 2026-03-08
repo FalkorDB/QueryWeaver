@@ -20,6 +20,12 @@ import type {
 
 // ==================== AUTHENTICATION ENDPOINTS ====================
 export default class ApiCalls {
+  private defaultRequestContext?: APIRequestContext;
+
+  constructor(requestContext?: APIRequestContext) {
+    this.defaultRequestContext = requestContext;
+  }
+
   /**
    * Check authentication status
    * GET /auth-status
@@ -33,7 +39,7 @@ export default class ApiCalls {
         `${baseUrl}/auth-status`,
         undefined,
         undefined,
-        requestContext
+        requestContext || this.defaultRequestContext
       );
       return await response.json();
     } catch (error) {
@@ -57,7 +63,7 @@ export default class ApiCalls {
       const response = await postRequest(
         `${baseUrl}/login/email`,
         { email, password },
-        requestContext
+        requestContext || this.defaultRequestContext
       );
 
       const data = await response.json();
@@ -85,7 +91,7 @@ export default class ApiCalls {
       const response = await postRequest(
         `${baseUrl}/signup/email`,
         { firstName, lastName, email, password },
-        requestContext
+        requestContext || this.defaultRequestContext
       );
       return await response.json();
     } catch (error) {
@@ -107,7 +113,7 @@ export default class ApiCalls {
       const response = await postRequest(
         `${baseUrl}/logout`,
         undefined,
-        requestContext
+        requestContext || this.defaultRequestContext
       );
       return await response.json();
     } catch (error) {
@@ -147,7 +153,8 @@ export default class ApiCalls {
       const response = await getRequest(
         `${baseUrl}/graphs`,
         undefined,
-        undefined
+        undefined,
+        this.defaultRequestContext
       );
       return await response.json();
     } catch (error) {
@@ -169,7 +176,8 @@ export default class ApiCalls {
       const response = await getRequest(
         `${baseUrl}/graphs/${graphId}/data`,
         undefined,
-        undefined
+        undefined,
+        this.defaultRequestContext
       );
       return await response.json();
     } catch (error) {
@@ -200,7 +208,7 @@ export default class ApiCalls {
       const response = await postRequest(
         `${baseUrl}/graphs`,
         formData,
-        undefined,
+        this.defaultRequestContext,
         { "Content-Type": "multipart/form-data" }
       );
       return await response.json();
@@ -233,7 +241,7 @@ export default class ApiCalls {
       const response = await postRequest(
         `${baseUrl}/graphs/${graphId}`,
         body,
-        undefined,
+        this.defaultRequestContext,
         { "Content-Type": "application/json" }
       );
 
@@ -369,7 +377,7 @@ export default class ApiCalls {
       const response = await postRequest(
         `${baseUrl}/graphs/${graphId}/confirm`,
         body,
-        undefined,
+        this.defaultRequestContext,
         { "Content-Type": "application/json" }
       );
 
@@ -393,7 +401,7 @@ export default class ApiCalls {
       const response = await postRequest(
         `${baseUrl}/graphs/${graphId}/refresh`,
         undefined,
-        undefined,
+        this.defaultRequestContext,
         { "Content-Type": "application/json" }
       );
 
@@ -419,7 +427,7 @@ export default class ApiCalls {
         `${baseUrl}/graphs/${graphId}`,
         undefined,
         undefined,
-        requestContext
+        requestContext || this.defaultRequestContext
       );
       return await response.json();
     } catch (error) {
@@ -448,7 +456,7 @@ export default class ApiCalls {
       const response = await postRequest(
         `${baseUrl}/database`,
         body,
-        undefined,
+        this.defaultRequestContext,
         { "Content-Type": "application/json" }
       );
 
@@ -471,7 +479,8 @@ export default class ApiCalls {
       const baseUrl = getBaseUrl();
       const response = await postRequest(
         `${baseUrl}/tokens/generate`,
-        undefined
+        undefined,
+        this.defaultRequestContext
       );
       return await response.json();
     } catch (error) {
@@ -491,7 +500,8 @@ export default class ApiCalls {
       const response = await getRequest(
         `${baseUrl}/tokens/list`,
         undefined,
-        undefined
+        undefined,
+        this.defaultRequestContext
       );
       return await response.json();
     } catch (error) {
@@ -515,7 +525,7 @@ export default class ApiCalls {
         `${baseUrl}/tokens/${tokenId}`,
         undefined,
         undefined,
-        requestContext
+        requestContext || this.defaultRequestContext
       );
       return await response.json();
     } catch (error) {
