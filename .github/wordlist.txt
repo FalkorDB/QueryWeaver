@@ -71,7 +71,10 @@ namespace
 namespaced
 
 CSRF
+Anthropic
+Cohere
 LLM
+Ollama
 OpenAI
 OpenAI's
 Dockerhub

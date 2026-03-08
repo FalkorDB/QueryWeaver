@@ -56,7 +56,7 @@ docker run -p 5000:5000 -it \
   falkordb/queryweaver
 ```
 
-> Note: To use OpenAI directly instead of Azure OpenAI, replace `AZURE_API_KEY` with `OPENAI_API_KEY` in the above command.
+> Note: QueryWeaver supports multiple AI providers. You can use `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, or `AZURE_API_KEY`. See the [AI/LLM configuration](#aillm-configuration) section for details.
 
 > For a full list of configuration options, consult `.env.example`.
 
@@ -326,33 +326,55 @@ APP_ENV=development
 
 ### AI/LLM configuration
 
-QueryWeaver uses AI models for Text2SQL conversion and supports both Azure OpenAI and OpenAI directly.
+QueryWeaver supports multiple AI providers. Set one API key and QueryWeaver auto-detects which provider to use.
 
-#### Default: Azure OpenAI
+**Priority order:** Ollama > OpenAI > Gemini > Anthropic > Cohere > Azure (default)
 
-By default, QueryWeaver is configured to use Azure OpenAI. You need to set all three Azure credentials:
+| Provider | API Key | Default Models |
+|----------|---------|----------------|
+| Ollama | `OLLAMA_MODEL` | `ollama/<your-model>`, `ollama/nomic-embed-text` |
+| OpenAI | `OPENAI_API_KEY` | `openai/gpt-4.1`, `openai/text-embedding-ada-002` |
+| Google Gemini | `GEMINI_API_KEY` | `gemini/gemini-3-pro-preview`, `gemini/gemini-embedding-001` |
+| Anthropic | `ANTHROPIC_API_KEY` | `anthropic/claude-sonnet-4-5-20250929`, `voyage/voyage-3`* |
+| Cohere | `COHERE_API_KEY` | `cohere/command-a-03-2025`, `cohere/embed-v4.0` |
+| Azure OpenAI | `AZURE_API_KEY` | `azure/gpt-4.1`, `azure/text-embedding-ada-002` |
+
+\* Anthropic has no native embeddings. You must set `VOYAGE_API_KEY` or `EMBEDDING_MODEL` for embeddings, otherwise startup will fail with an error.
+
+**Optional: Override default models**
 
 ```bash
-AZURE_API_KEY=your_azure_api_key
-AZURE_API_BASE=https://your-resource.openai.azure.com/
-AZURE_API_VERSION=2024-12-01-preview
+COMPLETION_MODEL=gemini/gemini-3-pro-preview
+EMBEDDING_MODEL=gemini/gemini-embedding-001
 ```
 
-#### Alternative: OpenAI directly
-
-To use OpenAI directly instead of Azure, simply set the `OPENAI_API_KEY` environment variable:
-
-```bash
-OPENAI_API_KEY=your_openai_api_key
-```
-
-When `OPENAI_API_KEY` is provided, QueryWeaver automatically switches to use OpenAI's models:
-- Embedding model: `openai/text-embedding-ada-002`
-- Completion model: `openai/gpt-4.1`
-
-This configuration is handled automatically in `api/config.py` - you only need to provide the appropriate API key.
+Both must match your API key's provider.
 
 #### Docker examples with AI configuration
+
+Using OpenAI:
+```bash
+docker run -p 5000:5000 -it \
+  -e FASTAPI_SECRET_KEY=your_secret_key \
+  -e OPENAI_API_KEY=your_openai_api_key \
+  falkordb/queryweaver
+```
+
+Using Google Gemini:
+```bash
+docker run -p 5000:5000 -it \
+  -e FASTAPI_SECRET_KEY=your_secret_key \
+  -e GEMINI_API_KEY=your_gemini_api_key \
+  falkordb/queryweaver
+```
+
+Using Anthropic:
+```bash
+docker run -p 5000:5000 -it \
+  -e FASTAPI_SECRET_KEY=your_secret_key \
+  -e ANTHROPIC_API_KEY=your_anthropic_api_key \
+  falkordb/queryweaver
+```
 
 Using Azure OpenAI:
 ```bash
@@ -361,14 +383,6 @@ docker run -p 5000:5000 -it \
   -e AZURE_API_KEY=your_azure_api_key \
   -e AZURE_API_BASE=https://your-resource.openai.azure.com/ \
   -e AZURE_API_VERSION=2024-12-01-preview \
-  falkordb/queryweaver
-```
-
-Using OpenAI directly:
-```bash
-docker run -p 5000:5000 -it \
-  -e FASTAPI_SECRET_KEY=your_secret_key \
-  -e OPENAI_API_KEY=your_openai_api_key \
   falkordb/queryweaver
 ```
 

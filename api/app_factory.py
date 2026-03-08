@@ -22,6 +22,7 @@ from api.routes.auth import auth_router, init_auth
 from api.routes.graphs import graphs_router
 from api.routes.database import database_router
 from api.routes.tokens import tokens_router
+from api.routes.settings import settings_router
 
 # Load environment variables from .env file
 load_dotenv()
@@ -129,7 +130,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-meth
             )
 
 
-def create_app():
+def create_app():  # pylint: disable=too-many-statements
     """Create and configure the FastAPI application."""
 
     # Create the FastAPI app instance just to set the o routes
@@ -143,6 +144,7 @@ def create_app():
     app.include_router(graphs_router, prefix="/graphs")
     app.include_router(database_router)
     app.include_router(tokens_router, prefix="/tokens")
+    app.include_router(settings_router, prefix="/api")
 
 
 
