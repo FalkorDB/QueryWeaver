@@ -45,6 +45,8 @@ class ChatRequest(BaseModel):
     chat: list[str]
     result: list[str] | None = None
     instructions: str | None = None
+    custom_api_key: str | None = None
+    custom_model: str | None = None
     use_user_rules: bool = True  # If True, fetch rules from database; if False, don't use rules
     use_memory: bool = True
 
@@ -58,6 +60,8 @@ class ConfirmRequest(BaseModel):
     sql_query: str
     confirmation: str = ""
     chat: list = []
+    custom_api_key: str | None = None
+    custom_model: str | None = None
 
 
 def get_database_type_and_loader(db_url: str):
@@ -248,9 +252,29 @@ async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  
         logging.info("Starting query processing pipeline for query: %s",
                      sanitize_query(queries_history[-1]))  # nosemgrep
 
-        agent_rel = RelevancyAgent(queries_history, result_history)
-        agent_an = AnalysisAgent(queries_history, result_history)
-        follow_up_agent = FollowUpAgent(queries_history, result_history)
+        # Extract custom API key and model from chat_data
+        custom_api_key = chat_data.custom_api_key
+        custom_model = chat_data.custom_model
+
+        # Validate custom model format (vendor/model)
+        supported_vendors = ("openai", "anthropic", "gemini", "azure", "ollama", "cohere")
+        if custom_model:
+            parts = custom_model.split("/", 1)
+            if len(parts) != 2 or not parts[0] or not parts[1]:
+                raise InvalidArgumentError(
+                    "Invalid model format. Expected 'vendor/model' (e.g. 'openai/gpt-4.1')"
+                )
+            if parts[0] not in supported_vendors:
+                raise InvalidArgumentError(
+                    f"Unsupported vendor '{parts[0]}'. Supported: {', '.join(supported_vendors)}"
+                )
+
+        if custom_api_key is not None and len(custom_api_key.strip()) < 10:
+            raise InvalidArgumentError("API key is too short")
+
+        agent_rel = RelevancyAgent(queries_history, result_history, custom_api_key, custom_model)
+        agent_an = AnalysisAgent(queries_history, result_history, custom_api_key, custom_model)
+        follow_up_agent = FollowUpAgent(queries_history, result_history, custom_api_key, custom_model)
 
         step = {"type": "reasoning_step",
                 "final_response": False,
@@ -576,7 +600,9 @@ What this will do:
                             "message": f"Step {step_num}: Generating user-friendly response"}
                         yield json.dumps(step) + MESSAGE_DELIMITER
 
-                        response_agent = ResponseFormatterAgent()
+                        response_agent = ResponseFormatterAgent(
+                            queries_history, result_history, custom_api_key, custom_model
+                        )
                         user_readable_response = response_agent.format_response(
                             user_query=queries_history[-1],
                             sql_query=answer_an["sql_query"],
@@ -715,6 +741,8 @@ async def execute_destructive_operation(  # pylint: disable=too-many-statements
 
     sql_query = confirm_data.sql_query if hasattr(confirm_data, 'sql_query') else ""
     queries_history = confirm_data.chat if hasattr(confirm_data, 'chat') else []
+    custom_api_key = confirm_data.custom_api_key
+    custom_model = confirm_data.custom_model
 
     if not sql_query:
         raise InvalidArgumentError("No SQL query provided")
@@ -723,6 +751,7 @@ async def execute_destructive_operation(  # pylint: disable=too-many-statements
     async def generate_confirmation():  # pylint: disable=too-many-locals,too-many-statements
         # Create memory tool for saving query results
         memory_tool = await MemoryTool.create(user_id, graph_id)
+        result_history = []  # Initialize result_history for this context
 
         if confirmation == "CONFIRM":
             try:
@@ -823,7 +852,9 @@ async def execute_destructive_operation(  # pylint: disable=too-many-statements
                        "message": f"Step {step_num}: Generating user-friendly response"}
                 yield json.dumps(step) + MESSAGE_DELIMITER
 
-                response_agent = ResponseFormatterAgent()
+                response_agent = ResponseFormatterAgent(
+                    queries_history, result_history, custom_api_key, custom_model
+                )
                 user_readable_response = response_agent.format_response(
                     user_query=queries_history[-1] if queries_history else "Destructive operation",
                     sql_query=sql_query,

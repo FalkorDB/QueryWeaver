@@ -30,8 +30,8 @@ Nullability
 endcapture
 CVSS
 falkordb
-pipenv
-Pipenv
+uv
+pyproject
 README
 md
 UI
@@ -71,7 +71,10 @@ namespace
 namespaced
 
 CSRF
+Anthropic
+Cohere
 LLM
+Ollama
 OpenAI
 OpenAI's
 Dockerhub
@@ -95,3 +98,4 @@ Sanitization
 JOINs
 subqueries
 subquery
+TTL

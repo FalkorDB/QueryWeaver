@@ -8,10 +8,11 @@ set -e
 echo "🚀 Setting up QueryWeaver E2E Tests"
 echo "=================================="
 
-# Check if pipenv is installed
-if ! command -v pipenv &> /dev/null; then
-    echo "❌ pipenv is not installed. Please install it first:"
-    echo "   pip install pipenv"
+# Check if uv is installed
+if ! command -v uv &> /dev/null; then
+    echo "❌ uv is not installed. Please install it first:"
+    echo "   pip install uv"
+    echo "   or visit https://docs.astral.sh/uv/getting-started/installation/"
     exit 1
 fi
 
@@ -24,11 +25,11 @@ fi
 
 # Install dependencies
 echo "📦 Installing dependencies..."
-pipenv sync --dev
+uv sync
 
 # Install Playwright browsers
 echo "🌐 Installing Playwright browsers..."
-pipenv run playwright install chromium
+uv run playwright install chromium
 
 # Check if FalkorDB is running (optional for basic tests)
 echo "🔍 Checking for FalkorDB..."
@@ -54,7 +55,7 @@ echo "  make test-e2e-headed   # Run E2E tests (with browser)"
 echo "  make test              # Run all tests"
 echo ""
 echo "Or use pytest directly:"
-echo "  pipenv run pytest tests/e2e/test_basic_functionality.py -v"
+echo "  uv run python -m pytest tests/e2e/test_basic_functionality.py -v"
 echo ""
 echo "To run the application:"
 echo "  make run-dev"

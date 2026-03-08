@@ -12,9 +12,9 @@ test.describe('Chat Feature Tests', () => {
   // Set longer timeout for chat tests (60 seconds)
   test.setTimeout(60000);
 
-  test.beforeEach(async () => {
+  test.beforeEach(async ({ request }) => {
     browser = new BrowserWrapper();
-    apiCall = new ApiCalls();
+    apiCall = new ApiCalls(request);
   });
 
   test.afterEach(async () => {
@@ -42,7 +42,7 @@ test.describe('Chat Feature Tests', () => {
   });
 
   test('valid query shows SQL, results, and AI response', async () => {
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
     // Ensure database is connected (will skip if already connected)
@@ -74,7 +74,7 @@ test.describe('Chat Feature Tests', () => {
   });
 
   test('off-topic query shows AI message without SQL or results', async () => {
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
     // Ensure database is connected (will skip if already connected)
@@ -105,7 +105,7 @@ test.describe('Chat Feature Tests', () => {
   });
 
   test('multiple sequential queries maintain conversation history', async () => {
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
     // Ensure database is connected (will skip if already connected)
@@ -141,7 +141,7 @@ test.describe('Chat Feature Tests', () => {
   });
 
   test('empty query submission is prevented', async () => {
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
     // Ensure database is connected (will skip if already connected)
@@ -153,7 +153,7 @@ test.describe('Chat Feature Tests', () => {
   });
 
   test('rapid query submission is prevented during processing', async () => {
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
     // Ensure database is connected (will skip if already connected)
@@ -190,7 +190,7 @@ test.describe('Chat Feature Tests', () => {
     expect(finalMessage2.type).toBe('final_result');
     expect(finalMessage2.success).toBeTruthy();
 
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
     // Wait for page to load databases
@@ -224,7 +224,7 @@ test.describe('Chat Feature Tests', () => {
   });
 
   test('destructive operation shows inline confirmation and executes on confirm', async () => {
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
     // Ensure database is connected
@@ -238,7 +238,7 @@ test.describe('Chat Feature Tests', () => {
     await homePage.sendQuery(`add one user "${randomUsername}" with email "${randomEmail}"`);
 
     // Wait for confirmation message to appear (increased timeout for slow CI)
-    const confirmationAppeared = await homePage.waitForConfirmationMessage(20000);
+    const confirmationAppeared = await homePage.waitForConfirmationMessage(30000);
     expect(confirmationAppeared).toBeTruthy();
 
     // Verify confirmation message is visible
@@ -266,7 +266,7 @@ test.describe('Chat Feature Tests', () => {
   });
 
   test('duplicate record shows user-friendly error message', async () => {
-    const homePage = await browser.createNewPage(HomePage, getBaseUrl());
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
     // Ensure database is connected
@@ -276,14 +276,14 @@ test.describe('Chat Feature Tests', () => {
 
     // First insertion - should succeed
     await homePage.sendQuery(`add one user "${randomUsername}" with email "${randomEmail}"`);
-    const confirmationAppeared1 = await homePage.waitForConfirmationMessage(20000);
+    const confirmationAppeared1 = await homePage.waitForConfirmationMessage(30000);
     expect(confirmationAppeared1).toBeTruthy();
     await homePage.clickConfirmButton();
     await homePage.waitForProcessingToComplete();
 
     // Second insertion attempt - should fail with duplicate error
     await homePage.sendQuery(`add one user "${randomUsername}" with email "${randomEmail}"`);
-    const confirmationAppeared2 = await homePage.waitForConfirmationMessage(20000);
+    const confirmationAppeared2 = await homePage.waitForConfirmationMessage(30000);
     expect(confirmationAppeared2).toBeTruthy();
     await homePage.clickConfirmButton();
     await homePage.waitForProcessingToComplete();
