@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     
     # Setup Python
     - name: Set up Python
@@ -33,7 +33,7 @@ jobs:
 
     # Install uv
     - name: Install uv
-      uses: astral-sh/setup-uv@v5
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
       with:
         version: "latest"
 
@@ -41,6 +41,11 @@ jobs:
     - uses: actions/setup-node@v6
       with:
         node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: |
+          package-lock.json
+          app/package-lock.json
+
 
     # Install Python dependencies
     - name: Install Python dependencies
@@ -49,6 +54,14 @@ jobs:
     # Install Node dependencies (root - for Playwright)
     - name: Install root dependencies
       run: npm ci
+
+    # Cache Playwright browsers
+    - name: Cache Playwright browsers
+      id: playwright-cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-browsers-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
     # Install Node dependencies (frontend)
     - name: Install frontend dependencies
@@ -63,13 +76,8 @@ jobs:
     # Start Docker Compose services (test databases)
     - name: Start test databases
       run: |
-        docker compose -f e2e/docker-compose.test.yml up -d
-        # Wait for databases to be healthy
-        echo "Waiting for databases to be ready..."
-        sleep 20
+        docker compose -f e2e/docker-compose.test.yml up -d --wait --wait-timeout 120
         docker ps -a
-        # Verify all containers are running
-        docker compose -f e2e/docker-compose.test.yml ps
     
     # Start FalkorDB (Redis graph database)
     - name: Start FalkorDB
@@ -135,9 +143,14 @@ jobs:
         AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
         AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
     
-    # Install Playwright browsers
+    # Install Playwright browsers (Chromium only in CI)
     - name: Install Playwright Browsers
-      run: npx playwright install --with-deps chromium firefox
+      if: steps.playwright-cache.outputs.cache-hit != 'true'
+      run: npx playwright install --with-deps chromium
+
+    - name: Install Playwright system deps
+      if: steps.playwright-cache.outputs.cache-hit == 'true'
+      run: npx playwright install-deps chromium
     
     # Create auth directory for storage state
     - name: Create auth directory
@@ -150,7 +163,7 @@ jobs:
         CI: true
     
     # Upload test results on failure
-    - uses: actions/upload-artifact@v6
+    - uses: actions/upload-artifact@v7
       if: failure()
       with:
         name: playwright-report
@@ -158,7 +171,7 @@ jobs:
         retention-days: 30
     
     # Upload test screenshots on failure
-    - uses: actions/upload-artifact@v6
+    - uses: actions/upload-artifact@v7
       if: failure()
       with:
         name: test-results

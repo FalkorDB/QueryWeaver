@@ -21,7 +21,7 @@ dependencies = [
     "fastmcp>=2.13.1",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "pytest~=8.4.2",
     "pylint~=4.0.3",
@@ -48,7 +48,18 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v"
+addopts = "--verbose --tb=short --strict-markers --disable-warnings"
+markers = [
+    "e2e: End-to-end tests using Playwright",
+    "slow: Tests that take a long time to run",
+    "auth: Tests that require authentication",
+    "integration: Integration tests",
+    "unit: Unit tests",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
 
 [tool.pylint.main]
 max-line-length = 120

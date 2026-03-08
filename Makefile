@@ -8,7 +8,7 @@ help: ## Show this help message
 
 install: ## Install dependencies
 	uv sync
-	npm install --prefix ./app
+	npm ci --prefix ./app
 
 
 setup-dev: install ## Set up development environment

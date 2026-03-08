@@ -34,6 +34,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 # Copy pyproject.toml and uv.lock
 COPY pyproject.toml uv.lock* ./
 
+# Install packages into system Python (no virtualenv in container)
+ENV UV_SYSTEM_PYTHON=1
+
 # Install Python dependencies from pyproject.toml
 RUN uv sync --frozen --no-dev
 

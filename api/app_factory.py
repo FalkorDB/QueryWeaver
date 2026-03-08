@@ -1,7 +1,9 @@
 """Application factory for the text2sql FastAPI app."""
 
+import hmac
 import logging
 import os
+import secrets
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException
@@ -52,6 +54,79 @@ class SecurityMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-
         response.headers["Strict-Transport-Security"] = hsts_value
 
         return response
+
+
+def _is_secure_request(request: Request) -> bool:
+    """Determine if the request is over HTTPS."""
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    if forwarded_proto:
+        return forwarded_proto == "https"
+    return request.url.scheme == "https"
+
+
+class CSRFMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods
+    """Double Submit Cookie CSRF protection.
+
+    Sets a csrf_token cookie (readable by JS) on every response.
+    State-changing requests must echo the cookie value back
+    via the X-CSRF-Token header.  Bearer-token authenticated
+    requests and auth/login endpoints are exempt.
+    """
+
+    SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
+    CSRF_COOKIE = "csrf_token"
+    CSRF_HEADER = "x-csrf-token"
+
+    # Paths exempt from CSRF validation (auth flow endpoints).
+    # "/mcp" has no trailing slash so it also covers sub-paths like /mcp/sse.
+    EXEMPT_PREFIXES = (
+        "/login/",
+        "/signup/",
+        "/mcp",
+    )
+
+    async def dispatch(self, request: Request, call_next):
+        # Validate CSRF for unsafe, non-exempt, non-Bearer requests
+        if (
+            request.method not in self.SAFE_METHODS
+            and not request.url.path.startswith(self.EXEMPT_PREFIXES)
+            and not request.headers.get("authorization", "").lower().startswith("bearer ")
+        ):
+            cookie_token = request.cookies.get(self.CSRF_COOKIE)
+            header_token = request.headers.get(self.CSRF_HEADER)
+
+            if (
+                not cookie_token
+                or not header_token
+                or not hmac.compare_digest(cookie_token, header_token)
+            ):
+                response = JSONResponse(
+                    status_code=403,
+                    content={"detail": "CSRF token missing or invalid"},
+                )
+                self._ensure_csrf_cookie(request, response)
+                return response
+
+        response = await call_next(request)
+        self._ensure_csrf_cookie(request, response)
+        return response
+
+    # Match the session cookie lifetime (14 days in seconds)
+    CSRF_COOKIE_MAX_AGE = 60 * 60 * 24 * 14
+
+    def _ensure_csrf_cookie(self, request: Request, response):
+        """Set the CSRF cookie if it is not already present."""
+        if not request.cookies.get(self.CSRF_COOKIE):
+            token = secrets.token_urlsafe(32)
+            response.set_cookie(
+                key=self.CSRF_COOKIE,
+                value=token,
+                httponly=False,  # JS must read this value
+                samesite="lax",
+                secure=_is_secure_request(request),
+                path="/",
+                max_age=self.CSRF_COOKIE_MAX_AGE,
+            )
 
 
 def create_app():
@@ -192,6 +267,9 @@ def create_app():
     # Add security middleware
     app.add_middleware(SecurityMiddleware)
 
+    # Add CSRF middleware (double-submit cookie pattern)
+    app.add_middleware(CSRFMiddleware)
+
     # Mount static files from the React build (app/dist)
     # This serves the bundled assets (JS, CSS, images, etc.)
     dist_path = os.path.join(os.path.dirname(__file__), "../app/dist")
@@ -261,7 +339,7 @@ def create_app():
 
     # Serve React app for all non-API routes (SPA catch-all)
     @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_react_app(_full_path: str):
+    async def serve_react_app(full_path: str):  # pylint: disable=unused-argument
         """Serve the React app for all routes not handled by API endpoints."""
         # Serve index.html for the React SPA
         index_path = os.path.join(dist_path, "index.html")

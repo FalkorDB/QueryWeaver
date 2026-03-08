@@ -20,6 +20,12 @@ import type {
 
 // ==================== AUTHENTICATION ENDPOINTS ====================
 export default class ApiCalls {
+  private defaultRequestContext?: APIRequestContext;
+
+  constructor(requestContext?: APIRequestContext) {
+    this.defaultRequestContext = requestContext;
+  }
+
   /**
    * Check authentication status
    * GET /auth-status
@@ -33,7 +39,7 @@ export default class ApiCalls {
         `${baseUrl}/auth-status`,
         undefined,
         undefined,
-        requestContext
+        requestContext || this.defaultRequestContext
       );
       return await response.json();
     } catch (error) {
@@ -57,7 +63,7 @@ export default class ApiCalls {
       const response = await postRequest(
         `${baseUrl}/login/email`,
         { email, password },
-        requestContext
+        requestContext || this.defaultRequestContext
       );
 
       const data = await response.json();
@@ -85,7 +91,7 @@ export default class ApiCalls {
       const response = await postRequest(
         `${baseUrl}/signup/email`,
         { firstName, lastName, email, password },
-        requestContext
+        requestContext || this.defaultRequestContext
       );
       return await response.json();
     } catch (error) {
@@ -107,7 +113,7 @@ export default class ApiCalls {
       const response = await postRequest(
         `${baseUrl}/logout`,
         undefined,
-        requestContext
+        requestContext || this.defaultRequestContext
       );
       return await response.json();
     } catch (error) {
@@ -147,7 +153,8 @@ export default class ApiCalls {
       const response = await getRequest(
         `${baseUrl}/graphs`,
         undefined,
-        undefined
+        undefined,
+        this.defaultRequestContext
       );
       return await response.json();
     } catch (error) {
@@ -169,7 +176,8 @@ export default class ApiCalls {
       const response = await getRequest(
         `${baseUrl}/graphs/${graphId}/data`,
         undefined,
-        undefined
+        undefined,
+        this.defaultRequestContext
       );
       return await response.json();
     } catch (error) {
@@ -200,7 +208,7 @@ export default class ApiCalls {
       const response = await postRequest(
         `${baseUrl}/graphs`,
         formData,
-        undefined,
+        this.defaultRequestContext,
         { "Content-Type": "multipart/form-data" }
       );
       return await response.json();
@@ -233,7 +241,7 @@ export default class ApiCalls {
       const response = await postRequest(
         `${baseUrl}/graphs/${graphId}`,
         body,
-        undefined,
+        this.defaultRequestContext,
         { "Content-Type": "application/json" }
       );
 
@@ -258,12 +266,94 @@ export default class ApiCalls {
         .split("|||FALKORDB_MESSAGE_BOUNDARY|||")
         .filter((msg) => msg.trim())
         .map((msg) => JSON.parse(msg.trim()));
+      // Log error messages to help diagnose CI failures
+      const errorMessages = messages.filter((m) => m.type === "error");
+      if (errorMessages.length > 0) {
+        console.log(
+          `[parseStreamingResponse] HTTP status: ${response.status()}, error messages received:`,
+          JSON.stringify(errorMessages)
+        );
+      }
       return messages;
     } catch (error) {
       throw new Error(
         `Failed to parse streaming response. \n Error: ${(error as Error).message}`
       );
     }
+  }
+
+  /**
+   * Poll getGraphs() until the predicate is satisfied, or until timeout.
+   * Returns the last observed graph list (for diagnostics even on timeout).
+   * Can be used to wait for a graph to appear or to disappear.
+   */
+  async waitForGraphs(
+    predicate: (graphs: GraphsListResponse) => boolean,
+    timeoutMs: number = 30000,
+    pollIntervalMs: number = 2000
+  ): Promise<GraphsListResponse> {
+    const deadline = Date.now() + timeoutMs;
+    let lastGraphs: GraphsListResponse = [];
+    while (Date.now() < deadline) {
+      try {
+        lastGraphs = await this.getGraphs();
+        if (predicate(lastGraphs)) {
+          return lastGraphs;
+        }
+      } catch (err) {
+        console.log(
+          `[waitForGraphs] getGraphs() error: ${(err as Error).message}`
+        );
+      }
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(pollIntervalMs, remaining))
+      );
+    }
+    console.log(
+      `[waitForGraphs] timed out after ${timeoutMs}ms. Last graphs: ${JSON.stringify(lastGraphs)}`
+    );
+    return lastGraphs;
+  }
+
+  /**
+   * Connect to external database with retry on transient errors.
+   * Retries up to `maxAttempts` times if the streaming response final message is not 'final_result'.
+   */
+  async connectDatabaseWithRetry(
+    connectionUrl: string,
+    maxAttempts: number = 3,
+    retryDelayMs: number = 3000
+  ): Promise<StreamMessage[]> {
+    let lastMessages: StreamMessage[] = [];
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await this.connectDatabase(connectionUrl);
+        const messages = await this.parseStreamingResponse(response);
+        const finalMessage = messages[messages.length - 1];
+        if (finalMessage && finalMessage.type === "final_result") {
+          return messages;
+        }
+        console.log(
+          `[connectDatabaseWithRetry] attempt ${attempt}/${maxAttempts} did not return final_result.`,
+          `Last message: ${JSON.stringify(finalMessage)}`
+        );
+        lastMessages = messages;
+      } catch (err) {
+        console.error(
+          `[connectDatabaseWithRetry] attempt ${attempt}/${maxAttempts} threw an error:`,
+          (err as Error).message
+        );
+      }
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      }
+    }
+    console.log(
+      `[connectDatabaseWithRetry] all ${maxAttempts} attempts exhausted. Last messages: ${JSON.stringify(lastMessages)}`
+    );
+    return lastMessages;
   }
 
   /**
@@ -287,7 +377,7 @@ export default class ApiCalls {
       const response = await postRequest(
         `${baseUrl}/graphs/${graphId}/confirm`,
         body,
-        undefined,
+        this.defaultRequestContext,
         { "Content-Type": "application/json" }
       );
 
@@ -311,7 +401,7 @@ export default class ApiCalls {
       const response = await postRequest(
         `${baseUrl}/graphs/${graphId}/refresh`,
         undefined,
-        undefined,
+        this.defaultRequestContext,
         { "Content-Type": "application/json" }
       );
 
@@ -337,7 +427,7 @@ export default class ApiCalls {
         `${baseUrl}/graphs/${graphId}`,
         undefined,
         undefined,
-        requestContext
+        requestContext || this.defaultRequestContext
       );
       return await response.json();
     } catch (error) {
@@ -366,7 +456,7 @@ export default class ApiCalls {
       const response = await postRequest(
         `${baseUrl}/database`,
         body,
-        undefined,
+        this.defaultRequestContext,
         { "Content-Type": "application/json" }
       );
 
@@ -389,7 +479,8 @@ export default class ApiCalls {
       const baseUrl = getBaseUrl();
       const response = await postRequest(
         `${baseUrl}/tokens/generate`,
-        undefined
+        undefined,
+        this.defaultRequestContext
       );
       return await response.json();
     } catch (error) {
@@ -409,7 +500,8 @@ export default class ApiCalls {
       const response = await getRequest(
         `${baseUrl}/tokens/list`,
         undefined,
-        undefined
+        undefined,
+        this.defaultRequestContext
       );
       return await response.json();
     } catch (error) {
@@ -433,7 +525,7 @@ export default class ApiCalls {
         `${baseUrl}/tokens/${tokenId}`,
         undefined,
         undefined,
-        requestContext
+        requestContext || this.defaultRequestContext
       );
       return await response.json();
     } catch (error) {
