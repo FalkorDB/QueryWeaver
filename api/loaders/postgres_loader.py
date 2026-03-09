@@ -98,7 +98,7 @@ class PostgresLoader(BaseLoader):
         return value
 
     @staticmethod
-    def _parse_schema_from_url(connection_url: str) -> str:
+    def parse_schema_from_url(connection_url: str) -> str:
         """
         Parse the search_path from the connection URL's options parameter.
 
@@ -154,7 +154,7 @@ class PostgresLoader(BaseLoader):
         """
         try:
             # Parse schema from connection URL (defaults to 'public')
-            schema = PostgresLoader._parse_schema_from_url(connection_url)
+            schema = PostgresLoader.parse_schema_from_url(connection_url)
 
             # Connect to PostgreSQL database
             conn = psycopg2.connect(connection_url)
