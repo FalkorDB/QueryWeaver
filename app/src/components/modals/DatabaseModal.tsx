@@ -29,6 +29,7 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
   const [database, setDatabase] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [schema, setSchema] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionSteps, setConnectionSteps] = useState<ConnectionStep[]>([]);
   const { refreshGraphs } = useDatabase();
@@ -94,6 +95,12 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
         const builtUrl = new URL(`${protocol}://${host}:${port}/${database}`);
         builtUrl.username = username;
         builtUrl.password = password;
+        
+        // Append schema option for PostgreSQL if provided
+        if (selectedDatabase === 'postgresql' && schema.trim()) {
+          builtUrl.searchParams.set('options', `-csearch_path=${schema.trim()}`);
+        }
+
         dbUrl = builtUrl.toString();
       }
 
@@ -177,6 +184,7 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
               setDatabase("");
               setUsername("");
               setPassword("");
+              setSchema("");
               setConnectionSteps([]);
             }, 1000);
           } else {
@@ -384,6 +392,26 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
                   className="bg-muted border-border focus-visible:ring-purple-500"
                 />
               </div>
+              
+              {/* Schema field - PostgreSQL only */}
+              {selectedDatabase === 'postgresql' && (
+                <div className="space-y-2">
+                  <Label htmlFor="schema" className="text-sm font-medium">
+                    Schema <span className="text-muted-foreground font-normal">(optional)</span>
+                  </Label>
+                  <Input
+                    id="schema"
+                    data-testid="schema-input"
+                    placeholder="public"
+                    value={schema}
+                    onChange={(e) => setSchema(e.target.value)}
+                    className="bg-muted border-border"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Leave empty to use the default &apos;public&apos; schema
+                  </p>
+                </div>
+              )}
             </>
           )}
 
