@@ -98,7 +98,10 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
         
         // Append schema option for PostgreSQL if provided
         if (selectedDatabase === 'postgresql' && schema.trim()) {
-          builtUrl.searchParams.set('options', `-csearch_path=${schema.trim()}`);
+          const sanitized = schema.trim().replace(/[^a-zA-Z0-9_]/g, '');
+          if (sanitized) {
+            builtUrl.searchParams.set('options', `-csearch_path=${sanitized}`);
+          }
         }
 
         dbUrl = builtUrl.toString();

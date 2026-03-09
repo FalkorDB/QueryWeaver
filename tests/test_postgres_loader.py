@@ -238,6 +238,30 @@ class TestParseSchemaFromUrl(unittest.TestCase):
         result = PostgresLoader.parse_schema_from_url(url)
         self.assertEqual(result, 'custom_schema')
 
+    def test_search_path_empty_tokens_returns_public(self):
+        """Test that empty schema tokens (e.g. search_path=,) fallback to public"""
+        url = "postgresql://user:pass@localhost:5432/mydb?options=-csearch_path%3D,"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'public')
+
+    def test_search_path_blank_quoted_tokens_returns_public(self):
+        """Test that blank quoted tokens fallback to public"""
+        url = "postgresql://user:pass@localhost:5432/mydb?options=-csearch_path%3D%22%22,%22%22"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'public')
+
+    def test_search_path_repeated_dollar_user_returns_public(self):
+        """Test that repeated $user entries with no real schema returns public"""
+        url = "postgresql://user:pass@localhost:5432/mydb?options=-csearch_path%3D%24user,%24user"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'public')
+
+    def test_search_path_repeated_dollar_user_with_schema(self):
+        """Test that repeated $user entries followed by a real schema returns that schema"""
+        url = "postgresql://user:pass@localhost:5432/mydb?options=-csearch_path%3D%24user,%24user,my_schema"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'my_schema')
+
 
 def run_tests():
     """Run all tests"""

@@ -280,6 +280,7 @@ class PostgresLoader(BaseLoader):
                 FROM information_schema.table_constraints tc
                 JOIN information_schema.key_column_usage ku
                     ON tc.constraint_name = ku.constraint_name
+                    AND tc.constraint_schema = ku.constraint_schema
                 WHERE tc.table_name = %s
                 AND tc.table_schema = %s
                 AND tc.constraint_type = 'PRIMARY KEY'
@@ -289,6 +290,7 @@ class PostgresLoader(BaseLoader):
                 FROM information_schema.table_constraints tc
                 JOIN information_schema.key_column_usage ku
                     ON tc.constraint_name = ku.constraint_name
+                    AND tc.constraint_schema = ku.constraint_schema
                 WHERE tc.table_name = %s
                 AND tc.table_schema = %s
                 AND tc.constraint_type = 'FOREIGN KEY'
