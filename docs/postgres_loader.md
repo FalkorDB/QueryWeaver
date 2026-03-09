@@ -276,7 +276,7 @@ To verify which schema will be used, you can test the search_path parsing:
 from api.loaders.postgres_loader import PostgresLoader
 
 # Test URL parsing
-url = "postgresql://user:pass@localhost:5432/mydatabase?options=-c search_path=my_schema"
+url = "postgresql://user:pass@localhost:5432/mydatabase?options=-csearch_path%3Dmy_schema"
 schema = PostgresLoader.parse_schema_from_url(url)
 print(f"Schema to be used: {schema}")  # Output: my_schema
 {% endcapture %}

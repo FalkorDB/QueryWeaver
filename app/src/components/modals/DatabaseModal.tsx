@@ -30,6 +30,7 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [schema, setSchema] = useState("");
+  const [schemaError, setSchemaError] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionSteps, setConnectionSteps] = useState<ConnectionStep[]>([]);
   const { refreshGraphs } = useDatabase();
@@ -98,10 +99,10 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
         
         // Append schema option for PostgreSQL if provided
         if (selectedDatabase === 'postgresql' && schema.trim()) {
-          const sanitized = schema.trim().replace(/[^a-zA-Z0-9_]/g, '');
-          if (sanitized) {
-            builtUrl.searchParams.set('options', `-csearch_path=${sanitized}`);
+          if (/[^a-zA-Z0-9_]/.test(schema.trim())) {
+            throw new Error('Schema name can only contain letters, digits, and underscores');
           }
+          builtUrl.searchParams.set('options', `-csearch_path=${schema.trim()}`);
         }
 
         dbUrl = builtUrl.toString();
@@ -188,6 +189,7 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
               setUsername("");
               setPassword("");
               setSchema("");
+              setSchemaError("");
               setConnectionSteps([]);
             }, 1000);
           } else {
@@ -407,12 +409,24 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
                     data-testid="schema-input"
                     placeholder="public"
                     value={schema}
-                    onChange={(e) => setSchema(e.target.value)}
-                    className="bg-muted border-border"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSchema(val);
+                      if (val && /[^a-zA-Z0-9_]/.test(val)) {
+                        setSchemaError('Schema name can only contain letters, digits, and underscores');
+                      } else {
+                        setSchemaError('');
+                      }
+                    }}
+                    className={`bg-muted border-border ${schemaError ? 'border-red-500' : ''}`}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Leave empty to use the default &apos;public&apos; schema
-                  </p>
+                  {schemaError ? (
+                    <p className="text-xs text-red-500">{schemaError}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Leave empty to use the default &apos;public&apos; schema
+                    </p>
+                  )}
                 </div>
               )}
             </>
