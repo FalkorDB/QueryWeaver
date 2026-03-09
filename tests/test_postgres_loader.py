@@ -195,6 +195,12 @@ class TestParseSchemaFromUrl(unittest.TestCase):
         result = PostgresLoader.parse_schema_from_url(url)
         self.assertEqual(result, 'my_schema')
 
+    def test_search_path_dollar_user_space_after_comma(self):
+        """Test that $user, my_schema (space after comma) returns my_schema"""
+        url = "postgresql://user:pass@localhost:5432/mydb?options=-csearch_path%3D%24user,%20my_schema"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'my_schema')
+
     def test_search_path_dollar_user_only_returns_public(self):
         """Test that $user alone returns 'public'"""
         url = "postgresql://user:pass@localhost:5432/mydb?options=-csearch_path%3D%24user"

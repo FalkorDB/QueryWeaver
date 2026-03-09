@@ -90,7 +90,7 @@ postgresql://[username[:password]@][host[:port]][/database][?options]
 ### Custom Schema Configuration
 
 By default, the loader extracts tables from the `public` schema. To use a different schema, add the `search_path` option to your connection URL using PostgreSQL's standard `options` parameter. 
-More info [here](https://www.postgresql.org/docs/18/runtime-config-client.html#GUC-SEARCH-PATH).
+More info [here](https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-SEARCH-PATH).
 
 **Format:**
 ```
@@ -260,7 +260,7 @@ PostgreSQL schema loaded successfully. Found 15 tables.
 3. **No Tables Found**:
 - Check that tables exist in the target schema
 - If using a custom schema, verify the `search_path` option is correctly formatted
-- Ensure the schema name is spelled correctly (schema names are case-sensitive)
+- Ensure the schema name is spelled correctly (schema names are case-sensitive when created or referenced with double quotes; unquoted identifiers are folded to lower-case)
 4. **Graph Database Error**: Verify that the graph database is running and accessible
 5. **Schema Permission Error**: Ensure the database user has `USAGE` permission on the target schema:
     ```sql

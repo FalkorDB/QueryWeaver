@@ -1,0 +1,10 @@
+README.md
+setup.py
+queryweaver_client/__init__.py
+queryweaver_client/client.py
+queryweaver_client.egg-info/PKG-INFO
+queryweaver_client.egg-info/SOURCES.txt
+queryweaver_client.egg-info/dependency_links.txt
+queryweaver_client.egg-info/requires.txt
+queryweaver_client.egg-info/top_level.txt
+tests/test_client_basic.py
