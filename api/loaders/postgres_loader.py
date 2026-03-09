@@ -123,8 +123,8 @@ class PostgresLoader(BaseLoader):
 
             # Parse -c search_path=value from options
             # Format can be: -csearch_path=schema or -c search_path=schema
-            # Capture up to the next "-c" option (or end of string) so values like "$user, public" work.
-            match = re.search(r'-c\s*search_path\s*=\s*(.+?)(?=\s+-c|\s*$)', options_str, re.IGNORECASE)
+            # Match comma-separated schema tokens (supports spaces after commas).
+            match = re.search(r'-c\s*search_path\s*=\s*([^\s,]+(?:\s*,\s*[^\s,]+)*)', options_str, re.IGNORECASE)
             if match:
                 search_path = match.group(1)
                 schemas = search_path.split(',')
