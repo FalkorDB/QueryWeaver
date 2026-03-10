@@ -4,6 +4,10 @@ import os
 import subprocess
 import time
 
+# SECRET_TOKEN must be set before any test imports api.index (which triggers
+# app creation and the startup SECRET_TOKEN requirement check).
+os.environ.setdefault("SECRET_TOKEN", "test-secret-token")
+
 import pytest
 import requests
 
@@ -27,6 +31,7 @@ def fastapi_app():
         'GOOGLE_CLIENT_SECRET': 'test-google-client-secret',
         'GITHUB_CLIENT_ID': 'test-github-client-id',
         'GITHUB_CLIENT_SECRET': 'test-github-client-secret',
+        'SECRET_TOKEN': 'test-secret-token',
         'ENABLE_TEST_AUTH': 'true',  # Enable test auth bypass for E2E tests
     }
     for var, default in env_defaults.items():
