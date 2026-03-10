@@ -136,6 +136,7 @@ jobs:
       env:
         PYTHONUNBUFFERED: 1
         FASTAPI_SECRET_KEY: test-secret-key-for-ci
+        SECRET_TOKEN: test-secret-token-for-ci
         APP_ENV: development
         FASTAPI_DEBUG: False
         FALKORDB_URL: redis://localhost:6379
