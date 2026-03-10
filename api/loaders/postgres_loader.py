@@ -53,7 +53,7 @@ class PostgresLoader(BaseLoader):
 
     @staticmethod
     def _execute_sample_query(
-        cursor, table_name: str, col_name: str, sample_size: int = 3
+        cursor: Any, table_name: str, col_name: str, sample_size: int = 3
     ) -> List[Any]:
         """
         Execute query to get random sample values for a column.
@@ -153,6 +153,8 @@ class PostgresLoader(BaseLoader):
         Returns:
             Tuple[bool, str]: Success status and message
         """
+        conn = None
+        cursor = None
         try:
             # Parse schema from connection URL (defaults to 'public')
             schema = PostgresLoader.parse_schema_from_url(connection_url)
@@ -180,9 +182,11 @@ class PostgresLoader(BaseLoader):
             # Get all relationship information
             relationships = PostgresLoader.extract_relationships(cursor, schema)
 
-            # Close database connection
+            # Close database connection before graph loading
             cursor.close()
+            cursor = None
             conn.close()
+            conn = None
 
             yield True, "Loading data into graph..."
             # Load data into graph
@@ -198,9 +202,14 @@ class PostgresLoader(BaseLoader):
         except Exception as e:  # pylint: disable=broad-exception-caught
             logging.error("Error loading PostgreSQL schema: %s", e)
             yield False, "Failed to load PostgreSQL database schema"
+        finally:
+            if cursor is not None:
+                cursor.close()
+            if conn is not None:
+                conn.close()
 
     @staticmethod
-    def extract_tables_info(cursor, schema: str = 'public') -> Dict[str, Any]:
+    def extract_tables_info(cursor: Any, schema: str = 'public') -> Dict[str, Any]:
         """
         Extract table and column information from PostgreSQL database.
 
@@ -257,7 +266,7 @@ class PostgresLoader(BaseLoader):
         return entities
 
     @staticmethod
-    def extract_columns_info(cursor, table_name: str, schema: str = 'public') -> Dict[str, Any]:
+    def extract_columns_info(cursor: Any, table_name: str, schema: str = 'public') -> Dict[str, Any]:
         """
         Extract column information for a specific table.
 
@@ -351,7 +360,7 @@ class PostgresLoader(BaseLoader):
         return columns_info
 
     @staticmethod
-    def extract_foreign_keys(cursor, table_name: str, schema: str = 'public') -> List[Dict[str, str]]:
+    def extract_foreign_keys(cursor: Any, table_name: str, schema: str = 'public') -> List[Dict[str, str]]:
         """
         Extract foreign key information for a specific table.
 
@@ -393,7 +402,7 @@ class PostgresLoader(BaseLoader):
         return foreign_keys
 
     @staticmethod
-    def extract_relationships(cursor, schema: str = 'public') -> Dict[str, List[Dict[str, str]]]:
+    def extract_relationships(cursor: Any, schema: str = 'public') -> Dict[str, List[Dict[str, str]]]:
         """
         Extract all relationship information from the database.
 
