@@ -8,8 +8,8 @@ import time
 # app creation and the startup SECRET_TOKEN requirement check).
 os.environ.setdefault("SECRET_TOKEN", "test-secret-token")
 
-import pytest
-import requests
+import pytest  # pylint: disable=wrong-import-position
+import requests  # pylint: disable=wrong-import-position
 
 
 def pytest_configure(config):
