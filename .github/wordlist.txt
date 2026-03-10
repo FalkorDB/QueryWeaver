@@ -8,6 +8,7 @@ schemas
 psycopg
 html
 PostgreSQLLoader
+PostgresLoader
 api
 postgres
 postgresql
@@ -77,6 +78,7 @@ LLM
 Ollama
 OpenAI
 OpenAI's
+DockerHub
 Dockerhub
 FDE
 github
@@ -99,3 +101,20 @@ JOINs
 subqueries
 subquery
 TTL
+
+config
+docstring
+dotenv
+ESLint
+GraphNotFoundError
+HSTS
+init
+InternalError
+InvalidArgumentError
+Middleware
+monorepo
+PRs
+pylint
+pytest
+Radix
+Zod

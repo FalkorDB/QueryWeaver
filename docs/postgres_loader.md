@@ -5,6 +5,7 @@ This loader connects to a PostgreSQL database and extracts the complete schema i
 ## Features
 
 - **Complete Schema Extraction**: Retrieves all tables, columns, data types, constraints, and relationships
+- **Custom Schema Support**: Configure which PostgreSQL schema to extract using the `search_path` option
 - **Foreign Key Relationships**: Automatically discovers and maps foreign key relationships between tables
 - **Column Metadata**: Extracts column comments, default values, nullability, and key types
 - **Batch Processing**: Efficiently processes large schemas with progress tracking
@@ -85,6 +86,34 @@ postgresql://[username[:password]@][host[:port]][/database][?options]
 - `postgresql://postgres:password@localhost:5432/mydatabase`
 - `postgresql://user:pass@example.com:5432/production_db`
 - `postgresql://postgres@127.0.0.1/testdb`
+
+### Custom Schema Configuration
+
+By default, the loader extracts tables from the `public` schema. To use a different schema, add the `search_path` option to your connection URL using PostgreSQL's standard `options` parameter. 
+More info [here](https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-SEARCH-PATH).
+
+**Format:**
+```
+postgresql://user:pass@host:port/database?options=-csearch_path%3Dschema_name
+```
+
+**Examples:**
+- Extract from `sales` schema
+  `postgresql://postgres:password@localhost:5432/mydb?options=-csearch_path=sales`
+- Extract from `dbo` schema
+  `postgresql://user:pass@host:5432/enterprise_db?options=-csearch_path=dbo`
+- Extract from `inventory` schema
+  `postgresql://admin:secret@192.168.1.100:5432/warehouse?options=-csearch_path%3Dinventory`
+
+**Notes:**
+- The `%3D` is the URL-encoded form of `=`
+- If `search_path` is not specified, the loader defaults to `public`
+- The schema must exist and the user must have `USAGE` permission on it
+- This follows PostgreSQL's native `search_path` configuration option
+
+**Using the UI:**
+
+When connecting via the QueryWeaver UI with "Manual Entry" mode for PostgreSQL, you can specify the schema in the optional "Schema" field. Leave it empty to use the default `public` schema.
 
 ### Integration with Graph Database
 
@@ -218,7 +247,7 @@ PostgreSQL schema loaded successfully. Found 15 tables.
 ## Limitations
 
 - Currently only supports PostgreSQL databases
-- Extracts schema from the 'public' schema only
+- Extracts schema from one schema at a time (defaults to 'public', configurable via `search_path`)
 - Requires read permissions on information_schema and pg_* system tables
 - Large schemas may take time to process due to embedding generation
 
@@ -228,8 +257,29 @@ PostgreSQL schema loaded successfully. Found 15 tables.
 
 1. **Connection Failed**: Verify the connection URL format and database credentials
 2. **Permission Denied**: Ensure the database user has read access to system tables
-3. **Schema Not Found**: Check that tables exist in the 'public' schema
+3. **No Tables Found**:
+- Check that tables exist in the target schema
+- If using a custom schema, verify the `search_path` option is correctly formatted
+- Ensure the schema name is spelled correctly (schema names are case-sensitive when created or referenced with double quotes; unquoted identifiers are folded to lower-case)
 4. **Graph Database Error**: Verify that the graph database is running and accessible
+5. **Schema Permission Error**: Ensure the database user has `USAGE` permission on the target schema:
+    ```sql
+    GRANT USAGE ON SCHEMA my_schema TO my_user;
+    GRANT SELECT ON ALL TABLES IN SCHEMA my_schema TO my_user;
+    ```
+
+### Verifying Schema Configuration
+
+To verify which schema will be used, you can test the search_path parsing:
+
+{% capture python_2 %}
+from api.loaders.postgres_loader import PostgresLoader
+
+# Test URL parsing
+url = "postgresql://user:pass@localhost:5432/mydatabase?options=-c search_path=my_schema"
+schema = PostgresLoader.parse_schema_from_url(url)
+print(f"Schema to be used: {schema}")  # Output: my_schema
+{% endcapture %}
 
 ### Debug Mode
 
