@@ -13,10 +13,10 @@ This loader connects to a PostgreSQL database and extracts the complete schema i
 
 ## Installation
 
-psycopg2-binary is already included in QueryWeaver's dependencies. If you need to add it manually:
+psycopg2-binary is already included in QueryWeaver's dependencies. Install project dependencies with:
 
 ```bash
-uv add psycopg2-binary
+uv sync
 ```
 
 ## Usage

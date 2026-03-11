@@ -62,9 +62,11 @@ filterwarnings = [
 ]
 
 [tool.pylint.main]
-max-line-length = 120
 disable = [
     "C0114",  # missing-module-docstring
     "C0115",  # missing-class-docstring
     "C0116",  # missing-function-docstring
 ]
+
+[tool.pylint.format]
+max-line-length = 120

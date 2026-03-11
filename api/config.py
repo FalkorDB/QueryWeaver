@@ -70,10 +70,6 @@ class Config:
     Configuration class for the text2sql module.
     """
 
-    # Provider flag: "azure", "openai", "gemini", "anthropic", "ollama", "cohere"
-    LLM_PROVIDER = "azure"
-    AZURE_FLAG = True
-
     # User-provided overrides via env vars
     _user_completion = os.getenv("COMPLETION_MODEL", "")
     _user_embedding = os.getenv("EMBEDDING_MODEL", "")

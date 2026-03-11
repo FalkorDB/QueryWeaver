@@ -42,7 +42,7 @@ test-e2e-debug: build-dev ## Run E2E tests with debugging enabled
 
 lint: ## Run linting (backend + frontend)
 	@echo "Running backend lint (pylint)"
-	uv run python -m pylint $(shell git ls-files '*.py') || true
+	uv run python -m pylint $(shell git ls-files '*.py')
 	@echo "Running frontend lint (eslint)"
 	make lint-frontend
 
