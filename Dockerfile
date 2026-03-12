@@ -40,8 +40,8 @@ ENV UV_SYSTEM_PYTHON=1
 # Ensure venv binaries are on PATH (uv sync always creates .venv)
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Install Python dependencies from pyproject.toml
-RUN uv sync --frozen --no-dev
+# Install Python dependencies only (project itself installed after COPY)
+RUN uv sync --frozen --no-dev --no-install-project
 
 # Install Node.js (Node 22) so we can build the frontend inside the image.
 # Use NodeSource setup script to get a recent Node version on Debian-based images.
@@ -74,6 +74,9 @@ RUN npm --prefix ./app run build
 
 # Copy application code 
 COPY . .
+
+# Install the project package now that source code is available
+RUN uv sync --frozen --no-dev
 
 # Copy and make start.sh executable
 COPY start.sh /start.sh

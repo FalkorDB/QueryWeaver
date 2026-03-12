@@ -105,6 +105,7 @@ test.describe('Chat Feature Tests', () => {
   });
 
   test('multiple sequential queries maintain conversation history', async () => {
+    test.slow(); // Two sequential LLM round-trips need extra time in CI
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
@@ -171,6 +172,7 @@ test.describe('Chat Feature Tests', () => {
   });
 
   test('switching databases clears chat history', async () => {
+    test.slow(); // Two database connections plus LLM round-trip need extra time in CI
     // Connect two databases via API
     const { postgres: postgresUrl } = getTestDatabases();
 
@@ -266,6 +268,7 @@ test.describe('Chat Feature Tests', () => {
   });
 
   test('duplicate record shows user-friendly error message', async () => {
+    test.slow(); // Two LLM round-trips with confirmation dialogs need extra time in CI
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 

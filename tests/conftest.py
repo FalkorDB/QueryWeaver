@@ -4,8 +4,8 @@ import os
 import subprocess
 import time
 
-import pytest
-import requests
+import pytest  # pylint: disable=wrong-import-position
+import requests  # pylint: disable=wrong-import-position
 
 
 def pytest_configure(config):

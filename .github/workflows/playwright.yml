@@ -35,7 +35,7 @@ jobs:
     - name: Install uv
       uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
       with:
-        version: "latest"
+        version: "0.7.12"
 
     # Setup Node.js
     - uses: actions/setup-node@v6
@@ -58,7 +58,7 @@ jobs:
     # Cache Playwright browsers
     - name: Cache Playwright browsers
       id: playwright-cache
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.cache/ms-playwright
         key: playwright-browsers-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
