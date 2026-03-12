@@ -1,7 +1,6 @@
 """User management and authentication functions for text2sql API."""
 
 import base64
-import hmac
 import logging
 import os
 import secrets
@@ -18,16 +17,6 @@ if not SECRET_KEY:
     SECRET_KEY = secrets.token_hex(32)
     logging.warning(
         "FASTAPI_SECRET_KEY not set, using generated key. Set this in production!"
-    )
-
-# Static API token for internal / programmatic access.
-# REQUIRED: the server refuses to start when this is missing so that
-# an unconfigured deployment never silently disables authentication.
-SECRET_TOKEN: str = os.environ.get("SECRET_TOKEN", "")
-if not SECRET_TOKEN:
-    raise RuntimeError(
-        "SECRET_TOKEN environment variable is required but not set. "
-        "Set it to a strong, random value before starting the server."
     )
 
 
@@ -248,15 +237,6 @@ async def validate_user(request: Request) -> Tuple[Optional[Dict[str, Any]], boo
 
         if not api_token:
             return None, False
-
-        # Accept the static SECRET_TOKEN for internal / programmatic access.
-        # Uses constant-time comparison to prevent timing attacks.
-        if hmac.compare_digest(api_token, SECRET_TOKEN):
-            return {
-                "email": "api@internal",
-                "name": "API",
-                "picture": None,
-            }, True
 
         db_info = await _get_user_info(api_token)
 
