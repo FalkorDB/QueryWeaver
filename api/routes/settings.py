@@ -25,7 +25,7 @@ class ValidateKeyRequest(BaseModel):
 
 @settings_router.post("/validate-api-key")
 @token_required
-async def validate_api_key(request: Request, data: ValidateKeyRequest):  # pylint: disable=too-many-return-statements
+async def validate_api_key(request: Request, data: ValidateKeyRequest):  # pylint: disable=too-many-return-statements,unused-argument
     """
     Validate an AI provider API key by making a simple test request.
     This endpoint does not store the key, it only validates it.
