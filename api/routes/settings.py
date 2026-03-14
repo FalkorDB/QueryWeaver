@@ -6,6 +6,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from litellm import completion
 
+from api.auth.user_management import token_required
+
 settings_router = APIRouter(tags=["Settings"])
 
 
@@ -22,13 +24,13 @@ class ValidateKeyRequest(BaseModel):
 
 
 @settings_router.post("/validate-api-key")
+@token_required
 async def validate_api_key(request: Request, data: ValidateKeyRequest):  # pylint: disable=too-many-return-statements
     """
     Validate an AI provider API key by making a simple test request.
     This endpoint does not store the key, it only validates it.
     Supports: openai, google, anthropic
     """
-    _ = request
     api_key = data.api_key.strip()
     vendor = data.vendor.lower()
     model = data.model
