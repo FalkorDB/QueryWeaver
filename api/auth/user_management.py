@@ -11,6 +11,10 @@ from fastapi import Request, HTTPException, status
 from pydantic import BaseModel
 from api.extensions import db
 
+
+class DatabaseUnavailableError(Exception):
+    """Raised when the database backend cannot be reached during auth operations."""
+
 # Get secret key for sessions
 SECRET_KEY = os.getenv("FASTAPI_SECRET_KEY")
 if not SECRET_KEY:
@@ -70,7 +74,7 @@ async def _get_user_info(api_token: str) -> Optional[Dict[str, Any]]:
         return None
     except Exception as e:  # pylint: disable=broad-exception-caught
         logging.error("Error fetching user info: %s", e)
-        return None
+        raise DatabaseUnavailableError(str(e)) from e
 
 
 async def delete_user_token(api_token: str):
@@ -226,11 +230,37 @@ def get_token(request: Request) -> Optional[str]:
     return None
 
 
+def _validate_from_session(request: Request, api_token: str) -> Tuple[Optional[Dict[str, Any]], bool]:
+    """
+    Validate user from session data when the database is unavailable.
+
+    Only succeeds when the session contains user info AND the session's stored
+    api_token exactly matches the provided *api_token* argument.  The token
+    comparison prevents an attacker from re-using a stale session after a
+    different token has been issued (e.g. after logout and re-login).
+    Returns (None, False) if the session token does not match or is absent,
+    ensuring no unauthorised access is granted via the session fallback path.
+    """
+    try:
+        session = getattr(request, "session", None)
+        if not session:
+            return None, False
+        session_user = session.get("user_info")
+        session_token = session.get("api_token")
+        if session_user and session_token and session_token == api_token:
+            logging.info("Session fallback authentication succeeded")
+            return session_user, True
+        return None, False
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logging.error("Error during session fallback authentication: %s", e)
+        return None, False
+
+
 async def validate_user(request: Request) -> Tuple[Optional[Dict[str, Any]], bool]:
     """
     Helper function to validate token.
     Returns (user_info, is_authenticated).
-    Includes refresh handling for Google.
+    Falls back to session-based authentication when the database is unavailable.
     """
     try:
         api_token = get_token(request)
@@ -238,7 +268,13 @@ async def validate_user(request: Request) -> Tuple[Optional[Dict[str, Any]], boo
         if not api_token:
             return None, False
 
-        db_info = await _get_user_info(api_token)
+        try:
+            db_info = await _get_user_info(api_token)
+        except DatabaseUnavailableError:
+            logging.warning(
+                "Database unavailable during user validation, falling back to session authentication"
+            )
+            return _validate_from_session(request, api_token)
 
         if db_info:
             return db_info, True

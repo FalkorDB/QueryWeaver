@@ -349,6 +349,11 @@ async def email_login(request: Request, login_data: EmailLoginRequest) -> JSONRe
 
                 # Call the registered handler (await if async)
                 await handler('email', user_data, api_token)
+
+                # Store user info in session as a backup so login survives transient
+                # DB unavailability; validated against api_token on each request.
+                _store_session_backup(request, user_data, api_token)
+
                 response = JSONResponse({"success": True}, status_code=200)
                 
                 response.set_cookie(
@@ -381,6 +386,22 @@ def _get_provider_client(request: Request, provider: str):
     if not client:
         raise HTTPException(status_code=500, detail=f"OAuth provider {provider} not configured")
     return client
+
+
+def _store_session_backup(request: Request, user_data: dict, api_token: str) -> None:
+    """Store user info and api_token in the session as a backup.
+
+    This allows auth validation to succeed even when FalkorDB is temporarily
+    unavailable, by falling back to the signed session cookie.  The api_token
+    is stored alongside the user info so that the fallback path can verify the
+    token has not changed (e.g. after an explicit logout).
+    """
+    request.session["user_info"] = {
+        "email": user_data.get("email"),
+        "name": user_data.get("name"),
+        "picture": user_data.get("picture"),
+    }
+    request.session["api_token"] = api_token
 
 def _build_callback_url(request: Request, path: str) -> str:
     """Build absolute callback URL, honoring OAUTH_BASE_URL if provided."""
@@ -499,6 +520,10 @@ async def google_authorized(request: Request) -> RedirectResponse:
                 # Call the registered handler (await if async)
                 await handler('google', user_data, api_token)
 
+                # Store user info in session as a backup so login survives transient
+                # DB unavailability; validated against api_token on each request.
+                _store_session_backup(request, user_data, api_token)
+
                 redirect = RedirectResponse(url="/", status_code=302)
                 redirect.set_cookie(
                     key="api_token",
@@ -603,6 +628,10 @@ async def github_authorized(request: Request) -> RedirectResponse:
                 # Call the registered handler (await if async)
                 await handler('github', user_data, api_token)
 
+                # Store user info in session as a backup so login survives transient
+                # DB unavailability; validated against api_token on each request.
+                _store_session_backup(request, user_data, api_token)
+
                 redirect = RedirectResponse(url="/", status_code=302)
                 redirect.set_cookie(
                     key="api_token",
@@ -674,6 +703,10 @@ async def logout(request: Request):
     - GET: For direct navigation (bookmarks, links, old clients)
     - POST: For programmatic logout from the app
     """
+    # Clear session-based auth backup on every logout path
+    request.session.pop("user_info", None)
+    request.session.pop("api_token", None)
+
     # For GET requests, redirect to home page
     if request.method == "GET":
         response = RedirectResponse(url="/", status_code=302)
