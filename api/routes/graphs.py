@@ -50,7 +50,17 @@ async def list_graphs(request: Request):
     Requires authentication.
     """
     graphs = await list_databases(request.state.user_id, GENERAL_PREFIX)
-    return JSONResponse(content=graphs)
+
+    result = []
+    for graph_id in graphs:
+        is_demo = bool(GENERAL_PREFIX and graph_id.startswith(GENERAL_PREFIX))
+        if is_demo:
+            display_name = graph_id[len(GENERAL_PREFIX):]
+        else:
+            display_name = graph_id
+        result.append({"id": graph_id, "name": display_name, "is_demo": is_demo})
+
+    return JSONResponse(content=result)
 
 
 @graphs_router.get(

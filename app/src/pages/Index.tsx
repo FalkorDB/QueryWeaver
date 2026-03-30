@@ -181,8 +181,8 @@ const Index = () => {
     event.stopPropagation(); // Prevent dropdown from closing/selecting
     
     // Check if this is a demo database
-    const isDemo = graphId.startsWith('general_');
-    
+    const isDemo = graphs.find(g => g.id === graphId)?.is_demo || false;
+
     if (isRefreshingSchema) return;
     // Show the delete confirmation modal
     setDatabaseToDelete({ id: graphId, name: graphName, isDemo });
@@ -532,7 +532,7 @@ const Index = () => {
               <p className="text-xs text-muted-foreground">Graph-Powered Text-to-SQL</p>
               {selectedGraph ? (
                 <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-xs px-2 py-0.5 flex-shrink-0">
-                  {selectedGraph.name === 'DEMO_CRM' ? 'CRM' : selectedGraph.name}
+                  {selectedGraph.name}
                 </Badge>
               ) : (
                 <Badge variant="secondary" className="bg-yellow-600 hover:bg-yellow-700 text-xs px-2 py-0.5 flex-shrink-0">
@@ -570,7 +570,7 @@ const Index = () => {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="bg-card border-border text-foreground">
                   {graphs.map((graph) => {
-                    const isDemo = graph.id.startsWith('general_');
+                    const isDemo = graph.is_demo || false;
                     return (
                       <DropdownMenuItem
                         key={graph.id}

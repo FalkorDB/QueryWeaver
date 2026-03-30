@@ -287,7 +287,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(
-        node.displayName[1],
+        schemaNode.name,
         node.x || 0,
         (node.y || 0) - nodeHeight / 2 + headerHeight / 2 + padding / 2
       );
