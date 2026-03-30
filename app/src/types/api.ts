@@ -22,7 +22,7 @@ export interface Graph {
   description?: string;
   created_at?: string;
   updated_at?: string;
-  is_demo?: boolean;
+  is_demo: boolean;
   table_count?: number;
   schema?: any;
 }

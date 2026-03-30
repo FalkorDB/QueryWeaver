@@ -142,23 +142,31 @@ async def load_database(url: str, user_id: str):
     return generate()
 
 
-async def list_databases(user_id: str, general_prefix: Optional[str] = None) -> list[str]:
+async def list_databases(
+    user_id: str, general_prefix: Optional[str] = None
+) -> list[dict]:
     """
-    This route is used to list all the graphs (databases names) that are available in the database.
+    List all graphs (database names) available for the user.
+
+    Returns a list of dicts with keys ``id`` (the full FalkorDB graph name
+    used for API calls), ``name`` (the display name with namespace prefix
+    stripped) and ``is_demo`` (whether the graph is a shared demo graph).
     """
     user_graphs = await db.list_graphs()
 
-    # Only include graphs that start with user_id + '_', and strip the prefix
-    filtered_graphs = [
-        graph[len(f"{user_id}_") :]
-        for graph in user_graphs
-        if graph.startswith(f"{user_id}_")
-    ]
+    result: list[dict] = []
 
+    # User-owned graphs: strip the user_id prefix for display
+    for graph in user_graphs:
+        if graph.startswith(f"{user_id}_"):
+            display_name = graph[len(f"{user_id}_"):]
+            result.append({"id": display_name, "name": display_name, "is_demo": False})
+
+    # Demo/shared graphs: strip the general prefix for display
     if general_prefix:
-        demo_graphs = [
-            graph for graph in user_graphs if graph.startswith(general_prefix)
-        ]
-        filtered_graphs = filtered_graphs + demo_graphs
+        for graph in user_graphs:
+            if graph.startswith(general_prefix):
+                display_name = graph[len(general_prefix):]
+                result.append({"id": graph, "name": display_name, "is_demo": True})
 
-    return filtered_graphs
+    return result

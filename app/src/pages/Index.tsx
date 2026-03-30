@@ -177,11 +177,8 @@ const Index = () => {
     }
   };
 
-  const handleDeleteGraph = async (graphId: string, graphName: string, event: React.MouseEvent) => {
+  const handleDeleteGraph = async (graphId: string, graphName: string, isDemo: boolean, event: React.MouseEvent) => {
     event.stopPropagation(); // Prevent dropdown from closing/selecting
-    
-    // Check if this is a demo database
-    const isDemo = graphs.find(g => g.id === graphId)?.is_demo || false;
 
     if (isRefreshingSchema) return;
     // Show the delete confirmation modal
@@ -586,7 +583,7 @@ const Index = () => {
                           className={`h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity ${
                             isDemo || isRefreshingSchema || isChatProcessing ? 'cursor-not-allowed opacity-40' : 'hover:bg-red-600 hover:text-white'
                           }`}
-                          onClick={(e) => { if (isDemo || isRefreshingSchema || isChatProcessing) return; handleDeleteGraph(graph.id, graph.name, e); }}
+                          onClick={(e) => { if (isDemo || isRefreshingSchema || isChatProcessing) return; handleDeleteGraph(graph.id, graph.name, isDemo, e); }}
                           disabled={isDemo || isRefreshingSchema}
                           title={isDemo ? 'Demo databases cannot be deleted' : (isRefreshingSchema ? 'Refreshing schema...' : `Delete ${graph.name}`)}
                           data-testid={`delete-graph-btn-${graph.id}`}

@@ -37,21 +37,19 @@ export class DatabaseService {
       const data = await response.json();
       console.log('Graphs data received:', data);
       
-      // Backend returns array of strings like ["northwind", "chinook"]
-      // Transform to Graph objects
+      // Backend returns array of objects with id, name, is_demo
       const graphNames = data.graphs || data || [];
-      
+
       if (Array.isArray(graphNames) && graphNames.length > 0 && typeof graphNames[0] === 'string') {
-        // Transform string array to Graph objects
+        // Legacy fallback: transform string array to Graph objects
         return graphNames.map((name: string) => ({
           id: name,
           name: name,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          is_demo: false,
         }));
       }
-      
-      // If already objects, return as is
+
+      // Already objects from the backend
       return graphNames;
     } catch (error) {
       // Backend not available - return empty array for demo mode
