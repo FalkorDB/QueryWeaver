@@ -338,7 +338,11 @@ export default class ApiCalls {
         const response = await this.connectDatabase(connectionUrl);
         const messages = await this.parseStreamingResponse(response);
         const finalMessage = messages[messages.length - 1];
-        if (finalMessage && finalMessage.type === "final_result") {
+        if (
+          finalMessage &&
+          finalMessage.type === "final_result" &&
+          finalMessage.success !== false
+        ) {
           return messages;
         }
         console.log(
