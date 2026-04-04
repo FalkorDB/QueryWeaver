@@ -108,6 +108,17 @@ jobs:
         echo "Testing FalkorDB connectivity from host..."
         docker ps -a
     
+    # Create CI .env so load_dotenv() finds the required variables
+    - name: Create CI .env
+      run: |
+        cat > .env <<EOF
+        FASTAPI_SECRET_KEY=test-secret-key-for-ci
+        APP_ENV=development
+        FASTAPI_DEBUG=False
+        FALKORDB_URL=redis://localhost:6379
+        DISABLE_MCP=true
+        EOF
+
     # Start the FastAPI application
     - name: Start FastAPI application
       id: start-server
