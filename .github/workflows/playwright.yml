@@ -19,6 +19,10 @@ env:
 
 jobs:
   test:
+    # Skip for Dependabot PRs — the LLM-dependent E2E tests require Azure OpenAI
+    # secrets that are not available in Dependabot PR runs. Full E2E coverage runs
+    # on the merge-to-staging/main push event where secrets are accessible.
+    if: github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]'
     timeout-minutes: 60
     runs-on: ubuntu-latest
     
@@ -108,6 +112,17 @@ jobs:
         echo "Testing FalkorDB connectivity from host..."
         docker ps -a
     
+    # Create CI .env so load_dotenv() finds the required variables
+    - name: Create CI .env
+      run: |
+        cat > .env <<EOF
+        FASTAPI_SECRET_KEY=test-secret-key-for-ci
+        APP_ENV=development
+        FASTAPI_DEBUG=False
+        FALKORDB_URL=redis://localhost:6379
+        DISABLE_MCP=true
+        EOF
+
     # Start the FastAPI application
     - name: Start FastAPI application
       id: start-server

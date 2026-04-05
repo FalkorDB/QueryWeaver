@@ -3,8 +3,8 @@
 import { APIRequestContext, request } from "@playwright/test"
 
 /**
- * Extract the CSRF token from a response's Set-Cookie header.
- * The backend sets a `csrf_token` cookie on every response.
+ * Extract the CSRF token from any `Set-Cookie` headers in a response, if present.
+ * The backend sets a `csrf_token` cookie when the request does not already include one.
  */
 function extractCsrfToken(setCookieHeaders: string[]): string | undefined {
   for (const header of setCookieHeaders) {
