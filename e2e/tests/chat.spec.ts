@@ -141,14 +141,11 @@ test.describe('Chat Feature Tests', () => {
     expect(resultsVisible).toBeTruthy();
   });
 
-  test('empty query submission is prevented', { tag: '@requires-ai' }, async () => {
+  test('empty query submission is prevented', async () => {
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
-    // Ensure database is connected (will skip if already connected)
-    await homePage.ensureDatabaseConnected(apiCall);
-
-    // Verify send button is disabled with empty input
+    // Verify send button is disabled with empty input (pure UI validation, no DB needed)
     const isSendButtonDisabled = await homePage.isSendQueryButtonDisabled();
     expect(isSendButtonDisabled).toBeTruthy();
   });

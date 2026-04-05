@@ -29,7 +29,7 @@ jobs:
     - name: Check for AI secrets
       id: check-secrets
       run: |
-        if [ -n "$AZURE_API_KEY" ]; then
+        if [ -n "$AZURE_API_KEY" ] && [ -n "$AZURE_API_BASE" ] && [ -n "$AZURE_API_VERSION" ]; then
           echo "has-ai-secrets=true" >> "$GITHUB_OUTPUT"
           echo "AI secrets are available — full E2E suite will run"
         else
@@ -38,6 +38,8 @@ jobs:
         fi
       env:
         AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
+        AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
+        AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
     
     # Setup Python
     - name: Set up Python
@@ -191,8 +193,9 @@ jobs:
         CI: true
 
     # Run AI-dependent Playwright tests (only when secrets are available)
+    # Use !cancelled() so AI tests still run even if non-AI tests fail
     - name: Run Playwright tests (AI)
-      if: steps.check-secrets.outputs.has-ai-secrets == 'true'
+      if: "!cancelled() && steps.check-secrets.outputs.has-ai-secrets == 'true'"
       run: npx playwright test --grep @requires-ai --reporter=list
       env:
         CI: true
