@@ -135,7 +135,7 @@ See `.env.example` for the full list.
 
 GitHub Actions workflows (`.github/workflows/`):
 - **tests.yml** — unit tests + lint on push/PR to main/staging
-- **playwright.yml** — dedicated Playwright E2E suite
+- **playwright.yml** — dedicated Playwright E2E suite (skipped for Dependabot PRs; secrets unavailable)
 - **pylint.yml** — Python linting
 - **spellcheck.yml** — docs spellcheck
 - **publish-docker.yml** — build & push Docker image to DockerHub
