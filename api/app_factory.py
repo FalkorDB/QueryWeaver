@@ -61,14 +61,17 @@ def _is_secure_request(request: Request) -> bool:
     """Determine if the request is over HTTPS."""
     forwarded_proto = request.headers.get("x-forwarded-proto")
     if forwarded_proto:
-        return forwarded_proto == "https"
+        # Normalize: proxies may send comma-separated or mixed-case values
+        first_proto = forwarded_proto.split(",")[0].strip().lower()
+        return first_proto == "https"
     return request.url.scheme == "https"
 
 
 class CSRFMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods
     """Double Submit Cookie CSRF protection.
 
-    Sets a csrf_token cookie (readable by JS) on every response.
+    Ensures a csrf_token cookie (readable by JS) exists, setting it
+    on the response if the incoming request does not already carry one.
     State-changing requests must echo the cookie value back
     via the X-CSRF-Token header.  Bearer-token authenticated
     requests and auth/login endpoints are exempt.
@@ -133,7 +136,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-meth
 def create_app():  # pylint: disable=too-many-statements
     """Create and configure the FastAPI application."""
 
-    # Create the FastAPI app instance just to set the o routes
+    # Create the FastAPI app instance with original routes
     # Will be merged with MCP app later if MCP is enabled
     app = FastAPI(
         title="QueryWeaver"
