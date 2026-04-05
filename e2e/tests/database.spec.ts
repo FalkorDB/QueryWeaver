@@ -19,7 +19,7 @@ test.describe('Database Connection Tests', () => {
     await browser.closeBrowser();
   });
 
-  test('connect PostgreSQL via API -> verify in UI', async () => {
+  test('connect PostgreSQL via API -> verify in UI', { tag: '@requires-ai' }, async () => {
     test.setTimeout(120000); // Allow extra time for schema loading in CI
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
@@ -71,7 +71,7 @@ test.describe('Database Connection Tests', () => {
     expect(isDatabaseVisible).toBeTruthy();
   });
 
-  test('connect MySQL via API -> verify in UI', async () => {
+  test('connect MySQL via API -> verify in UI', { tag: '@requires-ai' }, async () => {
     test.setTimeout(120000); // Allow extra time for schema loading in CI
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
@@ -123,7 +123,7 @@ test.describe('Database Connection Tests', () => {
     expect(isDatabaseVisible).toBeTruthy();
   });
 
-  test('connect PostgreSQL via UI (URL) -> verify via API', async () => {
+  test('connect PostgreSQL via UI (URL) -> verify via API', { tag: '@requires-ai' }, async () => {
     test.setTimeout(120000); // Allow extra time for schema loading in CI
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
@@ -162,7 +162,7 @@ test.describe('Database Connection Tests', () => {
     expect(isConnected).toBeTruthy();
   });
 
-  test('connect MySQL via UI (URL) -> verify via API', async () => {
+  test('connect MySQL via UI (URL) -> verify via API', { tag: '@requires-ai' }, async () => {
     test.setTimeout(120000); // Allow extra time for schema loading in CI
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
@@ -201,7 +201,7 @@ test.describe('Database Connection Tests', () => {
     expect(isConnected).toBeTruthy();
   });
 
-  test('connect PostgreSQL via UI (Manual Entry) -> verify via API', async () => {
+  test('connect PostgreSQL via UI (Manual Entry) -> verify via API', { tag: '@requires-ai' }, async () => {
     test.setTimeout(120000); // Allow extra time for schema loading in CI
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
@@ -245,7 +245,7 @@ test.describe('Database Connection Tests', () => {
     expect(isConnected).toBeTruthy();
   });
 
-  test('connect MySQL via UI (Manual Entry) -> verify via API', async () => {
+  test('connect MySQL via UI (Manual Entry) -> verify via API', { tag: '@requires-ai' }, async () => {
     test.setTimeout(120000); // Allow extra time for schema loading in CI
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
@@ -318,7 +318,7 @@ test.describe('Database Connection Tests', () => {
 
   // Delete tests run serially to avoid conflicts
   test.describe.serial('Database Deletion Tests', () => {
-    test('delete PostgreSQL database via UI -> verify removed via API', async () => {
+    test('delete PostgreSQL database via UI -> verify removed via API', { tag: '@requires-ai' }, async () => {
       test.setTimeout(180000); // Allow extra time: schema loading + UI interaction
       // Use the separate postgres delete container on port 5433
       const postgresDeleteUrl = 'postgresql://postgres:postgres@localhost:5433/testdb_delete';
@@ -369,7 +369,7 @@ test.describe('Database Connection Tests', () => {
       expect(graphsList).not.toContain(graphId);
     });
 
-    test('delete MySQL database via UI -> verify removed via API', async () => {
+    test('delete MySQL database via UI -> verify removed via API', { tag: '@requires-ai' }, async () => {
       test.setTimeout(180000); // Allow extra time: schema loading + UI interaction
       // Use the separate mysql delete container on port 3307
       const mysqlDeleteUrl = 'mysql://root:password@localhost:3307/testdb_delete';

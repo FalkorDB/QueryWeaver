@@ -116,6 +116,7 @@ make build-prod       # Vite production build
 
 - **Unit tests** (`tests/`): pytest with markers `e2e`, `slow`, `auth`, `integration`, `unit`
 - **E2E tests** (`e2e/`): Playwright with Page Object Model pattern; auth setup runs first
+- E2E tests tagged `@requires-ai` need LLM secrets (Azure OpenAI) for DB schema loading; non-AI tests run unconditionally in CI
 - E2E infra lives in `e2e/infra/`, page objects in `e2e/logic/pom/`
 - Test data (SQL init scripts) in `e2e/test-data/`
 
@@ -135,7 +136,7 @@ See `.env.example` for the full list.
 
 GitHub Actions workflows (`.github/workflows/`):
 - **tests.yml** — unit tests + lint on push/PR to main/staging
-- **playwright.yml** — dedicated Playwright E2E suite (skipped for Dependabot PRs; secrets unavailable)
+- **playwright.yml** — dedicated Playwright E2E suite; non-AI tests always run, `@requires-ai` tests only when LLM secrets are available
 - **pylint.yml** — Python linting
 - **spellcheck.yml** — docs spellcheck
 - **publish-docker.yml** — build & push Docker image to DockerHub
