@@ -11,7 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@falkordb/canvas": "^0.0.44",
+    "@falkordb/canvas": "^0.0.45",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-alert-dialog": "^1.1.14",
@@ -57,7 +57,7 @@
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.71.2",
     "react-resizable-panels": "^2.1.9",
-    "react-router-dom": "^7.13.1",
+    "react-router-dom": "^7.13.2",
     "recharts": "^2.15.4",
     "sonner": "^1.7.4",
     "tailwind-merge": "^2.6.0",
