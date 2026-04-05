@@ -19,15 +19,25 @@ env:
 
 jobs:
   test:
-    # Skip for Dependabot PRs — the LLM-dependent E2E tests require Azure OpenAI
-    # secrets that are not available in Dependabot PR runs. Full E2E coverage runs
-    # on the merge-to-staging/main push event where secrets are accessible.
-    if: github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]'
     timeout-minutes: 60
     runs-on: ubuntu-latest
     
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+    # Detect whether AI secrets are available (not available for Dependabot / fork PRs)
+    - name: Check for AI secrets
+      id: check-secrets
+      run: |
+        if [ -n "$AZURE_API_KEY" ]; then
+          echo "has-ai-secrets=true" >> "$GITHUB_OUTPUT"
+          echo "AI secrets are available — full E2E suite will run"
+        else
+          echo "has-ai-secrets=false" >> "$GITHUB_OUTPUT"
+          echo "AI secrets are NOT available — only non-AI E2E tests will run"
+        fi
+      env:
+        AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
     
     # Setup Python
     - name: Set up Python
@@ -77,8 +87,9 @@ jobs:
       run: npm run build
       working-directory: ./app
     
-    # Start Docker Compose services (test databases)
+    # Start Docker Compose services (test databases) — only needed for AI tests
     - name: Start test databases
+      if: steps.check-secrets.outputs.has-ai-secrets == 'true'
       run: |
         docker compose -f e2e/docker-compose.test.yml up -d --wait --wait-timeout 120
         docker ps -a
@@ -173,9 +184,16 @@ jobs:
     - name: Create auth directory
       run: mkdir -p e2e/.auth
     
-    # Run Playwright tests
-    - name: Run Playwright tests
-      run: npx playwright test --reporter=list
+    # Run non-AI Playwright tests (always — no LLM secrets needed)
+    - name: Run Playwright tests (no AI)
+      run: npx playwright test --grep-invert @requires-ai --reporter=list
+      env:
+        CI: true
+
+    # Run AI-dependent Playwright tests (only when secrets are available)
+    - name: Run Playwright tests (AI)
+      if: steps.check-secrets.outputs.has-ai-secrets == 'true'
+      run: npx playwright test --grep @requires-ai --reporter=list
       env:
         CI: true
     

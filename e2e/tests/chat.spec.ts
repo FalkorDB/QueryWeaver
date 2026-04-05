@@ -41,7 +41,7 @@ test.describe('Chat Feature Tests', () => {
     expect(hasCorrectDescription).toBeTruthy();
   });
 
-  test('valid query shows SQL, results, and AI response', async () => {
+  test('valid query shows SQL, results, and AI response', { tag: '@requires-ai' }, async () => {
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
@@ -73,7 +73,7 @@ test.describe('Chat Feature Tests', () => {
     expect(finalAIMessageCount).toBeGreaterThanOrEqual(2); // At least welcome + final response
   });
 
-  test('off-topic query shows AI message without SQL or results', async () => {
+  test('off-topic query shows AI message without SQL or results', { tag: '@requires-ai' }, async () => {
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
@@ -104,7 +104,7 @@ test.describe('Chat Feature Tests', () => {
     expect(aiText.length).toBeGreaterThan(0);
   });
 
-  test('multiple sequential queries maintain conversation history', async () => {
+  test('multiple sequential queries maintain conversation history', { tag: '@requires-ai' }, async () => {
     test.slow(); // Two sequential LLM round-trips need extra time in CI
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
@@ -141,7 +141,7 @@ test.describe('Chat Feature Tests', () => {
     expect(resultsVisible).toBeTruthy();
   });
 
-  test('empty query submission is prevented', async () => {
+  test('empty query submission is prevented', { tag: '@requires-ai' }, async () => {
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
@@ -153,7 +153,7 @@ test.describe('Chat Feature Tests', () => {
     expect(isSendButtonDisabled).toBeTruthy();
   });
 
-  test('rapid query submission is prevented during processing', async () => {
+  test('rapid query submission is prevented during processing', { tag: '@requires-ai' }, async () => {
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
@@ -171,7 +171,7 @@ test.describe('Chat Feature Tests', () => {
     expect(isDisabledDuringProcessing).toBeTruthy();
   });
 
-  test('switching databases clears chat history', async () => {
+  test('switching databases clears chat history', { tag: '@requires-ai' }, async () => {
     test.slow(); // Two database connections plus LLM round-trip need extra time in CI
     // Connect two databases via API
     const { postgres: postgresUrl } = getTestDatabases();
@@ -225,7 +225,7 @@ test.describe('Chat Feature Tests', () => {
     expect(aiMessageCount).toBe(1);
   });
 
-  test('destructive operation shows inline confirmation and executes on confirm', async () => {
+  test('destructive operation shows inline confirmation and executes on confirm', { tag: '@requires-ai' }, async () => {
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
@@ -267,7 +267,7 @@ test.describe('Chat Feature Tests', () => {
     expect(finalAIMessageCount).toBeGreaterThan(1); // Welcome message + execution result
   });
 
-  test('duplicate record shows user-friendly error message', async () => {
+  test('duplicate record shows user-friendly error message', { tag: '@requires-ai' }, async () => {
     test.slow(); // Two LLM round-trips with confirmation dialogs need extra time in CI
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
