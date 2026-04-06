@@ -15,10 +15,12 @@ from api.core.schema_loader import load_database
 from api.agents import AnalysisAgent, RelevancyAgent, ResponseFormatterAgent, FollowUpAgent
 from api.agents.healer_agent import HealerAgent
 from api.config import Config
+from api.config import SUPPORTED_VENDORS
 from api.extensions import db
 from api.graph import find, get_db_description, get_user_rules
 from api.loaders.postgres_loader import PostgresLoader
 from api.loaders.mysql_loader import MySQLLoader
+from api.loaders.snowflake_loader import SnowflakeLoader
 from api.memory.graphiti_tool import MemoryTool
 from api.sql_utils import SQLIdentifierQuoter, DatabaseSpecificQuoter
 
@@ -83,6 +85,8 @@ def get_database_type_and_loader(db_url: str):
         return 'postgresql', PostgresLoader
     if db_url_lower.startswith('mysql://'):
         return 'mysql', MySQLLoader
+    if db_url_lower.startswith('snowflake://'):
+        return 'snowflake', SnowflakeLoader
 
     # Default to PostgresLoader for backward compatibility
     return 'postgresql', PostgresLoader
@@ -257,20 +261,28 @@ async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  
         custom_model = chat_data.custom_model
 
         # Validate custom model format (vendor/model)
-        supported_vendors = ("openai", "anthropic", "gemini", "azure", "ollama", "cohere")
         if custom_model:
             parts = custom_model.split("/", 1)
             if len(parts) != 2 or not parts[0] or not parts[1]:
                 raise InvalidArgumentError(
                     "Invalid model format. Expected 'vendor/model' (e.g. 'openai/gpt-4.1')"
                 )
-            if parts[0] not in supported_vendors:
+            if parts[0] not in SUPPORTED_VENDORS:
                 raise InvalidArgumentError(
-                    f"Unsupported vendor '{parts[0]}'. Supported: {', '.join(supported_vendors)}"
+                    f"Unsupported vendor '{parts[0]}'. Supported: {', '.join(SUPPORTED_VENDORS)}"
                 )
 
-        if custom_api_key is not None and len(custom_api_key.strip()) < 10:
-            raise InvalidArgumentError("API key is too short")
+        if custom_api_key is not None:
+            key = custom_api_key.strip()
+            if len(key) < 10:
+                raise InvalidArgumentError("API key is too short")
+            # Validate key format for known vendors
+            if custom_model:
+                vendor = custom_model.split("/", 1)[0]
+                if vendor == "openai" and not key.startswith("sk-"):
+                    raise InvalidArgumentError("Invalid OpenAI API key format (expected 'sk-' prefix)")
+                if vendor == "anthropic" and not key.startswith("sk-ant-"):
+                    raise InvalidArgumentError("Invalid Anthropic API key format (expected 'sk-ant-' prefix)")
 
         agent_rel = RelevancyAgent(queries_history, result_history, custom_api_key, custom_model)
         agent_an = AnalysisAgent(queries_history, result_history, custom_api_key, custom_model)

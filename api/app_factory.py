@@ -5,7 +5,6 @@ import logging
 import os
 import secrets
 
-from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -23,9 +22,6 @@ from api.routes.graphs import graphs_router
 from api.routes.database import database_router
 from api.routes.tokens import tokens_router
 from api.routes.settings import settings_router
-
-# Load environment variables from .env file
-load_dotenv()
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
@@ -61,17 +57,14 @@ def _is_secure_request(request: Request) -> bool:
     """Determine if the request is over HTTPS."""
     forwarded_proto = request.headers.get("x-forwarded-proto")
     if forwarded_proto:
-        # Normalize: proxies may send comma-separated or mixed-case values
-        first_proto = forwarded_proto.split(",")[0].strip().lower()
-        return first_proto == "https"
+        return forwarded_proto == "https"
     return request.url.scheme == "https"
 
 
 class CSRFMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods
     """Double Submit Cookie CSRF protection.
 
-    Ensures a csrf_token cookie (readable by JS) exists, setting it
-    on the response if the incoming request does not already carry one.
+    Sets a csrf_token cookie (readable by JS) on every response.
     State-changing requests must echo the cookie value back
     via the X-CSRF-Token header.  Bearer-token authenticated
     requests and auth/login endpoints are exempt.
@@ -136,7 +129,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-meth
 def create_app():  # pylint: disable=too-many-statements
     """Create and configure the FastAPI application."""
 
-    # Create the FastAPI app instance with original routes
+    # Create the FastAPI app instance just to set the o routes
     # Will be merged with MCP app later if MCP is enabled
     app = FastAPI(
         title="QueryWeaver"

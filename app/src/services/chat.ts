@@ -1,7 +1,6 @@
 import { API_CONFIG, buildApiUrl } from '@/config/api';
 import { csrfHeaders } from '@/lib/csrf';
 import type { ChatRequest, StreamMessage, ConfirmRequest } from '@/types/api';
-import { getVendorPrefix } from '@/utils/vendorConfig';
 
 /**
  * Chat/Query Service
@@ -37,27 +36,6 @@ export class ChatService {
       // Add current query to the chat array
       chatHistory.push(request.query);
       
-      // Build request body
-      const requestBody: any = {
-        chat: chatHistory,
-        // Optional fields the backend supports:
-        // result: [],  // Previous results if needed
-        // instructions: ""  // Additional instructions if needed
-      };
-      
-      // Add custom API key and model if provided
-      if (request.customApiKey) {
-        requestBody.custom_api_key = request.customApiKey;
-      }
-      if (request.customModel && request.customVendor) {
-        const vendorPrefix = getVendorPrefix(request.customVendor);
-        // Avoid double-prefixing if model already contains the vendor prefix
-        const model = request.customModel;
-        requestBody.custom_model = model.startsWith(`${vendorPrefix}/`)
-          ? model
-          : `${vendorPrefix}/${model}`;
-      }
-      
       const response = await fetch(buildApiUrl(endpoint), {
         method: 'POST',
         headers: {
@@ -65,14 +43,16 @@ export class ChatService {
           ...csrfHeaders(),
         },
         body: JSON.stringify({
-          ...requestBody,
+          chat: chatHistory,
           result: resultHistory.length > 0 ? resultHistory : undefined,
           ...(request.use_user_rules !== undefined && {
             use_user_rules: request.use_user_rules
           }),
           ...(request.use_memory !== undefined && {
             use_memory: request.use_memory
-          })
+          }),
+          ...(request.customApiKey && { custom_api_key: request.customApiKey }),
+          ...(request.customModel && { custom_model: request.customModel }),
         }),
         credentials: 'include',
       });

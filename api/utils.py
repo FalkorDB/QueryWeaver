@@ -98,7 +98,8 @@ def create_combined_description(  # pylint: disable=too-many-locals
             if isinstance(batch_response, Exception):
                 table_info[table_name]["description"] = table_name
             else:
-                content = batch_response.choices[0].message["content"].strip()
+                msg_content = batch_response.choices[0].message["content"]
+                content = msg_content.strip() if msg_content else table_name
                 table_info[table_name]["description"] = content
 
     return table_info
