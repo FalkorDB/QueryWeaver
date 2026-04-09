@@ -272,18 +272,6 @@ async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  
                     f"Unsupported vendor '{parts[0]}'. Supported: {', '.join(SUPPORTED_VENDORS)}"
                 )
 
-        if custom_api_key is not None:
-            key = custom_api_key.strip()
-            if len(key) < 10:
-                raise InvalidArgumentError("API key is too short")
-            # Validate key format for known vendors
-            if custom_model:
-                vendor = custom_model.split("/", 1)[0]
-                if vendor == "openai" and not key.startswith("sk-"):
-                    raise InvalidArgumentError("Invalid OpenAI API key format (expected 'sk-' prefix)")
-                if vendor == "anthropic" and not key.startswith("sk-ant-"):
-                    raise InvalidArgumentError("Invalid Anthropic API key format (expected 'sk-ant-' prefix)")
-
         agent_rel = RelevancyAgent(queries_history, result_history, custom_api_key, custom_model)
         agent_an = AnalysisAgent(queries_history, result_history, custom_api_key, custom_model)
         follow_up_agent = FollowUpAgent(queries_history, result_history, custom_api_key, custom_model)
