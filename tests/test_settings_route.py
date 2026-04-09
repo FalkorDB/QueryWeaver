@@ -41,7 +41,7 @@ class TestValidateKeyRequest:
 
 
 class TestValidateApiKeyEndpoint:
-    """Tests for the /validate-api-key endpoint logic."""
+    """Tests for the /settings/validate-api-key endpoint logic."""
 
     @pytest.fixture
     def mock_request(self):
