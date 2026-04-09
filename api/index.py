@@ -1,6 +1,10 @@
 """Main entry point for the text2sql API."""
 
-from api.app_factory import create_app
+# Load .env before any app imports that read os.getenv at module level
+from dotenv import load_dotenv
+load_dotenv()
+
+from api.app_factory import create_app  # pylint: disable=wrong-import-position
 
 app = create_app()
 
