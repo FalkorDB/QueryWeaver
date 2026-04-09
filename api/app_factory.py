@@ -140,7 +140,7 @@ def create_app():  # pylint: disable=too-many-statements
     app.include_router(graphs_router, prefix="/graphs")
     app.include_router(database_router)
     app.include_router(tokens_router, prefix="/tokens")
-    app.include_router(settings_router, prefix="/api")
+    app.include_router(settings_router, prefix="/settings")
 
 
 
