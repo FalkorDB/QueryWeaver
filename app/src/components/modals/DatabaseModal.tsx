@@ -29,9 +29,11 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
   const [database, setDatabase] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [schema, setSchema] = useState("");
+  const [schemaError, setSchemaError] = useState("");
   // Snowflake-specific fields
   const [account, setAccount] = useState("");
-  const [schema, setSchema] = useState("PUBLIC");
+  const [snowflakeSchema, setSnowflakeSchema] = useState("PUBLIC");
   const [warehouse, setWarehouse] = useState("COMPUTE_WH");
   const [authMode, setAuthMode] = useState<'password' | 'keypair'>('password');
   const [privateKey, setPrivateKey] = useState("");
@@ -118,7 +120,7 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
       if (connectionMode === 'manual') {
         if (selectedDatabase === 'snowflake') {
           // Build Snowflake URL: snowflake://user@account/database/schema?warehouse=WH
-          const builtUrl = new URL(`snowflake://${account}/${database}/${schema}`);
+          const builtUrl = new URL(`snowflake://${account}/${database}/${snowflakeSchema}`);
           builtUrl.username = username;
           if (authMode === 'keypair' && privateKey) {
             // Base64-encode the PEM key for safe URL transport
@@ -136,6 +138,15 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
           const builtUrl = new URL(`${protocol}://${host}:${port}/${database}`);
           builtUrl.username = username;
           builtUrl.password = password;
+
+          // Append schema option for PostgreSQL if provided
+          if (selectedDatabase === 'postgresql' && schema.trim()) {
+            if (/[^a-zA-Z0-9_]/.test(schema.trim())) {
+              throw new Error('Schema name can only contain letters, digits, and underscores');
+            }
+            builtUrl.searchParams.set('options', `-csearch_path=${schema.trim()}`);
+          }
+
           dbUrl = builtUrl.toString();
         }
       }
@@ -220,8 +231,10 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
               setDatabase("");
               setUsername("");
               setPassword("");
+              setSchema("");
+              setSchemaError("");
               setAccount("");
-              setSchema("PUBLIC");
+              setSnowflakeSchema("PUBLIC");
               setWarehouse("COMPUTE_WH");
               setAuthMode('password');
               setPrivateKey("");
@@ -416,12 +429,12 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="schema" className="text-sm font-medium">Schema</Label>
+                    <Label htmlFor="snowflake-schema" className="text-sm font-medium">Schema</Label>
                     <Input
-                      id="schema"
+                      id="snowflake-schema"
                       placeholder="PUBLIC"
-                      value={schema}
-                      onChange={(e) => setSchema(e.target.value)}
+                      value={snowflakeSchema}
+                      onChange={(e) => setSnowflakeSchema(e.target.value)}
                       className="bg-muted border-border focus-visible:ring-purple-500"
                     />
                     <p className="text-xs text-muted-foreground">
@@ -578,6 +591,38 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
                       className="bg-muted border-border focus-visible:ring-purple-500"
                     />
                   </div>
+
+                  {/* Schema field - PostgreSQL only */}
+                  {selectedDatabase === 'postgresql' && (
+                    <div className="space-y-2">
+                      <Label htmlFor="schema" className="text-sm font-medium">
+                        Schema <span className="text-muted-foreground font-normal">(optional)</span>
+                      </Label>
+                      <Input
+                        id="schema"
+                        data-testid="schema-input"
+                        placeholder="public"
+                        value={schema}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSchema(val);
+                          if (val && /[^a-zA-Z0-9_]/.test(val)) {
+                            setSchemaError('Schema name can only contain letters, digits, and underscores');
+                          } else {
+                            setSchemaError('');
+                          }
+                        }}
+                        className={`bg-muted border-border ${schemaError ? 'border-red-500' : ''}`}
+                      />
+                      {schemaError ? (
+                        <p className="text-xs text-red-500">{schemaError}</p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          Leave empty to use the default &apos;public&apos; schema
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
             </>
