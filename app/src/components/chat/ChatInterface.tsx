@@ -522,8 +522,8 @@ const ChatInterface = ({
       {/* Bottom Section with Suggestions and Input */}
       <div className="border-t border-border bg-background">
         <div className="p-6">
-          {/* Suggestion Cards - Only show for DEMO_CRM database */}
-          {(selectedGraph?.id === 'DEMO_CRM' || selectedGraph?.name === 'DEMO_CRM') && (
+          {/* Suggestion Cards - Only show for demo databases */}
+          {selectedGraph?.is_demo && (
             <SuggestionCards
               suggestions={suggestions}
               onSelect={handleSuggestionSelect}

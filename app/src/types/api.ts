@@ -20,8 +20,9 @@ export interface Graph {
   id: string;
   name: string;
   description?: string;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
+  is_demo: boolean;
   table_count?: number;
   schema?: any;
 }

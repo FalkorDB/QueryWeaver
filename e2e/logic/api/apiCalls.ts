@@ -8,6 +8,7 @@ import type {
   LoginResponse,
   SignupResponse,
   LogoutResponse,
+  GraphListItem,
   GraphsListResponse,
   GraphDataResponse,
   GraphUploadResponse,
@@ -156,7 +157,12 @@ export default class ApiCalls {
         undefined,
         this.defaultRequestContext
       );
-      return await response.json();
+      const data = await response.json();
+      // Backend now returns objects with {id, name, is_demo}; extract ids for backward compat
+      if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object') {
+        return (data as GraphListItem[]).map((g) => g.id);
+      }
+      return data;
     } catch (error) {
       throw new Error(
         `Failed to get graphs. \n Error: ${(error as Error).message}`

@@ -177,12 +177,9 @@ const Index = () => {
     }
   };
 
-  const handleDeleteGraph = async (graphId: string, graphName: string, event: React.MouseEvent) => {
+  const handleDeleteGraph = async (graphId: string, graphName: string, isDemo: boolean, event: React.MouseEvent) => {
     event.stopPropagation(); // Prevent dropdown from closing/selecting
-    
-    // Check if this is a demo database
-    const isDemo = graphId.startsWith('general_');
-    
+
     if (isRefreshingSchema) return;
     // Show the delete confirmation modal
     setDatabaseToDelete({ id: graphId, name: graphName, isDemo });
@@ -532,7 +529,7 @@ const Index = () => {
               <p className="text-xs text-muted-foreground">Graph-Powered Text-to-SQL</p>
               {selectedGraph ? (
                 <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-xs px-2 py-0.5 flex-shrink-0">
-                  {selectedGraph.name === 'DEMO_CRM' ? 'CRM' : selectedGraph.name}
+                  {selectedGraph.name}
                 </Badge>
               ) : (
                 <Badge variant="secondary" className="bg-yellow-600 hover:bg-yellow-700 text-xs px-2 py-0.5 flex-shrink-0">
@@ -570,7 +567,7 @@ const Index = () => {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="bg-card border-border text-foreground">
                   {graphs.map((graph) => {
-                    const isDemo = graph.id.startsWith('general_');
+                    const isDemo = graph.is_demo || false;
                     return (
                       <DropdownMenuItem
                         key={graph.id}
@@ -586,7 +583,7 @@ const Index = () => {
                           className={`h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity ${
                             isDemo || isRefreshingSchema || isChatProcessing ? 'cursor-not-allowed opacity-40' : 'hover:bg-red-600 hover:text-white'
                           }`}
-                          onClick={(e) => { if (isDemo || isRefreshingSchema || isChatProcessing) return; handleDeleteGraph(graph.id, graph.name, e); }}
+                          onClick={(e) => { if (isDemo || isRefreshingSchema || isChatProcessing) return; handleDeleteGraph(graph.id, graph.name, isDemo, e); }}
                           disabled={isDemo || isRefreshingSchema}
                           title={isDemo ? 'Demo databases cannot be deleted' : (isRefreshingSchema ? 'Refreshing schema...' : `Delete ${graph.name}`)}
                           data-testid={`delete-graph-btn-${graph.id}`}

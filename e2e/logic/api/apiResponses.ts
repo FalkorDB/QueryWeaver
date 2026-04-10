@@ -31,6 +31,12 @@ export interface LogoutResponse {
 
 // ==================== GRAPH/DATABASE RESPONSES ====================
 
+export interface GraphListItem {
+  id: string;
+  name: string;
+  is_demo: boolean;
+}
+
 export type GraphsListResponse = string[];
 
 export interface GraphColumn {
