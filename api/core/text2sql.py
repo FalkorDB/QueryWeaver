@@ -12,24 +12,27 @@ from redis import ResponseError, RedisError
 from api.core.errors import GraphNotFoundError, InternalError, InvalidArgumentError
 from api.core.schema_loader import load_database
 from api.core.text2sql_common import (
-    graph_name,
-    get_database_type_and_loader,
-    sanitize_query,
-    sanitize_log_input,
-    detect_destructive_operation,
+    MESSAGE_DELIMITER,
     auto_quote_sql_identifiers,
-    is_general_graph,
-    validate_and_truncate_chat,
+    build_destructive_confirmation_message,
     check_schema_modification,
+    detect_destructive_operation,
+    format_ai_response,
+    get_database_type_and_loader,
+    graph_name,
+    is_general_graph,
+    quote_identifiers_from_graph,
+    sanitize_log_input,
+    sanitize_query,
+    save_memory_background,
+    validate_and_truncate_chat,
 )
-from api.agents import AnalysisAgent, RelevancyAgent, ResponseFormatterAgent, FollowUpAgent
+from api.agents import AnalysisAgent, RelevancyAgent, FollowUpAgent
 from api.agents.healer_agent import HealerAgent
-from api.extensions import db
+from api.core.db_resolver import resolve_db
 from api.graph import find, get_db_description, get_user_rules
 from api.memory.graphiti_tool import MemoryTool
 
-# Use the same delimiter as in the JavaScript
-MESSAGE_DELIMITER = "|||FALKORDB_MESSAGE_BOUNDARY|||"
 
 class GraphData(BaseModel):
     """Graph data model.
@@ -69,19 +72,19 @@ class ConfirmRequest(BaseModel):
 
 
 
-async def get_schema(user_id: str, graph_id: str):  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+async def get_schema(user_id: str, graph_id: str, db=None):  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     """Return all nodes and edges for the specified database schema (namespaced to the user).
 
     This endpoint returns a JSON object with two keys: `nodes` and `edges`.
     Nodes contain a minimal set of properties (id, name, labels, props).
     Edges contain source and target node names (or internal ids), type and props.
-    
+
         args:
             graph_id (str): The ID of the graph to query (the database name).
     """
     namespaced = graph_name(user_id, graph_id)
     try:
-        graph = db.select_graph(namespaced)
+        graph = resolve_db(db).select_graph(namespaced)
     except Exception as e:  # pylint: disable=broad-exception-caught
         logging.error("Failed to select graph %s: %s", sanitize_log_input(namespaced), e)
         raise GraphNotFoundError("Graph not found or database error") from e
@@ -163,13 +166,14 @@ async def get_schema(user_id: str, graph_id: str):  # pylint: disable=too-many-l
 
     return {"nodes": nodes, "links": links}
 
-async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  # pylint: disable=too-many-statements
+async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest, db=None):  # pylint: disable=too-many-statements
     """
     Query the Database with the given graph_id and chat_data.
-    
+
         Args:
             graph_id (str): The ID of the graph to query.
             chat_data (ChatRequest): The chat data containing user queries and context.
+            db: Optional FalkorDB handle; falls back to the server singleton.
     """
     graph_id = graph_name(user_id, graph_id)
 
@@ -180,7 +184,7 @@ async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  
     logging.info("User Query: %s", sanitize_query(queries_history[-1]))
 
     if chat_data.use_memory:
-        memory_tool_task = asyncio.create_task(MemoryTool.create(user_id, graph_id))
+        memory_tool_task = asyncio.create_task(MemoryTool.create(user_id, graph_id, db=db))
     else:
         memory_tool_task = None
 
@@ -220,9 +224,9 @@ async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  
                 "message": "Step 1: Analyzing user query and generating SQL..."}
         yield json.dumps(step) + MESSAGE_DELIMITER
         # Ensure the database description is loaded
-        db_description, db_url = await get_db_description(graph_id)
+        db_description, db_url = await get_db_description(graph_id, db=db)
         # Fetch user rules from database only if toggle is enabled
-        user_rules_spec = await get_user_rules(graph_id) if use_user_rules else None
+        user_rules_spec = await get_user_rules(graph_id, db=db) if use_user_rules else None
 
         # Determine database type and get appropriate loader
         db_type, loader_class = get_database_type_and_loader(db_url)
@@ -239,7 +243,7 @@ async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  
             return
 
         # Start both tasks concurrently
-        find_task = asyncio.create_task(find(graph_id, queries_history, db_description))
+        find_task = asyncio.create_task(find(graph_id, queries_history, db_description, db=db))
 
         relevancy_task = asyncio.create_task(agent_rel.get_answer(
             queries_history[-1], db_description
@@ -328,44 +332,12 @@ async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest):  
                 general_graph = is_general_graph(graph_id)
                 if is_destructive and not general_graph:
                     # This is a destructive operation - ask for user confirmation
-                    confirmation_message = f"""⚠️ DESTRUCTIVE OPERATION DETECTED ⚠️
-
-The generated SQL query will perform a **{sql_type}** operation:
-
-SQL:
-{sql_query}
-
-What this will do:
-"""
-                    if sql_type == 'INSERT':
-                        confirmation_message += "• Add new data to the database"
-                    elif sql_type == 'UPDATE':
-                        confirmation_message += ("• Modify existing data in the "
-                                                "database")
-                    elif sql_type == 'DELETE':
-                        confirmation_message += ("• **PERMANENTLY DELETE** data "
-                                                "from the database")
-                    elif sql_type == 'DROP':
-                        confirmation_message += ("• **PERMANENTLY DELETE** entire "
-                                                "tables or database objects")
-                    elif sql_type == 'CREATE':
-                        confirmation_message += ("• Create new tables or database "
-                                                "objects")
-                    elif sql_type == 'ALTER':
-                        confirmation_message += ("• Modify the structure of existing "
-                                                "tables")
-                    elif sql_type == 'TRUNCATE':
-                        confirmation_message += ("• **PERMANENTLY DELETE ALL DATA** "
-                                                "from specified tables")
-                    confirmation_message += """
-
-⚠️ WARNING: This operation will make changes to your database and may be irreversible.
-"""
-
                     yield json.dumps(
                         {
                             "type": "destructive_confirmation",
-                            "message": confirmation_message,
+                            "message": build_destructive_confirmation_message(
+                                sql_type, sql_query,
+                            ),
                             "sql_query": sql_query,
                             "operation_type": sql_type,
                             "final_response": False,
@@ -487,7 +459,7 @@ What this will do:
                             yield json.dumps(step) + MESSAGE_DELIMITER
 
                             refresh_result = await loader_class.refresh_graph_schema(
-                                graph_id, db_url)
+                                graph_id, db_url, db=db)
                             refresh_success, refresh_message = refresh_result
 
                             if refresh_success:
@@ -523,14 +495,14 @@ What this will do:
                             "message": f"Step {step_num}: Generating user-friendly response"}
                         yield json.dumps(step) + MESSAGE_DELIMITER
 
-                        response_agent = ResponseFormatterAgent(
-                            queries_history, result_history, custom_api_key, custom_model
-                        )
-                        user_readable_response = response_agent.format_response(
-                            user_query=queries_history[-1],
+                        user_readable_response = format_ai_response(
+                            queries_history=queries_history,
+                            result_history=result_history,
                             sql_query=answer_an["sql_query"],
                             query_results=query_results,
-                            db_description=db_description
+                            db_description=db_description,
+                            custom_api_key=custom_api_key,
+                            custom_model=custom_model,
                         )
 
                         yield json.dumps(
@@ -594,48 +566,20 @@ What this will do:
                 full_response = {
                     "question": queries_history[-1],
                     "generated_sql": answer_an.get('sql_query', ""),
-                    "answer": final_answer
+                    "answer": final_answer,
+                    "success": not execution_error,
                 }
-
-                # Add error information if SQL execution failed
                 if execution_error:
                     full_response["error"] = execution_error
-                    full_response["success"] = False
-                else:
-                    full_response["success"] = True
 
-
-                # Save query to memory
-                save_query_task = asyncio.create_task(
-                    memory_tool.save_query_memory(
-                        query=queries_history[-1],
-                        sql_query=answer_an["sql_query"],
-                        success=full_response["success"],
-                        error=execution_error
-                    )
-                )
-                save_query_task.add_done_callback(
-                    lambda t: logging.error("Query memory save failed: %s", t.exception())  # nosemgrep
-                    if t.exception() else logging.info("Query memory saved successfully")
-                )
-
-                # Save conversation with memory tool (run in background)
-                save_task = asyncio.create_task(
-                    memory_tool.add_new_memory(full_response,
-                                                [queries_history, result_history])
-                )
-                # Add error handling callback to prevent silent failures
-                save_task.add_done_callback(
-                    lambda t: logging.error("Memory save failed: %s", t.exception())  # nosemgrep
-                    if t.exception() else logging.info("Conversation saved to memory tool")
-                )
-                logging.info("Conversation save task started in background")
-
-                # Clean old memory in background (once per week cleanup)
-                clean_memory_task = asyncio.create_task(memory_tool.clean_memory())
-                clean_memory_task.add_done_callback(
-                    lambda t: logging.error("Memory cleanup failed: %s", t.exception())  # nosemgrep
-                    if t.exception() else logging.info("Memory cleanup completed successfully")
+                save_memory_background(
+                    memory_tool=memory_tool,
+                    question=queries_history[-1],
+                    sql_query=answer_an.get('sql_query', ""),
+                    success=full_response["success"],
+                    error=execution_error or "",
+                    full_response=full_response,
+                    chat_histories=[queries_history, result_history],
                 )
 
         # Log timing summary at the end of processing
@@ -650,6 +594,7 @@ async def execute_destructive_operation(  # pylint: disable=too-many-statements
     user_id: str,
     graph_id: str,
     confirm_data: ConfirmRequest,
+    db=None,
 ):
     """
     Handle user confirmation for destructive SQL operations
@@ -673,12 +618,12 @@ async def execute_destructive_operation(  # pylint: disable=too-many-statements
     # Create a generator function for streaming the confirmation response
     async def generate_confirmation():  # pylint: disable=too-many-locals,too-many-statements
         # Create memory tool for saving query results
-        memory_tool = await MemoryTool.create(user_id, graph_id)
+        memory_tool = await MemoryTool.create(user_id, graph_id, db=db)
         result_history = []  # Initialize result_history for this context
 
         if confirmation == "CONFIRM":
             try:
-                db_description, db_url = await get_db_description(graph_id)
+                db_description, db_url = await get_db_description(graph_id, db=db)
 
                 # Determine database type and get appropriate loader
                 _, loader_class = get_database_type_and_loader(db_url)
@@ -699,26 +644,15 @@ async def execute_destructive_operation(  # pylint: disable=too-many-statements
                     confirm_data, 'sql_query'
                 ) else ""
                 if sql_query:
-                    # Get schema to extract known tables
-                    graph = db.select_graph(graph_id)
-                    tables_query = "MATCH (t:Table) RETURN t.name"
-                    try:
-                        tables_res = (await graph.query(tables_query)).result_set
-                        known_tables = (
-                            {row[0] for row in tables_res}
-                            if tables_res else set()
-                        )
-                    except Exception:  # pylint: disable=broad-exception-caught
-                        known_tables = set()
-
-                    # Auto-quote identifiers
                     db_type, _ = get_database_type_and_loader(db_url)
-                    sanitized_sql, was_modified = auto_quote_sql_identifiers(
-                        sql_query, known_tables, db_type
+                    sql_query, was_modified = await quote_identifiers_from_graph(
+                        sql_query=sql_query,
+                        graph_id=graph_id,
+                        db_type=db_type,
+                        db=db,
                     )
                     if was_modified:
                         logging.info("Confirmed SQL query auto-sanitized")
-                        sql_query = sanitized_sql
 
                 # Check if this query modifies the database schema using appropriate loader
                 is_schema_modifying, operation_type = check_schema_modification(
@@ -739,7 +673,7 @@ async def execute_destructive_operation(  # pylint: disable=too-many-statements
                     yield json.dumps(step) + MESSAGE_DELIMITER
 
                     refresh_success, refresh_message = (
-                        await loader_class.refresh_graph_schema(graph_id, db_url)
+                        await loader_class.refresh_graph_schema(graph_id, db_url, db=db)
                     )
 
                     if refresh_success:
@@ -768,14 +702,14 @@ async def execute_destructive_operation(  # pylint: disable=too-many-statements
                        "message": f"Step {step_num}: Generating user-friendly response"}
                 yield json.dumps(step) + MESSAGE_DELIMITER
 
-                response_agent = ResponseFormatterAgent(
-                    queries_history, result_history, custom_api_key, custom_model
-                )
-                user_readable_response = response_agent.format_response(
-                    user_query=queries_history[-1] if queries_history else "Destructive operation",
+                user_readable_response = format_ai_response(
+                    queries_history=queries_history or ["Destructive operation"],
+                    result_history=result_history,
                     sql_query=sql_query,
                     query_results=query_results,
-                    db_description=db_description
+                    db_description=db_description,
+                    custom_api_key=custom_api_key,
+                    custom_model=custom_model,
                 )
 
                 yield json.dumps(
@@ -786,19 +720,13 @@ async def execute_destructive_operation(  # pylint: disable=too-many-statements
                 ) + MESSAGE_DELIMITER
 
                 # Save successful confirmed query to memory
-                save_query_task = asyncio.create_task(
-                    memory_tool.save_query_memory(
-                        query=(queries_history[-1] if queries_history
-                               else "Destructive operation confirmation"),
-                        sql_query=sql_query,
-                        success=True,
-                        error=""
-                    )
-                )
-                save_query_task.add_done_callback(
-                    lambda t: logging.error("Confirmed query memory save failed: %s",
-                                            t.exception())  # nosemgrep
-                    if t.exception() else logging.info("Confirmed query memory saved successfully")
+                save_memory_background(
+                    memory_tool=memory_tool,
+                    question=(queries_history[-1] if queries_history
+                              else "Destructive operation confirmation"),
+                    sql_query=sql_query,
+                    success=True,
+                    error="",
                 )
 
             except Exception as e:  # pylint: disable=broad-exception-caught
@@ -806,21 +734,13 @@ async def execute_destructive_operation(  # pylint: disable=too-many-statements
                 error_message = str(e) if str(e) else "Error executing query"
 
                 # Save failed confirmed query to memory
-                save_query_task = asyncio.create_task(
-                    memory_tool.save_query_memory(
-                        query=(queries_history[-1] if queries_history
-                               else "Destructive operation confirmation"),
-                        sql_query=sql_query,
-                        success=False,
-                        error=str(e)
-                    )
-                )
-                save_query_task.add_done_callback(
-                    lambda t: logging.error(  # nosemgrep
-                        "Failed confirmed query memory save failed: %s", t.exception()
-                    ) if t.exception() else logging.info(
-                        "Failed confirmed query memory saved successfully"
-                    )
+                save_memory_background(
+                    memory_tool=memory_tool,
+                    question=(queries_history[-1] if queries_history
+                              else "Destructive operation confirmation"),
+                    sql_query=sql_query,
+                    success=False,
+                    error=str(e),
                 )
 
                 yield json.dumps(
@@ -837,7 +757,7 @@ async def execute_destructive_operation(  # pylint: disable=too-many-statements
 
     return generate_confirmation()
 
-async def refresh_database_schema(user_id: str, graph_id: str):
+async def refresh_database_schema(user_id: str, graph_id: str, db=None):
     """
     Manually refresh the graph schema from the database.
     This endpoint allows users to manually trigger a schema refresh
@@ -851,20 +771,20 @@ async def refresh_database_schema(user_id: str, graph_id: str):
 
     try:
         # Get database description and URL
-        _, db_url = await get_db_description(graph_id)
+        _, db_url = await get_db_description(graph_id, db=db)
 
         if not db_url or db_url == "No URL available for this database.":
             raise InternalError("No database URL found for this graph")
 
         # Call load_database to refresh the schema by reconnecting
-        return await load_database(db_url, user_id)
+        return await load_database(db_url, user_id, db=db)
     except InternalError:
         raise
     except Exception as e:
         logging.error("Error in refresh_graph_schema: %s", str(e))
         raise InternalError("Internal server error while refreshing schema") from e
 
-async def delete_database(user_id: str, graph_id: str):
+async def delete_database(user_id: str, graph_id: str, db=None):
     """Delete the specified graph (namespaced to the user).
 
     This will attempt to delete the FalkorDB graph belonging to the
@@ -878,7 +798,7 @@ async def delete_database(user_id: str, graph_id: str):
 
     try:
         # Select and delete the graph using the FalkorDB client API
-        graph = db.select_graph(namespaced)
+        graph = resolve_db(db).select_graph(namespaced)
         await graph.delete()
         return {"success": True, "graph": graph_id}
     except ResponseError as re:

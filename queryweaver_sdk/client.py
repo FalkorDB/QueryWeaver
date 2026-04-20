@@ -4,11 +4,9 @@ This module provides the main QueryWeaver class for converting natural
 language questions to SQL queries without requiring a web server.
 
 Note: This module uses lazy imports (import-outside-toplevel) intentionally.
-The api.* modules require FalkorDB connection at import time, so we defer
-importing them until methods are called. This allows:
-- `from queryweaver_sdk import QueryWeaver` to succeed without FalkorDB
-- Type hints to work via TYPE_CHECKING block
-- Runtime imports only when SDK methods are actually used
+The api.* modules do not need to be loaded until an SDK method is called,
+so deferring their import keeps `from queryweaver_sdk import QueryWeaver`
+cheap and side-effect-free.
 
 Example usage:
     ```python
@@ -26,6 +24,8 @@ Example usage:
 # pylint: disable=import-outside-toplevel
 # Lazy imports are required - see module docstring for explanation
 
+import asyncio
+from contextlib import contextmanager
 from typing import Optional, Union
 
 from queryweaver_sdk.connection import FalkorDBConnection
@@ -55,6 +55,10 @@ class QueryWeaver:
     ):
         """Initialize QueryWeaver SDK.
 
+        Multiple QueryWeaver instances can coexist in the same process —
+        each holds its own FalkorDB connection and passes it explicitly
+        into core functions, so there is no shared global state to collide.
+
         Args:
             falkordb_url: Redis URL for FalkorDB connection.
                          Falls back to FALKORDB_URL environment variable.
@@ -66,49 +70,35 @@ class QueryWeaver:
         """
         self._user_id = user_id
         self._connection = FalkorDBConnection(url=falkordb_url)
+        # Set of in-flight background tasks (memory writes) so close() can
+        # await them. Populated via the ``background_tasks_var`` contextvar
+        # in ``api.core.text2sql_common``.
+        self._pending_tasks: set = set()
 
-        # Inject our connection into the api.extensions module
-        # This allows the existing core functions to use our connection
-        self._setup_connection()
+    @property
+    def _db(self):
+        """The FalkorDB handle for this SDK instance."""
+        return self._connection.db
 
-    def _setup_connection(self) -> None:
-        """Set up the connection for use by core modules.
+    @contextmanager
+    def _bind_task_sink(self):
+        """Bind this instance's task sink to the current contextvar scope.
 
-        Note: api.extensions is imported lazily to allow SDK import
-        without requiring FalkorDB connection at module load time.
-
-        Warning: This mutates the global ``api.extensions.db``. Only one
-        ``QueryWeaver`` instance should be active at a time; creating a
-        second instance will overwrite the connection used by the first.
+        Use as a context manager around any call that may schedule
+        background memory writes; close() then awaits them before the pool
+        is disconnected.
         """
-        import api.extensions
-        api.extensions.db = self._connection.db
+        from api.core.text2sql_common import background_tasks_var
+        token = background_tasks_var.set(self._pending_tasks)
+        try:
+            yield
+        finally:
+            background_tasks_var.reset(token)
 
     @property
     def user_id(self) -> str:
         """Get the user ID used for database namespacing."""
         return self._user_id
-
-    def _graph_name(self, graph_id: str) -> str:
-        """Get the namespaced graph name.
-
-        Delegates to the shared ``graph_name`` implementation in
-        ``text2sql_common`` and re-raises ``GraphNotFoundError`` as
-        ``ValueError`` for the SDK public API.
-
-        Args:
-            graph_id: The user-facing graph/database identifier.
-
-        Returns:
-            The namespaced graph name for internal use.
-        """
-        from api.core.text2sql_common import graph_name as _common_graph_name  # pylint: disable=import-outside-toplevel
-        from api.core.errors import GraphNotFoundError  # pylint: disable=import-outside-toplevel
-
-        try:
-            return _common_graph_name(self._user_id, graph_id)
-        except GraphNotFoundError as e:
-            raise ValueError(str(e)) from e
 
     async def connect_database(self, db_url: str) -> DatabaseConnection:
         """Connect to a SQL database and load its schema.
@@ -128,7 +118,7 @@ class QueryWeaver:
             ValueError: If the database URL format is invalid.
         """
         from api.core.schema_loader import load_database_sync
-        return await load_database_sync(db_url, self._user_id)
+        return await load_database_sync(db_url, self._user_id, db=self._db)
 
     async def query(
         self,
@@ -186,9 +176,14 @@ class QueryWeaver:
             instructions=request.instructions,
             use_user_rules=request.use_user_rules,
             use_memory=request.use_memory,
+            custom_api_key=request.custom_api_key,
+            custom_model=request.custom_model,
         )
 
-        return await query_database_sync(self._user_id, database, chat_data)
+        with self._bind_task_sink():
+            return await query_database_sync(
+                self._user_id, database, chat_data, db=self._db,
+            )
 
     async def get_schema(self, database: str) -> SchemaResult:
         """Get the schema for a connected database.
@@ -203,7 +198,7 @@ class QueryWeaver:
             ValueError: If the database is not found.
         """
         from api.core.text2sql import get_schema as _get_schema
-        schema = await _get_schema(self._user_id, database)
+        schema = await _get_schema(self._user_id, database, db=self._db)
         return SchemaResult(
             nodes=schema.get("nodes", []),
             links=schema.get("links", []),
@@ -217,7 +212,7 @@ class QueryWeaver:
         """
         from api.core.schema_loader import list_databases as _list_databases  # pylint: disable=import-outside-toplevel
         from api.core.text2sql_common import GENERAL_PREFIX  # pylint: disable=import-outside-toplevel
-        return await _list_databases(self._user_id, GENERAL_PREFIX)
+        return await _list_databases(self._user_id, GENERAL_PREFIX, db=self._db)
 
     async def delete_database(self, database: str) -> bool:
         """Delete a connected database.
@@ -235,7 +230,7 @@ class QueryWeaver:
             ValueError: If the database is not found or cannot be deleted.
         """
         from api.core.text2sql import delete_database as _delete_database
-        result = await _delete_database(self._user_id, database)
+        result = await _delete_database(self._user_id, database, db=self._db)
         return result.get("success", False)
 
     async def refresh_schema(self, database: str) -> RefreshResult:
@@ -254,7 +249,7 @@ class QueryWeaver:
             ValueError: If the database is not found.
         """
         from api.core.text2sql_sync import refresh_database_schema_sync
-        return await refresh_database_schema_sync(self._user_id, database)
+        return await refresh_database_schema_sync(self._user_id, database, db=self._db)
 
     async def execute_confirmed(
         self,
@@ -284,12 +279,19 @@ class QueryWeaver:
             chat=chat_history or [],
         )
 
-        return await execute_destructive_operation_sync(
-            self._user_id, database, confirm_data
-        )
+        with self._bind_task_sink():
+            return await execute_destructive_operation_sync(
+                self._user_id, database, confirm_data, db=self._db,
+            )
 
     async def close(self) -> None:
-        """Close the SDK connection and release resources."""
+        """Close the SDK connection and release resources.
+
+        Awaits any in-flight background memory writes so they land before
+        the FalkorDB connection pool is released.
+        """
+        if self._pending_tasks:
+            await asyncio.gather(*self._pending_tasks, return_exceptions=True)
         await self._connection.close()
 
     async def __aenter__(self) -> "QueryWeaver":

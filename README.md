@@ -267,10 +267,11 @@ async def main():
 
     # Connect a PostgreSQL or MySQL database
     conn = await qw.connect_database("postgresql://user:pass@host:5432/mydb")
-    print(f"Connected: {conn.tables_loaded} tables loaded")
+    print(f"Connected: {conn.database_id}")  # "mydb"
 
-    # Convert natural language to SQL and execute
-    result = await qw.query("mydb", "Show me all customers from NYC")
+    # Convert natural language to SQL and execute — pass the database_id
+    # returned by connect_database (un-prefixed; namespacing is internal).
+    result = await qw.query(conn.database_id, "Show me all customers from NYC")
     print(result.sql_query)    # SELECT * FROM customers WHERE city = 'NYC'
     print(result.results)       # [{"id": 1, "name": "Alice", "city": "NYC"}, ...]
     print(result.ai_response)   # "Found 42 customers from NYC..."
@@ -284,8 +285,22 @@ asyncio.run(main())
 
 ```python
 async with QueryWeaver(falkordb_url="redis://localhost:6379") as qw:
-    await qw.connect_database("postgresql://user:pass@host/mydb")
-    result = await qw.query("mydb", "Count orders by status")
+    conn = await qw.connect_database("postgresql://user:pass@host/mydb")
+    result = await qw.query(conn.database_id, "Count orders by status")
+# close() runs automatically, awaiting any in-flight background memory writes.
+```
+
+### Multiple Instances
+
+Multiple `QueryWeaver` instances can run side-by-side in the same process.
+Each holds its own FalkorDB connection and passes it explicitly through
+every call, so there is no shared global state to collide over.
+
+```python
+async with QueryWeaver(falkordb_url="redis://host-a:6379", user_id="tenant_a") as a, \
+           QueryWeaver(falkordb_url="redis://host-b:6379", user_id="tenant_b") as b:
+    await a.query("sales", "Show top customers")
+    await b.query("ops", "Count open tickets")
 ```
 
 ### Available Methods
@@ -302,17 +317,19 @@ async with QueryWeaver(falkordb_url="redis://localhost:6379") as qw:
 
 ### Advanced Query Options
 
-For multi-turn conversations or custom instructions:
+For multi-turn conversations, custom instructions, or per-request LLM overrides:
 
 ```python
-from queryweaver_sdk import QueryWeaver
-from queryweaver_sdk.models import QueryRequest
+from queryweaver_sdk import QueryWeaver, QueryRequest
 
 request = QueryRequest(
     question="Show their recent orders",
     chat_history=["Show all customers from NYC"],
     result_history=["Found 42 customers..."],
     instructions="Use created_at for date filtering",
+    # Optional per-request LLM overrides — bypass env-based config
+    custom_api_key="sk-...",
+    custom_model="openai/gpt-4.1",
 )
 
 result = await qw.query("mydb", request)

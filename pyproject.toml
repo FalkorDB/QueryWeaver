@@ -1,6 +1,6 @@
 [project]
 name = "queryweaver"
-version = "0.1.0"
+version = "0.2.0"
 description = "Text2SQL tool that transforms natural language into SQL using graph-powered schema understanding"
 readme = "README.md"
 license = "AGPL-3.0-or-later"

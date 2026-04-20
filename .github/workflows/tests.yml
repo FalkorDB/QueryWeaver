@@ -43,7 +43,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv sync --all-extras
+        uv sync --locked --all-extras
 
     - name: Install frontend dependencies
       run: |
@@ -125,7 +125,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv sync --all-extras
+        uv sync --locked --all-extras
 
     - name: Create test environment file
       run: |

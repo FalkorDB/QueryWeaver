@@ -9,9 +9,6 @@ from api.routes.tokens import UNAUTHORIZED_RESPONSE
 
 database_router = APIRouter(tags=["Database Connection"])
 
-# Use the same delimiter as in the JavaScript frontend for streaming chunks
-MESSAGE_DELIMITER = "|||FALKORDB_MESSAGE_BOUNDARY|||"
-
 class DatabaseConnectionRequest(BaseModel):
     """Database connection request model.
 

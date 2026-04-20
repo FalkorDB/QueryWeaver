@@ -5,7 +5,7 @@ import json
 import tqdm
 
 from api.config import Config
-from api.extensions import db
+from api.core.db_resolver import resolve_db
 from api.utils import generate_db_description, create_combined_description
 
 
@@ -16,6 +16,7 @@ async def load_to_graph(  # pylint: disable=too-many-arguments,too-many-position
     batch_size: int = 100,
     db_name: str = "TBD",
     db_url: str = "",
+    db=None,
 ) -> None:
     """
     Load the graph data into the database.
@@ -26,8 +27,9 @@ async def load_to_graph(  # pylint: disable=too-many-arguments,too-many-position
     - relationships: A dictionary containing the relationships between entities.
     - batch_size: The size of the batch for embedding.
     - db_name: The name of the database.
+    - db: Optional FalkorDB handle; falls back to the server singleton.
     """
-    graph = db.select_graph(graph_id)
+    graph = resolve_db(db).select_graph(graph_id)
     embedding_model = Config.EMBEDDING_MODEL
     vec_len = embedding_model.get_vector_size()
 

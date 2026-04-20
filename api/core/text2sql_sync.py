@@ -1,70 +1,43 @@
 """SDK Non-Streaming Functions for Text2SQL.
 
-This module provides non-streaming alternatives for the SDK, returning
-structured results instead of async generators.
+Thin orchestrator over helpers in :mod:`api.core.text2sql_common` — the
+same helpers the streaming path uses. Only transport differs.
 """
 
 import asyncio
 import logging
 import time
-from dataclasses import dataclass, field
-from typing import Optional, Type
+from dataclasses import dataclass
+from typing import Any, Optional, Type
 
 from redis import RedisError
 
-from api.agents import AnalysisAgent, RelevancyAgent, ResponseFormatterAgent, FollowUpAgent
-from api.agents.healer_agent import HealerAgent
+from api.agents import AnalysisAgent, FollowUpAgent, RelevancyAgent
 from api.core.errors import InvalidArgumentError
 from api.core.text2sql_common import (
-    graph_name,
-    get_database_type_and_loader,
-    truncate_for_log,
-    detect_destructive_operation,
     auto_quote_sql_identifiers,
+    build_destructive_confirmation_message,
+    detect_destructive_operation,
+    execute_with_healing,
+    format_ai_response,
+    get_database_type_and_loader,
+    graph_name,
     is_general_graph,
+    quote_identifiers_from_graph,
+    refresh_schema_if_modified,
+    save_memory_background,
+    truncate_for_log,
     validate_and_truncate_chat,
-    check_schema_modification,
 )
 from api.graph import find, get_db_description, get_user_rules
 from api.loaders.base_loader import BaseLoader
 from api.memory.graphiti_tool import MemoryTool
-from queryweaver_sdk.models import QueryResult, QueryMetadata, QueryAnalysis, RefreshResult
+from api.core.result_models import QueryAnalysis, QueryMetadata, QueryResult, RefreshResult
 
 
-def _build_query_result(
-    sql_query: str,
-    results: list,
-    ai_response: str,
-    metadata: QueryMetadata,
-    analysis_result: Optional["_AnalysisResult"] = None,
-) -> QueryResult:
-    """Build a QueryResult from components."""
-    if analysis_result:
-        analysis = QueryAnalysis(
-            missing_information=analysis_result.missing_info,
-            ambiguities=analysis_result.ambiguities,
-            explanation=analysis_result.explanation,
-        )
-    else:
-        analysis = QueryAnalysis()
-
-    return QueryResult(
-        sql_query=sql_query,
-        results=results,
-        ai_response=ai_response,
-        metadata=metadata,
-        analysis=analysis,
-    )
-
-
-@dataclass
-class _ExecutionContext:
-    """Context for SQL query execution."""
-    loader_class: Type[BaseLoader]
-    db_url: str
-    db_description: str
-    db_type: Optional[str]
-    known_tables: set = field(default_factory=set)
+# ---------------------------------------------------------------------------
+# Internal dataclasses
+# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -79,73 +52,14 @@ class _AnalysisResult:
     explanation: str
 
 
-def _parse_analysis_result(answer_an: dict, sql_query_raw: str) -> _AnalysisResult:
-    """Parse analysis agent response into structured result."""
-    sql_query = answer_an.get("sql_query", sql_query_raw)
-    _, is_destructive = detect_destructive_operation(sql_query)
-
-    return _AnalysisResult(
-        sql_query=sql_query,
-        confidence=answer_an.get("confidence", 0.0),
-        is_valid=answer_an.get("is_sql_translatable", False),
-        is_destructive=is_destructive,
-        missing_info=answer_an.get("missing_information", ""),
-        ambiguities=answer_an.get("ambiguities", ""),
-        explanation=answer_an.get("explanation", ""),
-    )
-
-
-async def _execute_query_with_healing(
-    sql_query: str,
-    context: _ExecutionContext,
-    question: str,
-) -> tuple[str, list]:
-    """
-    Execute SQL query with auto-quoting and healing on failure.
-
-    Returns:
-        Tuple of (final_sql_query, query_results)
-
-    Raises:
-        Exception: If query fails and cannot be healed.
-    """
-    sanitized_sql, was_modified = auto_quote_sql_identifiers(
-        sql_query, context.known_tables, context.db_type
-    )
-    if was_modified:
-        sql_query = sanitized_sql
-
-    try:
-        query_results = context.loader_class.execute_sql_query(sql_query, context.db_url)
-        return sql_query, query_results
-    except (RedisError, ConnectionError, OSError) as exec_error:
-        healer_agent = HealerAgent(max_healing_attempts=3)
-
-        def execute_sql(sql: str):
-            return context.loader_class.execute_sql_query(sql, context.db_url)
-
-        healing_result = healer_agent.heal_and_execute(
-            initial_sql=sql_query,
-            initial_error=str(exec_error),
-            execute_sql_func=execute_sql,
-            db_description=context.db_description,
-            question=question,
-            database_type=context.db_type
-        )
-
-        if not healing_result.get("success"):
-            raise  # preserve original traceback
-
-        return healing_result["sql_query"], healing_result["query_results"]
-
-
 @dataclass
 class _ChatContext:
     """Chat history and configuration context."""
     queries_history: list
     result_history: Optional[list]
     instructions: Optional[str]
-    use_user_rules: bool
+    custom_api_key: Optional[str] = None
+    custom_model: Optional[str] = None
 
 
 @dataclass
@@ -164,12 +78,60 @@ class _QueryContext:
     db: _DatabaseContext
     overall_start: float
     memory_tool: Optional[MemoryTool] = None
+    falkor_db: Any = None  # Injected FalkorDB handle (None ⇒ resolver fallback)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _build_query_result(
+    sql_query: str,
+    results: list,
+    ai_response: str,
+    metadata: QueryMetadata,
+    analysis_result: Optional[_AnalysisResult] = None,
+) -> QueryResult:
+    """Assemble a :class:`QueryResult` from pipeline outputs."""
+    if analysis_result:
+        analysis = QueryAnalysis(
+            missing_information=analysis_result.missing_info,
+            ambiguities=analysis_result.ambiguities,
+            explanation=analysis_result.explanation,
+        )
+    else:
+        analysis = QueryAnalysis()
+
+    return QueryResult(
+        sql_query=sql_query,
+        results=results,
+        ai_response=ai_response,
+        metadata=metadata,
+        analysis=analysis,
+    )
+
+
+def _parse_analysis_result(answer_an: dict) -> _AnalysisResult:
+    """Parse the AnalysisAgent response into a typed result."""
+    sql_query = answer_an.get("sql_query", "")
+    _, is_destructive = detect_destructive_operation(sql_query)
+
+    return _AnalysisResult(
+        sql_query=sql_query,
+        confidence=answer_an.get("confidence", 0.0),
+        is_valid=answer_an.get("is_sql_translatable", False),
+        is_destructive=is_destructive,
+        missing_info=answer_an.get("missing_information", ""),
+        ambiguities=answer_an.get("ambiguities", ""),
+        explanation=answer_an.get("explanation", ""),
+    )
 
 
 async def _initialize_query_context(
-    user_id: str, graph_id: str, chat_data
+    user_id: str, graph_id: str, chat_data, falkor_db=None,
 ) -> _QueryContext:
-    """Initialize query context with database info."""
+    """Build the per-query context (graph name, history, db metadata, memory tool)."""
     graph_id = graph_name(user_id, graph_id)
     queries_history, result_history, instructions, use_user_rules = (
         validate_and_truncate_chat(chat_data)
@@ -180,16 +142,19 @@ async def _initialize_query_context(
 
     memory_tool = None
     if getattr(chat_data, 'use_memory', False):
-        memory_tool = await MemoryTool.create(user_id, graph_id)
+        memory_tool = await MemoryTool.create(user_id, graph_id, db=falkor_db)
 
-    db_description, db_url = await get_db_description(graph_id)
-    user_rules_spec = await get_user_rules(graph_id) if use_user_rules else None
+    db_description, db_url = await get_db_description(graph_id, db=falkor_db)
+    user_rules_spec = (
+        await get_user_rules(graph_id, db=falkor_db) if use_user_rules else None
+    )
 
     chat_ctx = _ChatContext(
         queries_history=queries_history,
         result_history=result_history,
         instructions=instructions,
-        use_user_rules=use_user_rules,
+        custom_api_key=getattr(chat_data, 'custom_api_key', None),
+        custom_model=getattr(chat_data, 'custom_model', None),
     )
     db_ctx = _DatabaseContext(
         graph_id=graph_id,
@@ -203,6 +168,7 @@ async def _initialize_query_context(
         db=db_ctx,
         overall_start=overall_start,
         memory_tool=memory_tool,
+        falkor_db=falkor_db,
     )
 
 
@@ -210,14 +176,14 @@ async def _check_relevancy_and_find_tables(
     ctx: _QueryContext,
     agent_rel: RelevancyAgent,
 ) -> tuple[Optional[dict], Optional[list]]:
-    """Check relevancy and find relevant tables concurrently.
-
-    Returns:
-        Tuple of (off_topic_reason or None, tables or None).
-        If off_topic_reason is set, the query is off-topic.
-    """
+    """Run relevancy check and table-finding concurrently, short-circuit off-topic."""
     find_task = asyncio.create_task(
-        find(ctx.db.graph_id, ctx.chat.queries_history, ctx.db.db_description)
+        find(
+            ctx.db.graph_id,
+            ctx.chat.queries_history,
+            ctx.db.db_description,
+            db=ctx.falkor_db,
+        )
     )
     relevancy_task = asyncio.create_task(
         agent_rel.get_answer(ctx.chat.queries_history[-1], ctx.db.db_description)
@@ -230,123 +196,122 @@ async def _check_relevancy_and_find_tables(
         try:
             await find_task
         except asyncio.CancelledError:
-            logging.debug("Cancelled find_task after determining query was off-topic")
+            logging.debug("Cancelled find_task after off-topic determination")
         return answer_rel, None
 
-    result = await find_task
-    return None, result
+    return None, await find_task
 
 
-def _save_memory_background(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    memory_tool: MemoryTool,
-    question: str,
-    sql_query: str,
-    success: bool,
-    error: str,
-    full_response: Optional[dict] = None,
-    chat_histories: Optional[list] = None,
-):
-    """Fire-and-forget memory persistence (mirrors text2sql.py streaming path)."""
-    # Save query memory
-    save_query_task = asyncio.create_task(
-        memory_tool.save_query_memory(
-            query=question,
-            sql_query=sql_query,
-            success=success,
-            error=error,
-        )
+def _elapsed(start: float) -> float:
+    return time.perf_counter() - start
+
+
+def _invalid_sql_result(
+    ctx: _QueryContext,
+    analysis: _AnalysisResult,
+    answer_an: dict,
+) -> QueryResult:
+    """Return the follow-up question branch when SQL is not translatable."""
+    follow_up = FollowUpAgent(
+        ctx.chat.queries_history,
+        ctx.chat.result_history,
+        ctx.chat.custom_api_key,
+        ctx.chat.custom_model,
     )
-    save_query_task.add_done_callback(
-        lambda t: logging.error("Query memory save failed: %s", t.exception())  # nosemgrep
-        if t.exception() else logging.info("Query memory saved successfully")
-    )
-
-    # Save full conversation memory if provided
-    if full_response is not None and chat_histories is not None:
-        save_task = asyncio.create_task(
-            memory_tool.add_new_memory(full_response, chat_histories)
-        )
-        save_task.add_done_callback(
-            lambda t: logging.error("Memory save failed: %s", t.exception())  # nosemgrep
-            if t.exception() else logging.info("Conversation saved to memory tool")
-        )
-
-    # Clean old memory in background
-    clean_memory_task = asyncio.create_task(memory_tool.clean_memory())
-    clean_memory_task.add_done_callback(
-        lambda t: logging.error("Memory cleanup failed: %s", t.exception())  # nosemgrep
-        if t.exception() else logging.info("Memory cleanup completed successfully")
+    return _build_query_result(
+        sql_query=analysis.sql_query,
+        results=[],
+        ai_response=follow_up.generate_follow_up_question(
+            user_question=ctx.chat.queries_history[-1],
+            analysis_result=answer_an,
+        ),
+        metadata=QueryMetadata(
+            confidence=analysis.confidence,
+            is_valid=False,
+            is_destructive=analysis.is_destructive,
+            requires_confirmation=False,
+            execution_time=_elapsed(ctx.overall_start),
+        ),
+        analysis_result=analysis,
     )
 
 
-async def _execute_and_format_query(  # pylint: disable=too-many-locals
+def _confirmation_required_result(
+    ctx: _QueryContext, analysis: _AnalysisResult,
+) -> QueryResult:
+    """Return the confirmation-needed branch for destructive operations."""
+    sql_type, _ = detect_destructive_operation(analysis.sql_query)
+    return _build_query_result(
+        sql_query=analysis.sql_query,
+        results=[],
+        ai_response=build_destructive_confirmation_message(sql_type, analysis.sql_query),
+        metadata=QueryMetadata(
+            confidence=analysis.confidence,
+            is_valid=True,
+            is_destructive=True,
+            requires_confirmation=True,
+            execution_time=_elapsed(ctx.overall_start),
+        ),
+        analysis_result=analysis,
+    )
+
+
+async def _execute_and_format_query(
     ctx: _QueryContext,
     analysis: _AnalysisResult,
     tables: Optional[list],
     loader_class: Type[BaseLoader],
     db_type: Optional[str],
 ) -> QueryResult:
-    """Execute query with healing and format the response."""
-    known_tables = {table[0] for table in tables} if tables else set()
-    exec_context = _ExecutionContext(
+    """Execute SQL (with healing + schema refresh) and build the user-facing response."""
+    # Auto-quote identifiers from the Table list we already loaded.
+    known_tables = {t[0] for t in tables} if tables else set()
+    sql_to_run, was_modified = auto_quote_sql_identifiers(
+        analysis.sql_query, known_tables, db_type,
+    )
+    if was_modified:
+        logging.info("SQL auto-quoted: table identifiers with special characters")
+
+    final_sql, query_results = await execute_with_healing(
+        sql_query=sql_to_run,
         loader_class=loader_class,
         db_url=ctx.db.db_url,
         db_description=ctx.db.db_description,
+        question=ctx.chat.queries_history[-1],
         db_type=db_type,
-        known_tables=known_tables,
     )
 
-    final_sql, query_results = await _execute_query_with_healing(
-        analysis.sql_query, exec_context, ctx.chat.queries_history[-1]
+    await refresh_schema_if_modified(
+        sql_query=final_sql,
+        loader_class=loader_class,
+        graph_id=ctx.db.graph_id,
+        db_url=ctx.db.db_url,
+        db=ctx.falkor_db,
     )
 
-    # Check for schema modifications and refresh if needed
-    is_schema_modifying, operation_type = check_schema_modification(
-        final_sql, loader_class
-    )
-    if is_schema_modifying:
-        logging.info(
-            "Schema modification detected (%s). Refreshing graph schema.",
-            operation_type,
-        )
-        try:
-            refresh_success, refresh_message = await loader_class.refresh_graph_schema(
-                ctx.db.graph_id, ctx.db.db_url
-            )
-            if not refresh_success:
-                logging.warning(
-                    "Schema refresh failed after %s: %s",
-                    operation_type, refresh_message,
-                )
-        except (RedisError, ConnectionError, OSError) as refresh_err:
-            logging.error("Error refreshing schema: %s", str(refresh_err))
-
-    # Generate AI response
-    response_agent = ResponseFormatterAgent()
-    ai_response = response_agent.format_response(
-        user_query=ctx.chat.queries_history[-1],
+    ai_response = format_ai_response(
+        queries_history=ctx.chat.queries_history,
+        result_history=ctx.chat.result_history,
         sql_query=final_sql,
         query_results=query_results,
-        db_description=ctx.db.db_description
+        db_description=ctx.db.db_description,
+        custom_api_key=ctx.chat.custom_api_key,
+        custom_model=ctx.chat.custom_model,
     )
 
-    execution_time = time.perf_counter() - ctx.overall_start
-
-    # Save to memory in background if enabled (full persistence)
     if ctx.memory_tool:
-        full_response = {
-            "question": ctx.chat.queries_history[-1],
-            "generated_sql": final_sql,
-            "answer": ai_response,
-            "success": True,
-        }
-        _save_memory_background(
+        save_memory_background(
             memory_tool=ctx.memory_tool,
             question=ctx.chat.queries_history[-1],
             sql_query=final_sql,
             success=True,
             error="",
-            full_response=full_response,
+            full_response={
+                "question": ctx.chat.queries_history[-1],
+                "generated_sql": final_sql,
+                "answer": ai_response,
+                "success": True,
+            },
             chat_histories=[ctx.chat.queries_history, ctx.chat.result_history],
         )
 
@@ -359,36 +324,34 @@ async def _execute_and_format_query(  # pylint: disable=too-many-locals
             is_valid=True,
             is_destructive=analysis.is_destructive,
             requires_confirmation=False,
-            execution_time=execution_time,
+            execution_time=_elapsed(ctx.overall_start),
         ),
         analysis_result=analysis,
     )
 
 
-async def query_database_sync(
+# ---------------------------------------------------------------------------
+# Public SDK entrypoints
+# ---------------------------------------------------------------------------
+
+
+async def query_database_sync(  # pylint: disable=too-many-return-statements
     user_id: str,
     graph_id: str,
-    chat_data
+    chat_data,
+    db=None,
 ) -> QueryResult:
-    """
-    Query the database and return a structured result (non-streaming).
-
-    This is the SDK-friendly version that returns a QueryResult dataclass
-    instead of an async generator for HTTP streaming.
+    """Convert a natural-language question to SQL, execute it, and return a result.
 
     Args:
-        user_id: The user identifier for namespacing.
-        graph_id: The ID of the graph/database to query.
-        chat_data: The chat data containing user queries and context.
-
-    Returns:
-        QueryResult with SQL query, results, and AI response.
+        user_id: Namespacing identifier.
+        graph_id: Target graph/database id (un-prefixed; namespacing is applied).
+        chat_data: Request-shaped object carrying chat history, instructions, etc.
+        db: Optional FalkorDB handle; falls back to the server singleton.
     """
-    ctx = await _initialize_query_context(user_id, graph_id, chat_data)
+    ctx = await _initialize_query_context(user_id, graph_id, chat_data, falkor_db=db)
 
-    # Determine database type early for validation
     db_type, loader_class = get_database_type_and_loader(ctx.db.db_url)
-
     if not loader_class:
         return _build_query_result(
             sql_query="",
@@ -397,12 +360,16 @@ async def query_database_sync(
             metadata=QueryMetadata(
                 confidence=0.0,
                 is_valid=False,
-                execution_time=time.perf_counter() - ctx.overall_start,
+                execution_time=_elapsed(ctx.overall_start),
             ),
         )
 
-    # Run relevancy check and find tables concurrently
-    agent_rel = RelevancyAgent(ctx.chat.queries_history, ctx.chat.result_history)
+    agent_rel = RelevancyAgent(
+        ctx.chat.queries_history,
+        ctx.chat.result_history,
+        ctx.chat.custom_api_key,
+        ctx.chat.custom_model,
+    )
     off_topic, tables = await _check_relevancy_and_find_tables(ctx, agent_rel)
 
     if off_topic:
@@ -413,72 +380,46 @@ async def query_database_sync(
             metadata=QueryMetadata(
                 confidence=0.0,
                 is_valid=False,
-                execution_time=time.perf_counter() - ctx.overall_start,
+                execution_time=_elapsed(ctx.overall_start),
             ),
         )
 
-    # Get memory context and generate SQL analysis
-    agent_an = AnalysisAgent(ctx.chat.queries_history, ctx.chat.result_history)
+    agent_an = AnalysisAgent(
+        ctx.chat.queries_history,
+        ctx.chat.result_history,
+        ctx.chat.custom_api_key,
+        ctx.chat.custom_model,
+    )
     memory_context = (
         await ctx.memory_tool.search_memories(query=ctx.chat.queries_history[-1])
         if ctx.memory_tool else None
     )
     answer_an = agent_an.get_analysis(
-        ctx.chat.queries_history[-1], tables, ctx.db.db_description,
-        ctx.chat.instructions, memory_context, db_type, ctx.db.user_rules_spec
+        ctx.chat.queries_history[-1],
+        tables,
+        ctx.db.db_description,
+        ctx.chat.instructions,
+        memory_context,
+        db_type,
+        ctx.db.user_rules_spec,
     )
 
-    analysis = _parse_analysis_result(answer_an, "")
+    analysis = _parse_analysis_result(answer_an)
 
     if not analysis.is_valid:
-        follow_up_agent = FollowUpAgent(ctx.chat.queries_history, ctx.chat.result_history)
-        return _build_query_result(
-            sql_query=analysis.sql_query,
-            results=[],
-            ai_response=follow_up_agent.generate_follow_up_question(
-                user_question=ctx.chat.queries_history[-1],
-                analysis_result=answer_an
-            ),
-            metadata=QueryMetadata(
-                confidence=analysis.confidence,
-                is_valid=False,
-                is_destructive=analysis.is_destructive,
-                requires_confirmation=False,
-                execution_time=time.perf_counter() - ctx.overall_start,
-            ),
-            analysis_result=analysis,
-        )
+        return _invalid_sql_result(ctx, analysis, answer_an)
 
-    # Check if requires confirmation
     if analysis.is_destructive and not is_general_graph(ctx.db.graph_id):
-        return _build_query_result(
-            sql_query=analysis.sql_query,
-            results=[],
-            ai_response=(
-                "This is a destructive operation. Please confirm execution "
-                "by calling execute_confirmed() with the SQL query."
-            ),
-            metadata=QueryMetadata(
-                confidence=analysis.confidence,
-                is_valid=True,
-                is_destructive=True,
-                requires_confirmation=True,
-                execution_time=time.perf_counter() - ctx.overall_start,
-            ),
-            analysis_result=analysis,
-        )
+        return _confirmation_required_result(ctx, analysis)
 
-    # Execute the query
     try:
-        return await _execute_and_format_query(
-            ctx, analysis, tables, loader_class, db_type
-        )
-    except (RedisError, ConnectionError, OSError) as e:
+        return await _execute_and_format_query(ctx, analysis, tables, loader_class, db_type)
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        # Broad catch: healer re-raises driver-specific exceptions on failure.
         logging.error("Error executing SQL query: %s", str(e))
 
-        # Save error to memory
         if ctx.memory_tool:
-            _save_memory_background(
+            save_memory_background(
                 memory_tool=ctx.memory_tool,
                 question=ctx.chat.queries_history[-1],
                 sql_query=analysis.sql_query,
@@ -495,7 +436,7 @@ async def query_database_sync(
                 is_valid=True,
                 is_destructive=analysis.is_destructive,
                 requires_confirmation=False,
-                execution_time=time.perf_counter() - ctx.overall_start,
+                execution_time=_elapsed(ctx.overall_start),
             ),
             analysis_result=analysis,
         )
@@ -505,27 +446,17 @@ async def execute_destructive_operation_sync(  # pylint: disable=too-many-locals
     user_id: str,
     graph_id: str,
     confirm_data,
+    db=None,
 ) -> QueryResult:
-    """
-    Execute a confirmed destructive operation and return structured result.
-
-    SDK-friendly version that returns QueryResult instead of streaming.
-
-    Args:
-        user_id: The user identifier.
-        graph_id: The graph/database identifier.
-        confirm_data: Confirmation request with SQL query.
-
-    Returns:
-        QueryResult with execution results.
-    """
+    """Execute a confirmed destructive operation and return a structured result."""
     graph_id = graph_name(user_id, graph_id)
 
-    confirmation = getattr(confirm_data, 'confirmation', "")
-    if confirmation:
-        confirmation = confirmation.strip().upper()
+    confirmation = getattr(confirm_data, 'confirmation', "") or ""
+    confirmation = confirmation.strip().upper()
     sql_query = getattr(confirm_data, 'sql_query', "")
     queries_history = getattr(confirm_data, 'chat', [])
+    custom_api_key = getattr(confirm_data, 'custom_api_key', None)
+    custom_model = getattr(confirm_data, 'custom_model', None)
 
     if not sql_query:
         raise InvalidArgumentError("No SQL query provided")
@@ -542,16 +473,16 @@ async def execute_destructive_operation_sync(  # pylint: disable=too-many-locals
                 is_valid=True,
                 is_destructive=True,
                 requires_confirmation=False,
-                execution_time=time.perf_counter() - overall_start,
+                execution_time=_elapsed(overall_start),
             ),
         )
 
-    # Create memory tool for saving query results
-    memory_tool = await MemoryTool.create(user_id, graph_id)
+    memory_tool = await MemoryTool.create(user_id, graph_id, db=db)
+    question = queries_history[-1] if queries_history else "Destructive operation confirmation"
 
     try:
-        db_description, db_url = await get_db_description(graph_id)
-        _, loader_class = get_database_type_and_loader(db_url)
+        db_description, db_url = await get_db_description(graph_id, db=db)
+        db_type, loader_class = get_database_type_and_loader(db_url)
 
         if not loader_class:
             return _build_query_result(
@@ -561,49 +492,40 @@ async def execute_destructive_operation_sync(  # pylint: disable=too-many-locals
                 metadata=QueryMetadata(
                     confidence=0.0,
                     is_valid=False,
-                    execution_time=time.perf_counter() - overall_start,
+                    execution_time=_elapsed(overall_start),
                 ),
             )
 
-        # Execute SQL
+        sql_query, was_modified = await quote_identifiers_from_graph(
+            sql_query=sql_query,
+            graph_id=graph_id,
+            db_type=db_type,
+            db=db,
+        )
+        if was_modified:
+            logging.info("Confirmed SQL query auto-quoted")
+
         query_results = loader_class.execute_sql_query(sql_query, db_url)
 
-        # Check for schema modifications and refresh if needed
-        is_schema_modifying, operation_type = check_schema_modification(
-            sql_query, loader_class
+        await refresh_schema_if_modified(
+            sql_query=sql_query,
+            loader_class=loader_class,
+            graph_id=graph_id,
+            db_url=db_url,
+            db=db,
         )
-        if is_schema_modifying:
-            logging.info(
-                "Schema modification detected (%s). Refreshing graph schema.",
-                operation_type,
-            )
-            try:
-                refresh_success, refresh_message = (
-                    await loader_class.refresh_graph_schema(graph_id, db_url)
-                )
-                if not refresh_success:
-                    logging.warning(
-                        "Schema refresh failed after %s: %s",
-                        operation_type, refresh_message,
-                    )
-            except (RedisError, ConnectionError, OSError) as refresh_err:
-                logging.error("Error refreshing schema: %s", str(refresh_err))
 
-        # Generate response
-        response_agent = ResponseFormatterAgent()
-        ai_response = response_agent.format_response(
-            user_query=queries_history[-1] if queries_history else "Destructive operation",
+        ai_response = format_ai_response(
+            queries_history=queries_history or [question],
+            result_history=None,
             sql_query=sql_query,
             query_results=query_results,
-            db_description=db_description
+            db_description=db_description,
+            custom_api_key=custom_api_key,
+            custom_model=custom_model,
         )
 
-        # Save successful query to memory
-        question = (
-            queries_history[-1] if queries_history
-            else "Destructive operation confirmation"
-        )
-        _save_memory_background(
+        save_memory_background(
             memory_tool=memory_tool,
             question=question,
             sql_query=sql_query,
@@ -620,19 +542,15 @@ async def execute_destructive_operation_sync(  # pylint: disable=too-many-locals
                 is_valid=True,
                 is_destructive=True,
                 requires_confirmation=False,
-                execution_time=time.perf_counter() - overall_start,
+                execution_time=_elapsed(overall_start),
             ),
         )
 
-    except (RedisError, ConnectionError, OSError) as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        # Broad catch: loader_class.execute_sql_query raises driver-specific errors.
         logging.error("Error executing confirmed SQL: %s", str(e))
 
-        # Save failed query to memory
-        question = (
-            queries_history[-1] if queries_history
-            else "Destructive operation confirmation"
-        )
-        _save_memory_background(
+        save_memory_background(
             memory_tool=memory_tool,
             question=question,
             sql_query=sql_query,
@@ -649,25 +567,14 @@ async def execute_destructive_operation_sync(  # pylint: disable=too-many-locals
                 is_valid=True,
                 is_destructive=True,
                 requires_confirmation=False,
-                execution_time=time.perf_counter() - overall_start,
+                execution_time=_elapsed(overall_start),
             ),
         )
 
 
-async def refresh_database_schema_sync(user_id: str, graph_id: str) -> RefreshResult:
-    """
-    Refresh database schema and return structured result.
-
-    SDK-friendly version that returns RefreshResult instead of streaming.
-
-    Args:
-        user_id: The user identifier.
-        graph_id: The graph/database identifier.
-
-    Returns:
-        RefreshResult with refresh status.
-    """
-    # Imported here to break circular dependency between text2sql_sync and schema_loader
+async def refresh_database_schema_sync(user_id: str, graph_id: str, db=None) -> RefreshResult:
+    """Refresh the graph schema for a connected database and return status."""
+    # Imported here to break the circular import with schema_loader.
     from api.core.schema_loader import load_database_sync  # pylint: disable=import-outside-toplevel
 
     namespaced = graph_name(user_id, graph_id)
@@ -676,7 +583,7 @@ async def refresh_database_schema_sync(user_id: str, graph_id: str) -> RefreshRe
         raise InvalidArgumentError("Demo graphs cannot be refreshed")
 
     try:
-        _, db_url = await get_db_description(namespaced)
+        _, db_url = await get_db_description(namespaced, db=db)
 
         if not db_url or db_url == "No URL available for this database.":
             return RefreshResult(
@@ -684,8 +591,7 @@ async def refresh_database_schema_sync(user_id: str, graph_id: str) -> RefreshRe
                 message="No database URL found for this graph",
             )
 
-        # Use the sync version of load_database
-        connection_result = await load_database_sync(db_url, user_id)
+        connection_result = await load_database_sync(db_url, user_id, db=db)
 
         return RefreshResult(
             success=connection_result.success,

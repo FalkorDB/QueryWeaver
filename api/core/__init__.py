@@ -8,8 +8,8 @@ error handling, database schema loading, and text-to-SQL processing.
 
 from .errors import InternalError, GraphNotFoundError, InvalidArgumentError
 from .schema_loader import load_database, list_databases
-from .text2sql import MESSAGE_DELIMITER
 from .text2sql_common import (
+    MESSAGE_DELIMITER,
     graph_name,
     get_database_type_and_loader,
     sanitize_query,
