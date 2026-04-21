@@ -42,14 +42,12 @@ async def validate_api_key(request: Request, data: ValidateKeyRequest):  # pylin
             status_code=400
         )
 
-    # Validate vendor is supported
-    supported_vendors = (
-        "openai", "anthropic", "gemini", "azure", "ollama", "cohere",
-    )
-    if vendor not in supported_vendors:
-        allowed = ", ".join(supported_vendors)
+    # Validate vendor — only key-based vendors can be validated via API call
+    validatable_vendors = ("openai", "anthropic", "gemini", "cohere")
+    if vendor not in validatable_vendors:
+        allowed = ", ".join(validatable_vendors)
         return JSONResponse(
-            content={"valid": False, "error": f"Unsupported vendor. Supported: {allowed}"},
+            content={"valid": False, "error": f"Unsupported vendor for key validation. Supported: {allowed}"},
             status_code=400
         )
 
