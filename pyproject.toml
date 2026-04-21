@@ -20,7 +20,7 @@ dependencies = [
     "graphiti-core>=0.28.1",
     "fastmcp>=3.2.4",
     "snowflake-connector-python~=4.4.0",
-    "python-dotenv~=1.1.0",
+    "python-dotenv~=1.2.2",
     "aiohttp>=3.13.5",
 ]
 
