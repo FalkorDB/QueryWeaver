@@ -2,7 +2,7 @@
 FROM python:3.12-trixie AS python-base
 
 # Main stage: Use FalkorDB base and copy Python 3.12
-FROM falkordb/falkordb:v4.18.1
+FROM falkordb/falkordb:latest
 
 ENV PYTHONUNBUFFERED=1 \
     FALKORDB_HOST=localhost \
