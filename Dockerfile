@@ -1,5 +1,5 @@
 # Multi-stage build: Start with Python 3.12 base
-FROM python:3.12-bookworm AS python-base
+FROM python:3.12-trixie AS python-base
 
 # Main stage: Use FalkorDB base and copy Python 3.12
 FROM falkordb/falkordb:latest
@@ -15,7 +15,9 @@ COPY --from=python-base /usr/local /usr/local
 
 # Install netcat for wait loop in start.sh and system build tools needed for
 # compiling Python wheels (g++, make, libc-dev)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends libtinfo6 \
+    && apt-get install -y --no-install-recommends \
+    bash \
     netcat-openbsd \
     git \
     build-essential \

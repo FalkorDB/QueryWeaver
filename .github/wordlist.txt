@@ -1,6 +1,8 @@
 QueryWeaver
 FalkorDB
 OAuth
+DDL
+DML
 AGPL
 Affero
 nullability
