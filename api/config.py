@@ -7,7 +7,12 @@ import os
 import logging
 import dataclasses
 from typing import Union
+
+from dotenv import load_dotenv
 from litellm import embedding
+
+# Ensure .env is loaded before Config reads os.getenv() at class definition time
+load_dotenv()
 
 # Configure litellm logging to prevent sensitive data leakage
 def configure_litellm_logging():
@@ -64,6 +69,9 @@ def _with_prefix(model: str, provider: str) -> str:
     return prefix + model.removeprefix(prefix)
 
 
+SUPPORTED_VENDORS = ("openai", "anthropic", "gemini", "azure", "ollama", "cohere")
+
+
 @dataclasses.dataclass
 class Config:
     """
@@ -103,7 +111,7 @@ class Config:
             EMBEDDING_MODEL_NAME = "voyage/voyage-3"
         else:
             raise ValueError(
-                "Anthropic has no native embeddings. "
+                "ANTHROPIC_API_KEY is set, but Anthropic has no native embeddings. "
                 "Set EMBEDDING_MODEL or VOYAGE_API_KEY for embeddings."
             )
     elif os.getenv("COHERE_API_KEY"):
