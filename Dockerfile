@@ -15,7 +15,12 @@ COPY --from=python-base /usr/local /usr/local
 
 # Install netcat for wait loop in start.sh and system build tools needed for
 # compiling Python wheels (g++, make, libc-dev)
-RUN apt-get update && apt-get install -y --no-install-recommends libtinfo6 \
+# The falkordb base image excludes man pages via dpkg path-exclude, which
+# breaks bash's postinst (update-alternatives fails on the missing man page).
+# Drop the man/locale exclusions before installing packages whose postinst
+# scripts register man pages.
+RUN sed -i '/path-exclude.*\/usr\/share\/man\//d' /etc/dpkg/dpkg.cfg.d/docker \
+    && apt-get update && apt-get install -y --no-install-recommends libtinfo6 \
     && apt-get install -y --no-install-recommends \
     bash \
     netcat-openbsd \
