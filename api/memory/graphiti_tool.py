@@ -65,6 +65,7 @@ class MemoryTool:
        
         # Create Graphiti client with Azure OpenAI configuration
         self.graphiti_client = create_graphiti_client(falkor_driver)
+        self.memory_enabled = self.graphiti_client is not None
 
         self.user_id = user_id
         self.graph_id = graph_id
@@ -81,6 +82,9 @@ class MemoryTool:
     async def create(cls, user_id: str, graph_id: str, use_direct_entities: bool = True) -> "MemoryTool":
         """Async factory to construct and initialize the tool."""
         self = cls(user_id, graph_id)
+
+        if not self.memory_enabled:
+            return self
 
         await self._ensure_entity_nodes_direct(user_id, graph_id)
 
@@ -301,16 +305,18 @@ class MemoryTool:
     async def save_query_memory(self, query: str, sql_query: str, success: bool, error: Optional[str] = None) -> bool:
         """
         Save individual query memory directly to the database node.
-        
+
         Args:
             query: The user's natural language query
             sql_query: The generated SQL query
             success: Whether the query execution was successful
             error: Error message if the query failed
-            
+
         Returns:
             bool: True if memory was saved successfully, False otherwise
         """
+        if not self.memory_enabled:
+            return False
         try:
             database_name = self.graph_id
             database_node_name = f"Database {database_name}"
@@ -396,6 +402,8 @@ class MemoryTool:
         Returns:
             A list of similar query metadata.
         """
+        if not self.memory_enabled:
+            return []
         try:
             database_name = self.graph_id
             
@@ -457,10 +465,12 @@ class MemoryTool:
         Args:
             query: Natural language query to search for
             limit: Maximum number of results to return
-            
+
         Returns:
             List of user node summaries with metadata
         """
+        if not self.memory_enabled:
+            return ""
         try:
             driver = self.graphiti_client.driver
             query = """
@@ -508,14 +518,16 @@ class MemoryTool:
     async def search_database_facts(self, query: str, limit: int = 5, episode_limit: int = 3) -> str:
         """
         Search for database-specific facts and interaction history using database node as center.
-        
+
         Args:
             query: Natural language query to search for database facts
             limit: Maximum number of results to return
-            
+
         Returns:
             String containing all relevant database facts with time relevancy information
         """
+        if not self.memory_enabled:
+            return ""
         try:
             driver = self.graphiti_client.driver
             query = """
@@ -568,15 +580,18 @@ class MemoryTool:
         """
         Run both user summary and database facts searches concurrently for better performance.
         Also builds a comprehensive memory context string for the analysis agent.
-        
+
         Args:
             query: Natural language query to search for database facts
             user_limit: Maximum number of results for user summary search
             database_limit: Maximum number of results for database facts search
-            
+
         Returns:
-            Dict containing user_summary, database_facts, similar_queries, and memory_context
+            A formatted memory context string combining user summary, database facts,
+            and similar query history, or empty string if memory is disabled.
         """
+        if not self.memory_enabled:
+            return ""
         try:
             # Run both searches concurrently using asyncio.gather
             user_summary_task = self.search_user_summary(limit=user_limit)
@@ -835,10 +850,13 @@ def create_graphiti_client(falkor_driver: FalkorDriver) -> Graphiti:
     else:
         # Non-OpenAI/Azure providers (Gemini, Anthropic, Ollama, Cohere):
         # Graphiti memory requires OpenAI-compatible embeddings.
-        # Use LiteLLM embeddings via Config instead.
-        graphiti_client = Graphiti(
-            graph_driver=falkor_driver,
+        # Memory is not supported for these providers.
+        logging.warning(
+            "Memory is only supported with Azure or OpenAI providers. "
+            "Current provider: %s. Memory will be disabled.",
+            getattr(Config, 'LLM_PROVIDER', 'unknown')
         )
+        return None
 
     return graphiti_client
 

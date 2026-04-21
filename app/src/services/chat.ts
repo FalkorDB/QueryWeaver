@@ -36,44 +36,37 @@ export class ChatService {
       }
       // Add current query to the chat array
       chatHistory.push(request.query);
-      
-      // Build request body
-      const requestBody: any = {
+
+      // Build request body with custom API key/model if provided
+      const requestBody: Record<string, unknown> = {
         chat: chatHistory,
-        // Optional fields the backend supports:
-        // result: [],  // Previous results if needed
-        // instructions: ""  // Additional instructions if needed
+        result: resultHistory.length > 0 ? resultHistory : undefined,
+        ...(request.use_user_rules !== undefined && {
+          use_user_rules: request.use_user_rules
+        }),
+        ...(request.use_memory !== undefined && {
+          use_memory: request.use_memory
+        }),
       };
-      
-      // Add custom API key and model if provided
+
       if (request.customApiKey) {
         requestBody.custom_api_key = request.customApiKey;
       }
       if (request.customModel && request.customVendor) {
         const vendorPrefix = getVendorPrefix(request.customVendor);
-        // Avoid double-prefixing if model already contains the vendor prefix
         const model = request.customModel;
         requestBody.custom_model = model.startsWith(`${vendorPrefix}/`)
           ? model
           : `${vendorPrefix}/${model}`;
       }
-      
+
       const response = await fetch(buildApiUrl(endpoint), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...csrfHeaders(),
         },
-        body: JSON.stringify({
-          ...requestBody,
-          result: resultHistory.length > 0 ? resultHistory : undefined,
-          ...(request.use_user_rules !== undefined && {
-            use_user_rules: request.use_user_rules
-          }),
-          ...(request.use_memory !== undefined && {
-            use_memory: request.use_memory
-          })
-        }),
+        body: JSON.stringify(requestBody),
         credentials: 'include',
       });
 
