@@ -7,7 +7,12 @@ import os
 import logging
 import dataclasses
 from typing import Union
+
+from dotenv import load_dotenv
 from litellm import embedding
+
+# Ensure .env is loaded before Config reads os.getenv() at class definition time
+load_dotenv()
 
 # Configure litellm logging to prevent sensitive data leakage
 def configure_litellm_logging():
@@ -58,19 +63,70 @@ class EmbeddingsModel:
         return size
 
 
+def _with_prefix(model: str, provider: str) -> str:
+    """Ensure a model string has exactly one provider prefix."""
+    prefix = f"{provider}/"
+    return prefix + model.removeprefix(prefix)
+
+
+SUPPORTED_VENDORS = ("openai", "anthropic", "gemini", "azure", "ollama", "cohere")
+
+
 @dataclasses.dataclass
 class Config:
     """
     Configuration class for the text2sql module.
     """
-    AZURE_FLAG = True
-    if not os.getenv("OPENAI_API_KEY"):
-        EMBEDDING_MODEL_NAME = "azure/text-embedding-ada-002"
-        COMPLETION_MODEL = "azure/gpt-4.1"
-    else:
+
+    # User-provided overrides via env vars
+    _user_completion = os.getenv("COMPLETION_MODEL", "")
+    _user_embedding = os.getenv("EMBEDDING_MODEL", "")
+
+    # Determine the provider and models based on available API keys
+    # Priority: Ollama > OpenAI > Gemini > Anthropic > Cohere > Azure (default)
+    if os.getenv("OLLAMA_MODEL"):
+        LLM_PROVIDER = "ollama"
         AZURE_FLAG = False
-        EMBEDDING_MODEL_NAME = "openai/text-embedding-ada-002"
-        COMPLETION_MODEL = "openai/gpt-4.1"
+        COMPLETION_MODEL = _user_completion or _with_prefix(
+            os.getenv("OLLAMA_MODEL"), "ollama")
+        EMBEDDING_MODEL_NAME = _user_embedding or _with_prefix(
+            os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text"), "ollama")
+    elif os.getenv("OPENAI_API_KEY"):
+        LLM_PROVIDER = "openai"
+        AZURE_FLAG = False
+        COMPLETION_MODEL = _user_completion or "openai/gpt-4.1"
+        EMBEDDING_MODEL_NAME = _user_embedding or "openai/text-embedding-ada-002"
+    elif os.getenv("GEMINI_API_KEY"):
+        LLM_PROVIDER = "gemini"
+        AZURE_FLAG = False
+        COMPLETION_MODEL = _user_completion or "gemini/gemini-3-pro-preview"
+        EMBEDDING_MODEL_NAME = _user_embedding or "gemini/gemini-embedding-001"
+    elif os.getenv("ANTHROPIC_API_KEY"):
+        LLM_PROVIDER = "anthropic"
+        AZURE_FLAG = False
+        COMPLETION_MODEL = _user_completion or "anthropic/claude-sonnet-4-5-20250929"
+        if _user_embedding:
+            EMBEDDING_MODEL_NAME = _user_embedding
+        elif os.getenv("VOYAGE_API_KEY"):
+            EMBEDDING_MODEL_NAME = "voyage/voyage-3"
+        else:
+            raise ValueError(
+                "ANTHROPIC_API_KEY is set, but Anthropic has no native embeddings. "
+                "Set EMBEDDING_MODEL or VOYAGE_API_KEY for embeddings."
+            )
+    elif os.getenv("COHERE_API_KEY"):
+        LLM_PROVIDER = "cohere"
+        AZURE_FLAG = False
+        COMPLETION_MODEL = _user_completion or _with_prefix(
+            os.getenv("COHERE_MODEL", "command-a-03-2025"), "cohere")
+        EMBEDDING_MODEL_NAME = _user_embedding or _with_prefix(
+            os.getenv("COHERE_EMBEDDING_MODEL", "embed-v4.0"), "cohere")
+    else:
+        # Default to Azure
+        LLM_PROVIDER = "azure"
+        AZURE_FLAG = True
+        COMPLETION_MODEL = _user_completion or "azure/gpt-4.1"
+        EMBEDDING_MODEL_NAME = _user_embedding or "azure/text-embedding-ada-002"
 
     DB_MAX_DISTINCT: int = 100  # pylint: disable=invalid-name
     DB_UNIQUENESS_THRESHOLD: float = 0.5  # pylint: disable=invalid-name

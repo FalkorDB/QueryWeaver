@@ -150,6 +150,125 @@ class TestPostgreSQLLoader(unittest.TestCase):
         self.assertEqual(user_rel["target_column"], "id")
 
 
+class TestParseSchemaFromUrl(unittest.TestCase):
+    """Test cases for parse_schema_from_url helper method"""
+
+    def test_no_options_returns_public(self):
+        """Test that URL without options parameter returns 'public'"""
+        url = "postgresql://user:pass@localhost:5432/mydb"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'public')
+
+    def test_empty_options_returns_public(self):
+        """Test that URL with empty options returns 'public'"""
+        url = "postgresql://user:pass@localhost:5432/mydb?"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'public')
+
+    def test_options_without_search_path_returns_public(self):
+        """Test that options without search_path returns 'public'"""
+        url = "postgresql://user:pass@localhost:5432/mydb?options=-csynchronous_commit%3Dlocal"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'public')
+
+    def test_search_path_simple_schema(self):
+        """Test parsing a simple single schema from search_path"""
+        url = "postgresql://user:pass@localhost:5432/mydb?options=-csearch_path%3Dmy_schema"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'my_schema')
+
+    def test_search_path_with_space(self):
+        """Test parsing search_path with space after -c"""
+        url = "postgresql://user:pass@localhost:5432/mydb?options=-c%20search_path%3Dmy_schema"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'my_schema')
+
+    def test_search_path_multiple_schemas_returns_first(self):
+        """Test that multiple schemas returns the first one"""
+        url = "postgresql://user:pass@localhost:5432/mydb?options=-csearch_path%3Dschema1,schema2,schema3"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'schema1')
+
+    def test_search_path_dollar_user_first_returns_second(self):
+        """Test that $user as first schema returns the second schema"""
+        url = "postgresql://user:pass@localhost:5432/mydb?options=-csearch_path%3D%24user,my_schema"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'my_schema')
+
+    def test_search_path_dollar_user_space_after_comma(self):
+        """Test that $user, my_schema (space after comma) returns my_schema"""
+        url = "postgresql://user:pass@localhost:5432/mydb?options=-csearch_path%3D%24user,%20my_schema"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'my_schema')
+
+    def test_search_path_dollar_user_only_returns_public(self):
+        """Test that $user alone returns 'public'"""
+        url = "postgresql://user:pass@localhost:5432/mydb?options=-csearch_path%3D%24user"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'public')
+
+    def test_search_path_quoted_schema(self):
+        """Test parsing quoted schema name"""
+        url = "postgresql://user:pass@localhost:5432/mydb?options=-csearch_path%3D%22my_schema%22"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'my_schema')
+
+    def test_search_path_case_insensitive(self):
+        """Test that search_path matching is case insensitive"""
+        url = "postgresql://user:pass@localhost:5432/mydb?options=-cSEARCH_PATH%3Dmy_schema"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'my_schema')
+
+    def test_invalid_url_returns_public(self):
+        """Test that invalid URL returns 'public'"""
+        url = "not-a-valid-url"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'public')
+
+    def test_empty_url_returns_public(self):
+        """Test that empty URL returns 'public'"""
+        url = ""
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'public')
+
+    def test_multiple_options_with_search_path(self):
+        """Test parsing search_path when multiple options are present"""
+        url = ("postgresql://user:pass@localhost:5432/mydb"
+               "?options=-csynchronous_commit%3Dlocal%20-csearch_path%3Dmy_schema")
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'my_schema')
+
+    def test_search_path_with_equals_sign(self):
+        """Test parsing search_path with = sign format"""
+        url = "postgresql://user:pass@localhost:5432/mydb?options=-c%20search_path=custom_schema"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'custom_schema')
+
+    def test_search_path_empty_tokens_returns_public(self):
+        """Test that empty schema tokens (e.g. search_path=,) fallback to public"""
+        url = "postgresql://user:pass@localhost:5432/mydb?options=-csearch_path%3D,"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'public')
+
+    def test_search_path_blank_quoted_tokens_returns_public(self):
+        """Test that blank quoted tokens fallback to public"""
+        url = "postgresql://user:pass@localhost:5432/mydb?options=-csearch_path%3D%22%22,%22%22"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'public')
+
+    def test_search_path_repeated_dollar_user_returns_public(self):
+        """Test that repeated $user entries with no real schema returns public"""
+        url = "postgresql://user:pass@localhost:5432/mydb?options=-csearch_path%3D%24user,%24user"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'public')
+
+    def test_search_path_repeated_dollar_user_with_schema(self):
+        """Test that repeated $user entries followed by a real schema returns that schema"""
+        url = "postgresql://user:pass@localhost:5432/mydb?options=-csearch_path%3D%24user,%24user,my_schema"
+        result = PostgresLoader.parse_schema_from_url(url)
+        self.assertEqual(result, 'my_schema')
+
+
 def run_tests():
     """Run all tests"""
     print("Running PostgreSQL Loader Tests")

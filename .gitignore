@@ -32,3 +32,6 @@ demo_tokens.py
 /playwright/.cache/
 /playwright/.auth/
 e2e/.auth/
+# Build artifacts
+clients/python/queryweaver_client.egg-info/
+clients/ts/dist/

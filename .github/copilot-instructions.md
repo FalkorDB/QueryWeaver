@@ -10,7 +10,7 @@ QueryWeaver is an open-source Text2SQL tool that transforms natural language int
 - **Backend**: Python 3.12+, FastAPI 0.115.0+, FalkorDB (Redis-based graph database)
 - **AI/ML**: LiteLLM with Azure OpenAI/OpenAI integration for text-to-SQL generation
 - **Testing**: pytest for unit tests, Playwright for E2E testing
-- **Dependencies**: pipenv for package management
+- **Dependencies**: uv for package management
 - **Authentication**: authlib with Google/GitHub OAuth
 - **Deployment**: Docker support, Vercel configuration
 
@@ -22,8 +22,9 @@ Follow this order for a reliable local setup; if you customize the steps, ensure
 
 ### 1. Initial Setup (recommended for new contributors)
 ```bash
-# Install pipenv if not available
-pip install pipenv
+# Install uv if not available
+pip install uv
+# or visit https://docs.astral.sh/uv/getting-started/installation/
 
 # Install dependencies (backend + frontend) and prepare dev tools
 # Recommended: use the Make helper which installs Python deps and frontend deps
@@ -34,9 +35,9 @@ make install
 make setup-dev
 
 # OR manual steps if you prefer more granular control:
-# pipenv sync --dev
-# pipenv run playwright install chromium
-# pipenv run playwright install-deps
+# uv sync
+# uv run playwright install chromium
+# uv run playwright install-deps
 
 # Set up environment file
 cp .env.example .env
@@ -51,9 +52,9 @@ Note: This project includes a TypeScript frontend in `app/` that must be built b
 make setup-dev
 
 # OR manual steps:
-pipenv sync --dev
-pipenv run playwright install chromium
-pipenv run playwright install-deps
+uv sync
+uv run playwright install chromium
+uv run playwright install-deps
 ```
 
 ### 3. Testing Commands
@@ -82,7 +83,7 @@ make docker-stop
 ```bash
 # Run pylint (can be run without FalkorDB)
 make lint
-# OR manually: pipenv run pylint $(git ls-files '*.py')
+# OR manually: uv run pylint $(git ls-files '*.py')
 ```
 
 ### 5. Running the Application
@@ -90,11 +91,11 @@ make lint
 ```bash
 # Development server with debug mode
 make run-dev
-# OR manually: pipenv run uvicorn api.index:app --host "localhost" --port "5000" --reload
+# OR manually: uv run uvicorn api.index:app --host "localhost" --port "5000" --reload
 
 # Production mode
 make run-prod
-# OR manually: pipenv run uvicorn api.index:app --host "localhost" --port "5000"
+# OR manually: uv run uvicorn api.index:app --host "localhost" --port "5000"
 ```
 
 Important: If you're preparing a production deployment or have changed frontend code, run `make build-prod` (or `make build-dev` for a development build) first to produce the static bundle used by the app.
@@ -183,8 +184,8 @@ make docker-falkordb
 **Error**: E2E tests fail with browser not found
 **Solution**:
 ```bash
-pipenv run playwright install chromium
-pipenv run playwright install-deps
+uv run playwright install chromium
+uv run playwright install-deps
 ```
 
 ### 3. Missing Environment File
@@ -197,10 +198,10 @@ cp .env.example .env
 
 ### 4. Import Errors During Testing
 **Error**: Module import failures in tests
-**Solution**: Ensure you're using pipenv and dependencies are installed:
+**Solution**: Ensure you're using uv and dependencies are installed:
 ```bash
-pipenv sync --dev
-pipenv run pytest tests/ -k "not e2e"
+uv sync
+uv run python -m pytest tests/ -k "not e2e"
 ```
 
 ### 5. Port Conflicts
@@ -242,7 +243,7 @@ tests/
 ```
 
 ### Configuration Files
-- `Pipfile` & `Pipfile.lock`: Python dependencies
+- `pyproject.toml` & `uv.lock`: Python dependencies
 - `pytest.ini`: Test configuration with custom markers
 - `Makefile`: Build and development commands
 - `.env.example`: Environment variable template
@@ -268,7 +269,7 @@ The repository has comprehensive CI/CD in `.github/workflows/`:
 
 2. **pylint.yml**: Code quality checks
    - Runs on every push
-   - Uses same Python/pipenv setup
+   - Uses same Python/uv setup
 
 3. **e2e-tests.yml**: Dedicated E2E testing
    - Separate workflow for E2E tests
@@ -281,8 +282,8 @@ The repository has comprehensive CI/CD in `.github/workflows/`:
 All workflows follow this pattern:
 ```yaml
 - Python 3.12 setup
-- pipenv installation
-- pipenv sync --dev
+- uv installation
+- uv sync
 - .env file creation with test values (use FALKORDB_URL in CI)
 - FalkorDB service startup (for tests requiring DB)
 - Playwright browser installation (for E2E tests)

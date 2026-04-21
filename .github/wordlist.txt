@@ -1,6 +1,8 @@
 QueryWeaver
 FalkorDB
 OAuth
+DDL
+DML
 AGPL
 Affero
 nullability
@@ -8,6 +10,7 @@ schemas
 psycopg
 html
 PostgreSQLLoader
+PostgresLoader
 api
 postgres
 postgresql
@@ -30,8 +33,8 @@ Nullability
 endcapture
 CVSS
 falkordb
-pipenv
-Pipenv
+uv
+pyproject
 README
 md
 UI
@@ -71,9 +74,13 @@ namespace
 namespaced
 
 CSRF
+Anthropic
+Cohere
 LLM
+Ollama
 OpenAI
 OpenAI's
+DockerHub
 Dockerhub
 FDE
 github
@@ -96,3 +103,21 @@ JOINs
 subqueries
 subquery
 TTL
+
+config
+docstring
+dotenv
+ESLint
+GraphNotFoundError
+HSTS
+init
+InternalError
+InvalidArgumentError
+Middleware
+monorepo
+PRs
+pylint
+pytest
+Radix
+Zod
+Dependabot

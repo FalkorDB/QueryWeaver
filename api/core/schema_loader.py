@@ -13,6 +13,7 @@ from api.core.errors import InvalidArgumentError
 from api.loaders.base_loader import BaseLoader
 from api.loaders.postgres_loader import PostgresLoader
 from api.loaders.mysql_loader import MySQLLoader
+from api.loaders.snowflake_loader import SnowflakeLoader
 
 # Use the same delimiter as in the JavaScript frontend for streaming chunks
 MESSAGE_DELIMITER = "|||FALKORDB_MESSAGE_BOUNDARY|||"
@@ -44,6 +45,9 @@ def _step_detect_db_type(steps_counter: int, url: str) -> tuple[type[BaseLoader]
     elif url.startswith("mysql://"):
         db_type = "mysql"
         loader = MySQLLoader
+    elif url.startswith("snowflake://"):
+        db_type = "snowflake"
+        loader = SnowflakeLoader
     else:
         raise InvalidArgumentError("Invalid database URL format")
 

@@ -1,5 +1,5 @@
 # Multi-stage build: Start with Python 3.12 base
-FROM python:3.12-bookworm AS python-base
+FROM python:3.12-trixie AS python-base
 
 # Main stage: Use FalkorDB base and copy Python 3.12
 FROM falkordb/falkordb:latest
@@ -15,7 +15,9 @@ COPY --from=python-base /usr/local /usr/local
 
 # Install netcat for wait loop in start.sh and system build tools needed for
 # compiling Python wheels (g++, make, libc-dev)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends libtinfo6 \
+    && apt-get install -y --no-install-recommends \
+    bash \
     netcat-openbsd \
     git \
     build-essential \
@@ -28,14 +30,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install pipenv
-RUN python3 -m pip install --no-cache-dir --break-system-packages pipenv
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Copy Pipfile and Pipfile.lock
-COPY Pipfile Pipfile.lock ./
+# Copy pyproject.toml, uv.lock, and README.md (needed by hatchling during install)
+COPY pyproject.toml uv.lock* README.md ./
 
-# Install Python dependencies from Pipfile
-RUN PIP_BREAK_SYSTEM_PACKAGES=1 pipenv sync --system
+# Install packages into system Python (no virtualenv in container)
+ENV UV_SYSTEM_PYTHON=1
+
+# Ensure venv binaries are on PATH (uv sync always creates .venv)
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Install Python dependencies only (project itself installed after COPY)
+RUN uv sync --frozen --no-dev --no-install-project
 
 # Install Node.js (Node 22) so we can build the frontend inside the image.
 # Use NodeSource setup script to get a recent Node version on Debian-based images.
@@ -68,6 +76,9 @@ RUN npm --prefix ./app run build
 
 # Copy application code 
 COPY . .
+
+# Install the project package now that source code is available
+RUN uv sync --frozen --no-dev
 
 # Copy and make start.sh executable
 COPY start.sh /start.sh

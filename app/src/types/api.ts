@@ -37,6 +37,9 @@ export interface ChatRequest {
   query: string;
   database: string;
   history?: ConversationMessage[];
+  customApiKey?: string;
+  customModel?: string;
+  customVendor?: 'openai' | 'google' | 'anthropic';
   use_user_rules?: boolean; // If true, backend fetches rules from database
   use_memory?: boolean;
 }
@@ -90,6 +93,8 @@ export interface ConfirmRequest {
   confirmation: string;   // "CONFIRM" or "" (empty for cancel)
   chat: string[];         // Conversation history
   use_user_rules?: boolean; // If true, backend fetches rules from database
+  custom_api_key?: string;
+  custom_model?: string;
 }
 
 // Upload types

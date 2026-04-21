@@ -235,11 +235,13 @@ async def validate_user(request: Request) -> Tuple[Optional[Dict[str, Any]], boo
     try:
         api_token = get_token(request)
 
-        if api_token:
-            db_info = await _get_user_info(api_token)
+        if not api_token:
+            return None, False
 
-            if db_info:
-                return db_info, True
+        db_info = await _get_user_info(api_token)
+
+        if db_info:
+            return db_info, True
 
         return None, False
 
