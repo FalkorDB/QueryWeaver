@@ -15,7 +15,9 @@ COPY --from=python-base /usr/local /usr/local
 
 # Install netcat for wait loop in start.sh and system build tools needed for
 # compiling Python wheels (g++, make, libc-dev)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends libtinfo6 \
+    && apt-get install -y --no-install-recommends \
+    bash \
     netcat-openbsd \
     git \
     build-essential \
