@@ -1,8 +1,8 @@
 # Multi-stage build: Start with Python 3.12 base
-FROM python:3.12-bookworm AS python-base
+FROM python:3.12-trixie AS python-base
 
 # Main stage: Use FalkorDB base and copy Python 3.12
-FROM falkordb/falkordb:latest
+FROM falkordb/falkordb:v4.18.1
 
 ENV PYTHONUNBUFFERED=1 \
     FALKORDB_HOST=localhost \
