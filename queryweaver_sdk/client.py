@@ -251,11 +251,13 @@ class QueryWeaver:
         from api.core.text2sql_sync import refresh_database_schema_sync
         return await refresh_database_schema_sync(self._user_id, database, db=self._db)
 
-    async def execute_confirmed(
+    async def execute_confirmed(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         database: str,
         sql_query: str,
         chat_history: Optional[list[str]] = None,
+        custom_api_key: Optional[str] = None,
+        custom_model: Optional[str] = None,
     ) -> QueryResult:
         """Execute a confirmed destructive SQL operation.
 
@@ -266,6 +268,9 @@ class QueryWeaver:
             database: The database identifier.
             sql_query: The SQL query to execute.
             chat_history: Conversation context.
+            custom_api_key: Per-request override for the LLM API key.
+            custom_model: Per-request override for the LLM model
+                (``vendor/model`` format, e.g. ``openai/gpt-4.1``).
 
         Returns:
             QueryResult with execution results.
@@ -277,6 +282,8 @@ class QueryWeaver:
             sql_query=sql_query,
             confirmation="CONFIRM",
             chat=chat_history or [],
+            custom_api_key=custom_api_key,
+            custom_model=custom_model,
         )
 
         with self._bind_task_sink():

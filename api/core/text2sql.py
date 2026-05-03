@@ -793,3 +793,10 @@ async def delete_database(user_id: str, graph_id: str, db=None):
     except (RedisError, ConnectionError) as e:
         logging.exception("Failed to delete graph %s: %s", sanitize_log_input(namespaced), e)
         raise InternalError("Failed to delete graph") from e
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        # Catch-all so any future driver-specific exception is wrapped into
+        # a consistent API/SDK error contract instead of leaking as a 500.
+        logging.exception(
+            "Unexpected error deleting graph %s: %s", sanitize_log_input(namespaced), e,
+        )
+        raise InternalError("Failed to delete graph") from e

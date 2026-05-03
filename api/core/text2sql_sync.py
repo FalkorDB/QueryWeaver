@@ -490,10 +490,14 @@ async def execute_destructive_operation_sync(  # pylint: disable=too-many-locals
             ),
         )
 
-    memory_tool = await MemoryTool.create(user_id, graph_id, db=db)
     question = queries_history[-1] if queries_history else "Destructive operation confirmation"
+    memory_tool = None
 
     try:
+        # MemoryTool.create can raise (memory not configured, connection errors).
+        # Keep it inside the try so failures are wrapped into a structured
+        # QueryResult instead of propagating to the SDK caller.
+        memory_tool = await MemoryTool.create(user_id, graph_id, db=db)
         db_description, db_url = await get_db_description(graph_id, db=db)
         db_type, loader_class = get_database_type_and_loader(db_url)
 
@@ -560,16 +564,18 @@ async def execute_destructive_operation_sync(  # pylint: disable=too-many-locals
         )
 
     except Exception as e:  # pylint: disable=broad-exception-caught
-        # Broad catch: loader_class.execute_sql_query raises driver-specific errors.
+        # Broad catch: loader_class.execute_sql_query raises driver-specific errors,
+        # and MemoryTool.create can also raise before memory_tool is set.
         logging.error("Error executing confirmed SQL: %s", str(e))
 
-        save_memory_background(
-            memory_tool=memory_tool,
-            question=question,
-            sql_query=sql_query,
-            success=False,
-            error=str(e),
-        )
+        if memory_tool is not None:
+            save_memory_background(
+                memory_tool=memory_tool,
+                question=question,
+                sql_query=sql_query,
+                success=False,
+                error=str(e),
+            )
 
         return _build_query_result(
             sql_query=sql_query,

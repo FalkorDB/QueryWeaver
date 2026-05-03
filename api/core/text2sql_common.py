@@ -15,7 +15,7 @@ from api.agents import ResponseFormatterAgent
 from api.agents.healer_agent import HealerAgent
 from api.config import Config
 from api.core.db_resolver import resolve_db
-from api.core.errors import GraphNotFoundError, InvalidArgumentError
+from api.core.errors import InvalidArgumentError
 from api.loaders.postgres_loader import PostgresLoader
 from api.loaders.mysql_loader import MySQLLoader
 from api.loaders.base_loader import BaseLoader
@@ -62,12 +62,14 @@ def graph_name(user_id: str, graph_id: str) -> str:
     prefix for general/demo graphs.
 
     Raises:
-        GraphNotFoundError: If *graph_id* is empty after stripping.
+        InvalidArgumentError: If *graph_id* is empty after stripping.
     """
     graph_id = graph_id.strip()[:200]
     if not graph_id:
-        raise GraphNotFoundError(
-            "Invalid graph_id, must be less than 200 characters."
+        # Bad input is a 400, not a 404 — several callers map
+        # InvalidArgumentError → 400 in the HTTP layer.
+        raise InvalidArgumentError(
+            "Invalid graph_id, must be a non-empty string up to 200 characters."
         )
 
     if GENERAL_PREFIX and graph_id.startswith(GENERAL_PREFIX):

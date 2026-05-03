@@ -15,7 +15,6 @@ from api.core.text2sql_common import MESSAGE_DELIMITER
 from api.loaders.base_loader import BaseLoader
 from api.loaders.postgres_loader import PostgresLoader
 from api.loaders.mysql_loader import MySQLLoader
-from api.loaders.snowflake_loader import SnowflakeLoader
 from api.core.result_models import DatabaseConnection
 
 
@@ -46,6 +45,10 @@ def _step_detect_db_type(steps_counter: int, url: str) -> tuple[type[BaseLoader]
         db_type = "mysql"
         loader = MySQLLoader
     elif url.startswith("snowflake://"):
+        # Lazy-import: snowflake-connector-python is in the [server] extra,
+        # not in the core SDK install.
+        # pylint: disable=import-outside-toplevel
+        from api.loaders.snowflake_loader import SnowflakeLoader
         db_type = "snowflake"
         loader = SnowflakeLoader
     else:
@@ -208,9 +211,13 @@ async def load_database_sync(url: str, user_id: str, db=None):
         if success:
             # SDK callers pass the un-prefixed database_id back into query/delete/etc.,
             # where graph_name(user_id, db_name) re-applies the user_id prefix.
-            db_name = urlparse(url).path.lstrip("/")
+            # urlparse.path may carry trailing slashes or schema/path separators
+            # (e.g. ``/mydb/``), and the query string is already stripped from .path
+            # by urlparse — but a malformed URL may yield an empty .path, so we fall
+            # back to splitting the raw URL.
+            db_name = urlparse(url).path.strip("/").split("/")[0]
             if not db_name:
-                db_name = url.rsplit("/", 1)[-1].split("?")[0]
+                db_name = url.rsplit("/", 1)[-1].split("?")[0].split("#")[0]
 
             return DatabaseConnection(
                 database_id=db_name,
