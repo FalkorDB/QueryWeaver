@@ -453,7 +453,16 @@ async def execute_destructive_operation_sync(  # pylint: disable=too-many-locals
     db=None,
 ) -> QueryResult:
     """Execute a confirmed destructive operation and return a structured result."""
-    graph_id = graph_name(user_id, graph_id)
+    namespaced = graph_name(user_id, graph_id)
+
+    if is_general_graph(namespaced):
+        # Match the streaming path: demo/general graphs are read-only — even
+        # an explicit CONFIRM must not execute writes against them.
+        raise InvalidArgumentError(
+            "Destructive operations are not allowed on demo graphs"
+        )
+
+    graph_id = namespaced
 
     confirmation = getattr(confirm_data, 'confirmation', "") or ""
     confirmation = confirmation.strip().upper()

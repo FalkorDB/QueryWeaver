@@ -17,8 +17,19 @@ Optional:
 
 import asyncio
 import os
+from urllib.parse import urlparse
 
 from queryweaver_sdk import QueryRequest, QueryWeaver
+
+
+def _redact_url(url: str) -> str:
+    """Render a connection URL without leaking the password."""
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    if parsed.port:
+        host = f"{host}:{parsed.port}"
+    user = f"{parsed.username}@" if parsed.username else ""
+    return f"{parsed.scheme}://{user}{host}{parsed.path}"
 
 
 POSTGRES_URL = os.environ.get(
@@ -37,7 +48,7 @@ def _print_rows(rows, limit=10):
 
 async def main() -> None:
     async with QueryWeaver(falkordb_url=FALKORDB_URL, user_id="demo") as qw:
-        print(f"Connecting to PostgreSQL at {POSTGRES_URL}")
+        print(f"Connecting to PostgreSQL at {_redact_url(POSTGRES_URL)}")
         conn = await qw.connect_database(POSTGRES_URL)
         if not conn.success:
             raise SystemExit(f"connect failed: {conn.message}")

@@ -288,10 +288,17 @@ class QueryWeaver:
         """Close the SDK connection and release resources.
 
         Awaits any in-flight background memory writes so they land before
-        the FalkorDB connection pool is released.
+        the FalkorDB connection pool is released. Drains in a loop because
+        ``save_memory_background`` registers ``sink.discard`` as a done
+        callback and any awaited task can schedule further tasks via the
+        same contextvar sink.
         """
-        if self._pending_tasks:
-            await asyncio.gather(*self._pending_tasks, return_exceptions=True)
+        while self._pending_tasks:
+            # Snapshot before awaiting — the live set mutates from done
+            # callbacks (sink.discard) and would raise "set changed size
+            # during iteration" if unpacked directly into gather().
+            tasks = list(self._pending_tasks)
+            await asyncio.gather(*tasks, return_exceptions=True)
         await self._connection.close()
 
     async def __aenter__(self) -> "QueryWeaver":

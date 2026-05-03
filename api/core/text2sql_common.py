@@ -166,9 +166,39 @@ def truncate_for_log(query: str, max_length: int = 200) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _strip_sql_comments_and_whitespace(sql_query: str) -> str:
+    """Strip leading SQL comments (-- line and /* block */) and whitespace.
+
+    A naive ``strip().split()[0]`` lets ``-- evil\\nDROP TABLE x`` masquerade
+    as a non-destructive statement, bypassing confirmation.
+    """
+    text = sql_query.lstrip()
+    while text:
+        if text.startswith("--"):
+            newline = text.find("\n")
+            if newline == -1:
+                return ""
+            text = text[newline + 1:].lstrip()
+        elif text.startswith("/*"):
+            end = text.find("*/")
+            if end == -1:
+                return ""
+            text = text[end + 2:].lstrip()
+        else:
+            break
+    return text
+
+
 def detect_destructive_operation(sql_query: str) -> tuple[str, bool]:
-    """Return ``(sql_type, is_destructive)`` for a SQL statement."""
-    sql_type = sql_query.strip().split()[0].upper() if sql_query else ""
+    """Return ``(sql_type, is_destructive)`` for a SQL statement.
+
+    Strips leading SQL comments before classifying so attackers cannot
+    bypass destructive-op confirmation by prefixing a comment.
+    """
+    if not sql_query:
+        return "", False
+    cleaned = _strip_sql_comments_and_whitespace(sql_query)
+    sql_type = cleaned.split()[0].upper() if cleaned else ""
     return sql_type, sql_type in DESTRUCTIVE_OPS
 
 
@@ -485,6 +515,20 @@ def save_memory_background(  # pylint: disable=too-many-arguments,too-many-posit
         sink.add(task)
         task.add_done_callback(sink.discard)
 
+    def _log_done(label: str):
+        # Done-callbacks must not call ``t.exception()`` on a cancelled task —
+        # it raises CancelledError and surfaces as a noisy "exception in callback"
+        # log line, which is misleading at shutdown.
+        def _cb(task):
+            if task.cancelled():
+                return
+            exc = task.exception()
+            if exc is not None:
+                logging.error("%s failed: %s", label, exc)  # nosemgrep
+            else:
+                logging.info("%s completed successfully", label)
+        return _cb
+
     save_query_task = asyncio.create_task(
         memory_tool.save_query_memory(
             query=question,
@@ -494,24 +538,15 @@ def save_memory_background(  # pylint: disable=too-many-arguments,too-many-posit
         )
     )
     _track(save_query_task)
-    save_query_task.add_done_callback(
-        lambda t: logging.error("Query memory save failed: %s", t.exception())  # nosemgrep
-        if t.exception() else logging.info("Query memory saved successfully")
-    )
+    save_query_task.add_done_callback(_log_done("Query memory save"))
 
     if full_response is not None and chat_histories is not None:
         save_task = asyncio.create_task(
             memory_tool.add_new_memory(full_response, chat_histories)
         )
         _track(save_task)
-        save_task.add_done_callback(
-            lambda t: logging.error("Memory save failed: %s", t.exception())  # nosemgrep
-            if t.exception() else logging.info("Conversation saved to memory tool")
-        )
+        save_task.add_done_callback(_log_done("Memory save"))
 
     clean_task = asyncio.create_task(memory_tool.clean_memory())
     _track(clean_task)
-    clean_task.add_done_callback(
-        lambda t: logging.error("Memory cleanup failed: %s", t.exception())  # nosemgrep
-        if t.exception() else logging.info("Memory cleanup completed successfully")
-    )
+    clean_task.add_done_callback(_log_done("Memory cleanup"))
