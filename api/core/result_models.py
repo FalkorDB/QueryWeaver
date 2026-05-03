@@ -169,9 +169,6 @@ class RefreshResult:
     message: str = ""
     """Status message or error description."""
 
-    tables_updated: int = 0
-    """Number of tables updated during refresh."""
-
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return asdict(self)

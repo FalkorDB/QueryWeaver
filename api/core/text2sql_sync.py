@@ -579,7 +579,7 @@ async def refresh_database_schema_sync(user_id: str, graph_id: str, db=None) -> 
 
     namespaced = graph_name(user_id, graph_id)
 
-    if is_general_graph(graph_id):
+    if is_general_graph(namespaced):
         raise InvalidArgumentError("Demo graphs cannot be refreshed")
 
     try:
@@ -596,7 +596,6 @@ async def refresh_database_schema_sync(user_id: str, graph_id: str, db=None) -> 
         return RefreshResult(
             success=connection_result.success,
             message=connection_result.message,
-            tables_updated=connection_result.tables_loaded,
         )
 
     except (RedisError, ConnectionError, OSError) as e:
