@@ -11,8 +11,8 @@ Required environment variables:
                            (AZURE_API_KEY+AZURE_API_BASE+AZURE_API_VERSION,
                             GEMINI_API_KEY, ANTHROPIC_API_KEY, COHERE_API_KEY)
 
-Optional:
-    DEMO_POSTGRES_URL    defaults to postgresql://root:123123@localhost:5432/queryweaver_demo
+Required (for the demo Postgres loaded from ``ecommerce_example.sql``):
+    DEMO_POSTGRES_URL    e.g. postgresql://USER:PASSWORD@localhost:5432/queryweaver_demo
 """
 
 import asyncio
@@ -32,11 +32,14 @@ def _redact_url(url: str) -> str:
     return f"{parsed.scheme}://{user}{host}{parsed.path}"
 
 
-POSTGRES_URL = os.environ.get(
-    "DEMO_POSTGRES_URL",
-    "postgresql://root:123123@localhost:5432/queryweaver_demo",
-)
+POSTGRES_URL = os.environ.get("DEMO_POSTGRES_URL", "")
 FALKORDB_URL = os.environ.get("FALKORDB_URL", "redis://localhost:6379")
+
+if not POSTGRES_URL:
+    raise SystemExit(
+        "Set DEMO_POSTGRES_URL, e.g. "
+        "postgresql://USER:PASSWORD@localhost:5432/queryweaver_demo"
+    )
 
 
 def _print_rows(rows, limit=10):

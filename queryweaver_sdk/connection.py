@@ -37,6 +37,7 @@ class FalkorDBConnection:
         self._port = port
         self._db: Optional[FalkorDB] = None
         self._pool: Optional[BlockingConnectionPool] = None
+        self._closed = False
 
     @property
     def db(self) -> FalkorDB:
@@ -49,7 +50,13 @@ class FalkorDBConnection:
 
         Raises:
             ConnectionError: If connection cannot be established.
+            RuntimeError: If accessed after ``close()`` — prevents silently
+                spinning up a fresh pool that would never be torn down.
         """
+        if self._closed:
+            raise RuntimeError(
+                "FalkorDBConnection is closed; create a new QueryWeaver instance"
+            )
         if self._db is None:
             self._db = self._create_connection()
         return self._db
@@ -109,7 +116,13 @@ class FalkorDBConnection:
         return cls(url=url)
 
     async def close(self) -> None:
-        """Close the connection and release resources."""
+        """Close the connection and release resources.
+
+        Idempotent — repeated calls are safe. After close, the ``db``
+        property raises ``RuntimeError`` rather than silently reconnecting.
+        """
+        if self._closed:
+            return
         if self._pool is not None:
             await self._pool.disconnect()
             self._pool = None
@@ -117,6 +130,7 @@ class FalkorDBConnection:
             # Non-pooled connection (created via host/port) — close directly
             await self._db.connection.aclose()
         self._db = None
+        self._closed = True
 
     def select_graph(self, graph_id: str):
         """Select a graph by ID.

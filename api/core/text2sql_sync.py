@@ -470,6 +470,7 @@ async def execute_destructive_operation_sync(  # pylint: disable=too-many-locals
     queries_history = getattr(confirm_data, 'chat', [])
     custom_api_key = getattr(confirm_data, 'custom_api_key', None)
     custom_model = getattr(confirm_data, 'custom_model', None)
+    validate_custom_model(custom_model)
 
     if not sql_query:
         raise InvalidArgumentError("No SQL query provided")

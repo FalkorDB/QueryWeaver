@@ -358,24 +358,16 @@ async def execute_with_healing(  # pylint: disable=too-many-arguments,too-many-p
                     f"{healing_result.get('attempts', 0)} attempt(s)"
                 ),
                 "final_error": healing_result.get("final_error", str(exec_error)),
-                "healing_log": healing_result.get("healing_log", []),
             })
             raise
 
-        # Surface per-attempt progress when emitting.
-        for log_entry in healing_result.get("healing_log", []):
-            if log_entry.get("status") == "healed":
-                await _maybe_emit(emit, {
-                    "type": "healing_attempt",
-                    "attempt": log_entry.get("attempt"),
-                    "changes": log_entry.get("changes_made", []),
-                    "confidence": log_entry.get("confidence", 0),
-                })
-
+        # ``HealerAgent.heal_and_execute`` already returns ``attempts = attempt + 1``
+        # (the true count) and does not produce a per-attempt log. Emit attempts
+        # as-is and skip the per-attempt event until the agent surfaces such a log.
         await _maybe_emit(emit, {
             "type": "healing_success",
             "healed_sql": healing_result["sql_query"],
-            "attempts": healing_result.get("attempts", 0) + 1,
+            "attempts": healing_result.get("attempts", 0),
         })
         return healing_result["sql_query"], healing_result["query_results"]
 
