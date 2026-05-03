@@ -6,7 +6,7 @@ these for the SDK's public surface.
 """
 
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Optional
 
 
 @dataclass
@@ -70,12 +70,16 @@ class QueryResult:
     analysis: QueryAnalysis = field(default_factory=QueryAnalysis)
     """Query analysis information (missing info, ambiguities, explanation)."""
 
+    error_message: Optional[str] = None
+    """Execution error, if any. None on success."""
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary with flattened structure for compatibility."""
         result = {
             "sql_query": self.sql_query,
             "results": self.results,
             "ai_response": self.ai_response,
+            "error_message": self.error_message,
         }
         result.update(self.metadata.to_dict())
         result.update(self.analysis.to_dict())
