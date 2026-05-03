@@ -15,7 +15,7 @@ from api.core.text2sql import (
     query_database,
     refresh_database_schema,
 )
-from api.core.text2sql_common import GENERAL_PREFIX, graph_name
+from api.core.pipeline import GENERAL_PREFIX, graph_name
 from api.core.errors import GraphNotFoundError, InternalError, InvalidArgumentError
 from api.graph import get_user_rules, set_user_rules
 from api.auth.user_management import token_required

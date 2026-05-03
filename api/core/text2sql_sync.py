@@ -1,6 +1,6 @@
 """SDK Non-Streaming Functions for Text2SQL.
 
-Thin orchestrator over helpers in :mod:`api.core.text2sql_common` — the
+Thin orchestrator over helpers in :mod:`api.core.pipeline` — the
 same helpers the streaming path uses. Only transport differs.
 """
 
@@ -14,7 +14,7 @@ from redis import RedisError
 
 from api.agents import AnalysisAgent, FollowUpAgent, RelevancyAgent
 from api.core.errors import InvalidArgumentError
-from api.core.text2sql_common import (
+from api.core.pipeline import (
     auto_quote_sql_identifiers,
     build_destructive_confirmation_message,
     detect_destructive_operation,

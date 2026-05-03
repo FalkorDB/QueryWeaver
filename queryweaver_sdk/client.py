@@ -72,7 +72,7 @@ class QueryWeaver:
         self._connection = FalkorDBConnection(url=falkordb_url)
         # Set of in-flight background tasks (memory writes) so close() can
         # await them. Populated via the ``background_tasks_var`` contextvar
-        # in ``api.core.text2sql_common``.
+        # in ``api.core.pipeline``.
         self._pending_tasks: set = set()
 
     @property
@@ -88,7 +88,7 @@ class QueryWeaver:
         background memory writes; close() then awaits them before the pool
         is disconnected.
         """
-        from api.core.text2sql_common import background_tasks_var
+        from api.core.pipeline import background_tasks_var
         token = background_tasks_var.set(self._pending_tasks)
         try:
             yield
@@ -211,7 +211,7 @@ class QueryWeaver:
             List of database identifiers.
         """
         from api.core.schema_loader import list_databases as _list_databases  # pylint: disable=import-outside-toplevel
-        from api.core.text2sql_common import GENERAL_PREFIX  # pylint: disable=import-outside-toplevel
+        from api.core.pipeline import GENERAL_PREFIX  # pylint: disable=import-outside-toplevel
         return await _list_databases(self._user_id, GENERAL_PREFIX, db=self._db)
 
     async def delete_database(self, database: str) -> bool:

@@ -11,7 +11,7 @@ from redis import ResponseError, RedisError
 
 from api.core.errors import GraphNotFoundError, InternalError, InvalidArgumentError
 from api.core.schema_loader import load_database
-from api.core.text2sql_common import (
+from api.core.pipeline import (
     MESSAGE_DELIMITER,
     auto_quote_sql_identifiers,
     build_destructive_confirmation_message,

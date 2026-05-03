@@ -11,7 +11,7 @@ from redis import RedisError
 
 from api.core.db_resolver import resolve_db
 from api.core.errors import InvalidArgumentError
-from api.core.text2sql_common import MESSAGE_DELIMITER
+from api.core.pipeline import MESSAGE_DELIMITER
 from api.loaders.base_loader import BaseLoader
 from api.loaders.postgres_loader import PostgresLoader
 from api.loaders.mysql_loader import MySQLLoader
