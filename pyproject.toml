@@ -22,7 +22,7 @@ classifiers = [
 
 # Core dependencies required for SDK (minimal)
 dependencies = [
-    "litellm~=1.82.0",
+    "litellm>=1.83.0",
     "falkordb~=1.6.0",
     "psycopg2-binary~=2.9.11",
     "pymysql~=1.1.0",
@@ -33,20 +33,23 @@ dependencies = [
 [project.optional-dependencies]
 # Server dependencies (FastAPI, auth, etc.)
 server = [
-    "fastapi~=0.135.1",
-    "uvicorn~=0.41.0",
-    "authlib~=1.6.4",
+    "fastapi~=0.136.0",
+    "uvicorn~=0.44.0",
+    "authlib~=1.7.0",
     "itsdangerous~=2.2.0",
     "python-multipart~=0.0.10",
     "jinja2~=3.1.4",
-    "fastmcp>=2.13.1",
+    "fastmcp>=3.2.4",
     "graphiti-core>=0.28.1",
+    "snowflake-connector-python~=4.4.0",
+    "python-dotenv~=1.2.2",
+    "aiohttp>=3.13.5",
 ]
 
 # Development dependencies
 dev = [
-    "pytest~=8.4.2",
-    "pytest-asyncio~=1.2.0",
+    "pytest~=9.0.3",
+    "pytest-asyncio~=1.3.0",
     "pylint~=4.0.3",
     "playwright~=1.58.0",
     "pytest-playwright~=0.7.1",
@@ -69,11 +72,11 @@ queryweaver = "api.index:main"
 
 [dependency-groups]
 dev = [
-    "pytest~=8.4.2",
+    "pytest~=9.0.3",
     "pylint~=4.0.3",
     "playwright~=1.58.0",
     "pytest-playwright~=0.7.1",
-    "pytest-asyncio~=1.2.0",
+    "pytest-asyncio~=1.3.0",
 ]
 
 [build-system]

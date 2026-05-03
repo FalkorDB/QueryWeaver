@@ -28,6 +28,7 @@ from api.core.text2sql_common import (
     save_memory_background,
     truncate_for_log,
     validate_and_truncate_chat,
+    validate_custom_model,
 )
 from api.graph import find, get_db_description, get_user_rules
 from api.loaders.base_loader import BaseLoader
@@ -128,7 +129,7 @@ def _parse_analysis_result(answer_an: dict) -> _AnalysisResult:
     )
 
 
-async def _initialize_query_context(
+async def _initialize_query_context(  # pylint: disable=too-many-locals
     user_id: str, graph_id: str, chat_data, falkor_db=None,
 ) -> _QueryContext:
     """Build the per-query context (graph name, history, db metadata, memory tool)."""
@@ -149,12 +150,15 @@ async def _initialize_query_context(
         await get_user_rules(graph_id, db=falkor_db) if use_user_rules else None
     )
 
+    custom_model = getattr(chat_data, 'custom_model', None)
+    validate_custom_model(custom_model)
+
     chat_ctx = _ChatContext(
         queries_history=queries_history,
         result_history=result_history,
         instructions=instructions,
         custom_api_key=getattr(chat_data, 'custom_api_key', None),
-        custom_model=getattr(chat_data, 'custom_model', None),
+        custom_model=custom_model,
     )
     db_ctx = _DatabaseContext(
         graph_id=graph_id,

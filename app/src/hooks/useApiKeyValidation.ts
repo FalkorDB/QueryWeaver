@@ -37,7 +37,7 @@ export function useApiKeyValidation() {
         ? modelName.slice(vendorPrefix.length + 1)
         : modelName;
 
-      const response = await fetch(buildApiUrl('/validate-api-key'), {
+      const response = await fetch(buildApiUrl('/settings/validate-api-key'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

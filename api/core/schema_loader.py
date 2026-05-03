@@ -15,6 +15,7 @@ from api.core.text2sql_common import MESSAGE_DELIMITER
 from api.loaders.base_loader import BaseLoader
 from api.loaders.postgres_loader import PostgresLoader
 from api.loaders.mysql_loader import MySQLLoader
+from api.loaders.snowflake_loader import SnowflakeLoader
 from api.core.result_models import DatabaseConnection
 
 
@@ -44,6 +45,9 @@ def _step_detect_db_type(steps_counter: int, url: str) -> tuple[type[BaseLoader]
     elif url.startswith("mysql://"):
         db_type = "mysql"
         loader = MySQLLoader
+    elif url.startswith("snowflake://"):
+        db_type = "snowflake"
+        loader = SnowflakeLoader
     else:
         raise InvalidArgumentError("Invalid database URL format")
 

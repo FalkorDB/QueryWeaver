@@ -1,6 +1,8 @@
 QueryWeaver
 FalkorDB
 OAuth
+DDL
+DML
 AGPL
 Affero
 nullability
@@ -119,3 +121,4 @@ pytest
 Radix
 Zod
 SDK
+Dependabot

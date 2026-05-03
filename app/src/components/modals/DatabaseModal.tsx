@@ -31,6 +31,13 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
   const [password, setPassword] = useState("");
   const [schema, setSchema] = useState("");
   const [schemaError, setSchemaError] = useState("");
+  // Snowflake-specific fields
+  const [account, setAccount] = useState("");
+  const [snowflakeSchema, setSnowflakeSchema] = useState("PUBLIC");
+  const [warehouse, setWarehouse] = useState("COMPUTE_WH");
+  const [authMode, setAuthMode] = useState<'password' | 'keypair'>('password');
+  const [privateKey, setPrivateKey] = useState("");
+  const [privateKeyPassphrase, setPrivateKeyPassphrase] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionSteps, setConnectionSteps] = useState<ConnectionStep[]>([]);
   const { refreshGraphs } = useDatabase();
@@ -75,13 +82,32 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
         return;
       }
     } else {
-      if (!selectedDatabase || !host || !port || !database || !username) {
-        toast({
-          title: "Missing Information",
-          description: "Please fill in all required fields",
-          variant: "destructive",
-        });
-        return;
+      if (selectedDatabase === 'snowflake') {
+        if (!account || !database || !username) {
+          toast({
+            title: "Missing Information",
+            description: "Please fill in all required fields (account, database, username)",
+            variant: "destructive",
+          });
+          return;
+        }
+        if (authMode === 'keypair' && !privateKey) {
+          toast({
+            title: "Missing Information",
+            description: "Please paste your private key in PEM format",
+            variant: "destructive",
+          });
+          return;
+        }
+      } else {
+        if (!selectedDatabase || !host || !port || !database || !username) {
+          toast({
+            title: "Missing Information",
+            description: "Please fill in all required fields",
+            variant: "destructive",
+          });
+          return;
+        }
       }
     }
     
@@ -92,20 +118,37 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
       // Build the connection URL
       let dbUrl = connectionUrl;
       if (connectionMode === 'manual') {
-        const protocol = selectedDatabase === 'mysql' ? 'mysql' : 'postgresql';
-        const builtUrl = new URL(`${protocol}://${host}:${port}/${database}`);
-        builtUrl.username = username;
-        builtUrl.password = password;
-        
-        // Append schema option for PostgreSQL if provided
-        if (selectedDatabase === 'postgresql' && schema.trim()) {
-          if (/[^a-zA-Z0-9_]/.test(schema.trim())) {
-            throw new Error('Schema name can only contain letters, digits, and underscores');
+        if (selectedDatabase === 'snowflake') {
+          // Build Snowflake URL: snowflake://user@account/database/schema?warehouse=WH
+          const builtUrl = new URL(`snowflake://${account}/${database}/${snowflakeSchema}`);
+          builtUrl.username = username;
+          if (authMode === 'keypair' && privateKey) {
+            // Base64-encode the PEM key for safe URL transport
+            builtUrl.searchParams.set('private_key', btoa(privateKey));
+            if (privateKeyPassphrase) {
+              builtUrl.searchParams.set('private_key_passphrase', privateKeyPassphrase);
+            }
+          } else {
+            builtUrl.password = password;
           }
-          builtUrl.searchParams.set('options', `-csearch_path=${schema.trim()}`);
-        }
+          builtUrl.searchParams.set('warehouse', warehouse);
+          dbUrl = builtUrl.toString();
+        } else {
+          const protocol = selectedDatabase === 'mysql' ? 'mysql' : 'postgresql';
+          const builtUrl = new URL(`${protocol}://${host}:${port}/${database}`);
+          builtUrl.username = username;
+          builtUrl.password = password;
 
-        dbUrl = builtUrl.toString();
+          // Append schema option for PostgreSQL if provided
+          if (selectedDatabase === 'postgresql' && schema.trim()) {
+            if (/[^a-zA-Z0-9_]/.test(schema.trim())) {
+              throw new Error('Schema name can only contain letters, digits, and underscores');
+            }
+            builtUrl.searchParams.set('options', `-csearch_path=${schema.trim()}`);
+          }
+
+          dbUrl = builtUrl.toString();
+        }
       }
 
       // Make streaming request
@@ -190,6 +233,12 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
               setPassword("");
               setSchema("");
               setSchemaError("");
+              setAccount("");
+              setSnowflakeSchema("PUBLIC");
+              setWarehouse("COMPUTE_WH");
+              setAuthMode('password');
+              setPrivateKey("");
+              setPrivateKeyPassphrase("");
               setConnectionSteps([]);
             }, 1000);
           } else {
@@ -252,7 +301,7 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
             Connect to Database
           </DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">
-            Connect to PostgreSQL or MySQL database using a connection URL or manual entry.{" "}
+            Connect to PostgreSQL, MySQL, or Snowflake database using a connection URL or manual entry.{" "}
             <a
               href="https://www.falkordb.com/privacy-policy/"
               target="_blank"
@@ -287,6 +336,12 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
                   <div className="flex items-center">
                     <div className="w-4 h-4 bg-orange-500 rounded-sm mr-2"></div>
                     MySQL
+                  </div>
+                </SelectItem>
+                <SelectItem value="snowflake" className="focus:bg-purple-500/20 focus:text-foreground" data-testid="snowflake-option">
+                  <div className="flex items-center">
+                    <div className="w-4 h-4 bg-cyan-500 rounded-sm mr-2"></div>
+                    Snowflake
                   </div>
                 </SelectItem>
               </SelectContent>
@@ -328,106 +383,247 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
                 placeholder={
                   selectedDatabase === 'postgresql'
                     ? 'postgresql://username:password@host:5432/database'
-                    : 'mysql://username:password@host:3306/database'
+                    : selectedDatabase === 'mysql'
+                    ? 'mysql://username:password@host:3306/database'
+                    : 'snowflake://username:password@account/database/schema?warehouse=warehouse_name'
                 }
                 value={connectionUrl}
                 onChange={(e) => setConnectionUrl(e.target.value)}
                 className="bg-muted border-border font-mono text-sm focus-visible:ring-purple-500"
               />
               <p className="text-xs text-muted-foreground">
-                Enter your database connection string
+                {selectedDatabase === 'snowflake'
+                  ? 'Enter your Snowflake connection string (schema defaults to PUBLIC, warehouse to COMPUTE_WH)'
+                  : 'Enter your database connection string'}
               </p>
             </div>
           )}
 
           {selectedDatabase && connectionMode === 'manual' && (
             <>
-              <div className="space-y-2">
-                <Label htmlFor="host" className="text-sm font-medium">Host</Label>
-                <Input
-                  id="host"
-                  placeholder="localhost"
-                  value={host}
-                  onChange={(e) => setHost(e.target.value)}
-                  className="bg-muted border-border focus-visible:ring-purple-500"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="port" className="text-sm font-medium">Port</Label>
-                <Input
-                  id="port"
-                  placeholder={selectedDatabase === "postgresql" ? "5432" : "3306"}
-                  value={port}
-                  onChange={(e) => setPort(e.target.value)}
-                  className="bg-muted border-border focus-visible:ring-purple-500"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="database" className="text-sm font-medium">Database Name</Label>
-                <Input
-                  id="database"
-                  placeholder="my_database"
-                  value={database}
-                  onChange={(e) => setDatabase(e.target.value)}
-                  className="bg-muted border-border focus-visible:ring-purple-500"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="username" className="text-sm font-medium">Username</Label>
-                <Input
-                  id="username"
-                  placeholder="username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="bg-muted border-border focus-visible:ring-purple-500"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password" className="text-sm font-medium">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="bg-muted border-border focus-visible:ring-purple-500"
-                />
-              </div>
-              
-              {/* Schema field - PostgreSQL only */}
-              {selectedDatabase === 'postgresql' && (
-                <div className="space-y-2">
-                  <Label htmlFor="schema" className="text-sm font-medium">
-                    Schema <span className="text-muted-foreground font-normal">(optional)</span>
-                  </Label>
-                  <Input
-                    id="schema"
-                    data-testid="schema-input"
-                    placeholder="public"
-                    value={schema}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSchema(val);
-                      if (val && /[^a-zA-Z0-9_]/.test(val)) {
-                        setSchemaError('Schema name can only contain letters, digits, and underscores');
-                      } else {
-                        setSchemaError('');
-                      }
-                    }}
-                    className={`bg-muted border-border ${schemaError ? 'border-red-500' : ''}`}
-                  />
-                  {schemaError ? (
-                    <p className="text-xs text-red-500">{schemaError}</p>
-                  ) : (
+              {selectedDatabase === 'snowflake' ? (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="account" className="text-sm font-medium">Account</Label>
+                    <Input
+                      id="account"
+                      placeholder="myorg-account"
+                      value={account}
+                      onChange={(e) => setAccount(e.target.value)}
+                      className="bg-muted border-border focus-visible:ring-purple-500"
+                    />
                     <p className="text-xs text-muted-foreground">
-                      Leave empty to use the default &apos;public&apos; schema
+                      Your Snowflake account identifier (e.g., myorg-account)
                     </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="database" className="text-sm font-medium">Database Name</Label>
+                    <Input
+                      id="database"
+                      placeholder="my_database"
+                      value={database}
+                      onChange={(e) => setDatabase(e.target.value)}
+                      className="bg-muted border-border focus-visible:ring-purple-500"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="snowflake-schema" className="text-sm font-medium">Schema</Label>
+                    <Input
+                      id="snowflake-schema"
+                      placeholder="PUBLIC"
+                      value={snowflakeSchema}
+                      onChange={(e) => setSnowflakeSchema(e.target.value)}
+                      className="bg-muted border-border focus-visible:ring-purple-500"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Defaults to PUBLIC if not specified
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="warehouse" className="text-sm font-medium">Warehouse</Label>
+                    <Input
+                      id="warehouse"
+                      placeholder="COMPUTE_WH"
+                      value={warehouse}
+                      onChange={(e) => setWarehouse(e.target.value)}
+                      className="bg-muted border-border focus-visible:ring-purple-500"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Defaults to COMPUTE_WH if not specified
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="username" className="text-sm font-medium">Username</Label>
+                    <Input
+                      id="username"
+                      placeholder="username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className="bg-muted border-border focus-visible:ring-purple-500"
+                    />
+                  </div>
+
+                  {/* Auth Mode Toggle */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Authentication</Label>
+                    <div className="flex gap-2 p-1 bg-muted rounded-lg">
+                      <Button
+                        type="button"
+                        variant={authMode === 'password' ? 'default' : 'ghost'}
+                        className={`flex-1 ${authMode === 'password' ? 'bg-purple-600 hover:bg-purple-700' : ''}`}
+                        onClick={() => setAuthMode('password')}
+                        size="sm"
+                      >
+                        Password
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={authMode === 'keypair' ? 'default' : 'ghost'}
+                        className={`flex-1 ${authMode === 'keypair' ? 'bg-purple-600 hover:bg-purple-700' : ''}`}
+                        onClick={() => setAuthMode('keypair')}
+                        size="sm"
+                      >
+                        Key Pair
+                      </Button>
+                    </div>
+                  </div>
+
+                  {authMode === 'password' ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="password" className="text-sm font-medium">Password</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        placeholder="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="bg-muted border-border focus-visible:ring-purple-500"
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="private-key" className="text-sm font-medium">Private Key (PEM)</Label>
+                        <textarea
+                          id="private-key"
+                          placeholder={"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"}
+                          value={privateKey}
+                          onChange={(e) => setPrivateKey(e.target.value)}
+                          rows={4}
+                          className="w-full rounded-md bg-muted border border-border px-3 py-2 text-sm font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Paste your RSA private key in PEM format. Generate one with: openssl genrsa 2048 | openssl pkcs8 -topk8 -nocrypt
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="passphrase" className="text-sm font-medium">Key Passphrase (optional)</Label>
+                        <Input
+                          id="passphrase"
+                          type="password"
+                          placeholder="optional passphrase"
+                          value={privateKeyPassphrase}
+                          onChange={(e) => setPrivateKeyPassphrase(e.target.value)}
+                          className="bg-muted border-border focus-visible:ring-purple-500"
+                        />
+                      </div>
+                    </>
                   )}
-                </div>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="host" className="text-sm font-medium">Host</Label>
+                    <Input
+                      id="host"
+                      placeholder="localhost"
+                      value={host}
+                      onChange={(e) => setHost(e.target.value)}
+                      className="bg-muted border-border focus-visible:ring-purple-500"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="port" className="text-sm font-medium">Port</Label>
+                    <Input
+                      id="port"
+                      placeholder={selectedDatabase === "postgresql" ? "5432" : "3306"}
+                      value={port}
+                      onChange={(e) => setPort(e.target.value)}
+                      className="bg-muted border-border focus-visible:ring-purple-500"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="database" className="text-sm font-medium">Database Name</Label>
+                    <Input
+                      id="database"
+                      placeholder="my_database"
+                      value={database}
+                      onChange={(e) => setDatabase(e.target.value)}
+                      className="bg-muted border-border focus-visible:ring-purple-500"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="username" className="text-sm font-medium">Username</Label>
+                    <Input
+                      id="username"
+                      placeholder="username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className="bg-muted border-border focus-visible:ring-purple-500"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="password" className="text-sm font-medium">Password</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      placeholder="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="bg-muted border-border focus-visible:ring-purple-500"
+                    />
+                  </div>
+
+                  {/* Schema field - PostgreSQL only */}
+                  {selectedDatabase === 'postgresql' && (
+                    <div className="space-y-2">
+                      <Label htmlFor="schema" className="text-sm font-medium">
+                        Schema <span className="text-muted-foreground font-normal">(optional)</span>
+                      </Label>
+                      <Input
+                        id="schema"
+                        data-testid="schema-input"
+                        placeholder="public"
+                        value={schema}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSchema(val);
+                          if (val && /[^a-zA-Z0-9_]/.test(val)) {
+                            setSchemaError('Schema name can only contain letters, digits, and underscores');
+                          } else {
+                            setSchemaError('');
+                          }
+                        }}
+                        className={`bg-muted border-border ${schemaError ? 'border-red-500' : ''}`}
+                      />
+                      {schemaError ? (
+                        <p className="text-xs text-red-500">{schemaError}</p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          Leave empty to use the default &apos;public&apos; schema
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}

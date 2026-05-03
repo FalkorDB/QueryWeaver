@@ -103,9 +103,38 @@ def get_database_type_and_loader(
         return 'postgresql', PostgresLoader
     if db_url_lower.startswith('mysql://'):
         return 'mysql', MySQLLoader
+    if db_url_lower.startswith('snowflake://'):
+        # Lazy-import: snowflake-connector-python is in the [server] extra,
+        # not in the core SDK install.
+        # pylint: disable=import-outside-toplevel
+        from api.loaders.snowflake_loader import SnowflakeLoader
+        return 'snowflake', SnowflakeLoader
 
     # Default to PostgresLoader for backward compatibility
     return 'postgresql', PostgresLoader
+
+
+def validate_custom_model(custom_model: Optional[str]) -> None:
+    """Validate the ``vendor/model`` format and supported vendor list.
+
+    Raises:
+        InvalidArgumentError: If the format is wrong or the vendor is unsupported.
+    """
+    if not custom_model:
+        return
+    # Lazy-import: SUPPORTED_VENDORS lives in api.config which pulls server-only
+    # symbols. Keeping the import here means the SDK doesn't need it at import time.
+    # pylint: disable=import-outside-toplevel
+    from api.config import SUPPORTED_VENDORS
+    parts = custom_model.split("/", 1)
+    if len(parts) != 2 or not parts[0] or not parts[1]:
+        raise InvalidArgumentError(
+            "Invalid model format. Expected 'vendor/model' (e.g. 'openai/gpt-4.1')"
+        )
+    if parts[0] not in SUPPORTED_VENDORS:
+        raise InvalidArgumentError(
+            f"Unsupported vendor '{parts[0]}'. Supported: {', '.join(SUPPORTED_VENDORS)}"
+        )
 
 
 # ---------------------------------------------------------------------------

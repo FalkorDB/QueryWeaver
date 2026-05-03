@@ -26,6 +26,7 @@ from api.core.text2sql_common import (
     sanitize_query,
     save_memory_background,
     validate_and_truncate_chat,
+    validate_custom_model,
 )
 from api.agents import AnalysisAgent, RelevancyAgent, FollowUpAgent
 from api.agents.healer_agent import HealerAgent
@@ -199,21 +200,7 @@ async def query_database(user_id: str, graph_id: str, chat_data: ChatRequest, db
         custom_api_key = chat_data.custom_api_key
         custom_model = chat_data.custom_model
 
-        # Validate custom model format (vendor/model)
-        supported_vendors = ("openai", "anthropic", "gemini", "azure", "ollama", "cohere")
-        if custom_model:
-            parts = custom_model.split("/", 1)
-            if len(parts) != 2 or not parts[0] or not parts[1]:
-                raise InvalidArgumentError(
-                    "Invalid model format. Expected 'vendor/model' (e.g. 'openai/gpt-4.1')"
-                )
-            if parts[0] not in supported_vendors:
-                raise InvalidArgumentError(
-                    f"Unsupported vendor '{parts[0]}'. Supported: {', '.join(supported_vendors)}"
-                )
-
-        if custom_api_key is not None and len(custom_api_key.strip()) < 10:
-            raise InvalidArgumentError("API key is too short")
+        validate_custom_model(custom_model)
 
         agent_rel = RelevancyAgent(queries_history, result_history, custom_api_key, custom_model)
         agent_an = AnalysisAgent(queries_history, result_history, custom_api_key, custom_model)
