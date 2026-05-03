@@ -1,5 +1,6 @@
 """Graph-related routes for the text2sql API."""
 
+import json
 import logging
 from fastapi import APIRouter, Request, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -9,13 +10,14 @@ from api.core.schema_loader import list_databases
 from api.core.text2sql import (
     ChatRequest,
     ConfirmRequest,
+    _Final,
     delete_database,
-    execute_destructive_operation,
     get_schema,
-    query_database,
     refresh_database_schema,
+    run_confirmed,
+    run_query,
 )
-from api.core.pipeline import GENERAL_PREFIX, graph_name
+from api.core.pipeline import GENERAL_PREFIX, MESSAGE_DELIMITER, graph_name
 from api.core.errors import GraphNotFoundError, InternalError, InvalidArgumentError
 from api.graph import get_user_rules, set_user_rules
 from api.auth.user_management import token_required
@@ -143,8 +145,16 @@ async def query_graph(
             chat_data (ChatRequest): The chat data containing user queries and context.
     """
     try:
-        generator = await query_database(request.state.user_id, graph_id, chat_data)
-        return StreamingResponse(generator, media_type="application/json")
+        async def stream():
+            async for event in run_query(
+                request.state.user_id, graph_id, chat_data,
+            ):
+                if isinstance(event, _Final):
+                    # The user-facing "final" event was already emitted as a regular
+                    # dict before this sentinel; the sentinel just signals end-of-stream.
+                    return
+                yield json.dumps(event) + MESSAGE_DELIMITER
+        return StreamingResponse(stream(), media_type="application/json")
     except InvalidArgumentError as iae:
         logging.warning("Invalid argument in query: %s", str(iae))
         return JSONResponse(content={"error": "Invalid query request"}, status_code=400)
@@ -163,10 +173,14 @@ async def confirm_destructive_operation(
     """
 
     try:
-        generator = await execute_destructive_operation(
-            request.state.user_id, graph_id, confirm_data
-        )
-        return StreamingResponse(generator, media_type="application/json")
+        async def stream():
+            async for event in run_confirmed(
+                request.state.user_id, graph_id, confirm_data,
+            ):
+                if isinstance(event, _Final):
+                    return
+                yield json.dumps(event) + MESSAGE_DELIMITER
+        return StreamingResponse(stream(), media_type="application/json")
     except InvalidArgumentError as iae:
         logging.warning("Invalid argument in destructive operation: %s", str(iae))
         return JSONResponse(content={"error": "Invalid confirmation request"}, status_code=400)

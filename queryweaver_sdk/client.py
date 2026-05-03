@@ -153,8 +153,7 @@ class QueryWeaver:
                 )
                 result = await qw.query("mydb", request)
         """
-        from api.core.text2sql_sync import query_database_sync
-        from api.core.text2sql import ChatRequest
+        from api.core.text2sql import ChatRequest, collect_result, run_query
 
         # Handle both string and QueryRequest inputs
         if isinstance(question, str):
@@ -181,8 +180,8 @@ class QueryWeaver:
         )
 
         with self._bind_task_sink():
-            return await query_database_sync(
-                self._user_id, database, chat_data, db=self._db,
+            return await collect_result(
+                run_query(self._user_id, database, chat_data, db=self._db)
             )
 
     async def get_schema(self, database: str) -> SchemaResult:
@@ -248,8 +247,8 @@ class QueryWeaver:
         Raises:
             ValueError: If the database is not found.
         """
-        from api.core.text2sql_sync import refresh_database_schema_sync
-        return await refresh_database_schema_sync(self._user_id, database, db=self._db)
+        from api.core.text2sql import refresh_schema_for_sdk
+        return await refresh_schema_for_sdk(self._user_id, database, db=self._db)
 
     async def execute_confirmed(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
@@ -275,8 +274,7 @@ class QueryWeaver:
         Returns:
             QueryResult with execution results.
         """
-        from api.core.text2sql_sync import execute_destructive_operation_sync
-        from api.core.text2sql import ConfirmRequest
+        from api.core.text2sql import ConfirmRequest, collect_result, run_confirmed
 
         confirm_data = ConfirmRequest(
             sql_query=sql_query,
@@ -287,8 +285,8 @@ class QueryWeaver:
         )
 
         with self._bind_task_sink():
-            return await execute_destructive_operation_sync(
-                self._user_id, database, confirm_data, db=self._db,
+            return await collect_result(
+                run_confirmed(self._user_id, database, confirm_data, db=self._db)
             )
 
     async def close(self) -> None:
