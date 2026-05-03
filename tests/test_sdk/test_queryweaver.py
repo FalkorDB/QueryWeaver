@@ -64,7 +64,9 @@ class TestConnectDatabase:
 
     @pytest.mark.asyncio
     @pytest.mark.requires_postgres
-    async def test_connect_postgres(self, falkordb_url, postgres_url):
+    async def test_connect_postgres(self, falkordb_url, postgres_url, has_llm_key):
+        # connect_database loads embeddings via the LLM, so it actually requires
+        # an LLM key — without one the load fails before the schema is persisted.
         async with QueryWeaver(falkordb_url=falkordb_url, user_id="test_connect_pg") as qw:
             result = await qw.connect_database(postgres_url)
             try:
@@ -72,11 +74,14 @@ class TestConnectDatabase:
                 assert result.database_id == "testdb"
                 assert "successfully" in result.message.lower()
             finally:
-                await qw.delete_database(result.database_id)
+                # Only clean up if the connect actually persisted a graph;
+                # otherwise database_id is empty and delete_database rejects it.
+                if result.success and result.database_id:
+                    await qw.delete_database(result.database_id)
 
     @pytest.mark.asyncio
     @pytest.mark.requires_mysql
-    async def test_connect_mysql(self, falkordb_url, mysql_url):
+    async def test_connect_mysql(self, falkordb_url, mysql_url, has_llm_key):
         async with QueryWeaver(falkordb_url=falkordb_url, user_id="test_connect_mysql") as qw:
             result = await qw.connect_database(mysql_url)
             try:
@@ -84,7 +89,8 @@ class TestConnectDatabase:
                 assert result.database_id == "testdb"
                 assert "successfully" in result.message.lower()
             finally:
-                await qw.delete_database(result.database_id)
+                if result.success and result.database_id:
+                    await qw.delete_database(result.database_id)
 
     @pytest.mark.asyncio
     async def test_connect_invalid_url(self, queryweaver):

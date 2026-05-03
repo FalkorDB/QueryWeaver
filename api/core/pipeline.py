@@ -9,10 +9,9 @@ import asyncio
 import contextvars
 import logging
 import os
-from typing import Any, Awaitable, Callable, Optional, Type
+from typing import Any, Optional, Type
 
 from api.agents import ResponseFormatterAgent
-from api.agents.healer_agent import HealerAgent
 from api.config import Config
 from api.core.db_resolver import resolve_db
 from api.core.errors import InvalidArgumentError
@@ -35,11 +34,6 @@ GENERAL_PREFIX = os.getenv("GENERAL_PREFIX")
 DESTRUCTIVE_OPS = frozenset([
     'INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE',
 ])
-
-# Emit callback signature: helpers that both the streaming and sync paths
-# call invoke ``emit(event)`` when they have a progress message. Streaming
-# passes a function that serializes+yields; sync passes ``None``.
-EmitFn = Optional[Callable[[dict], Awaitable[None]]]
 
 # Contextvar-scoped task sink. SDK code sets this for the duration of a
 # query/execute call so ``save_memory_background`` (fire-and-forget) can
@@ -274,14 +268,8 @@ def validate_and_truncate_chat(
 
 
 # ---------------------------------------------------------------------------
-# Orchestration helpers shared by streaming and sync text2sql paths
+# Pipeline helpers used by run_query / run_confirmed
 # ---------------------------------------------------------------------------
-
-
-async def _maybe_emit(emit: EmitFn, event: dict) -> None:
-    """Call ``emit(event)`` when it's provided; no-op otherwise."""
-    if emit is not None:
-        await emit(event)
 
 
 async def quote_identifiers_from_graph(
@@ -309,127 +297,6 @@ async def quote_identifiers_from_graph(
             known_tables = set()
 
     return auto_quote_sql_identifiers(sql_query, known_tables, db_type)
-
-
-async def execute_with_healing(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    sql_query: str,
-    loader_class: Type[BaseLoader],
-    db_url: str,
-    db_description: str,
-    question: str,
-    db_type: Optional[str],
-    emit: EmitFn = None,
-) -> tuple[str, list]:
-    """Execute ``sql_query`` and, on failure, run the healer loop.
-
-    Emits progress events for each healing attempt (streaming callers see
-    them; sync callers don't pass an emitter). Raises the original driver
-    exception if healing cannot recover.
-    """
-    try:
-        results = loader_class.execute_sql_query(sql_query, db_url)
-        return sql_query, results
-    except Exception as exec_error:  # pylint: disable=broad-exception-caught
-        await _maybe_emit(emit, {
-            "type": "healing_start",
-            "message": "SQL execution failed, attempting to heal query...",
-            "error": str(exec_error),
-        })
-
-        healer = HealerAgent(max_healing_attempts=3)
-
-        def _run_sql(sql: str):
-            return loader_class.execute_sql_query(sql, db_url)
-
-        healing_result = healer.heal_and_execute(
-            initial_sql=sql_query,
-            initial_error=str(exec_error),
-            execute_sql_func=_run_sql,
-            db_description=db_description,
-            question=question,
-            database_type=db_type,
-        )
-
-        if not healing_result.get("success"):
-            await _maybe_emit(emit, {
-                "type": "healing_failed",
-                "message": (
-                    f"Failed to heal query after "
-                    f"{healing_result.get('attempts', 0)} attempt(s)"
-                ),
-                "final_error": healing_result.get("final_error", str(exec_error)),
-            })
-            raise
-
-        # ``HealerAgent.heal_and_execute`` already returns ``attempts = attempt + 1``
-        # (the true count) and does not produce a per-attempt log. Emit attempts
-        # as-is and skip the per-attempt event until the agent surfaces such a log.
-        await _maybe_emit(emit, {
-            "type": "healing_success",
-            "healed_sql": healing_result["sql_query"],
-            "attempts": healing_result.get("attempts", 0),
-        })
-        return healing_result["sql_query"], healing_result["query_results"]
-
-
-async def refresh_schema_if_modified(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    sql_query: str,
-    loader_class: Type[BaseLoader],
-    graph_id: str,
-    db_url: str,
-    db=None,
-    emit: EmitFn = None,
-) -> tuple[bool, str, str]:
-    """Check whether *sql_query* is schema-modifying and refresh if so.
-
-    Returns ``(was_modifying, operation_type, status)`` where ``status`` is
-    ``"ok"``, ``"failed"``, or ``"skipped"``. Emits events when provided.
-    """
-    is_modifying, operation_type = check_schema_modification(sql_query, loader_class)
-    if not is_modifying:
-        return False, "", "skipped"
-
-    logging.info(
-        "Schema modification detected (%s). Refreshing graph schema.",
-        operation_type,
-    )
-
-    try:
-        success, message = await loader_class.refresh_graph_schema(
-            graph_id, db_url, db=db,
-        )
-    except Exception as refresh_err:  # pylint: disable=broad-exception-caught
-        logging.error("Error refreshing schema: %s", str(refresh_err))
-        await _maybe_emit(emit, {
-            "type": "schema_refresh",
-            "refresh_status": "failed",
-            "message": f"Schema refresh raised: {refresh_err}",
-            "operation_type": operation_type,
-        })
-        return True, operation_type, "failed"
-
-    if success:
-        await _maybe_emit(emit, {
-            "type": "schema_refresh",
-            "refresh_status": "success",
-            "message": (
-                f"Schema change detected ({operation_type} operation). "
-                "Graph schema refreshed with the latest database structure."
-            ),
-            "operation_type": operation_type,
-        })
-        return True, operation_type, "ok"
-
-    logging.warning(
-        "Schema refresh failed after %s: %s", operation_type, message,
-    )
-    await _maybe_emit(emit, {
-        "type": "schema_refresh",
-        "refresh_status": "failed",
-        "message": f"Schema was modified but graph refresh failed: {message}",
-        "operation_type": operation_type,
-    })
-    return True, operation_type, "failed"
 
 
 def format_ai_response(  # pylint: disable=too-many-arguments,too-many-positional-arguments
