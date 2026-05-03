@@ -1,13 +1,15 @@
 """SDK integration tests for QueryWeaver.
 
-All integration tests create QueryWeaver instances via ``async with`` so
+Most integration tests create QueryWeaver instances via ``async with`` so
 the connection pool is closed before the test function returns. This
 prevents stale Redis futures from leaking into subsequent tests and
-surfacing as spurious "Event loop is closed" errors.
+surfacing as spurious "Event loop is closed" errors. The ``TestModels``
+class is pure-unit (no FalkorDB/Postgres/LLM) and runs without fixtures.
 """
 
 import pytest
 
+from api.core.errors import InvalidArgumentError
 from queryweaver_sdk import QueryWeaver
 from queryweaver_sdk.models import (
     DatabaseConnection,
@@ -62,7 +64,7 @@ class TestConnectDatabase:
 
     @pytest.mark.asyncio
     @pytest.mark.requires_postgres
-    async def test_connect_postgres(self, falkordb_url, postgres_url, has_llm_key):
+    async def test_connect_postgres(self, falkordb_url, postgres_url):
         async with QueryWeaver(falkordb_url=falkordb_url, user_id="test_connect_pg") as qw:
             result = await qw.connect_database(postgres_url)
             try:
@@ -74,7 +76,7 @@ class TestConnectDatabase:
 
     @pytest.mark.asyncio
     @pytest.mark.requires_mysql
-    async def test_connect_mysql(self, falkordb_url, mysql_url, has_llm_key):
+    async def test_connect_mysql(self, falkordb_url, mysql_url):
         async with QueryWeaver(falkordb_url=falkordb_url, user_id="test_connect_mysql") as qw:
             result = await qw.connect_database(mysql_url)
             try:
@@ -86,7 +88,7 @@ class TestConnectDatabase:
 
     @pytest.mark.asyncio
     async def test_connect_invalid_url(self, queryweaver):
-        with pytest.raises(Exception):  # noqa: B017 - expect InvalidArgumentError or subclass
+        with pytest.raises(InvalidArgumentError):
             await queryweaver.connect_database("invalid://url")
 
 
@@ -266,8 +268,9 @@ class TestDeleteDatabase:
             assert conn_result.database_id not in databases
 
 
+@pytest.mark.unit
 class TestModels:
-    """Dataclass serialization / defaults."""
+    """Dataclass serialization / defaults — pure unit, no external services."""
 
     def test_query_result_to_dict(self):
         result = QueryResult(

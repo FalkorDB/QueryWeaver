@@ -299,8 +299,10 @@ every call, so there is no shared global state to collide over.
 ```python
 async with QueryWeaver(falkordb_url="redis://host-a:6379", user_id="tenant_a") as a, \
            QueryWeaver(falkordb_url="redis://host-b:6379", user_id="tenant_b") as b:
-    await a.query("sales", "Show top customers")
-    await b.query("ops", "Count open tickets")
+    sales = await a.connect_database("postgresql://user:pass@host-a/sales")
+    ops = await b.connect_database("postgresql://user:pass@host-b/ops")
+    await a.query(sales.database_id, "Show top customers")
+    await b.query(ops.database_id, "Count open tickets")
 ```
 
 ### Available Methods

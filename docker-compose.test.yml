@@ -3,7 +3,8 @@
 
 services:
   falkordb:
-    image: falkordb/falkordb:latest
+    # Pin the major to avoid surprise breaks; bump deliberately when needed.
+    image: falkordb/falkordb:v4
     ports:
       - "6379:6379"
     healthcheck:

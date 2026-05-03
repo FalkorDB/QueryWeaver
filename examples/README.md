@@ -12,7 +12,7 @@ a realistic 12-table PostgreSQL schema.
 
 The schema models a small e-commerce business:
 
-```
+```text
 users ───┬── addresses
          ├── orders ── order_items ── product_variants ── products ── categories (self-ref)
          │      └── payments                    │            │

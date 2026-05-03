@@ -46,8 +46,9 @@ def postgres_url():
     url = os.getenv("TEST_POSTGRES_URL", "postgresql://postgres:postgres@localhost:5432/testdb")
 
     # Verify connection and create test schema
+    import psycopg2
+    conn = None
     try:
-        import psycopg2
         conn = psycopg2.connect(url)
         cursor = conn.cursor()
 
@@ -84,9 +85,11 @@ def postgres_url():
                 (2, 'Widget', 29.99, '2024-02-01');
         """)
         conn.commit()
-        conn.close()
     except Exception as e:
         pytest.skip(f"PostgreSQL not available: {e}")
+    finally:
+        if conn is not None:
+            conn.close()
 
     return url
 
@@ -108,8 +111,9 @@ def mysql_url():
     database = parsed.path.lstrip("/") or "testdb"
 
     # Verify connection and create test schema
+    import pymysql
+    conn = None
     try:
-        import pymysql
         conn = pymysql.connect(
             host=host,
             port=port,
@@ -137,9 +141,11 @@ def mysql_url():
                 ('Desk', 'Furniture', 199.99)
         """)
         conn.commit()
-        conn.close()
     except Exception as e:
         pytest.skip(f"MySQL not available: {e}")
+    finally:
+        if conn is not None:
+            conn.close()
 
     return url
 
