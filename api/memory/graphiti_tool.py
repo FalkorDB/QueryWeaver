@@ -18,8 +18,8 @@ from openai import AsyncAzureOpenAI
 # Import Graphiti components
 from graphiti_core.driver.falkordb_driver import FalkorDriver
 from graphiti_core import Graphiti
-from api.extensions import db
 from api.config import Config
+from api.core.db_resolver import resolve_db
 from graphiti_core.nodes import EpisodeType
 from graphiti_core.llm_client import LLMConfig, OpenAIClient
 from graphiti_core.embedder import OpenAIEmbedder, OpenAIEmbedderConfig
@@ -57,10 +57,11 @@ class MemoryTool:
         else None
     )
 
-    def __init__(self, user_id: str, graph_id: str):
+    def __init__(self, user_id: str, graph_id: str, db=None):
         # Create FalkorDB driver with user-specific database
         self.memory_db_name = f"{user_id}-memory"
-        falkor_driver = FalkorDriver(falkor_db=db, database=self.memory_db_name)
+        self._db = resolve_db(db)
+        falkor_driver = FalkorDriver(falkor_db=self._db, database=self.memory_db_name)
 
        
         # Create Graphiti client with Azure OpenAI configuration
@@ -74,14 +75,20 @@ class MemoryTool:
     async def _refresh_ttl(self) -> None:
         """Set a TTL on the memory graph key using Redis EXPIRE."""
         try:
-            await db.execute_command("EXPIRE", self.memory_db_name, self.MEMORY_TTL_SECONDS)
+            await self._db.execute_command("EXPIRE", self.memory_db_name, self.MEMORY_TTL_SECONDS)
         except RedisError as e:
             logging.warning("Failed to refresh TTL for %s: %s", self.memory_db_name, e)
 
     @classmethod
-    async def create(cls, user_id: str, graph_id: str, use_direct_entities: bool = True) -> "MemoryTool":
+    async def create(
+        cls,
+        user_id: str,
+        graph_id: str,
+        use_direct_entities: bool = True,
+        db=None,
+    ) -> "MemoryTool":
         """Async factory to construct and initialize the tool."""
-        self = cls(user_id, graph_id)
+        self = cls(user_id, graph_id, db=db)
 
         if not self.memory_enabled:
             return self

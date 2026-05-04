@@ -152,13 +152,18 @@ class MySQLLoader(BaseLoader):
         }
 
     @staticmethod
-    async def load(prefix: str, connection_url: str) -> AsyncGenerator[tuple[bool, str], None]:
+    async def load(  # pylint: disable=arguments-differ
+        prefix: str,
+        connection_url: str,
+        db=None,
+    ) -> AsyncGenerator[tuple[bool, str], None]:
         """
         Load the graph data from a MySQL database into the graph database.
 
         Args:
             connection_url: MySQL connection URL in format:
                           mysql://username:password@host:port/database
+            db: Optional FalkorDB handle; falls back to the server singleton.
 
         Returns:
             Tuple[bool, str]: Success status and message
@@ -189,7 +194,7 @@ class MySQLLoader(BaseLoader):
             # Load data into graph
             yield True, "Loading data into graph..."
             await load_to_graph(f"{prefix}_{db_name}", entities, relationships,
-                         db_name=db_name, db_url=connection_url)
+                         db_name=db_name, db_url=connection_url, db=db)
 
             yield True, (f"MySQL schema loaded successfully. "
                          f"Found {len(entities)} tables.")
@@ -442,13 +447,14 @@ class MySQLLoader(BaseLoader):
         return False, ""
 
     @staticmethod
-    async def refresh_graph_schema(graph_id: str, db_url: str) -> Tuple[bool, str]:
+    async def refresh_graph_schema(graph_id: str, db_url: str, db=None) -> Tuple[bool, str]:
         """
         Refresh the graph schema by clearing existing data and reloading from the database.
 
         Args:
             graph_id: The graph ID to refresh
             db_url: Database connection URL
+            db: Optional FalkorDB handle; falls back to the server singleton.
 
         Returns:
             Tuple of (success, message)
@@ -456,12 +462,11 @@ class MySQLLoader(BaseLoader):
         try:
             logging.info("Schema modification detected. Refreshing graph schema.")
 
-            # Import here to avoid circular imports
-            from api.extensions import db  # pylint: disable=import-error,import-outside-toplevel
+            from api.core.db_resolver import resolve_db  # pylint: disable=import-outside-toplevel
 
             # Clear existing graph data
             # Drop current graph before reloading
-            graph = db.select_graph(graph_id)
+            graph = resolve_db(db).select_graph(graph_id)
             await graph.delete()
 
             # Extract prefix from graph_id (remove database name part)
@@ -474,7 +479,7 @@ class MySQLLoader(BaseLoader):
                 prefix = graph_id
 
             # Reuse the existing load method to reload the schema
-            success, message = await MySQLLoader.load(prefix, db_url)
+            success, message = await MySQLLoader.load(prefix, db_url, db=db)
 
             if success:
                 logging.info("Graph schema refreshed successfully.")

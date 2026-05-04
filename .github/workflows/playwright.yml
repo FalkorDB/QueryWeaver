@@ -53,7 +53,7 @@ jobs:
 
     # Install Python dependencies
     - name: Install Python dependencies
-      run: uv sync --locked
+      run: uv sync --locked --all-extras
     
     # Install Node dependencies (root - for Playwright)
     - name: Install root dependencies

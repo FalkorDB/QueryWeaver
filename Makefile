@@ -1,10 +1,10 @@
-.PHONY: help install test test-unit test-e2e test-e2e-headed lint format clean setup-dev build lint-frontend
+.PHONY: help install test test-unit test-e2e test-e2e-headed lint format clean setup-dev build lint-frontend test-sdk docker-test-services docker-test-stop build-package
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
 	@echo ''
 	@echo 'Targets:'
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 install: ## Install dependencies
 	uv sync
@@ -23,10 +23,14 @@ build-dev:
 build-prod:
 	npm --prefix ./app run build
 
+build-package: ## Build distributable package (wheel + sdist)
+	uv build
+	@echo "Built packages in dist/"
+
 test: build-dev test-unit test-e2e ## Run all tests
 
-test-unit: ## Run unit tests only
-	uv run python -m pytest tests/ -k "not e2e" --verbose
+test-unit: ## Run unit tests only (excludes SDK and E2E tests)
+	uv run python -m pytest tests/ -k "not e2e and not test_sdk" --ignore=tests/test_sdk --verbose
 
 
 test-e2e: build-dev ## Run E2E tests headless
@@ -57,6 +61,8 @@ clean: ## Clean up test artifacts
 	rm -rf playwright-report/
 	rm -rf tests/e2e/screenshots/
 	rm -rf __pycache__/
+	rm -rf dist/
+	rm -rf *.egg-info/
 	find . -name "*.pyc" -delete
 	find . -name "*.pyo" -delete
 
@@ -72,3 +78,20 @@ docker-falkordb: ## Start FalkorDB in Docker for testing
 docker-stop: ## Stop test containers
 	docker stop falkordb-test || true
 	docker rm falkordb-test || true
+
+# SDK Testing
+docker-test-services: ## Start all test services (FalkorDB + PostgreSQL + MySQL)
+	docker compose -f docker-compose.test.yml up -d
+	@echo "Waiting for services to be ready..."
+	@sleep 10
+
+docker-test-stop: ## Stop all test services
+	docker compose -f docker-compose.test.yml down -v
+
+test-sdk: ## Run SDK integration tests (requires docker-test-services)
+	uv run python -m pytest tests/test_sdk/ -v
+
+test-sdk-quick: ## Run SDK tests without LLM (models and connection only)
+	uv run python -m pytest tests/test_sdk/test_queryweaver.py::TestModels tests/test_sdk/test_queryweaver.py::TestQueryWeaverInit -v
+
+test-all: test-unit test-sdk test-e2e ## Run all tests
