@@ -32,13 +32,22 @@ def _step_start(steps_counter: int) -> dict[str, str]:
         "message": f"Step {steps_counter}: Starting database connection",
     }
 
+_KNOWN_DB_SCHEMES = ("postgresql://", "postgres://", "mysql://", "snowflake://")
+
+
 def _step_detect_db_type(steps_counter: int, url: str) -> tuple[type[BaseLoader], dict[str, str]]:
-    """Yield the database type detection step message."""
+    """Yield the database type detection step message.
+
+    Strictly validates the URL scheme — unlike ``get_database_type_and_loader``'s
+    server-path default-to-PostgreSQL fallback, schema loading must reject
+    ``sqlite://``/``invalid://``/etc. with a clean ``InvalidArgumentError``
+    rather than misclassifying them.
+    """
+    if not url or not any(url.lower().startswith(s) for s in _KNOWN_DB_SCHEMES):
+        raise InvalidArgumentError("Invalid database URL format")
+
     db_type, loader = get_database_type_and_loader(url)
     if loader is None or db_type is None:
-        # The server-path fallback in get_database_type_and_loader returns
-        # PostgresLoader for unknown schemes, so reaching ``None`` here means
-        # an empty/sentinel URL was passed.
         raise InvalidArgumentError("Invalid database URL format")
 
     return loader, {

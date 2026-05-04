@@ -115,7 +115,9 @@ class QueryWeaver:
             DatabaseConnection with connection status and details.
 
         Raises:
-            ValueError: If the database URL format is invalid.
+            api.core.errors.InvalidArgumentError: If the database URL format is
+                invalid (empty, unknown scheme, or unsupported vendor for the
+                installed extras).
         """
         from api.core.schema_loader import load_database_sync
         return await load_database_sync(db_url, self._user_id, db=self._db)
