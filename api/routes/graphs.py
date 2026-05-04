@@ -26,6 +26,29 @@ from api.routes.tokens import UNAUTHORIZED_RESPONSE
 graphs_router = APIRouter(tags=["Graphs & Databases"])
 
 
+async def _stream_pipeline(gen, *, error_log: str, error_msg: str):
+    """Serialize pipeline events to the wire format and stop on ``_Final``.
+
+    Both the streaming query and confirm endpoints use the same shape:
+    iterate, drop the ``_Final`` sentinel, JSON-encode each dict event and
+    delimit with ``MESSAGE_DELIMITER``. On any unexpected exception, log the
+    full traceback internally but emit a generic error event to the client
+    (CodeQL: information exposure through exception).
+    """
+    try:
+        async for event in gen:
+            if isinstance(event, _Final):
+                return
+            yield json.dumps(event) + MESSAGE_DELIMITER
+    except Exception:  # pylint: disable=broad-exception-caught
+        logging.exception(error_log)
+        yield json.dumps({
+            "type": "error",
+            "final_response": True,
+            "message": error_msg,
+        }) + MESSAGE_DELIMITER
+
+
 class GraphData(BaseModel):
     """Graph data model.
 
@@ -145,27 +168,14 @@ async def query_graph(
             chat_data (ChatRequest): The chat data containing user queries and context.
     """
     try:
-        async def stream():
-            try:
-                async for event in run_query(
-                    request.state.user_id, graph_id, chat_data,
-                ):
-                    if isinstance(event, _Final):
-                        # The user-facing "final" event was already emitted as a regular
-                        # dict before this sentinel; the sentinel just signals end-of-stream.
-                        return
-                    yield json.dumps(event) + MESSAGE_DELIMITER
-            except Exception:  # pylint: disable=broad-exception-caught
-                # Catch all to avoid leaking stack traces (CodeQL: information
-                # exposure through exception). Log internally; emit a generic
-                # error event so the client sees a clean failure.
-                logging.exception("Streaming query failed")
-                yield json.dumps({
-                    "type": "error",
-                    "final_response": True,
-                    "message": "Internal error while processing query",
-                }) + MESSAGE_DELIMITER
-        return StreamingResponse(stream(), media_type="application/json")
+        return StreamingResponse(
+            _stream_pipeline(
+                run_query(request.state.user_id, graph_id, chat_data),
+                error_log="Streaming query failed",
+                error_msg="Internal error while processing query",
+            ),
+            media_type="application/json",
+        )
     except InvalidArgumentError as iae:
         logging.warning("Invalid argument in query: %s", str(iae))
         return JSONResponse(content={"error": "Invalid query request"}, status_code=400)
@@ -184,24 +194,14 @@ async def confirm_destructive_operation(
     """
 
     try:
-        async def stream():
-            try:
-                async for event in run_confirmed(
-                    request.state.user_id, graph_id, confirm_data,
-                ):
-                    if isinstance(event, _Final):
-                        return
-                    yield json.dumps(event) + MESSAGE_DELIMITER
-            except Exception:  # pylint: disable=broad-exception-caught
-                # See note on the query endpoint above (CodeQL: information
-                # exposure through exception).
-                logging.exception("Streaming confirmed-destructive query failed")
-                yield json.dumps({
-                    "type": "error",
-                    "final_response": True,
-                    "message": "Internal error while processing confirmation",
-                }) + MESSAGE_DELIMITER
-        return StreamingResponse(stream(), media_type="application/json")
+        return StreamingResponse(
+            _stream_pipeline(
+                run_confirmed(request.state.user_id, graph_id, confirm_data),
+                error_log="Streaming confirmed-destructive query failed",
+                error_msg="Internal error while processing confirmation",
+            ),
+            media_type="application/json",
+        )
     except InvalidArgumentError as iae:
         logging.warning("Invalid argument in destructive operation: %s", str(iae))
         return JSONResponse(content={"error": "Invalid confirmation request"}, status_code=400)

@@ -31,9 +31,20 @@ MESSAGE_DELIMITER = "|||FALKORDB_MESSAGE_BOUNDARY|||"
 
 GENERAL_PREFIX = os.getenv("GENERAL_PREFIX")
 
-DESTRUCTIVE_OPS = frozenset([
-    'INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE',
-])
+# Verb → user-facing description for destructive operations. Single source of
+# truth for both ``DESTRUCTIVE_OPS`` (membership test) and the confirmation
+# message builder, so adding a verb in one place can't drift from the other.
+_DESTRUCTIVE_VERBS = {
+    'INSERT': 'Add new data to the database',
+    'UPDATE': 'Modify existing data in the database',
+    'DELETE': '**PERMANENTLY DELETE** data from the database',
+    'DROP': '**PERMANENTLY DELETE** entire tables or database objects',
+    'CREATE': 'Create new tables or database objects',
+    'ALTER': 'Modify the structure of existing tables',
+    'TRUNCATE': '**PERMANENTLY DELETE ALL DATA** from specified tables',
+}
+
+DESTRUCTIVE_OPS = frozenset(_DESTRUCTIVE_VERBS)
 
 # Contextvar-scoped task sink. SDK code sets this for the duration of a
 # query/execute call so ``save_memory_background`` (fire-and-forget) can
@@ -84,11 +95,17 @@ def is_general_graph(graph_id: str) -> bool:
 
 def get_database_type_and_loader(
     db_url: str,
+    *,
+    sdk_only: bool = False,
 ) -> tuple[Optional[str], Optional[Type[BaseLoader]]]:
     """Determine database type from *db_url* and return the loader class.
 
     Performs null/empty check, case-insensitive matching and defaults to
-    PostgreSQL for backward compatibility (matching ``text2sql.py``).
+    PostgreSQL for backward compatibility on the server path.
+
+    When ``sdk_only`` is True, raises ``InvalidArgumentError`` for vendors
+    that need the ``[server]`` extra (snowflake) or for unknown URL schemes,
+    so SDK callers get a clean error instead of a deferred ``ImportError``.
     """
     if not db_url or db_url == "No URL available for this database.":
         return None, None
@@ -100,13 +117,22 @@ def get_database_type_and_loader(
     if db_url_lower.startswith('mysql://'):
         return 'mysql', MySQLLoader
     if db_url_lower.startswith('snowflake://'):
+        if sdk_only:
+            raise InvalidArgumentError(
+                "Snowflake requires the [server] extra: "
+                "pip install queryweaver[server]"
+            )
         # Lazy-import: snowflake-connector-python is in the [server] extra,
         # not in the core SDK install.
         # pylint: disable=import-outside-toplevel
         from api.loaders.snowflake_loader import SnowflakeLoader
         return 'snowflake', SnowflakeLoader
 
-    # Default to PostgresLoader for backward compatibility
+    if sdk_only:
+        raise InvalidArgumentError(
+            "Invalid database URL format. Must be PostgreSQL or MySQL."
+        )
+    # Server path keeps the historical default-to-PostgreSQL fallback.
     return 'postgresql', PostgresLoader
 
 
@@ -318,17 +344,6 @@ def format_ai_response(  # pylint: disable=too-many-arguments,too-many-positiona
         query_results=query_results,
         db_description=db_description,
     )
-
-
-_DESTRUCTIVE_VERBS = {
-    'INSERT': 'Add new data to the database',
-    'UPDATE': 'Modify existing data in the database',
-    'DELETE': '**PERMANENTLY DELETE** data from the database',
-    'DROP': '**PERMANENTLY DELETE** entire tables or database objects',
-    'CREATE': 'Create new tables or database objects',
-    'ALTER': 'Modify the structure of existing tables',
-    'TRUNCATE': '**PERMANENTLY DELETE ALL DATA** from specified tables',
-}
 
 
 def build_destructive_confirmation_message(sql_type: str, sql_query: str) -> str:

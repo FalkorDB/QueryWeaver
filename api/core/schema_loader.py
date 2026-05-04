@@ -11,10 +11,8 @@ from redis import RedisError
 
 from api.core.db_resolver import resolve_db
 from api.core.errors import InvalidArgumentError
-from api.core.pipeline import MESSAGE_DELIMITER
+from api.core.pipeline import MESSAGE_DELIMITER, get_database_type_and_loader
 from api.loaders.base_loader import BaseLoader
-from api.loaders.postgres_loader import PostgresLoader
-from api.loaders.mysql_loader import MySQLLoader
 from api.core.result_models import DatabaseConnection
 
 
@@ -36,22 +34,11 @@ def _step_start(steps_counter: int) -> dict[str, str]:
 
 def _step_detect_db_type(steps_counter: int, url: str) -> tuple[type[BaseLoader], dict[str, str]]:
     """Yield the database type detection step message."""
-    db_type = None
-    loader: type[BaseLoader] = BaseLoader  # type: ignore
-    if url.startswith("postgres://") or url.startswith("postgresql://"):
-        db_type = "postgresql"
-        loader = PostgresLoader
-    elif url.startswith("mysql://"):
-        db_type = "mysql"
-        loader = MySQLLoader
-    elif url.startswith("snowflake://"):
-        # Lazy-import: snowflake-connector-python is in the [server] extra,
-        # not in the core SDK install.
-        # pylint: disable=import-outside-toplevel
-        from api.loaders.snowflake_loader import SnowflakeLoader
-        db_type = "snowflake"
-        loader = SnowflakeLoader
-    else:
+    db_type, loader = get_database_type_and_loader(url)
+    if loader is None or db_type is None:
+        # The server-path fallback in get_database_type_and_loader returns
+        # PostgresLoader for unknown schemes, so reaching ``None`` here means
+        # an empty/sentinel URL was passed.
         raise InvalidArgumentError("Invalid database URL format")
 
     return loader, {
@@ -193,13 +180,11 @@ async def load_database_sync(url: str, user_id: str, db=None):
     if not url or len(url.strip()) == 0:
         raise InvalidArgumentError("Invalid URL format")
 
-    # Determine database type and loader
-    loader: type[BaseLoader] = BaseLoader
-    if url.startswith("postgres://") or url.startswith("postgresql://"):
-        loader = PostgresLoader
-    elif url.startswith("mysql://"):
-        loader = MySQLLoader
-    else:
+    # Determine database type and loader. ``sdk_only=True`` rejects snowflake
+    # and unknown schemes with a clean InvalidArgumentError instead of letting
+    # an ImportError surface when the snowflake extra isn't installed.
+    _, loader = get_database_type_and_loader(url, sdk_only=True)
+    if loader is None:
         raise InvalidArgumentError("Invalid database URL format. Must be PostgreSQL or MySQL.")
 
     success = False

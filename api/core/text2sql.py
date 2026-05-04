@@ -220,6 +220,55 @@ async def collect_result(
     raise InternalError("Pipeline produced no final result")
 
 
+async def _emit_schema_refresh(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    loader_class,
+    namespaced: str,
+    db_url: str,
+    operation_type: str,
+    *,
+    db: Optional["FalkorDB"] = None,
+    mark_final_response: bool = False,
+) -> AsyncGenerator[dict, None]:
+    """Refresh the graph schema and yield the standard wire events.
+
+    ``mark_final_response`` adds the ``final_response: False`` field to events.
+    The streaming path (``run_query``) sets it; the confirm path historically
+    omits it. Threading the divergence through one parameter keeps the two
+    callers from drifting again.
+    """
+    base = {"final_response": False} if mark_final_response else {}
+    yield {
+        **base,
+        "type": "reasoning_step",
+        "message": "Step 3: Schema change detected - refreshing graph...",
+    }
+
+    refresh_success, refresh_message = await loader_class.refresh_graph_schema(
+        namespaced, db_url, db=db,
+    )
+    if refresh_success:
+        yield {
+            **base,
+            "type": "schema_refresh",
+            "message": (
+                f"✅ Schema change detected ({operation_type} operation)\n\n"
+                "🔄 Graph schema has been automatically refreshed with the "
+                "latest database structure."
+            ),
+            "refresh_status": "success",
+        }
+    else:
+        yield {
+            **base,
+            "type": "schema_refresh",
+            "message": (
+                f"⚠️ Schema was modified but graph refresh failed: "
+                f"{refresh_message}"
+            ),
+            "refresh_status": "failed",
+        }
+
+
 def _build_query_result(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     sql_query: str,
     results: list,
@@ -520,35 +569,11 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
             }
 
         if is_schema_modifying:
-            yield {
-                "type": "reasoning_step",
-                "final_response": False,
-                "message": "Step 3: Schema change detected - refreshing graph...",
-            }
-            refresh_success, refresh_message = await loader_class.refresh_graph_schema(
-                namespaced, db_url, db=db,
-            )
-            if refresh_success:
-                yield {
-                    "type": "schema_refresh",
-                    "final_response": False,
-                    "message": (
-                        f"✅ Schema change detected ({operation_type} operation)\n\n"
-                        "🔄 Graph schema has been automatically refreshed with the "
-                        "latest database structure."
-                    ),
-                    "refresh_status": "success",
-                }
-            else:
-                yield {
-                    "type": "schema_refresh",
-                    "final_response": False,
-                    "message": (
-                        f"⚠️ Schema was modified but graph refresh failed: "
-                        f"{refresh_message}"
-                    ),
-                    "refresh_status": "failed",
-                }
+            async for ev in _emit_schema_refresh(
+                loader_class, namespaced, db_url, operation_type,
+                db=db, mark_final_response=True,
+            ):
+                yield ev
 
         step_num = "4" if is_schema_modifying else "3"
         yield {
@@ -710,30 +735,10 @@ async def run_confirmed(  # pylint: disable=too-many-locals,too-many-branches,to
         yield {"type": "query_result", "data": query_results}
 
         if is_schema_modifying:
-            yield {"type": "reasoning_step",
-                   "message": "Step 3: Schema change detected - refreshing graph..."}
-            refresh_success, refresh_message = await loader_class.refresh_graph_schema(
-                namespaced, db_url, db=db,
-            )
-            if refresh_success:
-                yield {
-                    "type": "schema_refresh",
-                    "message": (
-                        f"✅ Schema change detected ({operation_type} operation)\n\n"
-                        "🔄 Graph schema has been automatically refreshed with the "
-                        "latest database structure."
-                    ),
-                    "refresh_status": "success",
-                }
-            else:
-                yield {
-                    "type": "schema_refresh",
-                    "message": (
-                        f"⚠️ Schema was modified but graph refresh failed: "
-                        f"{refresh_message}"
-                    ),
-                    "refresh_status": "failed",
-                }
+            async for ev in _emit_schema_refresh(
+                loader_class, namespaced, db_url, operation_type, db=db,
+            ):
+                yield ev
 
         step_num = "4" if is_schema_modifying else "3"
         yield {"type": "reasoning_step",
@@ -779,28 +784,36 @@ async def run_confirmed(  # pylint: disable=too-many-locals,too-many-branches,to
 
 
 
+async def _resolve_refresh_target(
+    user_id: str, graph_id: str, db: Optional["FalkorDB"] = None,
+) -> tuple[str, str]:
+    """Validate refresh prerequisites and return ``(namespaced, db_url)``.
+
+    Raises:
+        InvalidArgumentError: For demo graphs, which are read-only.
+        InternalError: When no source URL is on record for the graph.
+    """
+    namespaced = graph_name(user_id, graph_id)
+    if is_general_graph(namespaced):
+        raise InvalidArgumentError("Demo graphs cannot be refreshed")
+
+    _, db_url = await get_db_description(namespaced, db=db)
+    if not db_url or db_url == "No URL available for this database.":
+        raise InternalError("No database URL found for this graph")
+
+    return namespaced, db_url
+
+
 async def refresh_database_schema(user_id: str, graph_id: str, db=None):
     """
     Manually refresh the graph schema from the database.
     This endpoint allows users to manually trigger a schema refresh
     if they suspect the graph is out of sync with the database.
     """
-    graph_id = graph_name(user_id, graph_id)
-
-    # Prevent refresh of demo databases
-    if is_general_graph(graph_id):
-        raise InvalidArgumentError("Demo graphs cannot be refreshed")
-
     try:
-        # Get database description and URL
-        _, db_url = await get_db_description(graph_id, db=db)
-
-        if not db_url or db_url == "No URL available for this database.":
-            raise InternalError("No database URL found for this graph")
-
-        # Call load_database to refresh the schema by reconnecting
+        _, db_url = await _resolve_refresh_target(user_id, graph_id, db=db)
         return await load_database(db_url, user_id, db=db)
-    except InternalError:
+    except (InvalidArgumentError, InternalError):
         raise
     except Exception as e:
         logging.error("Error in refresh_graph_schema: %s", str(e))
@@ -819,26 +832,19 @@ async def refresh_schema_for_sdk(
     # Lazy import to break the circular dep with schema_loader.
     from api.core.schema_loader import load_database_sync  # pylint: disable=import-outside-toplevel
 
-    namespaced = graph_name(user_id, graph_id)
-
-    if is_general_graph(namespaced):
-        raise InvalidArgumentError("Demo graphs cannot be refreshed")
+    try:
+        _, db_url = await _resolve_refresh_target(user_id, graph_id, db=db)
+    except InternalError as e:
+        # SDK contract is to return a RefreshResult, not raise, when the URL
+        # is missing. InvalidArgumentError (demo graph) still propagates.
+        return RefreshResult(success=False, message=str(e))
 
     try:
-        _, db_url = await get_db_description(namespaced, db=db)
-
-        if not db_url or db_url == "No URL available for this database.":
-            return RefreshResult(
-                success=False,
-                message="No database URL found for this graph",
-            )
-
         connection_result = await load_database_sync(db_url, user_id, db=db)
         return RefreshResult(
             success=connection_result.success,
             message=connection_result.message,
         )
-
     except (RedisError, ConnectionError, OSError) as e:
         logging.error("Error refreshing schema: %s", str(e))
         return RefreshResult(
