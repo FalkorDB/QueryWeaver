@@ -1,7 +1,7 @@
 """Result dataclasses returned by the core text2sql API.
 
 Kept in ``api.core`` so both the server-side code and the SDK package
-depend on the same definitions. ``queryweaver_sdk.models`` re-exports
+depend on the same definitions. ``queryweaver.models`` re-exports
 these for the SDK's public surface.
 """
 

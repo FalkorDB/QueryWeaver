@@ -10,8 +10,8 @@ class is pure-unit (no FalkorDB/Postgres/LLM) and runs without fixtures.
 import pytest
 
 from api.core.errors import InvalidArgumentError
-from queryweaver_sdk import QueryWeaver
-from queryweaver_sdk.models import (
+from queryweaver import QueryWeaver
+from queryweaver.models import (
     DatabaseConnection,
     QueryMetadata,
     QueryRequest,

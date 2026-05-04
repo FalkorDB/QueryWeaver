@@ -153,7 +153,7 @@ def mysql_url():
 @pytest.fixture
 async def queryweaver(falkordb_url):
     """Provide initialized QueryWeaver instance with proper teardown."""
-    from queryweaver_sdk import QueryWeaver
+    from queryweaver import QueryWeaver
 
     qw = QueryWeaver(falkordb_url=falkordb_url, user_id="test_user")
     yield qw

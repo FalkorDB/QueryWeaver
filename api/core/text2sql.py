@@ -193,7 +193,7 @@ async def get_schema(user_id: str, graph_id: str, db=None):  # pylint: disable=t
 # • Streaming consumers (api/routes/graphs.py): serialize each yielded dict as
 #   ``json + MESSAGE_DELIMITER`` and stop when ``_Final`` arrives — the user-facing
 #   "final" event was already emitted as a regular dict before the sentinel.
-# • SDK consumers (queryweaver_sdk): use ``collect_result`` to drop progress
+# • SDK consumers (queryweaver): use ``collect_result`` to drop progress
 #   events and return the final ``QueryResult``.
 #
 # This is the one source of truth for the text2sql pipeline.

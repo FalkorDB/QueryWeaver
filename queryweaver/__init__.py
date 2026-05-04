@@ -6,7 +6,7 @@ to SQL queries directly in your Python applications.
 
 Example:
     ```python
-    from queryweaver_sdk import QueryWeaver
+    from queryweaver import QueryWeaver
     
     async def main():
         qw = QueryWeaver(falkordb_url="redis://localhost:6379")
@@ -24,8 +24,8 @@ Requirements:
     - Target SQL database (PostgreSQL or MySQL)
 """
 
-from queryweaver_sdk.client import QueryWeaver
-from queryweaver_sdk.models import (
+from queryweaver.client import QueryWeaver
+from queryweaver.models import (
     QueryResult,
     QueryMetadata,
     QueryAnalysis,
@@ -35,7 +35,7 @@ from queryweaver_sdk.models import (
     QueryRequest,
     ChatMessage,
 )
-from queryweaver_sdk.connection import FalkorDBConnection
+from queryweaver.connection import FalkorDBConnection
 
 __all__ = [
     "QueryWeaver",

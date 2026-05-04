@@ -5,12 +5,12 @@ language questions to SQL queries without requiring a web server.
 
 Note: This module uses lazy imports (import-outside-toplevel) intentionally.
 The api.* modules do not need to be loaded until an SDK method is called,
-so deferring their import keeps `from queryweaver_sdk import QueryWeaver`
+so deferring their import keeps `from queryweaver import QueryWeaver`
 cheap and side-effect-free.
 
 Example usage:
     ```python
-    from queryweaver_sdk import QueryWeaver
+    from queryweaver import QueryWeaver
 
     async def main():
         qw = QueryWeaver(falkordb_url="redis://localhost:6379")
@@ -28,8 +28,8 @@ import asyncio
 from contextlib import contextmanager
 from typing import Optional, Union
 
-from queryweaver_sdk.connection import FalkorDBConnection
-from queryweaver_sdk.models import (
+from queryweaver.connection import FalkorDBConnection
+from queryweaver.models import (
     QueryResult,
     SchemaResult,
     DatabaseConnection,

@@ -19,7 +19,7 @@ import asyncio
 import os
 from urllib.parse import urlparse
 
-from queryweaver_sdk import QueryRequest, QueryWeaver
+from queryweaver import QueryRequest, QueryWeaver
 
 
 def _redact_url(url: str) -> str:

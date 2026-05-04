@@ -87,11 +87,11 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["queryweaver_sdk", "api"]
+packages = ["queryweaver", "api"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "/queryweaver_sdk",
+    "/queryweaver",
     "/api",
     "/README.md",
     "/LICENSE",

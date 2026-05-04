@@ -1,6 +1,6 @@
 # QueryWeaver SDK — E-commerce Demo
 
-End-to-end walkthrough of using the `queryweaver_sdk` Python package against
+End-to-end walkthrough of using the `queryweaver` Python package against
 a realistic 12-table PostgreSQL schema.
 
 ## What's in here

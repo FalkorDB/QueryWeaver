@@ -259,7 +259,7 @@ pip install queryweaver[dev]
 
 ```python
 import asyncio
-from queryweaver_sdk import QueryWeaver
+from queryweaver import QueryWeaver
 
 async def main():
     # Initialize with FalkorDB connection
@@ -322,7 +322,7 @@ async with QueryWeaver(falkordb_url="redis://host-a:6379", user_id="tenant_a") a
 For multi-turn conversations, custom instructions, or per-request LLM overrides:
 
 ```python
-from queryweaver_sdk import QueryWeaver, QueryRequest
+from queryweaver import QueryWeaver, QueryRequest
 
 request = QueryRequest(
     question="Show their recent orders",

@@ -1,7 +1,7 @@
 """Request dataclasses accepted by the core text2sql API.
 
 Split from ``result_models`` so request/response intents stay distinct.
-``queryweaver_sdk.models`` re-exports these for the SDK's public surface.
+``queryweaver.models`` re-exports these for the SDK's public surface.
 """
 
 from dataclasses import dataclass, field
