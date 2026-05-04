@@ -33,7 +33,9 @@ async def _stream_pipeline(gen, *, error_log: str, error_msg: str):
     iterate, drop the ``_Final`` sentinel, JSON-encode each dict event and
     delimit with ``MESSAGE_DELIMITER``. On any unexpected exception, log the
     full traceback internally but emit a generic error event to the client
-    (CodeQL: information exposure through exception).
+    so no stack-trace data reaches the wire (CodeQL ``py/stack-trace-exposure``
+    lgtm-suppressed on the sink yield: ``error_msg`` is a caller-provided
+    constant, the exception object itself never flows into the response).
     """
     try:
         async for event in gen:
@@ -42,7 +44,7 @@ async def _stream_pipeline(gen, *, error_log: str, error_msg: str):
             yield json.dumps(event) + MESSAGE_DELIMITER
     except Exception:  # pylint: disable=broad-exception-caught
         logging.exception(error_log)
-        yield json.dumps({
+        yield json.dumps({  # lgtm[py/stack-trace-exposure]
             "type": "error",
             "final_response": True,
             "message": error_msg,
@@ -169,7 +171,7 @@ async def query_graph(
     """
     try:
         return StreamingResponse(
-            _stream_pipeline(
+            _stream_pipeline(  # lgtm[py/stack-trace-exposure]
                 run_query(request.state.user_id, graph_id, chat_data),
                 error_log="Streaming query failed",
                 error_msg="Internal error while processing query",
@@ -195,7 +197,7 @@ async def confirm_destructive_operation(
 
     try:
         return StreamingResponse(
-            _stream_pipeline(
+            _stream_pipeline(  # lgtm[py/stack-trace-exposure]
                 run_confirmed(request.state.user_id, graph_id, confirm_data),
                 error_log="Streaming confirmed-destructive query failed",
                 error_msg="Internal error while processing confirmation",
