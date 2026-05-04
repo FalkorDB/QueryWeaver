@@ -85,6 +85,7 @@ class ConfirmRequest(BaseModel):
     chat: list = []
     custom_api_key: str | None = None
     custom_model: str | None = None
+    use_memory: bool = False
 
 
 
@@ -667,13 +668,18 @@ async def run_confirmed(  # pylint: disable=too-many-locals,too-many-branches,to
         ))
         return
 
+    use_memory = bool(getattr(confirm_data, "use_memory", False))
     memory_tool = None
     execution_error_msg = None
     user_readable_response = ""
     query_results: list = []
 
     try:
-        memory_tool = await _create_memory_tool(user_id, namespaced, db=db)
+        # Only create the MemoryTool when the caller asks for it. graphiti_core
+        # is in the [server] extra; SDK installs without it would otherwise
+        # ImportError here at runtime.
+        if use_memory:
+            memory_tool = await _create_memory_tool(user_id, namespaced, db=db)
         db_description, db_url = await get_db_description(namespaced, db=db)
         db_type, loader_class = get_database_type_and_loader(db_url)
 

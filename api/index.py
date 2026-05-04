@@ -10,9 +10,20 @@ app = create_app()
 
 
 def main() -> None:
-    """Console-script entrypoint (``queryweaver`` after ``pip install``)."""
+    """Console-script entrypoint (``queryweaver`` after ``pip install``).
+
+    Requires the ``[server]`` extra (FastAPI + uvicorn). Plain
+    ``pip install queryweaver`` installs the SDK only; the server is
+    available via ``pip install queryweaver[server]``.
+    """
     import os  # pylint: disable=import-outside-toplevel
-    import uvicorn  # pylint: disable=import-outside-toplevel
+    try:
+        import uvicorn  # pylint: disable=import-outside-toplevel
+    except ImportError as exc:
+        raise SystemExit(
+            "queryweaver server requires the [server] extra. "
+            "Install with: pip install queryweaver[server]"
+        ) from exc
 
     debug_mode = os.environ.get('FASTAPI_DEBUG', 'False').lower() == 'true'
     uvicorn.run(

@@ -42,7 +42,7 @@ __all__ = [
     "QueryResult",
     "QueryMetadata",
     "QueryAnalysis",
-    "SchemaResult", 
+    "SchemaResult",
     "DatabaseConnection",
     "RefreshResult",
     "QueryRequest",
