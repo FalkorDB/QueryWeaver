@@ -1,5 +1,6 @@
 """Graph-related routes for the text2sql API."""
 
+import json
 import logging
 from fastapi import APIRouter, Request, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -7,24 +8,43 @@ from pydantic import BaseModel
 
 from api.core.schema_loader import list_databases
 from api.core.text2sql import (
-    GENERAL_PREFIX,
     ChatRequest,
     ConfirmRequest,
-    GraphNotFoundError,
-    InternalError,
-    InvalidArgumentError,
+    _Final,
     delete_database,
-    execute_destructive_operation,
     get_schema,
-    query_database,
     refresh_database_schema,
-    _graph_name,
+    run_confirmed,
+    run_query,
 )
+from api.core.pipeline import (
+    GENERAL_PREFIX,
+    MESSAGE_DELIMITER,
+    graph_name,
+    is_general_graph,
+    validate_and_truncate_chat,
+    validate_custom_model,
+)
+from api.core.errors import GraphNotFoundError, InternalError, InvalidArgumentError
 from api.graph import get_user_rules, set_user_rules
 from api.auth.user_management import token_required
 from api.routes.tokens import UNAUTHORIZED_RESPONSE
 
 graphs_router = APIRouter(tags=["Graphs & Databases"])
+
+
+async def _serialize_pipeline(gen):
+    """Serialize pipeline events to the wire format and stop on ``_Final``.
+
+    Pure encoding loop — no exception handling here. Each route handler
+    wraps iteration in its own ``try/except`` so the broad-except (which
+    emits a generic error event without leaking stack data) lives in the
+    route function CodeQL already accepts, not in a shared helper.
+    """
+    async for event in gen:
+        if isinstance(event, _Final):
+            return
+        yield json.dumps(event) + MESSAGE_DELIMITER
 
 
 class GraphData(BaseModel):
@@ -145,12 +165,35 @@ async def query_graph(
             graph_id (str): The ID of the graph to query.
             chat_data (ChatRequest): The chat data containing user queries and context.
     """
+    # Eager validation: ``run_query`` is an async generator, so its body
+    # (including ``validate_and_truncate_chat``/``graph_name``) only runs once
+    # the StreamingResponse is iterated. Surfacing client errors as HTTP 400
+    # requires a synchronous check before we hand the stream to the response.
     try:
-        generator = await query_database(request.state.user_id, graph_id, chat_data)
-        return StreamingResponse(generator, media_type="application/json")
+        graph_name(request.state.user_id, graph_id)
+        validate_and_truncate_chat(chat_data)
+        validate_custom_model(getattr(chat_data, "custom_model", None))
     except InvalidArgumentError as iae:
         logging.warning("Invalid argument in query: %s", str(iae))
         return JSONResponse(content={"error": "Invalid query request"}, status_code=400)
+
+    async def stream():
+        try:
+            async for chunk in _serialize_pipeline(
+                run_query(request.state.user_id, graph_id, chat_data)
+            ):
+                yield chunk
+        except Exception:  # pylint: disable=broad-exception-caught
+            # Don't leak stack traces (CodeQL: information exposure through
+            # exception). Log internally; emit a generic error event.
+            logging.exception("Streaming query failed")
+            yield json.dumps({
+                "type": "error",
+                "final_response": True,
+                "message": "Internal error while processing query",
+            }) + MESSAGE_DELIMITER
+
+    return StreamingResponse(stream(), media_type="application/json")
 
 
 @graphs_router.post("/{graph_id}/confirm", responses={401: UNAUTHORIZED_RESPONSE})
@@ -165,14 +208,36 @@ async def confirm_destructive_operation(
     Requires authentication.
     """
 
+    # Eager validation — see note on the query endpoint above.
     try:
-        generator = await execute_destructive_operation(
-            request.state.user_id, graph_id, confirm_data
-        )
-        return StreamingResponse(generator, media_type="application/json")
+        namespaced = graph_name(request.state.user_id, graph_id)
+        if is_general_graph(namespaced):
+            raise InvalidArgumentError(
+                "Destructive operations are not allowed on demo graphs"
+            )
+        if not (getattr(confirm_data, "sql_query", "") or "").strip():
+            raise InvalidArgumentError("No SQL query provided")
+        validate_custom_model(getattr(confirm_data, "custom_model", None))
     except InvalidArgumentError as iae:
         logging.warning("Invalid argument in destructive operation: %s", str(iae))
         return JSONResponse(content={"error": "Invalid confirmation request"}, status_code=400)
+
+    async def stream():
+        try:
+            async for chunk in _serialize_pipeline(
+                run_confirmed(request.state.user_id, graph_id, confirm_data)
+            ):
+                yield chunk
+        except Exception:  # pylint: disable=broad-exception-caught
+            # See note on the query endpoint above (CodeQL).
+            logging.exception("Streaming confirmed-destructive query failed")
+            yield json.dumps({
+                "type": "error",
+                "final_response": True,
+                "message": "Internal error while processing confirmation",
+            }) + MESSAGE_DELIMITER
+
+    return StreamingResponse(stream(), media_type="application/json")
 
 
 @graphs_router.post("/{graph_id}/refresh", responses={401: UNAUTHORIZED_RESPONSE})
@@ -239,7 +304,7 @@ class UserRulesRequest(BaseModel):
 async def get_graph_user_rules(request: Request, graph_id: str):
     """Get user rules for the specified graph."""
     try:
-        full_graph_id = _graph_name(request.state.user_id, graph_id)
+        full_graph_id = graph_name(request.state.user_id, graph_id)
         user_rules = await get_user_rules(full_graph_id)
         logging.info("Retrieved user rules length: %d", len(user_rules) if user_rules else 0)
         return JSONResponse(content={"user_rules": user_rules})
@@ -265,7 +330,7 @@ async def update_graph_user_rules(request: Request, graph_id: str, data: UserRul
         logging.info(
             "Received request to update user rules, content length: %d", len(data.user_rules)
         )
-        full_graph_id = _graph_name(request.state.user_id, graph_id)
+        full_graph_id = graph_name(request.state.user_id, graph_id)
         await set_user_rules(full_graph_id, data.user_rules)
         logging.info("User rules updated successfully")
         return JSONResponse(content={"success": True, "user_rules": data.user_rules})
