@@ -34,7 +34,7 @@ dependencies = [
 # Server dependencies (FastAPI, auth, etc.)
 server = [
     "fastapi~=0.136.1",
-    "uvicorn~=0.44.0",
+    "uvicorn~=0.46.0",
     "authlib~=1.7.0",
     "itsdangerous~=2.2.0",
     "python-multipart~=0.0.27",
