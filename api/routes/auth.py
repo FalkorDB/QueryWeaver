@@ -116,8 +116,17 @@ def _verify_password(password: str, stored_password_hex: str) -> bool:
 def _sanitize_for_log(value: str) -> str:
     """Sanitize user input for logging by removing newlines and carriage returns."""
     if not isinstance(value, str):
-        return str(value)
-    return value.replace('\r\n', '').replace('\n', '').replace('\r', '')
+        try:
+            value = str(value)
+        except Exception:  # pylint: disable=broad-exception-caught
+            # Defensive: a custom __str__ may raise. Log sanitisation must never
+            # be fatal to the auth flow, so fall back to a safe placeholder.
+            return '<unprintable>'
+    # Strip carriage returns first, then newlines. The final ``.replace('\n', '')``
+    # must be the outermost (returned) call so that CodeQL's log-injection sanitizer
+    # (ReplaceLineBreaksSanitizer, which only recognises a first argument of "\n" or
+    # "\r\n") treats the returned value as sanitised.
+    return value.replace('\r', '').replace('\n', '')
 
 def _validate_email(email: str) -> bool:
     """Basic email validation."""
