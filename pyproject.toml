@@ -26,9 +26,9 @@ classifiers = [
 # not optional. redis is provided transitively by falkordb.
 dependencies = [
     "litellm>=1.83.0",
-    "falkordb~=1.6.0",
+    "falkordb~=1.6.1",
     "psycopg2-binary~=2.9.12",
-    "pymysql~=1.1.0",
+    "pymysql~=1.2.0",
     "jsonschema~=4.26.0",
     "tqdm~=4.67.3",
     "pydantic>=2.0",
@@ -40,7 +40,7 @@ dependencies = [
 # queries are run with use_memory=True. Lazily imported by the SDK.
 memory = [
     "openai>=1.0.0",
-    "graphiti-core>=0.28.1",
+    "graphiti-core>=0.29.1",
 ]
 
 # Server dependencies (FastAPI, auth, etc.). Used to run the full app from a
@@ -50,10 +50,10 @@ server = [
     "uvicorn~=0.46.0",
     "authlib~=1.7.0",
     "itsdangerous~=2.2.0",
-    "python-multipart~=0.0.27",
+    "python-multipart~=0.0.29",
     "jinja2~=3.1.4",
     "fastmcp>=3.2.4",
-    "graphiti-core>=0.28.1",
+    "graphiti-core>=0.29.1",
     "snowflake-connector-python~=4.4.0",
     "aiohttp>=3.13.5",
 ]
@@ -64,7 +64,7 @@ dev = [
     "pytest-asyncio~=1.3.0",
     "pylint~=4.0.3",
     "playwright~=1.59.0",
-    "pytest-playwright~=0.7.1",
+    "pytest-playwright~=0.8.0",
 ]
 
 # All dependencies (server + dev)
@@ -84,7 +84,7 @@ dev = [
     "pytest~=9.0.3",
     "pylint~=4.0.3",
     "playwright~=1.59.0",
-    "pytest-playwright~=0.7.1",
+    "pytest-playwright~=0.8.0",
     "pytest-asyncio~=1.3.0",
 ]
 
