@@ -27,7 +27,7 @@ classifiers = [
 dependencies = [
     "litellm>=1.83.0",
     "falkordb~=1.6.0",
-    "psycopg2-binary~=2.9.11",
+    "psycopg2-binary~=2.9.12",
     "pymysql~=1.1.0",
     "jsonschema~=4.26.0",
     "tqdm~=4.67.3",
@@ -46,11 +46,11 @@ memory = [
 # Server dependencies (FastAPI, auth, etc.). Used to run the full app from a
 # repo/Docker checkout; the published SDK wheel does not include the server.
 server = [
-    "fastapi~=0.136.0",
-    "uvicorn~=0.44.0",
+    "fastapi~=0.136.1",
+    "uvicorn~=0.46.0",
     "authlib~=1.7.0",
     "itsdangerous~=2.2.0",
-    "python-multipart~=0.0.10",
+    "python-multipart~=0.0.27",
     "jinja2~=3.1.4",
     "fastmcp>=3.2.4",
     "graphiti-core>=0.28.1",
@@ -63,7 +63,7 @@ dev = [
     "pytest~=9.0.3",
     "pytest-asyncio~=1.3.0",
     "pylint~=4.0.3",
-    "playwright~=1.58.0",
+    "playwright~=1.59.0",
     "pytest-playwright~=0.7.1",
 ]
 
@@ -83,7 +83,7 @@ Issues = "https://github.com/FalkorDB/QueryWeaver/issues"
 dev = [
     "pytest~=9.0.3",
     "pylint~=4.0.3",
-    "playwright~=1.58.0",
+    "playwright~=1.59.0",
     "pytest-playwright~=0.7.1",
     "pytest-asyncio~=1.3.0",
 ]

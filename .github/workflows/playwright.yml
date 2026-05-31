@@ -42,7 +42,7 @@ jobs:
         version: "0.7.12"
 
     # Setup Node.js
-    - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+    - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
@@ -59,13 +59,11 @@ jobs:
     - name: Install root dependencies
       run: npm ci
 
-    # Cache Playwright browsers
-    - name: Cache Playwright browsers
-      id: playwright-cache
-      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
-      with:
-        path: ~/.cache/ms-playwright
-        key: playwright-browsers-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+    # Install only system dependencies; CI uses the runner's preinstalled Chrome.
+    - name: Install Playwright system deps
+      run: |
+        npx playwright install-deps chromium
+        google-chrome --version
 
     # Install Node dependencies (frontend)
     - name: Install frontend dependencies
@@ -159,15 +157,6 @@ jobs:
         AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
         AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
         AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
-    
-    # Install Playwright browsers (Chromium only in CI)
-    - name: Install Playwright Browsers
-      if: steps.playwright-cache.outputs.cache-hit != 'true'
-      run: npx playwright install --with-deps chromium
-
-    - name: Install Playwright system deps
-      if: steps.playwright-cache.outputs.cache-hit == 'true'
-      run: npx playwright install-deps chromium
     
     # Create auth directory for storage state
     - name: Create auth directory
