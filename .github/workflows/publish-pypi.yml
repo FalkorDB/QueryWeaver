@@ -1,0 +1,65 @@
+name: Publish to PyPI
+
+# Builds the queryweaver wheel/sdist and publishes via PyPI Trusted Publishing
+# (OIDC) — no API tokens are stored. Publishes to TestPyPI first as a dry-run
+# gate, then to PyPI only if that succeeds.
+#
+# One-time setup (see plan): configure a Trusted Publisher on both PyPI and
+# TestPyPI for repo FalkorDB/QueryWeaver, workflow publish-pypi.yml, with the
+# GitHub environments `testpypi` and `pypi` respectively.
+
+permissions:
+  contents: read
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish-testpypi:
+    name: Publish to TestPyPI (dry-run gate)
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write   # required for OIDC trusted publishing
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: false
+      - name: Build
+        run: uv build
+      - name: Publish to TestPyPI
+        run: >
+          uv publish
+          --publish-url https://test.pypi.org/legacy/
+          --trusted-publishing always
+          --check-url https://test.pypi.org/simple/
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: publish-testpypi
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write   # required for OIDC trusted publishing
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: false
+      - name: Build
+        run: uv build
+      - name: Publish to PyPI
+        run: >
+          uv publish
+          --trusted-publishing always
+          --check-url https://pypi.org/simple/
