@@ -22,6 +22,7 @@ from api.routes.graphs import graphs_router
 from api.routes.database import database_router
 from api.routes.tokens import tokens_router
 from api.routes.settings import settings_router
+from api.routes.meta import meta_router, app_version
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -145,6 +146,7 @@ def create_app():  # pylint: disable=too-many-statements
     app.include_router(database_router)
     app.include_router(tokens_router, prefix="/tokens")
     app.include_router(settings_router, prefix="/settings")
+    app.include_router(meta_router)
 
 
 
@@ -182,6 +184,7 @@ def create_app():  # pylint: disable=too-many-statements
     # Combine the MCP app and original app
     app = FastAPI(
         title="QueryWeaver",
+        version=app_version(),
         description="Text2SQL with Graph-Powered Schema Understanding",
         openapi_tags=[
             {

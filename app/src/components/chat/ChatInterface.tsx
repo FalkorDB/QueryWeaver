@@ -201,13 +201,15 @@ const ChatInterface = ({
           const followupContent = (message.message || message.content || '').trim();
           finalContent = followupContent;
         } else if (message.type === 'error') {
-          // Handle error
+          // Handle error. Backend error events carry the text in `message`;
+          // some client-side errors use `content`. Fall back across both.
+          const errorContent = message.message || message.content || 'Something went wrong';
           toast({
             title: "Query Failed",
-            description: message.content,
+            description: errorContent,
             variant: "destructive",
           });
-          finalContent = `Error: ${message.content}`;
+          finalContent = `Error: ${errorContent}`;
         } else if (message.type === 'confirmation' || message.type === 'destructive_confirmation') {
           // Handle destructive operation confirmation - add inline confirmation message
           const confirmationMessage: ChatMessageData = {

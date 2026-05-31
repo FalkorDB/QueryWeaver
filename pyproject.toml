@@ -1,6 +1,6 @@
 [project]
 name = "queryweaver"
-version = "0.2.0"
+dynamic = ["version"]
 description = "Text2SQL tool that transforms natural language into SQL using graph-powered schema understanding"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -20,7 +20,10 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
-# Core dependencies required for SDK (minimal)
+# Core dependencies required for SDK (minimal).
+# These are imported at SDK import time (api.config loads dotenv at module
+# level; schema_loader/text2sql/graph use pydantic), so they must be core,
+# not optional. redis is provided transitively by falkordb.
 dependencies = [
     "litellm>=1.83.0",
     "falkordb~=1.6.0",
@@ -28,10 +31,20 @@ dependencies = [
     "pymysql~=1.1.0",
     "jsonschema~=4.26.0",
     "tqdm~=4.67.3",
+    "pydantic>=2.0",
+    "python-dotenv~=1.2.2",
 ]
 
 [project.optional-dependencies]
-# Server dependencies (FastAPI, auth, etc.)
+# Memory extra: enables the graphiti-backed conversation memory used when
+# queries are run with use_memory=True. Lazily imported by the SDK.
+memory = [
+    "openai>=1.0.0",
+    "graphiti-core>=0.28.1",
+]
+
+# Server dependencies (FastAPI, auth, etc.). Used to run the full app from a
+# repo/Docker checkout; the published SDK wheel does not include the server.
 server = [
     "fastapi~=0.136.0",
     "uvicorn~=0.44.0",
@@ -42,7 +55,6 @@ server = [
     "fastmcp>=3.2.4",
     "graphiti-core>=0.28.1",
     "snowflake-connector-python~=4.4.0",
-    "python-dotenv~=1.2.2",
     "aiohttp>=3.13.5",
 ]
 
@@ -67,9 +79,6 @@ Documentation = "https://github.com/FalkorDB/QueryWeaver#readme"
 Repository = "https://github.com/FalkorDB/QueryWeaver"
 Issues = "https://github.com/FalkorDB/QueryWeaver/issues"
 
-[project.scripts]
-queryweaver = "api.index:main"
-
 [dependency-groups]
 dev = [
     "pytest~=9.0.3",
@@ -86,8 +95,23 @@ build-backend = "hatchling.build"
 [tool.hatch.metadata]
 allow-direct-references = true
 
+[tool.hatch.version]
+path = "queryweaver/__init__.py"
+
+# Ship the SDK plus only the api/ code it transitively imports. The server
+# HTTP layer (routes/auth/app_factory/index) is excluded from the published
+# package — the full app runs from a repo/Docker checkout, not from the wheel.
 [tool.hatch.build.targets.wheel]
 packages = ["queryweaver", "api"]
+exclude = [
+    "api/routes",
+    "api/auth",
+    "api/analyzers",
+    "api/entities",
+    "api/app_factory.py",
+    "api/index.py",
+    "api/extensions.py",
+]
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -95,6 +119,15 @@ include = [
     "/api",
     "/README.md",
     "/LICENSE",
+]
+exclude = [
+    "api/routes",
+    "api/auth",
+    "api/analyzers",
+    "api/entities",
+    "api/app_factory.py",
+    "api/index.py",
+    "api/extensions.py",
 ]
 
 [tool.uv]
