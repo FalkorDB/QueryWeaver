@@ -1,8 +1,8 @@
 """Public metadata routes (version/health) for the QueryWeaver API.
 
 These endpoints are intentionally unauthenticated so the frontend can read
-them before login. They are untagged, so FastMCP's default EXCLUDE route map
-keeps them out of the MCP tool surface.
+them before login. Their tag is not mapped to any MCP type, so FastMCP's
+default EXCLUDE route map keeps them out of the MCP tool surface.
 """
 
 from importlib.metadata import version, PackageNotFoundError
@@ -27,6 +27,6 @@ def app_version() -> str:
 
 
 @meta_router.get("/version")
-async def get_version():
+async def get_version() -> dict[str, str]:
     """Public endpoint returning the application name and version."""
     return {"name": "queryweaver", "version": app_version()}

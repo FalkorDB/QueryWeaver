@@ -101,6 +101,8 @@ path = "queryweaver/__init__.py"
 # Ship the SDK plus only the api/ code it transitively imports. The server
 # HTTP layer (routes/auth/app_factory/index) is excluded from the published
 # package — the full app runs from a repo/Docker checkout, not from the wheel.
+# api/extensions.py is kept: api/core/db_resolver.py lazily imports it as the
+# default FalkorDB handle when callers pass db=None.
 [tool.hatch.build.targets.wheel]
 packages = ["queryweaver", "api"]
 exclude = [
@@ -110,7 +112,6 @@ exclude = [
     "api/entities",
     "api/app_factory.py",
     "api/index.py",
-    "api/extensions.py",
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -127,7 +128,6 @@ exclude = [
     "api/entities",
     "api/app_factory.py",
     "api/index.py",
-    "api/extensions.py",
 ]
 
 [tool.uv]
