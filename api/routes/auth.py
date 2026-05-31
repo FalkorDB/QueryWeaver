@@ -170,15 +170,16 @@ async def _email_account_exists(email: str) -> bool:
     account as existing / abort the signup) rather than issuing a session token.
     """
     organizations_graph = db.select_graph("Organizations")
+    # Use a UNION of two label-scoped lookups so each side hits the (label, email)
+    # index and short-circuits with LIMIT 1. This avoids both a full-graph scan and
+    # the Cartesian product that two chained OPTIONAL MATCH clauses would produce.
     query = """
-    OPTIONAL MATCH (u:User {email: $email})
-    OPTIONAL MATCH (i:Identity {email: $email})
-    RETURN count(u) + count(i) > 0 AS account_exists
+    MATCH (u:User {email: $email}) RETURN u AS account_node LIMIT 1
+    UNION
+    MATCH (i:Identity {email: $email}) RETURN i AS account_node LIMIT 1
     """
     result = await organizations_graph.query(query, {"email": email})
-    if result.result_set:
-        return bool(result.result_set[0][0])
-    return False
+    return bool(result.result_set)
 
 def _is_request_secure(request: Request) -> bool:
     """Determine if the request is secure (HTTPS)."""

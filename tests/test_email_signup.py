@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from api.routes.auth import EmailSignupRequest, email_signup
+from api.routes.auth import EmailSignupRequest, _email_account_exists, email_signup
 
 
 def _mock_request():
@@ -116,3 +116,44 @@ class TestEmailSignupCreationFailure:
         assert "api_token=" not in _set_cookie_header(response)
         mock_set_hash.assert_not_called()
         mock_delete.assert_awaited_once()
+
+
+class TestEmailAccountExistsResultHandling:
+    """Coverage for how `_email_account_exists` interprets query results.
+
+    The endpoint tests above mock this helper, so they cannot catch a regression
+    where the helper misreads the query result and returns a falsy value for an
+    existing account -- which would make signup *fail open* and reintroduce
+    CVE-2026-10130. The query itself is a UNION that returns one row per matched
+    User/Identity, so a non-empty result set means an account exists.
+
+    The query string is not exercised against a live database here (the shared
+    async FalkorDB client is not safe across pytest-asyncio's per-test event
+    loops); it is validated separately. These tests pin the result handling.
+    """
+
+    @staticmethod
+    def _patch_graph(result_set):
+        graph = MagicMock()
+        graph.query = AsyncMock(return_value=MagicMock(result_set=result_set))
+        return patch("api.routes.auth.db.select_graph", return_value=graph)
+
+    @pytest.mark.asyncio
+    async def test_non_empty_result_means_account_exists(self):
+        # UNION yields one row per matching User/Identity node.
+        with self._patch_graph([["node-a"], ["node-b"]]):
+            assert await _email_account_exists("taken@example.com") is True
+
+    @pytest.mark.asyncio
+    async def test_empty_result_means_no_account(self):
+        with self._patch_graph([]):
+            assert await _email_account_exists("free@example.com") is False
+
+    @pytest.mark.asyncio
+    async def test_query_error_propagates_to_fail_closed(self):
+        """The helper must not swallow errors, so the endpoint can fail closed."""
+        graph = MagicMock()
+        graph.query = AsyncMock(side_effect=RuntimeError("db down"))
+        with patch("api.routes.auth.db.select_graph", return_value=graph):
+            with pytest.raises(RuntimeError):
+                await _email_account_exists("err@example.com")
