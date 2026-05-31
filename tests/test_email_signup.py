@@ -11,6 +11,8 @@ import pytest
 
 from api.routes.auth import EmailSignupRequest, _email_account_exists, email_signup
 
+pytestmark = [pytest.mark.unit, pytest.mark.auth]
+
 
 def _mock_request():
     """Build a minimal mock Request for the signup handler."""
