@@ -66,6 +66,17 @@ jobs:
       with:
         path: ~/.cache/ms-playwright
         key: playwright-browsers-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        restore-keys: |
+          playwright-browsers-${{ runner.os }}-
+
+    # Install Playwright browsers before starting background services.
+    - name: Install Playwright Browsers
+      if: steps.playwright-cache.outputs.cache-hit != 'true'
+      run: npx playwright install --with-deps chromium
+
+    - name: Install Playwright system deps
+      if: steps.playwright-cache.outputs.cache-hit == 'true'
+      run: npx playwright install-deps chromium
 
     # Install Node dependencies (frontend)
     - name: Install frontend dependencies
@@ -159,15 +170,6 @@ jobs:
         AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
         AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
         AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
-    
-    # Install Playwright browsers (Chromium only in CI)
-    - name: Install Playwright Browsers
-      if: steps.playwright-cache.outputs.cache-hit != 'true'
-      run: npx playwright install --with-deps chromium
-
-    - name: Install Playwright system deps
-      if: steps.playwright-cache.outputs.cache-hit == 'true'
-      run: npx playwright install-deps chromium
     
     # Create auth directory for storage state
     - name: Create auth directory
