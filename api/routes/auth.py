@@ -116,8 +116,17 @@ def _verify_password(password: str, stored_password_hex: str) -> bool:
 def _sanitize_for_log(value: str) -> str:
     """Sanitize user input for logging by removing newlines and carriage returns."""
     if not isinstance(value, str):
-        return str(value)
-    return value.replace('\r\n', '').replace('\n', '').replace('\r', '')
+        try:
+            value = str(value)
+        except Exception:  # pylint: disable=broad-exception-caught
+            # Defensive: a custom __str__ may raise. Log sanitisation must never
+            # be fatal to the auth flow, so fall back to a safe placeholder.
+            return '<unprintable>'
+    # Strip carriage returns first, then newlines. The final ``.replace('\n', '')``
+    # must be the outermost (returned) call so that CodeQL's log-injection sanitizer
+    # (ReplaceLineBreaksSanitizer, which only recognises a first argument of "\n" or
+    # "\r\n") treats the returned value as sanitised.
+    return value.replace('\r', '').replace('\n', '')
 
 def _validate_email(email: str) -> bool:
     """Basic email validation."""
@@ -162,7 +171,25 @@ async def _set_mail_hash(email: str, password_hash: str) -> bool:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail="Internal server error"
         )
-        
+
+async def _email_account_exists(email: str) -> bool:
+    """Return True if an account already exists for the given email (any provider).
+
+    Exceptions are intentionally not swallowed so callers fail closed (treat the
+    account as existing / abort the signup) rather than issuing a session token.
+    """
+    organizations_graph = db.select_graph("Organizations")
+    # Use a UNION of two label-scoped lookups so each side hits the (label, email)
+    # index and short-circuits with LIMIT 1. This avoids both a full-graph scan and
+    # the Cartesian product that two chained OPTIONAL MATCH clauses would produce.
+    query = """
+    MATCH (u:User {email: $email}) RETURN u AS account_node LIMIT 1
+    UNION
+    MATCH (i:Identity {email: $email}) RETURN i AS account_node LIMIT 1
+    """
+    result = await organizations_graph.query(query, {"email": email})
+    return bool(result.result_set)
+
 def _is_request_secure(request: Request) -> bool:
     """Determine if the request is secure (HTTPS)."""
     
@@ -251,22 +278,40 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
+        # Reject signup when an account already exists for this email (under ANY
+        # provider). Issuing a session token for an existing account here would let
+        # an attacker take over that account without knowing its password
+        # (CVE-2026-10130, authentication bypass via signup token issuance).
+        if await _email_account_exists(email):
+            logging.info("Signup attempt for existing account: %s", _sanitize_for_log(email))
+            return JSONResponse(
+                {"success": False, "error": "An account with this email already exists"},
+                status_code=status.HTTP_409_CONFLICT
+            )
+
         api_token = secrets.token_urlsafe(32)
         # Create organization association
         success, user_info = await ensure_user_in_organizations(email, email,
                                             f"{first_name} {last_name}", "email", api_token)
 
-        if success and user_info and user_info["new_identity"]:
-            logging.info("New user created: %s", _sanitize_for_log(email))
+        if not (success and user_info and user_info.get("new_identity")):
+            # Creation failed (e.g. DB error) or raced with a concurrent signup.
+            # Never issue a token in this case; clean up any token that was linked.
+            logging.error("Failed to create new user during signup: %s",
+                          _sanitize_for_log(email))
+            await delete_user_token(api_token)
+            return JSONResponse(
+                {"success": False, "error": "Registration failed"},
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
-            # Hash password
-            password_hash = _hash_password(password)
+        logging.info("New user created: %s", _sanitize_for_log(email))
 
-            # Set email hash
-            await _set_mail_hash(email, password_hash)
+        # Hash password
+        password_hash = _hash_password(password)
 
-        else:
-            logging.info("User already exists: %s", _sanitize_for_log(email))
+        # Set email hash
+        await _set_mail_hash(email, password_hash)
 
         logging.info("User registration successful: %s", _sanitize_for_log(email))
 
