@@ -1,5 +1,6 @@
 """Tests for the public /version metadata route."""
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -12,6 +13,7 @@ def _client() -> TestClient:
     return TestClient(app)
 
 
+@pytest.mark.unit
 def test_version_returns_200_with_name_and_version():
     response = _client().get("/version")
     assert response.status_code == 200
@@ -21,11 +23,13 @@ def test_version_returns_200_with_name_and_version():
     assert body["version"]  # non-empty
 
 
+@pytest.mark.unit
 def test_version_matches_app_version():
     body = _client().get("/version").json()
     assert body["version"] == app_version()
 
 
+@pytest.mark.unit
 def test_version_is_unauthenticated():
     # No session cookie or API token supplied — must still succeed.
     response = _client().get("/version")
