@@ -556,15 +556,15 @@ wheels = [
 
 [[package]]
 name = "falkordb"
-version = "1.6.0"
+version = "1.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "python-dateutil" },
     { name = "redis" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/72/52/5495fcba8e21c269a605092a7c4a8b33ceecae283dbfe76fc53f7f5b50ab/falkordb-1.6.0.tar.gz", hash = "sha256:5c307d973f3fc3987a18478ebd5882f7e842d4225463a8ef5e026970ebfba8c6", size = 98157, upload-time = "2026-02-21T06:36:19.107Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c8/3a/58da510e5800a5cdbf9591111e4287cbf68b475bf074db12a94e5db8bcea/falkordb-1.6.1.tar.gz", hash = "sha256:bbef448a0b43e00ff3062bd6201368618d7b36e969d16ba71e8b8e3fa90873d4", size = 103185, upload-time = "2026-04-28T13:24:44.524Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/eb/8b/59ec60885abd3b6b2b3a1e5917627c3cae656b4cff7f847c5217ec3dc952/falkordb-1.6.0-py3-none-any.whl", hash = "sha256:0f190e9d6104595fd51ece4f1e7b5d49d62cfee346d94151d7986a138fd90d89", size = 37378, upload-time = "2026-02-21T06:36:17.769Z" },
+    { url = "https://files.pythonhosted.org/packages/90/02/1cf9cef72228ca2b2776b4ed0cb2645298ddcc57c1fe2c545cd46bc11eae/falkordb-1.6.1-py3-none-any.whl", hash = "sha256:cf51caeb433c04db303de5967a0c2590675fcc0354e80997870b1e0497d30c34", size = 37802, upload-time = "2026-04-28T13:24:45.677Z" },
 ]
 
 [[package]]
@@ -2224,7 +2224,7 @@ requires-dist = [
     { name = "aiohttp", marker = "extra == 'server'", specifier = ">=3.13.5" },
     { name = "authlib", marker = "extra == 'all'", specifier = "~=1.7.0" },
     { name = "authlib", marker = "extra == 'server'", specifier = "~=1.7.0" },
-    { name = "falkordb", specifier = "~=1.6.0" },
+    { name = "falkordb", specifier = "~=1.6.1" },
     { name = "fastapi", marker = "extra == 'all'", specifier = "~=0.136.1" },
     { name = "fastapi", marker = "extra == 'server'", specifier = "~=0.136.1" },
     { name = "fastmcp", marker = "extra == 'all'", specifier = ">=3.2.4" },
