@@ -766,7 +766,7 @@ wheels = [
 
 [[package]]
 name = "graphiti-core"
-version = "0.28.2"
+version = "0.29.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "neo4j" },
@@ -777,9 +777,9 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/62/6d/81b78aec2030bff0030bbabb8b227a6fa3c5fb49fb11e8501e7d0f39f3fe/graphiti_core-0.28.2.tar.gz", hash = "sha256:9b2a72f117827e015a21b610eb2c3acbe05310b79736abef7372e81247578e9d", size = 6846195, upload-time = "2026-03-11T16:20:02.736Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/08/a6/0876082003a7af08f5627c0fb27b265f403a6631efe341a4a6b4bc905c50/graphiti_core-0.29.1.tar.gz", hash = "sha256:050d7cb93e3125100ae45a2bfebadcaba1601b37575330744e834156284938b3", size = 6912025, upload-time = "2026-05-21T03:33:25.069Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/81/cd/e6203f1fee0a8e2a797f2d5f9a867513e0c63af4e19fdd1c5a7e14a47670/graphiti_core-0.28.2-py3-none-any.whl", hash = "sha256:4e1c19b7bc70a73a612a473144ed4b3fe615ac6d4c5d6b10f48e206a858bcb53", size = 314919, upload-time = "2026-03-11T16:20:01.037Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/49/e3074ab16e54f6d3f1d5fb6c3bd7ae21f5ce498ca3cb92696bd881d6eef0/graphiti_core-0.29.1-py3-none-any.whl", hash = "sha256:c04567261cc21853c66424d2378f4830ef4c6c02d7f6fb5518c215f60364f474", size = 354427, upload-time = "2026-05-21T03:33:22.939Z" },
 ]
 
 [[package]]
@@ -2229,9 +2229,9 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'server'", specifier = "~=0.136.1" },
     { name = "fastmcp", marker = "extra == 'all'", specifier = ">=3.2.4" },
     { name = "fastmcp", marker = "extra == 'server'", specifier = ">=3.2.4" },
-    { name = "graphiti-core", marker = "extra == 'all'", specifier = ">=0.28.1" },
-    { name = "graphiti-core", marker = "extra == 'memory'", specifier = ">=0.28.1" },
-    { name = "graphiti-core", marker = "extra == 'server'", specifier = ">=0.28.1" },
+    { name = "graphiti-core", marker = "extra == 'all'", specifier = ">=0.29.1" },
+    { name = "graphiti-core", marker = "extra == 'memory'", specifier = ">=0.29.1" },
+    { name = "graphiti-core", marker = "extra == 'server'", specifier = ">=0.29.1" },
     { name = "itsdangerous", marker = "extra == 'all'", specifier = "~=2.2.0" },
     { name = "itsdangerous", marker = "extra == 'server'", specifier = "~=2.2.0" },
     { name = "jinja2", marker = "extra == 'all'", specifier = "~=3.1.4" },

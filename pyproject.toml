@@ -40,7 +40,7 @@ dependencies = [
 # queries are run with use_memory=True. Lazily imported by the SDK.
 memory = [
     "openai>=1.0.0",
-    "graphiti-core>=0.28.1",
+    "graphiti-core>=0.29.1",
 ]
 
 # Server dependencies (FastAPI, auth, etc.). Used to run the full app from a
@@ -53,7 +53,7 @@ server = [
     "python-multipart~=0.0.27",
     "jinja2~=3.1.4",
     "fastmcp>=3.2.4",
-    "graphiti-core>=0.28.1",
+    "graphiti-core>=0.29.1",
     "snowflake-connector-python~=4.4.0",
     "aiohttp>=3.13.5",
 ]
