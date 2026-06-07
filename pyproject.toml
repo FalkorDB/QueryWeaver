@@ -61,7 +61,7 @@ server = [
 # Development dependencies
 dev = [
     "pytest~=9.0.3",
-    "pytest-asyncio~=1.3.0",
+    "pytest-asyncio~=1.4.0",
     "pylint~=4.0.3",
     "playwright~=1.59.0",
     "pytest-playwright~=0.8.0",
@@ -85,7 +85,7 @@ dev = [
     "pylint~=4.0.3",
     "playwright~=1.59.0",
     "pytest-playwright~=0.8.0",
-    "pytest-asyncio~=1.3.0",
+    "pytest-asyncio~=1.4.0",
 ]
 
 [build-system]
