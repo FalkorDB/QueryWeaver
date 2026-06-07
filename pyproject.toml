@@ -55,7 +55,7 @@ server = [
     "fastmcp>=3.2.4",
     "graphiti-core>=0.29.1",
     "snowflake-connector-python~=4.4.0",
-    "aiohttp>=3.13.5",
+    "aiohttp>=3.14.0",
 ]
 
 # Development dependencies
