@@ -39,7 +39,7 @@ dependencies = [
 # Memory extra: enables the graphiti-backed conversation memory used when
 # queries are run with use_memory=True. Lazily imported by the SDK.
 memory = [
-    "openai>=1.0.0",
+    "openai>=2.41.0",
     "graphiti-core>=0.29.1",
 ]
 
