@@ -55,8 +55,12 @@ async def _serialize_pipeline(gen, *, user_id, namespaced):
             break
         yield json.dumps(event) + MESSAGE_DELIMITER
     if final is not None and not final.requires_confirmation:
+        # "Success" = a valid query that ran without error. error_message is
+        # None alone isn't enough: off-topic / not-SQL-translatable results
+        # carry is_valid=False with no error, and must not inflate success_count.
         record_query_usage_background(
-            user_id, namespaced, success=final.error_message is None
+            user_id, namespaced,
+            success=final.is_valid and final.error_message is None,
         )
 
 

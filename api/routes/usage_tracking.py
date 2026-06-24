@@ -120,7 +120,8 @@ def record_query_usage_background(
         success: Whether SQL execution succeeded (no execution error).
         db: Optional FalkorDB handle; resolves to the server singleton when None.
         task_sink: Optional set the scheduled task is added to (and auto-removed
-            from on completion) so SDK ``QueryWeaver.close()`` can await it.
+            from on completion) so callers can await any in-flight tracking
+            writes before shutdown.
     """
     email = _decode_email(user_id)
     if email is None:

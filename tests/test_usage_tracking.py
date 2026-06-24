@@ -68,7 +68,7 @@ class TestRecordQueryUsage:
             )
             await _drain(sink)
 
-        db.select_graph.assert_called_once_with("Organizations")
+        db.select_graph.assert_called_once_with(usage_tracking.ORGANIZATIONS_GRAPH)
         graph.query.assert_awaited_once()
         cypher, params = graph.query.await_args.args
         assert "MATCH (u:User {email: $email})" in cypher
