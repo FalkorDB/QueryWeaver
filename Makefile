@@ -1,4 +1,4 @@
-.PHONY: help install test test-unit test-e2e test-e2e-headed lint format clean setup-dev build lint-frontend test-sdk docker-test-services docker-test-stop build-package release check-version
+.PHONY: help install test test-unit test-e2e test-e2e-headed lint format clean setup-dev build lint-frontend test-sdk docker-test-services docker-test-stop build-package
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -26,16 +26,6 @@ build-prod:
 build-package: ## Build distributable package (wheel + sdist)
 	uv build
 	@echo "Built packages in dist/"
-
-release: ## Bump the version everywhere from one source (usage: make release VERSION=X.Y.Z). See RELEASING.md
-	@test -n "$(VERSION)" || { echo "Usage: make release VERSION=X.Y.Z"; exit 1; }
-	@python3 scripts/version.py set $(VERSION)
-	@echo ""
-	@echo "Next: update CHANGELOG.md, commit, then:  git tag v$(VERSION) && git push origin v$(VERSION)"
-	@echo "Then create the GitHub Release for v$(VERSION) to publish (see RELEASING.md)."
-
-check-version: ## Verify every version manifest matches queryweaver/__init__.py
-	@python3 scripts/version.py check
 
 test: build-dev test-unit test-e2e ## Run all tests
 

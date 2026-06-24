@@ -7,10 +7,6 @@ name: Publish to PyPI
 # One-time setup (see plan): configure a Trusted Publisher on both PyPI and
 # TestPyPI for repo FalkorDB/QueryWeaver, workflow publish-pypi.yml, with the
 # GitHub environments `testpypi` and `pypi` respectively.
-#
-# Release flow (see RELEASING.md): the GitHub Release tag must be `vX.Y.Z` and
-# must match the single-sourced version in queryweaver/__init__.py — the
-# verify-version job below refuses to publish on any mismatch.
 
 permissions:
   contents: read
@@ -20,29 +16,8 @@ on:
     types: [published]
 
 jobs:
-  verify-version:
-    name: Verify tag matches package version
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - name: All version manifests agree with the source
-        run: python3 scripts/version.py check
-      - name: Release tag matches the source version
-        run: |
-          PKG_VERSION=$(python3 scripts/version.py current)
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          echo "Package version: $PKG_VERSION"
-          echo "Release tag:     $GITHUB_REF_NAME (-> $TAG_VERSION)"
-          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
-            echo "::error::Release tag $GITHUB_REF_NAME ($TAG_VERSION) does not match queryweaver/__init__.py version ($PKG_VERSION). Bump __version__ and re-tag."
-            exit 1
-          fi
-
   publish-testpypi:
     name: Publish to TestPyPI (dry-run gate)
-    needs: verify-version
     runs-on: ubuntu-latest
     environment: testpypi
     permissions:
