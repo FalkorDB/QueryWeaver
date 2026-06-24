@@ -63,10 +63,16 @@ def _decode_email(user_id: str) -> Optional[str]:
     if not user_id:
         return None
     try:
-        return base64.b64decode(user_id).decode("utf-8")
+        email = base64.b64decode(user_id, validate=True).decode("utf-8")
     except (binascii.Error, ValueError, UnicodeDecodeError):
         logging.warning("Usage tracking: could not decode user_id to email")
         return None
+    # b64decode is lenient about padding/length; require an email-shaped result
+    # so a malformed id can't trigger a phantom DB write (matches the docstring).
+    if "@" not in email:
+        logging.warning("Usage tracking: decoded user_id is not a valid email")
+        return None
+    return email
 
 
 async def _write_usage(email: str, graph_id: str, is_demo: bool, success: bool, db) -> None:
@@ -82,10 +88,11 @@ async def _write_usage(email: str, graph_id: str, is_demo: bool, success: bool, 
         },
     )
     # Structured-ish log line so usage is visible to log aggregators even
-    # before any read API exists.
+    # before any read API exists. Email (PII) is intentionally omitted; the
+    # user-influenced graph_id has CR/LF stripped to prevent log forging.
     logging.info(
-        "usage_event email=%s graph_id=%s is_demo=%s success=%s",
-        email, graph_id, is_demo, success,
+        "usage_event graph_id=%s is_demo=%s success=%s",
+        graph_id.replace("\r", " ").replace("\n", " "), is_demo, success,
     )
 
 

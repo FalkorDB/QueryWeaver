@@ -50,6 +50,11 @@ class TestDecodeEmail:
         # Malformed base64 must yield None, not raise.
         assert _decode_email("!!!not-base64!!!") is None
 
+    def test_returns_none_for_valid_base64_that_is_not_an_email(self):
+        # Decodes cleanly but isn't email-shaped -> skip (no phantom write).
+        not_email = base64.b64encode(b"notanemail").decode()
+        assert _decode_email(not_email) is None
+
 
 class TestRecordQueryUsage:
     @pytest.mark.asyncio
