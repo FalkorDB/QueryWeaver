@@ -31,6 +31,7 @@ from api.core.pipeline import (
 from api.agents import AnalysisAgent, RelevancyAgent, FollowUpAgent
 from api.agents.healer_agent import HealerAgent
 from api.core.db_resolver import resolve_db
+from api.core.usage_tracking import record_query_usage_background
 from api.core.result_models import QueryAnalysis, QueryMetadata, QueryResult, RefreshResult
 from api.graph import find, get_db_description, get_user_rules
 
@@ -608,6 +609,12 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
         if not user_readable_response:
             user_readable_response = f"Error executing SQL query: {execution_error_msg}"
 
+    # Always-on usage tracking — independent of ``use_memory``/provider, so it
+    # records every query (unlike the optional memory write below).
+    record_query_usage_background(
+        user_id, namespaced, success=execution_error_msg is None, db=db
+    )
+
     if memory_tool is not None:
         full_response = {
             "question": queries_history[-1],
@@ -763,6 +770,11 @@ async def run_confirmed(  # pylint: disable=too-many-locals,too-many-branches,to
         yield {"type": "error", "message": execution_error_msg}
         if not user_readable_response:
             user_readable_response = execution_error_msg
+
+    # Always-on usage tracking — see note in ``run_query``.
+    record_query_usage_background(
+        user_id, namespaced, success=execution_error_msg is None, db=db
+    )
 
     if memory_tool is not None:
         save_memory_background(

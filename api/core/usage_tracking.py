@@ -1,0 +1,138 @@
+"""Always-on, provider-agnostic per-query usage tracking.
+
+This is deliberately independent of the optional LLM conversational-memory
+feature (``api/memory/graphiti_tool.py``). Memory writes are opt-in
+(``use_memory``), gated to OpenAI/Azure providers, and lazily created — so
+they cannot be used to measure adoption. This module records *every* query,
+regardless of provider or the ``use_memory`` flag, onto the central
+``Organizations`` graph (which already holds ``User``/``Identity``/``Token``).
+
+For each query we maintain, fire-and-forget:
+
+* Denormalized counters + activity timestamps on the ``User`` node
+  (``query_count``/``success_count``/``error_count``/``last_active``/
+  ``first_query_at``) for cheap reads.
+* A per-query ``(:UsageEvent)`` node linked ``(User)-[:PERFORMED]->`` carrying
+  ``graph_id``/``is_demo``/``success``/``timestamp`` for time-series, per-DB
+  and success-rate analytics.
+
+Writes never block or fail a request: they run as background tasks whose
+exceptions are logged and swallowed, mirroring
+``api.core.pipeline.save_memory_background``.
+"""
+
+import asyncio
+import base64
+import binascii
+import logging
+from typing import Optional
+
+from api.core.db_resolver import resolve_db
+from api.core.pipeline import background_tasks_var, is_general_graph
+
+# Central user-management graph (also holds User/Identity/Token).
+ORGANIZATIONS_GRAPH = "Organizations"
+
+# Single round-trip: bump the User counters/timestamps and append a UsageEvent.
+# Uses MATCH (not MERGE) on User so an unknown email is a silent no-op rather
+# than creating a phantom user from the query path. ``timestamp()`` is FalkorDB
+# epoch-millis, matching every other timestamp in the Organizations graph.
+_RECORD_USAGE_CYPHER = """
+MATCH (u:User {email: $email})
+SET u.query_count    = coalesce(u.query_count, 0) + 1,
+    u.success_count  = coalesce(u.success_count, 0) + (CASE WHEN $success THEN 1 ELSE 0 END),
+    u.error_count    = coalesce(u.error_count, 0) + (CASE WHEN $success THEN 0 ELSE 1 END),
+    u.last_active    = timestamp(),
+    u.first_query_at = coalesce(u.first_query_at, timestamp())
+CREATE (u)-[:PERFORMED]->(e:UsageEvent {
+    graph_id: $graph_id,
+    is_demo: $is_demo,
+    success: $success,
+    timestamp: timestamp()
+})
+"""
+
+
+def _decode_email(user_id: str) -> Optional[str]:
+    """Recover the user's email from the base64 ``user_id``.
+
+    Inverse of ``base64.b64encode(email.encode())`` in
+    ``api/auth/user_management.py``. Returns ``None`` on malformed input so the
+    caller can skip tracking instead of raising.
+    """
+    if not user_id:
+        return None
+    try:
+        return base64.b64decode(user_id).decode("utf-8")
+    except (binascii.Error, ValueError, UnicodeDecodeError):
+        logging.warning("Usage tracking: could not decode user_id to email")
+        return None
+
+
+async def _write_usage(email: str, graph_id: str, is_demo: bool, success: bool, db) -> None:
+    """Perform the single Cypher write against the Organizations graph."""
+    organizations_graph = resolve_db(db).select_graph(ORGANIZATIONS_GRAPH)
+    await organizations_graph.query(
+        _RECORD_USAGE_CYPHER,
+        {
+            "email": email,
+            "graph_id": graph_id,
+            "is_demo": is_demo,
+            "success": success,
+        },
+    )
+    # Structured-ish log line so usage is visible to log aggregators even
+    # before any read API exists.
+    logging.info(
+        "usage_event email=%s graph_id=%s is_demo=%s success=%s",
+        email, graph_id, is_demo, success,
+    )
+
+
+def record_query_usage_background(
+    user_id: str,
+    namespaced: str,
+    success: bool,
+    *,
+    db=None,
+    task_sink: Optional[set] = None,
+) -> None:
+    """Schedule fire-and-forget usage tracking for one query.
+
+    Returns immediately. The write runs as a background task whose failure is
+    logged but never propagated, so tracking can never break or delay a query
+    response. Called unconditionally at pipeline completion — independent of
+    ``use_memory`` and the LLM provider.
+
+    Args:
+        user_id: Base64-encoded email (the namespacing id used by the routes).
+        namespaced: The fully-namespaced graph name the query ran against;
+            already demo-aware, so it doubles as the recorded ``graph_id``.
+        success: Whether SQL execution succeeded (no execution error).
+        db: Optional FalkorDB handle; resolves to the server singleton when None.
+        task_sink: Optional set the scheduled task is added to (and auto-removed
+            from on completion) so SDK ``QueryWeaver.close()`` can await it.
+    """
+    email = _decode_email(user_id)
+    if email is None:
+        return
+
+    is_demo = is_general_graph(namespaced)
+    sink = task_sink if task_sink is not None else background_tasks_var.get()
+
+    task = asyncio.create_task(
+        _write_usage(email, namespaced, is_demo, success, db)
+    )
+
+    if sink is not None:
+        sink.add(task)
+        task.add_done_callback(sink.discard)
+
+    def _log_done(t: "asyncio.Task") -> None:
+        if t.cancelled():
+            return
+        exc = t.exception()
+        if exc is not None:
+            logging.error("Usage tracking save failed: %s", exc)  # nosemgrep
+
+    task.add_done_callback(_log_done)
