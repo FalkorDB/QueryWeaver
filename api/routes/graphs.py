@@ -29,22 +29,35 @@ from api.core.errors import GraphNotFoundError, InternalError, InvalidArgumentEr
 from api.graph import get_user_rules, set_user_rules
 from api.auth.user_management import token_required
 from api.routes.tokens import UNAUTHORIZED_RESPONSE
+from api.routes.usage_tracking import record_query_usage_background
 
 graphs_router = APIRouter(tags=["Graphs & Databases"])
 
 
-async def _serialize_pipeline(gen):
+async def _serialize_pipeline(gen, *, user_id, namespaced):
     """Serialize pipeline events to the wire format and stop on ``_Final``.
 
     Pure encoding loop — no exception handling here. Each route handler
     wraps iteration in its own ``try/except`` so the broad-except (which
     emits a generic error event without leaking stack data) lives in the
     route function CodeQL already accepts, not in a shared helper.
+
+    Always-on usage tracking lives here in the route layer (not in
+    ``api/core``) so it ships with the hosted app, never the PyPI SDK. Exactly
+    one event is recorded per query, derived from the final ``QueryResult`` —
+    skipping the destructive-confirmation prompt, which has no outcome yet (the
+    ``/confirm`` call records that query).
     """
+    final = None
     async for event in gen:
         if isinstance(event, _Final):
-            return
+            final = event.value
+            break
         yield json.dumps(event) + MESSAGE_DELIMITER
+    if final is not None and not final.requires_confirmation:
+        record_query_usage_background(
+            user_id, namespaced, success=final.error_message is None
+        )
 
 
 class GraphData(BaseModel):
@@ -170,7 +183,7 @@ async def query_graph(
     # the StreamingResponse is iterated. Surfacing client errors as HTTP 400
     # requires a synchronous check before we hand the stream to the response.
     try:
-        graph_name(request.state.user_id, graph_id)
+        namespaced = graph_name(request.state.user_id, graph_id)
         validate_and_truncate_chat(chat_data)
         validate_custom_model(getattr(chat_data, "custom_model", None))
     except InvalidArgumentError as iae:
@@ -180,7 +193,8 @@ async def query_graph(
     async def stream():
         try:
             async for chunk in _serialize_pipeline(
-                run_query(request.state.user_id, graph_id, chat_data)
+                run_query(request.state.user_id, graph_id, chat_data),
+                user_id=request.state.user_id, namespaced=namespaced,
             ):
                 yield chunk
         except Exception:  # pylint: disable=broad-exception-caught
@@ -225,7 +239,8 @@ async def confirm_destructive_operation(
     async def stream():
         try:
             async for chunk in _serialize_pipeline(
-                run_confirmed(request.state.user_id, graph_id, confirm_data)
+                run_confirmed(request.state.user_id, graph_id, confirm_data),
+                user_id=request.state.user_id, namespaced=namespaced,
             ):
                 yield chunk
         except Exception:  # pylint: disable=broad-exception-caught

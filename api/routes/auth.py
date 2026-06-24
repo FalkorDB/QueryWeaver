@@ -21,6 +21,7 @@ from starlette.config import Config
 from pydantic import BaseModel
 
 from api.auth.user_management import delete_user_token, ensure_user_in_organizations, validate_user
+from api.config import ORGANIZATIONS_GRAPH
 from api.extensions import db
 
 # Import GENERAL_PREFIX from graphs route
@@ -136,7 +137,7 @@ def _validate_email(email: str) -> bool:
 async def _set_mail_hash(email: str, password_hash: str) -> bool:
     """Set email hash for the user in the database."""
     try:
-        organizations_graph = db.select_graph("Organizations")
+        organizations_graph = db.select_graph(ORGANIZATIONS_GRAPH)
 
         # Sanitize inputs for logging
         safe_email = _sanitize_for_log(email)
@@ -178,7 +179,7 @@ async def _email_account_exists(email: str) -> bool:
     Exceptions are intentionally not swallowed so callers fail closed (treat the
     account as existing / abort the signup) rather than issuing a session token.
     """
-    organizations_graph = db.select_graph("Organizations")
+    organizations_graph = db.select_graph(ORGANIZATIONS_GRAPH)
     # Use a UNION of two label-scoped lookups so each side hits the (label, email)
     # index and short-circuits with LIMIT 1. This avoids both a full-graph scan and
     # the Cartesian product that two chained OPTIONAL MATCH clauses would produce.
@@ -204,7 +205,7 @@ def _is_request_secure(request: Request) -> bool:
 async def _authenticate_email_user(email: str, password: str):
     """Authenticate an email user."""
     try:
-        organizations_graph = db.select_graph("Organizations")
+        organizations_graph = db.select_graph(ORGANIZATIONS_GRAPH)
 
         # Find user by email
         query = """

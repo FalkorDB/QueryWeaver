@@ -1,6 +1,6 @@
 """Tests for always-on per-query usage tracking.
 
-Usage tracking (``api/core/usage_tracking.py``) records every query onto the
+Usage tracking (``api/routes/usage_tracking.py``) records every query onto the
 ``Organizations`` graph, independent of the optional ``use_memory`` feature and
 the LLM provider. These tests assert the write content, the ungated design,
 and that failures never propagate to the caller.
@@ -13,8 +13,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from api.core import usage_tracking
-from api.core.usage_tracking import (
+from api.routes import usage_tracking
+from api.routes.usage_tracking import (
     _decode_email,
     record_query_usage_background,
 )

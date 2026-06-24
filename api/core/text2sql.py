@@ -31,7 +31,6 @@ from api.core.pipeline import (
 from api.agents import AnalysisAgent, RelevancyAgent, FollowUpAgent
 from api.agents.healer_agent import HealerAgent
 from api.core.db_resolver import resolve_db
-from api.core.usage_tracking import record_query_usage_background
 from api.core.result_models import QueryAnalysis, QueryMetadata, QueryResult, RefreshResult
 from api.graph import find, get_db_description, get_user_rules
 
@@ -337,14 +336,6 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
     use_memory = getattr(chat_data, "use_memory", False)
     validate_custom_model(custom_model)
 
-    def _track_usage(success: bool) -> None:
-        """Record one usage event for this query attempt (fire-and-forget).
-
-        Called on every terminal path so attempts that fail or bail early are
-        counted too — see the module docstring's "every query" goal.
-        """
-        record_query_usage_background(user_id, namespaced, success=success, db=db)
-
     logging.info("User Query: %s", sanitize_query(queries_history[-1]))
 
     # Memory tool created concurrently with relevancy/find work — small perf
@@ -376,7 +367,6 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
             execution_time=time.perf_counter() - overall_start,
             error_message="Unable to determine database type",
         ))
-        _track_usage(False)
         return
 
     # Concurrent: relevancy check + table-finding
@@ -404,7 +394,6 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
             is_valid=False,
             execution_time=time.perf_counter() - overall_start,
         ))
-        _track_usage(False)
         return
 
     tables = await find_task
@@ -460,7 +449,6 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
             ambiguities=answer_an.get("ambiguities", ""),
             explanation=answer_an.get("explanation", ""),
         ))
-        _track_usage(False)
         return
 
     # Auto-quote identifiers using the table set we already loaded.
@@ -492,7 +480,6 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
             execution_time=time.perf_counter() - overall_start,
             error_message="Destructive operation not allowed on demo graphs",
         ))
-        _track_usage(False)
         return
 
     if is_destructive:
@@ -510,9 +497,6 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
             is_valid=True, is_destructive=True, requires_confirmation=True,
             execution_time=time.perf_counter() - overall_start,
         ))
-        # No usage event here: the query has no outcome yet. run_confirmed
-        # records it once the user confirms or cancels — recording now would
-        # double-count the confirmed case.
         return
 
     yield {
@@ -624,10 +608,6 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
         if not user_readable_response:
             user_readable_response = f"Error executing SQL query: {execution_error_msg}"
 
-    # Always-on usage tracking — independent of ``use_memory``/provider (unlike
-    # the optional memory write below).
-    _track_usage(execution_error_msg is None)
-
     if memory_tool is not None:
         full_response = {
             "question": queries_history[-1],
@@ -677,14 +657,9 @@ async def run_confirmed(  # pylint: disable=too-many-locals,too-many-branches,to
     overall_start = time.perf_counter()
     namespaced = graph_name(user_id, graph_id)
 
-    def _track_usage(success: bool) -> None:
-        """Record one usage event for this confirmation attempt (fire-and-forget)."""
-        record_query_usage_background(user_id, namespaced, success=success, db=db)
-
     if is_general_graph(namespaced):
         # Match streaming refusal: even an explicit CONFIRM cannot run writes
         # on a demo graph.
-        _track_usage(False)
         raise InvalidArgumentError(
             "Destructive operations are not allowed on demo graphs"
         )
@@ -697,7 +672,6 @@ async def run_confirmed(  # pylint: disable=too-many-locals,too-many-branches,to
     validate_custom_model(custom_model)
 
     if not sql_query:
-        _track_usage(False)
         raise InvalidArgumentError("No SQL query provided")
 
     question = (
@@ -717,7 +691,6 @@ async def run_confirmed(  # pylint: disable=too-many-locals,too-many-branches,to
             is_valid=True, is_destructive=True,
             execution_time=time.perf_counter() - overall_start,
         ))
-        _track_usage(False)
         return
 
     use_memory = bool(getattr(confirm_data, "use_memory", False))
@@ -744,7 +717,6 @@ async def run_confirmed(  # pylint: disable=too-many-locals,too-many-branches,to
                 execution_time=time.perf_counter() - overall_start,
                 error_message="Unable to determine database type",
             ))
-            _track_usage(False)
             return
 
         yield {"type": "reasoning_step",
@@ -791,9 +763,6 @@ async def run_confirmed(  # pylint: disable=too-many-locals,too-many-branches,to
         yield {"type": "error", "message": execution_error_msg}
         if not user_readable_response:
             user_readable_response = execution_error_msg
-
-    # Always-on usage tracking — see note in ``run_query``.
-    _track_usage(execution_error_msg is None)
 
     if memory_tool is not None:
         save_memory_background(

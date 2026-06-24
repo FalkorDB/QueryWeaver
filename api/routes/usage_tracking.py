@@ -27,11 +27,9 @@ import binascii
 import logging
 from typing import Optional
 
+from api.config import ORGANIZATIONS_GRAPH
 from api.core.db_resolver import resolve_db
 from api.core.pipeline import background_tasks_var, is_general_graph
-
-# Central user-management graph (also holds User/Identity/Token).
-ORGANIZATIONS_GRAPH = "Organizations"
 
 # Single round-trip: bump the User counters/timestamps and append a UsageEvent.
 # Uses MATCH (not MERGE) on User so an unknown email is a silent no-op rather
