@@ -1,8 +1,9 @@
 name: Publish to PyPI
 
-# Builds the queryweaver wheel/sdist and publishes via PyPI Trusted Publishing
-# (OIDC) — no API tokens are stored. Publishes to TestPyPI first as a dry-run
-# gate, then to PyPI only if that succeeds.
+# Builds the queryweaver wheel/sdist ONCE, then publishes that exact artifact
+# via PyPI Trusted Publishing (OIDC) — no API tokens are stored. The same build
+# is validated on TestPyPI as a dry-run gate first, then shipped to PyPI only if
+# that succeeds.
 #
 # One-time setup (see plan): configure a Trusted Publisher on both PyPI and
 # TestPyPI for repo FalkorDB/QueryWeaver, workflow publish-pypi.yml, with the
@@ -16,13 +17,9 @@ on:
     types: [published]
 
 jobs:
-  publish-testpypi:
-    name: Publish to TestPyPI (dry-run gate)
+  build:
+    name: Build distribution
     runs-on: ubuntu-latest
-    environment: testpypi
-    permissions:
-      id-token: write   # required for OIDC trusted publishing
-      contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
@@ -33,6 +30,27 @@ jobs:
           enable-cache: false
       - name: Build
         run: uv build
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: dist
+          path: dist/
+
+  publish-testpypi:
+    name: Publish to TestPyPI (dry-run gate)
+    needs: build
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write   # required for OIDC trusted publishing
+      contents: read
+    steps:
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: dist
+          path: dist/
       - name: Publish to TestPyPI
         run: >
           uv publish
@@ -49,15 +67,13 @@ jobs:
       id-token: write   # required for OIDC trusted publishing
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
-        with:
-          python-version: "3.12"
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: false
-      - name: Build
-        run: uv build
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: dist
+          path: dist/
       - name: Publish to PyPI
         run: >
           uv publish

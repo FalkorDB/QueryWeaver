@@ -122,3 +122,5 @@ Radix
 Zod
 SDK
 Dependabot
+PyPI
+pypi
