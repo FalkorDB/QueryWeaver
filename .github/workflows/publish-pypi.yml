@@ -27,9 +27,11 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - name: Compare release tag to queryweaver/__init__.py
+      - name: All version manifests agree with the source
+        run: python3 scripts/version.py check
+      - name: Release tag matches the source version
         run: |
-          PKG_VERSION=$(python3 -c "import re, pathlib; print(re.search(r'__version__\s*=\s*[\"\x27]([^\"\x27]+)', pathlib.Path('queryweaver/__init__.py').read_text()).group(1))")
+          PKG_VERSION=$(python3 scripts/version.py current)
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           echo "Package version: $PKG_VERSION"
           echo "Release tag:     $GITHUB_REF_NAME (-> $TAG_VERSION)"

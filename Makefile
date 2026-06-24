@@ -1,4 +1,4 @@
-.PHONY: help install test test-unit test-e2e test-e2e-headed lint format clean setup-dev build lint-frontend test-sdk docker-test-services docker-test-stop build-package release
+.PHONY: help install test test-unit test-e2e test-e2e-headed lint format clean setup-dev build lint-frontend test-sdk docker-test-services docker-test-stop build-package release check-version
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -27,14 +27,15 @@ build-package: ## Build distributable package (wheel + sdist)
 	uv build
 	@echo "Built packages in dist/"
 
-release: ## Bump version in sync (usage: make release VERSION=X.Y.Z). See RELEASING.md
+release: ## Bump the version everywhere from one source (usage: make release VERSION=X.Y.Z). See RELEASING.md
 	@test -n "$(VERSION)" || { echo "Usage: make release VERSION=X.Y.Z"; exit 1; }
-	@echo "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([ab.rc0-9]*)?$$' || { echo "VERSION must be SemVer (e.g. 1.2.3)"; exit 1; }
-	@python3 -c "import re, pathlib; p=pathlib.Path('queryweaver/__init__.py'); s=p.read_text(); n,c=re.subn(r'(__version__\s*=\s*[\"\x27])[^\"\x27]+([\"\x27])', r'\g<1>$(VERSION)\g<2>', s); assert c==1, 'could not find __version__'; p.write_text(n)"
-	@python3 -c "import json, pathlib; p=pathlib.Path('app/package.json'); d=json.loads(p.read_text()); d['version']='$(VERSION)'; p.write_text(json.dumps(d, indent=2)+chr(10))"
-	@echo "Bumped to $(VERSION) in queryweaver/__init__.py and app/package.json"
+	@python3 scripts/version.py set $(VERSION)
+	@echo ""
 	@echo "Next: update CHANGELOG.md, commit, then:  git tag v$(VERSION) && git push origin v$(VERSION)"
 	@echo "Then create the GitHub Release for v$(VERSION) to publish (see RELEASING.md)."
+
+check-version: ## Verify every version manifest matches queryweaver/__init__.py
+	@python3 scripts/version.py check
 
 test: build-dev test-unit test-e2e ## Run all tests
 

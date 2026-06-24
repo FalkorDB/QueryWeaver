@@ -10,8 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `CHANGELOG.md` and `RELEASING.md` — documented, repeatable release process.
-- Publish workflow now verifies the GitHub Release tag matches the
-  single-sourced package version before publishing.
+- `scripts/version.py` + `make release` / `make check-version` — a single
+  source of truth for the version (`queryweaver/__init__.py`) that stamps and
+  verifies every static manifest (`app/package.json`, `server.json`).
+- Publish workflow verifies the GitHub Release tag and all version manifests
+  match the single source before publishing; a `version-consistency` CI job
+  fails any PR that lets a manifest drift.
+
+### Changed
+
+- `server.json` version realigned from the stale `0.0.11` lineage to the SDK
+  version so PyPI, the UI, the Docker image, and the MCP manifest all share one
+  version.
 
 ## [0.3.0] - Unreleased
 

@@ -6,8 +6,18 @@ Release and published automatically via PyPI Trusted Publishing (OIDC) — no AP
 tokens are stored.
 
 This project follows [Semantic Versioning](https://semver.org). The version is
-**single-sourced** in `queryweaver/__init__.py` (`__version__`); `pyproject.toml`
-reads it dynamically and the backend serves it at `GET /version`.
+**single-sourced** in `queryweaver/__init__.py` (`__version__`):
+
+- **PyPI** reads it dynamically at build time (`pyproject.toml` `dynamic`).
+- The **UI** reads it at runtime from `GET /version` (served from the same
+  source), so the app always shows the running backend's version.
+- The **Docker image** is tagged from the `vX.Y.Z` release tag.
+- A few static manifests must embed a literal copy — `app/package.json` and
+  `server.json` (MCP registry + Docker image reference). `make release` stamps
+  these from the source, and the `version-consistency` CI job fails the build if
+  any of them drift. You never edit them by hand.
+
+Run `make check-version` any time to confirm every manifest matches the source.
 
 ## One-time setup (already required before the first automated release)
 
@@ -29,12 +39,12 @@ Until these exist, the publish workflow fails at the `uv publish` step.
 2. **Update the changelog** — move items from `[Unreleased]` into a new dated
    `[X.Y.Z]` section in `CHANGELOG.md` and refresh the compare links at the
    bottom.
-3. **Bump the version** in both files (kept in sync by the helper below):
+3. **Bump the version** from the single source (stamps every manifest at once):
    ```bash
    make release VERSION=X.Y.Z
    ```
-   This updates `queryweaver/__init__.py` and `app/package.json`, then prints the
-   tag/commit commands to run.
+   This writes `queryweaver/__init__.py`, `app/package.json`, and `server.json`,
+   then prints the tag/commit commands to run.
 4. **Commit and open a PR** into `staging` (then `main`) with the bump +
    changelog.
 5. **Tag and push** once merged, using a `v`-prefixed tag that matches the
