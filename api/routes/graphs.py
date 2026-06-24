@@ -201,6 +201,11 @@ async def query_graph(
             # Don't leak stack traces (CodeQL: information exposure through
             # exception). Log internally; emit a generic error event.
             logging.exception("Streaming query failed")
+            # Pipeline crashed before _Final, so _serialize_pipeline didn't
+            # record — count this attempt as a failure here.
+            record_query_usage_background(
+                request.state.user_id, namespaced, success=False
+            )
             yield json.dumps({
                 "type": "error",
                 "final_response": True,
@@ -246,6 +251,10 @@ async def confirm_destructive_operation(
         except Exception:  # pylint: disable=broad-exception-caught
             # See note on the query endpoint above (CodeQL).
             logging.exception("Streaming confirmed-destructive query failed")
+            # Pipeline crashed before _Final — record the failed attempt here.
+            record_query_usage_background(
+                request.state.user_id, namespaced, success=False
+            )
             yield json.dumps({
                 "type": "error",
                 "final_response": True,

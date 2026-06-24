@@ -24,6 +24,7 @@ exceptions are logged and swallowed, mirroring
 import asyncio
 import base64
 import binascii
+import hashlib
 import logging
 from typing import Optional
 
@@ -86,11 +87,14 @@ async def _write_usage(email: str, graph_id: str, is_demo: bool, success: bool, 
         },
     )
     # Structured-ish log line so usage is visible to log aggregators even
-    # before any read API exists. Email (PII) is intentionally omitted; the
-    # user-influenced graph_id has CR/LF stripped to prevent log forging.
+    # before any read API exists. graph_id is the namespaced name
+    # ({base64(email)}_{db}) and base64 email is reversible, so log a short
+    # stable hash instead of the raw value — this keeps user identity out of
+    # logs and also neutralizes the CodeQL log-injection vector.
+    graph_ref = hashlib.sha256(graph_id.encode()).hexdigest()[:12]
     logging.info(
-        "usage_event graph_id=%s is_demo=%s success=%s",
-        graph_id.replace("\r", " ").replace("\n", " "), is_demo, success,
+        "usage_event graph=%s is_demo=%s success=%s",
+        graph_ref, is_demo, success,
     )
 
 

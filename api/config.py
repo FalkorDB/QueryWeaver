@@ -17,7 +17,7 @@ load_dotenv()
 # Central user-management graph holding User/Identity/Token (and UsageEvent)
 # nodes. Single source of truth for the name used across auth, tokens, and
 # usage tracking — override with the ORGANIZATIONS_GRAPH env var.
-ORGANIZATIONS_GRAPH = os.getenv("ORGANIZATIONS_GRAPH", "Organizations")
+ORGANIZATIONS_GRAPH = os.getenv("ORGANIZATIONS_GRAPH") or "Organizations"
 
 # Configure litellm logging to prevent sensitive data leakage
 def configure_litellm_logging():
