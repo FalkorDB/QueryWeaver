@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from api.auth.user_management import token_required
+from api.config import ORGANIZATIONS_GRAPH
 from api.extensions import db
 
 UNAUTHORIZED_RESPONSE = {"description": "Unauthorized - Please log in or provide a valid API token"}
@@ -80,7 +81,7 @@ async def list_tokens(request: Request) -> TokenListResponse:
         user_email = request.state.user_email
 
         # Get tokens from Organizations graph
-        organizations_graph = db.select_graph("Organizations")
+        organizations_graph = db.select_graph(ORGANIZATIONS_GRAPH)
 
         # Get user information by API token and then get all associated tokens that connected
         # to the Identity of provider='api'
@@ -120,7 +121,7 @@ async def delete_token(request: Request, token_id: str) -> JSONResponse:
         user_email = request.state.user_email
 
         # Delete token from Organizations graph
-        organizations_graph = db.select_graph("Organizations")
+        organizations_graph = db.select_graph(ORGANIZATIONS_GRAPH)
 
         # Delete the token
         delete_query = """
