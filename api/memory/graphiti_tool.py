@@ -388,7 +388,7 @@ class MemoryTool:
 
             # Execute the Cypher query through Graphiti's graph driver
             try:
-                result = await graph_driver.execute_query(cypher_query, embedding=embeddings)
+                await graph_driver.execute_query(cypher_query, embedding=embeddings)
                 return True
             except Exception as cypher_error:
                 logging.error("Error executing Cypher query: %s", cypher_error)

@@ -52,7 +52,7 @@ export default class BrowserWrapper {
             this.page = await this.context.newPage();
         }
         if (url) {
-            await this.navigateTo(url)
+            await this.navigateTo(url);
         }
 
         const pageInstance = new PageClass(this.page);

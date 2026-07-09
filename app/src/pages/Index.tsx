@@ -34,7 +34,7 @@ const Index = () => {
   const [showSchemaViewer, setShowSchemaViewer] = useState(false);
   const [showTokensModal, setShowTokensModal] = useState(false);
   // userRulesSpec is now fetched from the graph database per query
-  const [useMemory, setUseMemory] = useState(() => {
+  const [useMemory] = useState(() => {
     // Load from localStorage on init, default to true
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('queryweaver_use_memory');
@@ -42,7 +42,7 @@ const Index = () => {
     }
     return true;
   });
-  const [useRulesFromDatabase, setUseRulesFromDatabase] = useState(() => {
+  const [useRulesFromDatabase] = useState(() => {
     // Load from localStorage on init, default to false
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('queryweaver_use_rules_from_database');
@@ -147,10 +147,6 @@ const Index = () => {
   const handleConnectDatabase = () => {
     if (isRefreshingSchema || isChatProcessing) return;
     setShowDatabaseModal(true);
-  };
-
-  const handleUploadSchema = () => {
-    fileInputRef.current?.click();
   };
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
