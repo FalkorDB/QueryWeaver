@@ -61,7 +61,7 @@ const Settings = () => {
   const [githubStars, setGithubStars] = useState<string>('-');
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [rules, setRules] = useState('');
-  const [isLoadingRules, setIsLoadingRules] = useState(true);
+  const [, setIsLoadingRules] = useState(true);
   const [initialRulesLoaded, setInitialRulesLoaded] = useState(false);
   const loadedRulesRef = useRef<string>(''); // Track the originally loaded rules
   const currentRulesRef = useRef<string>(''); // Track the current rules value

@@ -1,4 +1,4 @@
-import { Locator, Page } from "@playwright/test";
+import { Locator } from "@playwright/test";
 import { waitForElementToBeVisible, waitForElementToBeEnabled } from "../../infra/utils";
 import BasePage from "../../infra/ui/basePage";
 import ApiCalls from "../api/apiCalls";
