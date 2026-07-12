@@ -30,7 +30,7 @@ dependencies = [
     "psycopg2-binary~=2.9.12",
     "pymysql~=1.2.0",
     "jsonschema~=4.26.0",
-    "tqdm~=4.67.3",
+    "tqdm>=4.67.3,<4.69.0",
     "pydantic>=2.0",
     "python-dotenv~=1.2.2",
 ]
