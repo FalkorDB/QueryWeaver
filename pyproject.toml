@@ -46,7 +46,7 @@ memory = [
 # Server dependencies (FastAPI, auth, etc.). Used to run the full app from a
 # repo/Docker checkout; the published SDK wheel does not include the server.
 server = [
-    "fastapi~=0.136.1",
+    "fastapi>=0.136.1,<0.140.0",
     "uvicorn~=0.46.0",
     "authlib~=1.7.0",
     "itsdangerous~=2.2.0",
