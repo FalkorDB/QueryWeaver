@@ -30,7 +30,7 @@ dependencies = [
     "psycopg2-binary~=2.9.12",
     "pymysql~=1.2.0",
     "jsonschema~=4.26.0",
-    "tqdm~=4.67.3",
+    "tqdm>=4.67.3,<4.69.0",
     "pydantic>=2.0",
     "python-dotenv~=1.2.2",
 ]
@@ -46,8 +46,8 @@ memory = [
 # Server dependencies (FastAPI, auth, etc.). Used to run the full app from a
 # repo/Docker checkout; the published SDK wheel does not include the server.
 server = [
-    "fastapi~=0.136.1",
-    "uvicorn~=0.46.0",
+    "fastapi>=0.136.1,<0.140.0",
+    "uvicorn>=0.46,<0.52",
     "authlib~=1.7.0",
     "itsdangerous~=2.2.0",
     "python-multipart~=0.0.32",
