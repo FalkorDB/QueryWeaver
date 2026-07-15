@@ -36,6 +36,7 @@ GENERAL_PREFIX = os.getenv("GENERAL_PREFIX")
 # message builder, so adding a verb in one place can't drift from the other.
 _DESTRUCTIVE_VERBS = {
     'INSERT': 'Add new data to the database',
+    'REPLACE': 'Replace data in the database (deletes conflicting rows, then inserts)',
     'UPDATE': 'Modify existing data in the database',
     'DELETE': '**PERMANENTLY DELETE** data from the database',
     'DROP': '**PERMANENTLY DELETE** entire tables or database objects',
@@ -202,6 +203,11 @@ def _strip_sql_comments_and_whitespace(sql_query: str) -> str:
                 return ""
             text = text[newline + 1:].lstrip()
         elif text.startswith("/*"):
+            # MySQL/MariaDB executable comments (/*! ... */, /*M! ... */) are run
+            # by the server, so they must NOT be stripped — leave them in place
+            # for the destructive-verb scanner to inspect.
+            if text.startswith("/*!") or text.startswith("/*M!"):
+                break
             end = text.find("*/")
             if end == -1:
                 return ""
@@ -231,46 +237,81 @@ def _skip_quoted(sql: str, start: int, quote: str) -> int:
     return length
 
 
+def _is_function_call(sql: str, index: int) -> bool:
+    """Whether the token ending at *index* is immediately followed by ``(``.
+
+    A destructive verb followed by ``(`` (ignoring whitespace) is a same-named
+    SQL function — e.g. MySQL ``INSERT()``/``REPLACE()`` string functions or
+    ``TRUNCATE()`` numeric function — which is read-only, not the statement
+    keyword ``REPLACE INTO`` / ``INSERT INTO`` / ``TRUNCATE TABLE``.
+    """
+    i = index
+    length = len(sql)
+    while i < length and sql[i] in " \t\r\n":
+        i += 1
+    return i < length and sql[i] == "("
+
+
+def _skip_non_code(sql: str, i: int) -> int:
+    """Return the index just past an ignorable span starting at *i*, else -1.
+
+    Ignorable spans are ordinary comments (``-- ...``, ``/* ... */``), string
+    literals (``'...'``), and quoted identifiers (``"..."``, ``` `...` ```).
+    A MySQL/MariaDB executable comment (``/*! ... */``, ``/*M! ... */``) runs on
+    the server, so only its marker is consumed and its payload is left to be
+    scanned. Returns -1 when *i* does not start an ignorable span.
+    """
+    length = len(sql)
+    char = sql[i]
+    if char == "-" and i + 1 < length and sql[i + 1] == "-":
+        newline = sql.find("\n", i)
+        return length if newline == -1 else newline + 1
+    if char == "/" and i + 1 < length and sql[i + 1] == "*":
+        if i + 2 < length and sql[i + 2] == "!":
+            return i + 3
+        if i + 3 < length and sql[i + 2] == "M" and sql[i + 3] == "!":
+            return i + 4
+        end = sql.find("*/", i + 2)
+        return length if end == -1 else end + 2
+    if char in ("'", '"', "`"):
+        return _skip_quoted(sql, i, char)
+    return -1
+
+
 def _scan_destructive_verb(sql: str) -> Optional[str]:
     """Return the first destructive keyword that appears as a real SQL token.
 
-    Scans *sql* left-to-right, skipping string literals (``'...'``), quoted
-    identifiers (``"..."`` and MySQL ``` `...` ```), and comments (``-- ...``
-    and ``/* ... */``), and matches destructive verbs only as whole word
-    tokens. This catches destructive operations that are **not** the leading
-    keyword — which a first-token-only check misses — for example:
+    Scans *sql* left-to-right, skipping string literals, quoted identifiers,
+    and ordinary comments (see :func:`_skip_non_code`), and matches destructive
+    verbs only as whole word tokens that are not function calls. This catches
+    destructive operations that are **not** the leading keyword — which a
+    first-token-only check misses — for example:
 
     - data-modifying CTEs: ``WITH t AS (...) DELETE FROM users ...`` and
       ``WITH t AS (DELETE FROM users ...) SELECT * FROM t``
     - stacked statements: ``SELECT 1; DROP TABLE users``
+    - MySQL/MariaDB executable comments: ``/*! DROP TABLE users */``
 
-    while NOT misfiring on destructive words that appear inside string
-    literals, quoted identifiers, comments, or as substrings of an identifier
-    (e.g. ``'DELETE'``, ``"delete"``, ``deleted_at``).
+    while NOT misfiring on destructive words that appear inside string literals,
+    quoted identifiers, ordinary comments, as substrings of an identifier
+    (``deleted_at``), or as function calls (``REPLACE(...)``, ``INSERT(...)``).
     """
     length = len(sql)
     i = 0
     while i < length:
+        skipped = _skip_non_code(sql, i)
+        if skipped != -1:
+            i = skipped
+            continue
         char = sql[i]
-        if char == "-" and i + 1 < length and sql[i + 1] == "-":
-            newline = sql.find("\n", i)
-            if newline == -1:
-                break
-            i = newline + 1
-        elif char == "/" and i + 1 < length and sql[i + 1] == "*":
-            end = sql.find("*/", i + 2)
-            if end == -1:
-                break
-            i = end + 2
-        elif char in ("'", '"', "`"):
-            i = _skip_quoted(sql, i, char)
-        elif char.isalpha() or char == "_":
+        if char.isalpha() or char == "_":
             start = i
             i += 1
             while i < length and (sql[i].isalnum() or sql[i] == "_"):
                 i += 1
-            if sql[start:i].upper() in DESTRUCTIVE_OPS:
-                return sql[start:i].upper()
+            word = sql[start:i].upper()
+            if word in DESTRUCTIVE_OPS and not _is_function_call(sql, i):
+                return word
         else:
             i += 1
     return None

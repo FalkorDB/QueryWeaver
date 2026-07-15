@@ -16,6 +16,8 @@ from api.core.pipeline import (
     detect_destructive_operation,
 )
 
+pytestmark = pytest.mark.unit
+
 
 class TestPlainDestructiveOperations:
     """A statement that starts with a destructive verb is destructive."""
@@ -186,3 +188,83 @@ class TestConfirmationMessageIntegration:
         message = build_destructive_confirmation_message(sql_type, sql)
         assert "DELETE" in message
         assert "DESTRUCTIVE OPERATION DETECTED" in message
+
+
+class TestReplaceStatement:
+    """MySQL ``REPLACE`` is a write (delete-then-insert) and must be caught,
+    but the same-named ``REPLACE()`` string function must not false-trigger."""
+
+    def test_replace_is_in_destructive_ops(self):
+        assert "REPLACE" in DESTRUCTIVE_OPS
+
+    def test_replace_into_is_destructive(self):
+        assert detect_destructive_operation("REPLACE INTO users VALUES (1, 'a')") == (
+            "REPLACE",
+            True,
+        )
+
+    def test_replace_into_via_cte_is_destructive(self):
+        sql = "WITH t AS (SELECT 1 AS id) REPLACE INTO users SELECT id FROM t"
+        assert detect_destructive_operation(sql) == ("REPLACE", True)
+
+    def test_replace_into_stacked_is_destructive(self):
+        assert detect_destructive_operation("SELECT 1; REPLACE INTO t VALUES (1)") == (
+            "REPLACE",
+            True,
+        )
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT REPLACE(name, 'a', 'b') FROM users",
+            "SELECT REPLACE (name, 'a', 'b') FROM users",  # space before paren
+            "SELECT id, INSERT(name, 1, 2, 'x') FROM users",  # MySQL INSERT() fn
+            "SELECT TRUNCATE(price, 2) FROM products",  # numeric TRUNCATE() fn
+        ],
+    )
+    def test_destructive_word_as_function_call_is_read_only(self, sql):
+        sql_type, is_destructive = detect_destructive_operation(sql)
+        assert is_destructive is False
+        assert sql_type == "SELECT"
+
+
+class TestExecutableComments:
+    """MySQL/MariaDB executable comments run on the server, so a destructive
+    verb inside one must be detected — not skipped like an ordinary comment."""
+
+    def test_executable_comment_drop_is_destructive(self):
+        assert detect_destructive_operation("/*! DROP TABLE users */") == ("DROP", True)
+
+    def test_executable_comment_leading_then_select(self):
+        # Executable comment with a destructive payload before a read.
+        sql = "/*! DELETE FROM users */ SELECT 1"
+        assert detect_destructive_operation(sql) == ("DELETE", True)
+
+    def test_version_gated_executable_comment_is_destructive(self):
+        assert detect_destructive_operation("/*!50110 DROP TABLE users */") == (
+            "DROP",
+            True,
+        )
+
+    def test_mariadb_executable_comment_is_destructive(self):
+        assert detect_destructive_operation("/*M! DELETE FROM users */") == (
+            "DELETE",
+            True,
+        )
+
+    def test_executable_comment_inside_statement_is_destructive(self):
+        sql = "SELECT 1 /*! ; DROP TABLE users */"
+        assert detect_destructive_operation(sql) == ("DROP", True)
+
+    def test_benign_executable_comment_is_read_only(self):
+        # SET is not destructive; the surrounding query is a read. (sql_type is
+        # unused for non-destructive results, so only is_destructive matters.)
+        sql = "/*!40101 SET NAMES utf8 */ SELECT * FROM users"
+        assert detect_destructive_operation(sql)[1] is False
+
+    def test_ordinary_block_comment_payload_stays_read_only(self):
+        # A non-executable /* ... */ comment must still be ignored.
+        assert detect_destructive_operation("SELECT 1 /* DROP TABLE users */") == (
+            "SELECT",
+            False,
+        )
