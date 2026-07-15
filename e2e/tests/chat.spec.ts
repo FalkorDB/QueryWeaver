@@ -99,6 +99,11 @@ test.describe('Chat Feature Tests', () => {
     const resultsVisible = await homePage.isQueryResultsMessageVisible();
     expect(resultsVisible).toBeFalsy();
 
+    // Verify NO destructive-operation confirmation dialog: an off-topic query
+    // must never be translated into a write (INSERT/UPDATE/DELETE) operation.
+    const confirmationVisible = await homePage.isConfirmationMessageVisible();
+    expect(confirmationVisible).toBeFalsy();
+
     // Verify AI response has content explaining it's off-topic
     const aiText = await homePage.getLastAIMessageText();
     expect(aiText.length).toBeGreaterThan(0);
