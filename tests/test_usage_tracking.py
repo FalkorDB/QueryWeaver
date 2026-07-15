@@ -21,7 +21,7 @@ from api.routes.usage_tracking import (
 
 pytestmark = [pytest.mark.unit]
 
-EMAIL = "gal.shubeli@falkordb.com"
+EMAIL = "test.user@example.com"
 USER_ID = base64.b64encode(EMAIL.encode()).decode()
 
 

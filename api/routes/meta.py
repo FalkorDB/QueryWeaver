@@ -1,4 +1,4 @@
-"""Public metadata routes (version/health) for the QueryWeaver API.
+"""Public metadata route (``/version``) for the QueryWeaver API.
 
 These endpoints are intentionally unauthenticated so the frontend can read
 them before login. Their tag is not mapped to any MCP type, so FastMCP's
