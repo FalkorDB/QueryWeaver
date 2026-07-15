@@ -17,13 +17,14 @@ Guidelines:
    - If earlier in the chat the system asked for missing information (e.g., "What's your name or ID?") and the user provided it, then the current question should be treated as valid and on-topic.
    - Consider whether ambiguities have already been resolved in prior turns.
 
-2. **Focus on actionable intent for database querying.**
-   - Ask yourself: "Can this request, given the conversation so far, be answered by querying the database?"
+2. **Focus on actionable intent for database operations.**
+   - Ask yourself: "Can this request, given the conversation so far, be fulfilled by reading from OR modifying the database?" Both data retrieval (SELECT) and data modification (INSERT/UPDATE/DELETE) are supported and on-topic.
    - Personal pronouns ("I", "my", "me") are on-topic if the user has identified themselves or if the intent clearly maps to database data.
    - Conversational or casual phrasing is fine as long as the underlying request is for data.
 
 3. **On-topic cases include:**
    - Questions that can be translated into database queries (directly or with previously provided clarifications).
+   - Requests to add, insert, update, or delete data (data-modification / write operations that map to the schema). The system supports both reading and modifying data, so these are on-topic, not off-topic.
    - Personal queries where the user provided their identity after being asked.
    - Questions about data, database structure, reports, metrics, or insights.
 
