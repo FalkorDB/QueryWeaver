@@ -211,17 +211,96 @@ def _strip_sql_comments_and_whitespace(sql_query: str) -> str:
     return text
 
 
+def _skip_quoted(sql: str, start: int, quote: str) -> int:
+    """Return the index just past the quoted span that begins at *start*.
+
+    Handles the SQL doubled-quote escape (``''``, ``""``) so an escaped quote
+    does not prematurely end the span. An unterminated quote consumes the rest
+    of the string. Used to ignore string literals and quoted identifiers when
+    scanning for SQL keywords.
+    """
+    length = len(sql)
+    i = start + 1
+    while i < length:
+        if sql[i] == quote:
+            if i + 1 < length and sql[i + 1] == quote:
+                i += 2  # doubled quote → escaped, stay inside the span
+                continue
+            return i + 1
+        i += 1
+    return length
+
+
+def _scan_destructive_verb(sql: str) -> Optional[str]:
+    """Return the first destructive keyword that appears as a real SQL token.
+
+    Scans *sql* left-to-right, skipping string literals (``'...'``), quoted
+    identifiers (``"..."`` and MySQL ``` `...` ```), and comments (``-- ...``
+    and ``/* ... */``), and matches destructive verbs only as whole word
+    tokens. This catches destructive operations that are **not** the leading
+    keyword — which a first-token-only check misses — for example:
+
+    - data-modifying CTEs: ``WITH t AS (...) DELETE FROM users ...`` and
+      ``WITH t AS (DELETE FROM users ...) SELECT * FROM t``
+    - stacked statements: ``SELECT 1; DROP TABLE users``
+
+    while NOT misfiring on destructive words that appear inside string
+    literals, quoted identifiers, comments, or as substrings of an identifier
+    (e.g. ``'DELETE'``, ``"delete"``, ``deleted_at``).
+    """
+    length = len(sql)
+    i = 0
+    while i < length:
+        char = sql[i]
+        if char == "-" and i + 1 < length and sql[i + 1] == "-":
+            newline = sql.find("\n", i)
+            if newline == -1:
+                break
+            i = newline + 1
+        elif char == "/" and i + 1 < length and sql[i + 1] == "*":
+            end = sql.find("*/", i + 2)
+            if end == -1:
+                break
+            i = end + 2
+        elif char in ("'", '"', "`"):
+            i = _skip_quoted(sql, i, char)
+        elif char.isalpha() or char == "_":
+            start = i
+            i += 1
+            while i < length and (sql[i].isalnum() or sql[i] == "_"):
+                i += 1
+            if sql[start:i].upper() in DESTRUCTIVE_OPS:
+                return sql[start:i].upper()
+        else:
+            i += 1
+    return None
+
+
 def detect_destructive_operation(sql_query: str) -> tuple[str, bool]:
     """Return ``(sql_type, is_destructive)`` for a SQL statement.
 
-    Strips leading SQL comments before classifying so attackers cannot
-    bypass destructive-op confirmation by prefixing a comment.
+    Strips leading SQL comments before classifying so a comment prefix cannot
+    bypass destructive-op confirmation. Because a first-token-only check misses
+    data-modifying CTEs (``WITH t AS (...) DELETE FROM ...``) and stacked
+    statements (``SELECT 1; DROP TABLE ...``) — which would otherwise execute
+    without confirmation and bypass the demo-graph read-only guard — the whole
+    statement is then scanned (ignoring strings, quoted identifiers, and
+    comments) for any destructive verb. If one is found, the operation is
+    treated as destructive and the reported ``sql_type`` is that verb so the
+    confirmation message names the real mutation.
     """
     if not sql_query:
         return "", False
     cleaned = _strip_sql_comments_and_whitespace(sql_query)
-    sql_type = cleaned.split()[0].upper() if cleaned else ""
-    return sql_type, sql_type in DESTRUCTIVE_OPS
+    if not cleaned:
+        return "", False
+    first_token = cleaned.split()[0].upper()
+    if first_token in DESTRUCTIVE_OPS:
+        return first_token, True
+    hidden_verb = _scan_destructive_verb(cleaned)
+    if hidden_verb is not None:
+        return hidden_verb, True
+    return first_token, False
 
 
 def auto_quote_sql_identifiers(
