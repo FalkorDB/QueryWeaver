@@ -213,7 +213,7 @@ _DIALECT_BY_DB_TYPE = {
 _DESTRUCTIVE_EXP_NAMES = frozenset({
     "Insert", "Update", "Delete", "Merge", "Drop", "Create", "Alter",
     "AlterTable", "TruncateTable", "Truncate", "Copy", "Grant", "Revoke",
-    "Into",
+    "Into", "Comment",
 })
 
 # sqlglot expression class name → short verb for the confirmation message.

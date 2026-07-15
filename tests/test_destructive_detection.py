@@ -216,6 +216,35 @@ class TestConservativeFallback:
         # and EXPLAIN ANALYZE <write> executes, so treat it as destructive.
         assert detect_destructive_operation("EXPLAIN ANALYZE DELETE FROM users", "postgresql")[1] is True
 
+    def test_unclosed_executable_comment_is_destructive(self):
+        # A dangling /*! with no closing */ cannot be proven read-only.
+        assert detect_destructive_operation("SELECT 1 /*! DROP TABLE users", "mysql")[1] is True
+
+    def test_execute_immediate_is_destructive(self):
+        assert detect_destructive_operation("EXECUTE IMMEDIATE 'DROP TABLE users'", "snowflake")[1] is True
+
+    def test_comment_on_is_destructive(self):
+        assert detect_destructive_operation("COMMENT ON TABLE users IS 'obsolete'", "postgresql")[1] is True
+
+
+class TestNestedQuoteEdgeCases:
+    """Escape/quote constructs that must not create a false positive or a
+    false negative once executable comments are unwrapped and sqlglot parses."""
+
+    def test_marker_inside_string_literal_is_read_only(self):
+        # An executable-comment marker that is really inside a string literal
+        # must not turn a plain read into a (false) destructive result.
+        sql = "SELECT '/*! DROP TABLE users */' AS s FROM t"
+        assert detect_destructive_operation(sql, "mysql")[1] is False
+
+    def test_dollar_quoted_select_literal_is_read_only(self):
+        sql = "SELECT $$Please DELETE this text$$ AS message"
+        assert detect_destructive_operation(sql, "postgresql")[1] is False
+
+    def test_tagged_dollar_quote_hiding_write_is_destructive(self):
+        sql = "WITH cte AS (SELECT $tag$'$tag$ AS s) DELETE FROM users WHERE id = 1"
+        assert detect_destructive_operation(sql, "postgresql") == ("DELETE", True)
+
 
 class TestEdgeCases:
     """Empty / degenerate inputs."""
