@@ -228,11 +228,6 @@ _EXP_NAME_TO_VERB = {
 # treated as destructive out of caution.
 _UNKNOWN_DESTRUCTIVE_TYPE = "UNKNOWN"
 
-# sqlglot logs a WARNING whenever it falls back to a generic Command for syntax
-# it does not model (e.g. REPLACE INTO, CALL). That fallback is expected and
-# handled by detect_destructive_operation, so quiet those warnings.
-logging.getLogger("sqlglot").setLevel(logging.ERROR)
-
 
 # Opening marker of a MySQL/MariaDB "executable comment" (``/*! ...``,
 # ``/*!50110 ...``, ``/*M! ...``): the server RUNS the payload, so we must not
@@ -275,7 +270,7 @@ def _sqlglot_dialect(db_type: Optional[str]) -> Optional[str]:
 
 
 def detect_destructive_operation(
-    sql_query: str, db_type: Optional[str] = None
+    sql_query: Optional[str], db_type: Optional[str] = None
 ) -> tuple[str, bool]:
     """Return ``(sql_type, is_destructive)`` for a SQL statement.
 
@@ -303,6 +298,13 @@ def detect_destructive_operation(
     if not sql_query or not sql_query.strip():
         return "", False
     prepared = _unwrap_executable_comments(sql_query)
+    # sqlglot logs a WARNING when it falls back to a generic Command for syntax
+    # it does not model (e.g. REPLACE INTO, CALL). That fallback is expected and
+    # handled below, so quiet those warnings only for the duration of our parse
+    # instead of mutating the "sqlglot" logger globally at import time.
+    sqlglot_logger = logging.getLogger("sqlglot")
+    previous_level = sqlglot_logger.level
+    sqlglot_logger.setLevel(logging.ERROR)
     try:
         statements = [
             stmt
@@ -312,6 +314,8 @@ def detect_destructive_operation(
     except Exception:  # pylint: disable=broad-exception-caught
         # Unparseable → we cannot prove it is read-only → require confirmation.
         return _UNKNOWN_DESTRUCTIVE_TYPE, True
+    finally:
+        sqlglot_logger.setLevel(previous_level)
     if not statements:
         return "", False
     for statement in statements:
