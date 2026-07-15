@@ -160,25 +160,34 @@ class TestDialectEscapeBypasses:
 
 
 class TestExecutableComments:
-    """MySQL/MariaDB executable comments run on the server, so a destructive
-    payload inside one must be detected — not dropped like a normal comment."""
+    """MySQL/MariaDB executable comments run their payload on the server, but
+    sqlglot drops them as ordinary comments. Since a comment/string-blind
+    rewrite can be bypassed, MySQL detection fails safe on the marker: any
+    executable-comment marker makes the statement conservatively destructive."""
 
     def test_executable_comment_drop(self):
-        assert detect_destructive_operation("/*! DROP TABLE users */", "mysql") == ("DROP", True)
+        assert detect_destructive_operation("/*! DROP TABLE users */", "mysql")[1] is True
 
     def test_version_gated_executable_comment(self):
-        assert detect_destructive_operation("/*!50110 DROP TABLE users */", "mysql") == ("DROP", True)
+        assert detect_destructive_operation("/*!50110 DROP TABLE users */", "mysql")[1] is True
 
     def test_mariadb_executable_comment(self):
-        assert detect_destructive_operation("/*M! DELETE FROM users */", "mysql") == ("DELETE", True)
+        assert detect_destructive_operation("/*M! DELETE FROM users */", "mysql")[1] is True
 
     def test_executable_comment_fragment_inside_read(self):
         sql = "SELECT * FROM t WHERE 1 /*! ; DELETE FROM t */"
         assert detect_destructive_operation(sql, "mysql")[1] is True
 
-    def test_benign_executable_comment_is_read_only(self):
+    def test_executable_comment_marker_is_conservatively_destructive(self):
+        # Even a benign-looking executable comment is flagged (fail safe), since
+        # its payload cannot be reliably distinguished from a destructive one.
         sql = "/*!40101 SET NAMES utf8 */; SELECT * FROM users"
-        assert detect_destructive_operation(sql, "mysql")[1] is False
+        assert detect_destructive_operation(sql, "mysql")[1] is True
+
+    def test_executable_comment_ignored_for_non_mysql_dialect(self):
+        # For PostgreSQL, /*! ... */ is a plain (non-executable) comment, so a
+        # benign read is not flagged.
+        assert detect_destructive_operation("SELECT 1 /*! comment */ FROM t", "postgresql")[1] is False
 
     def test_ordinary_block_comment_is_ignored(self):
         assert detect_destructive_operation("SELECT 1 /* DROP TABLE users */")[1] is False
@@ -227,15 +236,35 @@ class TestConservativeFallback:
         assert detect_destructive_operation("COMMENT ON TABLE users IS 'obsolete'", "postgresql")[1] is True
 
 
+class TestFailClosedRoots:
+    """Statements sqlglot parses to an unexpected/non read-only root must be
+    treated as destructive (fail closed), not slipped through as read-only."""
+
+    @pytest.mark.parametrize(
+        "sql,dialect",
+        [
+            ("RESET MASTER", "mysql"),          # deletes binary logs
+            ("SHUTDOWN", "mysql"),
+            ("UNDROP TABLE users", "snowflake"),  # catalog write
+            ("CLUSTER users", "postgresql"),      # rewrites the table
+            ("SET GLOBAL read_only = OFF", "mysql"),
+            ("SET PERSIST max_connections = 200", "mysql"),
+            ("USE otherdb", "mysql"),
+        ],
+    )
+    def test_non_readonly_root_is_destructive(self, sql, dialect):
+        assert detect_destructive_operation(sql, dialect)[1] is True
+
+
 class TestNestedQuoteEdgeCases:
     """Escape/quote constructs that must not create a false positive or a
     false negative once executable comments are unwrapped and sqlglot parses."""
 
-    def test_marker_inside_string_literal_is_read_only(self):
-        # An executable-comment marker that is really inside a string literal
-        # must not turn a plain read into a (false) destructive result.
+    def test_marker_inside_string_literal_is_conservatively_destructive(self):
+        # A /*! marker inside a string literal is a rare, safe false positive:
+        # for MySQL the fail-safe flags any marker rather than risk a bypass.
         sql = "SELECT '/*! DROP TABLE users */' AS s FROM t"
-        assert detect_destructive_operation(sql, "mysql")[1] is False
+        assert detect_destructive_operation(sql, "mysql")[1] is True
 
     def test_dollar_quoted_select_literal_is_read_only(self):
         sql = "SELECT $$Please DELETE this text$$ AS message"
