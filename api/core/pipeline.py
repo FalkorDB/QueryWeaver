@@ -9,7 +9,10 @@ import asyncio
 import contextvars
 import logging
 import os
+import re
 from typing import Any, Optional, Type
+
+import sqlglot
 
 from api.agents import ResponseFormatterAgent
 from api.config import Config
@@ -31,9 +34,12 @@ MESSAGE_DELIMITER = "|||FALKORDB_MESSAGE_BOUNDARY|||"
 
 GENERAL_PREFIX = os.getenv("GENERAL_PREFIX")
 
-# Verb → user-facing description for destructive operations. Single source of
-# truth for both ``DESTRUCTIVE_OPS`` (membership test) and the confirmation
-# message builder, so adding a verb in one place can't drift from the other.
+# Verb → user-facing description for destructive operations. Used by the
+# confirmation-message builder and exposed as ``DESTRUCTIVE_OPS`` (the set of
+# named destructive verbs). Detection itself is AST-based (see
+# ``detect_destructive_operation``), so this map only needs the verbs we want a
+# friendly description for; any other mutation still triggers confirmation with
+# a generic description.
 _DESTRUCTIVE_VERBS = {
     'INSERT': 'Add new data to the database',
     'REPLACE': 'Replace data in the database (deletes conflicting rows, then inserts)',
@@ -43,6 +49,10 @@ _DESTRUCTIVE_VERBS = {
     'CREATE': 'Create new tables or database objects',
     'ALTER': 'Modify the structure of existing tables',
     'TRUNCATE': '**PERMANENTLY DELETE ALL DATA** from specified tables',
+    'MERGE': 'Insert, update, or delete rows in the database',
+    'GRANT': 'Change database access privileges',
+    'REVOKE': 'Change database access privileges',
+    'COPY': 'Bulk-load data into the database',
 }
 
 DESTRUCTIVE_OPS = frozenset(_DESTRUCTIVE_VERBS)
@@ -189,159 +199,135 @@ def truncate_for_log(query: str, max_length: int = 200) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _strip_sql_comments_and_whitespace(sql_query: str) -> str:
-    """Strip leading SQL comments (-- line and /* block */) and whitespace.
+# Internal db_type → sqlglot dialect. Unknown/None types parse dialect-agnostic.
+_DIALECT_BY_DB_TYPE = {
+    "postgresql": "postgres",
+    "postgres": "postgres",
+    "mysql": "mysql",
+    "snowflake": "snowflake",
+}
 
-    A naive ``strip().split()[0]`` lets ``-- evil\\nDROP TABLE x`` masquerade
-    as a non-destructive statement, bypassing confirmation.
+# sqlglot expression class names that represent a write, DDL, privilege change,
+# bulk load, or ``SELECT ... INTO``. Any of these anywhere in the parse tree
+# (including inside CTEs and subqueries) makes the whole statement destructive.
+_DESTRUCTIVE_EXP_NAMES = frozenset({
+    "Insert", "Update", "Delete", "Merge", "Drop", "Create", "Alter",
+    "AlterTable", "TruncateTable", "Truncate", "Copy", "Grant", "Revoke",
+    "Into",
+})
+
+# sqlglot expression class name → short verb for the confirmation message.
+_EXP_NAME_TO_VERB = {
+    "Insert": "INSERT", "Update": "UPDATE", "Delete": "DELETE", "Merge": "MERGE",
+    "Drop": "DROP", "Create": "CREATE", "Alter": "ALTER", "AlterTable": "ALTER",
+    "TruncateTable": "TRUNCATE", "Truncate": "TRUNCATE", "Copy": "COPY",
+    "Grant": "GRANT", "Revoke": "REVOKE", "Into": "SELECT ... INTO",
+}
+
+# Reported as ``sql_type`` when a statement cannot be parsed and is therefore
+# treated as destructive out of caution.
+_UNKNOWN_DESTRUCTIVE_TYPE = "UNKNOWN"
+
+# sqlglot logs a WARNING whenever it falls back to a generic Command for syntax
+# it does not model (e.g. REPLACE INTO, CALL). That fallback is expected and
+# handled by detect_destructive_operation, so quiet those warnings.
+logging.getLogger("sqlglot").setLevel(logging.ERROR)
+
+
+# Opening marker of a MySQL/MariaDB "executable comment" (``/*! ...``,
+# ``/*!50110 ...``, ``/*M! ...``): the server RUNS the payload, so we must not
+# let it be discarded as an ordinary comment before parsing.
+_EXECUTABLE_COMMENT_OPEN = re.compile(r"/\*(?:!|M!)\d*")
+
+
+def _unwrap_executable_comments(sql: str) -> str:
+    """Inline the payload of MySQL/MariaDB executable comments.
+
+    sqlglot treats ``/*! ... */`` as an ordinary comment and drops its
+    contents, but MySQL/MariaDB execute that payload. Rewriting the markers to
+    whitespace exposes the payload (e.g. ``/*! DROP TABLE users */`` →
+    `` DROP TABLE users ``) so the destructive statement is actually parsed.
     """
-    text = sql_query.lstrip()
-    while text:
-        if text.startswith("--"):
-            newline = text.find("\n")
-            if newline == -1:
-                return ""
-            text = text[newline + 1:].lstrip()
-        elif text.startswith("/*"):
-            # MySQL/MariaDB executable comments (/*! ... */, /*M! ... */) are run
-            # by the server, so they must NOT be stripped — leave them in place
-            # for the destructive-verb scanner to inspect.
-            if text.startswith("/*!") or text.startswith("/*M!"):
-                break
-            end = text.find("*/")
-            if end == -1:
-                return ""
-            text = text[end + 2:].lstrip()
-        else:
+    result = []
+    pos = 0
+    while True:
+        match = _EXECUTABLE_COMMENT_OPEN.search(sql, pos)
+        if match is None:
+            result.append(sql[pos:])
             break
-    return text
+        close = sql.find("*/", match.end())
+        if close == -1:
+            result.append(sql[pos:])
+            break
+        result.append(sql[pos:match.start()])
+        result.append(" ")
+        result.append(sql[match.end():close])
+        result.append(" ")
+        pos = close + 2
+    return "".join(result)
 
 
-def _skip_quoted(sql: str, start: int, quote: str) -> int:
-    """Return the index just past the quoted span that begins at *start*.
-
-    Handles the SQL doubled-quote escape (``''``, ``""``) so an escaped quote
-    does not prematurely end the span. An unterminated quote consumes the rest
-    of the string. Used to ignore string literals and quoted identifiers when
-    scanning for SQL keywords.
-    """
-    length = len(sql)
-    i = start + 1
-    while i < length:
-        if sql[i] == quote:
-            if i + 1 < length and sql[i + 1] == quote:
-                i += 2  # doubled quote → escaped, stay inside the span
-                continue
-            return i + 1
-        i += 1
-    return length
+def _sqlglot_dialect(db_type: Optional[str]) -> Optional[str]:
+    """Map an internal ``db_type`` to a sqlglot dialect name (or None)."""
+    if not db_type:
+        return None
+    return _DIALECT_BY_DB_TYPE.get(db_type.strip().lower())
 
 
-def _is_function_call(sql: str, index: int) -> bool:
-    """Whether the token ending at *index* is immediately followed by ``(``.
-
-    A destructive verb followed by ``(`` (ignoring whitespace) is a same-named
-    SQL function — e.g. MySQL ``INSERT()``/``REPLACE()`` string functions or
-    ``TRUNCATE()`` numeric function — which is read-only, not the statement
-    keyword ``REPLACE INTO`` / ``INSERT INTO`` / ``TRUNCATE TABLE``.
-    """
-    i = index
-    length = len(sql)
-    while i < length and sql[i] in " \t\r\n":
-        i += 1
-    return i < length and sql[i] == "("
-
-
-def _skip_non_code(sql: str, i: int) -> int:
-    """Return the index just past an ignorable span starting at *i*, else -1.
-
-    Ignorable spans are ordinary comments (``-- ...``, ``/* ... */``), string
-    literals (``'...'``), and quoted identifiers (``"..."``, ``` `...` ```).
-    A MySQL/MariaDB executable comment (``/*! ... */``, ``/*M! ... */``) runs on
-    the server, so only its marker is consumed and its payload is left to be
-    scanned. Returns -1 when *i* does not start an ignorable span.
-    """
-    length = len(sql)
-    char = sql[i]
-    if char == "-" and i + 1 < length and sql[i + 1] == "-":
-        newline = sql.find("\n", i)
-        return length if newline == -1 else newline + 1
-    if char == "/" and i + 1 < length and sql[i + 1] == "*":
-        if i + 2 < length and sql[i + 2] == "!":
-            return i + 3
-        if i + 3 < length and sql[i + 2] == "M" and sql[i + 3] == "!":
-            return i + 4
-        end = sql.find("*/", i + 2)
-        return length if end == -1 else end + 2
-    if char in ("'", '"', "`"):
-        return _skip_quoted(sql, i, char)
-    return -1
-
-
-def _scan_destructive_verb(sql: str) -> Optional[str]:
-    """Return the first destructive keyword that appears as a real SQL token.
-
-    Scans *sql* left-to-right, skipping string literals, quoted identifiers,
-    and ordinary comments (see :func:`_skip_non_code`), and matches destructive
-    verbs only as whole word tokens that are not function calls. This catches
-    destructive operations that are **not** the leading keyword — which a
-    first-token-only check misses — for example:
-
-    - data-modifying CTEs: ``WITH t AS (...) DELETE FROM users ...`` and
-      ``WITH t AS (DELETE FROM users ...) SELECT * FROM t``
-    - stacked statements: ``SELECT 1; DROP TABLE users``
-    - MySQL/MariaDB executable comments: ``/*! DROP TABLE users */``
-
-    while NOT misfiring on destructive words that appear inside string literals,
-    quoted identifiers, ordinary comments, as substrings of an identifier
-    (``deleted_at``), or as function calls (``REPLACE(...)``, ``INSERT(...)``).
-    """
-    length = len(sql)
-    i = 0
-    while i < length:
-        skipped = _skip_non_code(sql, i)
-        if skipped != -1:
-            i = skipped
-            continue
-        char = sql[i]
-        if char.isalpha() or char == "_":
-            start = i
-            i += 1
-            while i < length and (sql[i].isalnum() or sql[i] == "_"):
-                i += 1
-            word = sql[start:i].upper()
-            if word in DESTRUCTIVE_OPS and not _is_function_call(sql, i):
-                return word
-        else:
-            i += 1
-    return None
-
-
-def detect_destructive_operation(sql_query: str) -> tuple[str, bool]:
+def detect_destructive_operation(
+    sql_query: str, db_type: Optional[str] = None
+) -> tuple[str, bool]:
     """Return ``(sql_type, is_destructive)`` for a SQL statement.
 
-    Strips leading SQL comments before classifying so a comment prefix cannot
-    bypass destructive-op confirmation. Because a first-token-only check misses
-    data-modifying CTEs (``WITH t AS (...) DELETE FROM ...``) and stacked
-    statements (``SELECT 1; DROP TABLE ...``) — which would otherwise execute
-    without confirmation and bypass the demo-graph read-only guard — the whole
-    statement is then scanned (ignoring strings, quoted identifiers, and
-    comments) for any destructive verb. If one is found, the operation is
-    treated as destructive and the reported ``sql_type`` is that verb so the
-    confirmation message names the real mutation.
+    Parses *sql_query* with sqlglot (dialect-aware when *db_type* is given) and
+    inspects the full AST, so classification is not fooled by anything that
+    hides a write behind the first token:
+
+    - data-modifying CTEs — ``WITH t AS (...) DELETE FROM users ...`` and
+      ``WITH t AS (DELETE FROM users ...) SELECT * FROM t``
+    - stacked statements — ``SELECT 1; DROP TABLE users``
+    - MySQL/MariaDB executable comments — ``/*! DROP TABLE users */``
+    - dialect-specific string/comment escapes (backslash escapes, dollar
+      quoting, ``#`` comments) that a hand-rolled scanner mis-tokenises
+
+    Any write (INSERT/UPDATE/DELETE/MERGE/REPLACE), DDL (CREATE/DROP/ALTER/
+    TRUNCATE/RENAME), privilege change (GRANT/REVOKE), bulk load (COPY/LOAD),
+    ``SELECT ... INTO``, or generically-parsed command marks the statement
+    destructive so it cannot bypass the confirmation prompt or the demo-graph
+    read-only guard. The reported ``sql_type`` names the operation for the
+    confirmation message.
+
+    The check is conservative: a statement sqlglot cannot parse is treated as
+    destructive rather than executed unconfirmed.
     """
-    if not sql_query:
+    if not sql_query or not sql_query.strip():
         return "", False
-    cleaned = _strip_sql_comments_and_whitespace(sql_query)
-    if not cleaned:
+    prepared = _unwrap_executable_comments(sql_query)
+    try:
+        statements = [
+            stmt
+            for stmt in sqlglot.parse(prepared, read=_sqlglot_dialect(db_type))
+            if stmt is not None
+        ]
+    except Exception:  # pylint: disable=broad-exception-caught
+        # Unparseable → we cannot prove it is read-only → require confirmation.
+        return _UNKNOWN_DESTRUCTIVE_TYPE, True
+    if not statements:
         return "", False
-    first_token = cleaned.split()[0].upper()
-    if first_token in DESTRUCTIVE_OPS:
-        return first_token, True
-    hidden_verb = _scan_destructive_verb(cleaned)
-    if hidden_verb is not None:
-        return hidden_verb, True
-    return first_token, False
+    for statement in statements:
+        for node in statement.walk():
+            node = node[0] if isinstance(node, tuple) else node
+            name = type(node).__name__
+            if name in _DESTRUCTIVE_EXP_NAMES:
+                return _EXP_NAME_TO_VERB.get(name, name.upper()), True
+            # A statement sqlglot cannot model structurally falls back to a
+            # generic Command (REPLACE INTO, CALL, RENAME, DO, LOAD, VACUUM,
+            # EXPLAIN ANALYZE ...). We cannot prove these are read-only, so treat
+            # them as destructive, named by their leading keyword.
+            if name == "Command":
+                keyword = str(node.this).strip().upper() if node.this else ""
+                return keyword or "COMMAND", True
+    return type(statements[0]).__name__.upper(), False
 
 
 def auto_quote_sql_identifiers(

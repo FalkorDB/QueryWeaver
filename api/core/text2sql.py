@@ -463,7 +463,7 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
         answer_an["sql_query"] = sanitized_sql
 
     sql_query = answer_an["sql_query"]
-    sql_type, is_destructive = detect_destructive_operation(sql_query)
+    sql_type, is_destructive = detect_destructive_operation(sql_query, db_type)
     on_demo = is_general_graph(namespaced)
 
     if is_destructive and on_demo:
@@ -527,7 +527,7 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
                 # non-destructive query into a write that skips the
                 # confirmation / demo-graph guard. Reject destructive healed
                 # SQL rather than execute it silently.
-                healed_type, healed_destructive = detect_destructive_operation(sql)
+                healed_type, healed_destructive = detect_destructive_operation(sql, db_type)
                 if healed_destructive:
                     raise InvalidArgumentError(
                         "Healed SQL rejected: it performs a destructive "
