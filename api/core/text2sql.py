@@ -463,7 +463,7 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
         answer_an["sql_query"] = sanitized_sql
 
     sql_query = answer_an["sql_query"]
-    sql_type, is_destructive = detect_destructive_operation(sql_query)
+    sql_type, is_destructive = detect_destructive_operation(sql_query, db_type)
     on_demo = is_general_graph(namespaced)
 
     if is_destructive and on_demo:
@@ -523,6 +523,17 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
             healer = HealerAgent(max_healing_attempts=3)
 
             def _run_sql(sql: str):
+                # Defense in depth: the healer LLM must never turn a
+                # non-destructive query into a write that skips the
+                # confirmation / demo-graph guard. Reject destructive healed
+                # SQL rather than execute it silently.
+                healed_type, healed_destructive = detect_destructive_operation(sql, db_type)
+                if healed_destructive:
+                    raise InvalidArgumentError(
+                        "Healed SQL rejected: it performs a destructive "
+                        f"{healed_type} operation, which requires explicit "
+                        "user confirmation and cannot run during auto-healing."
+                    )
                 return loader_class.execute_sql_query(sql, db_url)
 
             healing_result = healer.heal_and_execute(
