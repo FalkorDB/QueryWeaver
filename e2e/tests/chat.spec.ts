@@ -99,10 +99,17 @@ test.describe('Chat Feature Tests', () => {
     const resultsVisible = await homePage.isQueryResultsMessageVisible();
     expect(resultsVisible).toBeFalsy();
 
-    // Verify NO destructive-operation confirmation dialog: an off-topic query
-    // must never be translated into a write (INSERT/UPDATE/DELETE) operation.
-    const confirmationVisible = await homePage.isConfirmationMessageVisible();
-    expect(confirmationVisible).toBeFalsy();
+    // Verify the response contains no write SQL either: an off-topic query must
+    // never be translated into an INSERT/UPDATE/DELETE operation.
+    for (const dmlKeyword of ['INSERT', 'UPDATE', 'DELETE']) {
+      const hasDml = await homePage.verifySQLQueryContains(dmlKeyword);
+      expect(hasDml, `off-topic query should not produce ${dmlKeyword} SQL`).toBeFalsy();
+    }
+
+    // Verify NO destructive-operation confirmation dialog. Use a strict
+    // web-first assertion so a broken selector surfaces as a failure instead
+    // of silently passing (toBeHidden passes only when truly hidden/absent).
+    await expect(homePage.confirmationDialog).toBeHidden();
 
     // Verify AI response has content explaining it's off-topic
     const aiText = await homePage.getLastAIMessageText();

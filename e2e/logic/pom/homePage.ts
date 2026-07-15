@@ -104,6 +104,15 @@ export class HomePage extends BasePage {
     return this.page.getByTestId("confirmation-message");
   }
 
+  /**
+   * Public accessor for the confirmation-dialog locator, so tests can make
+   * strict web-first assertions (e.g. expect(...).toBeHidden()) that surface
+   * unexpected locator errors instead of swallowing them.
+   */
+  get confirmationDialog(): Locator {
+    return this.confirmationMessage;
+  }
+
   private get confirmationConfirmBtn(): Locator {
     return this.page.getByTestId("confirmation-confirm-button");
   }
