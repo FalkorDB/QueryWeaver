@@ -9,6 +9,7 @@ from typing import Tuple, Optional, Dict, Any
 
 from fastapi import Request, HTTPException, status
 from pydantic import BaseModel
+from api.config import ORGANIZATIONS_GRAPH
 from api.extensions import db
 
 # Get secret key for sessions
@@ -45,7 +46,7 @@ async def _get_user_info(api_token: str) -> Optional[Dict[str, Any]]:
 
     try:
         # Select the Organizations graph
-        organizations_graph = db.select_graph("Organizations")
+        organizations_graph = db.select_graph(ORGANIZATIONS_GRAPH)
 
         result = await organizations_graph.query(
             query,
@@ -83,7 +84,7 @@ async def delete_user_token(api_token: str):
     """
     try:
         # Select the Organizations graph
-        organizations_graph = db.select_graph("Organizations")
+        organizations_graph = db.select_graph(ORGANIZATIONS_GRAPH)
 
         await organizations_graph.query(
             query,
@@ -117,7 +118,7 @@ async def ensure_user_in_organizations(  # pylint: disable=too-many-arguments, d
         return validation_result
 
     try:
-        organizations_graph = db.select_graph("Organizations")
+        organizations_graph = db.select_graph(ORGANIZATIONS_GRAPH)
         first_name, last_name = _extract_name_parts(name)
 
         merge_query = _build_user_merge_query()
@@ -166,7 +167,7 @@ async def update_identity_last_login(provider, provider_user_id):
         return
 
     try:
-        organizations_graph = db.select_graph("Organizations")
+        organizations_graph = db.select_graph(ORGANIZATIONS_GRAPH)
         update_query = """
         MATCH (identity:Identity {provider: $provider, provider_user_id: $provider_user_id})
         SET identity.last_login = timestamp()
