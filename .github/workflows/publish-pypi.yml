@@ -1,13 +1,10 @@
 name: Publish to PyPI
 
 # Builds the queryweaver wheel/sdist ONCE, then publishes that exact artifact
-# via PyPI Trusted Publishing (OIDC) — no API tokens are stored. The same build
-# is validated on TestPyPI as a dry-run gate first, then shipped to PyPI only if
-# that succeeds.
+# to PyPI via Trusted Publishing (OIDC) — no API tokens are stored.
 #
-# One-time setup (see plan): configure a Trusted Publisher on both PyPI and
-# TestPyPI for repo FalkorDB/QueryWeaver, workflow publish-pypi.yml, with the
-# GitHub environments `testpypi` and `pypi` respectively.
+# One-time setup: configure a Trusted Publisher on PyPI for repo
+# FalkorDB/QueryWeaver, workflow publish-pypi.yml, GitHub environment `pypi`.
 
 permissions:
   contents: read
@@ -37,32 +34,9 @@ jobs:
           name: dist
           path: dist/
 
-  publish-testpypi:
-    name: Publish to TestPyPI (dry-run gate)
-    needs: build
-    runs-on: ubuntu-latest
-    environment: testpypi
-    permissions:
-      id-token: write   # required for OIDC trusted publishing
-      contents: read
-    steps:
-      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
-        with:
-          enable-cache: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: dist
-          path: dist/
-      - name: Publish to TestPyPI
-        run: >
-          uv publish
-          --publish-url https://test.pypi.org/legacy/
-          --trusted-publishing always
-          --check-url https://test.pypi.org/simple/
-
   publish-pypi:
     name: Publish to PyPI
-    needs: publish-testpypi
+    needs: build
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
