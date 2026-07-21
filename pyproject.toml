@@ -61,7 +61,7 @@ server = [
 
 # Development dependencies
 dev = [
-    "pytest~=9.0.3",
+    "pytest>=9.0.3,<9.2.0",
     "pytest-asyncio~=1.4.0",
     "pylint~=4.0.3",
     "playwright~=1.60.0",
@@ -82,7 +82,7 @@ Issues = "https://github.com/FalkorDB/QueryWeaver/issues"
 
 [dependency-groups]
 dev = [
-    "pytest~=9.0.3",
+    "pytest>=9.0.3,<9.2.0",
     "pylint~=4.0.3",
     "playwright~=1.60.0",
     "pytest-playwright~=0.8.0",
