@@ -38,6 +38,10 @@ export class Sidebar extends HomePage {
     return this.page.getByTestId("schema-panel");
   }
 
+  private get settingsBtn(): Locator {
+    return this.page.getByTestId("settings-button");
+  }
+
   // ==================== LAYER 2: INTERACT WITH VISIBLE ====================
 
   private async interactWithSidebarToggleBtn(): Promise<Locator> {
@@ -70,6 +74,12 @@ export class Sidebar extends HomePage {
     return this.supportBtn;
   }
 
+  private async interactWithSettingsBtn(): Promise<Locator> {
+    const isVisible = await waitForElementToBeVisible(this.settingsBtn);
+    if (!isVisible) throw new Error("Settings button is not visible!");
+    return this.settingsBtn;
+  }
+
   // ==================== LAYER 3: HIGH-LEVEL ACTIONS ====================
 
   async clickOnSidebarToggle(): Promise<void> {
@@ -94,6 +104,11 @@ export class Sidebar extends HomePage {
 
   async clickOnSupportLink(): Promise<void> {
     const element = await this.interactWithSupportBtn();
+    await element.click();
+  }
+
+  async clickOnSettingsButton(): Promise<void> {
+    const element = await this.interactWithSettingsBtn();
     await element.click();
   }
 
