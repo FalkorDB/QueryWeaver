@@ -1,3 +1,5 @@
+[![MCP Toplist](https://mcptoplist.com/badge/com.falkordb%2FQueryWeaver.svg)](https://mcptoplist.com/server/com.falkordb%2FQueryWeaver)
+
 <div align="center">  
   <h1>QueryWeaver (Text2SQL)</h1>
 
