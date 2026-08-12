@@ -33,6 +33,9 @@ export const API_CONFIG = {
     
     // User
     USER: '/user',
+
+    // Metadata
+    VERSION: '/version',
   },
 };
 

@@ -9,7 +9,10 @@ import asyncio
 import contextvars
 import logging
 import os
+import re
 from typing import Any, Optional, Type
+
+import sqlglot
 
 from api.agents import ResponseFormatterAgent
 from api.config import Config
@@ -31,17 +34,25 @@ MESSAGE_DELIMITER = "|||FALKORDB_MESSAGE_BOUNDARY|||"
 
 GENERAL_PREFIX = os.getenv("GENERAL_PREFIX")
 
-# Verb → user-facing description for destructive operations. Single source of
-# truth for both ``DESTRUCTIVE_OPS`` (membership test) and the confirmation
-# message builder, so adding a verb in one place can't drift from the other.
+# Verb → user-facing description for destructive operations. Used by the
+# confirmation-message builder and exposed as ``DESTRUCTIVE_OPS`` (the set of
+# named destructive verbs). Detection itself is AST-based (see
+# ``detect_destructive_operation``), so this map only needs the verbs we want a
+# friendly description for; any other mutation still triggers confirmation with
+# a generic description.
 _DESTRUCTIVE_VERBS = {
     'INSERT': 'Add new data to the database',
+    'REPLACE': 'Replace data in the database (deletes conflicting rows, then inserts)',
     'UPDATE': 'Modify existing data in the database',
     'DELETE': '**PERMANENTLY DELETE** data from the database',
     'DROP': '**PERMANENTLY DELETE** entire tables or database objects',
     'CREATE': 'Create new tables or database objects',
     'ALTER': 'Modify the structure of existing tables',
     'TRUNCATE': '**PERMANENTLY DELETE ALL DATA** from specified tables',
+    'MERGE': 'Insert, update, or delete rows in the database',
+    'GRANT': 'Change database access privileges',
+    'REVOKE': 'Change database access privileges',
+    'COPY': 'Bulk-load data into the database',
 }
 
 DESTRUCTIVE_OPS = frozenset(_DESTRUCTIVE_VERBS)
@@ -188,40 +199,134 @@ def truncate_for_log(query: str, max_length: int = 200) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _strip_sql_comments_and_whitespace(sql_query: str) -> str:
-    """Strip leading SQL comments (-- line and /* block */) and whitespace.
+# Internal db_type → sqlglot dialect. Unknown/None types parse dialect-agnostic.
+_DIALECT_BY_DB_TYPE = {
+    "postgresql": "postgres",
+    "postgres": "postgres",
+    "mysql": "mysql",
+    "snowflake": "snowflake",
+}
 
-    A naive ``strip().split()[0]`` lets ``-- evil\\nDROP TABLE x`` masquerade
-    as a non-destructive statement, bypassing confirmation.
+# sqlglot expression class names that represent a write, DDL, privilege change,
+# bulk load, or ``SELECT ... INTO``. These make a statement destructive when
+# they appear anywhere in the parse tree — including nested in a CTE or subquery
+# under an otherwise read-only root (a data-modifying CTE).
+_DESTRUCTIVE_EXP_NAMES = frozenset({
+    "Insert", "Update", "Delete", "Merge", "Drop", "Create", "Alter",
+    "AlterTable", "TruncateTable", "Truncate", "Copy", "Grant", "Revoke",
+    "Into", "Comment",
+})
+
+# Root expression class names that are read-only. Detection is FAIL-CLOSED: a
+# parsed statement is non-destructive only if its root is one of these AND it
+# contains no nested mutation node. Any other root — writes/DDL, a generic
+# ``Command``, or a statement sqlglot models as an unexpected node (e.g.
+# ``Alias``/``Column`` for ``RESET``/``SHUTDOWN``, ``Undrop`` for ``UNDROP``) —
+# is treated as destructive. ``Set`` is intentionally excluded so
+# ``SET GLOBAL``/``SET PERSIST`` cannot slip through; the Text2SQL agents do not
+# emit bare ``SET`` for data questions.
+_READONLY_ROOT_NAMES = frozenset({
+    "Select", "Union", "Intersect", "Except", "Values", "Show", "Describe",
+})
+
+# sqlglot expression class name → short verb for the confirmation message.
+_EXP_NAME_TO_VERB = {
+    "Insert": "INSERT", "Update": "UPDATE", "Delete": "DELETE", "Merge": "MERGE",
+    "Drop": "DROP", "Create": "CREATE", "Alter": "ALTER", "AlterTable": "ALTER",
+    "TruncateTable": "TRUNCATE", "Truncate": "TRUNCATE", "Copy": "COPY",
+    "Grant": "GRANT", "Revoke": "REVOKE", "Into": "SELECT ... INTO",
+}
+
+# Reported as ``sql_type`` when a statement is destructive but no specific verb
+# can be named (unparseable, or an opaque/unexpected root).
+_UNKNOWN_DESTRUCTIVE_TYPE = "UNKNOWN"
+
+# MySQL/MariaDB executable-comment marker (``/*! ...``, ``/*M! ...``). The
+# server RUNS the payload, but sqlglot discards it as an ordinary comment. A
+# comment/string-blind textual rewrite cannot expose it safely (markers can hide
+# inside string literals and mispair with an unrelated ``*/``), so for MySQL we
+# fail safe on the marker's mere presence.
+_EXECUTABLE_COMMENT_MARKER = re.compile(r"/\*M?!")
+
+
+def _sqlglot_dialect(db_type: Optional[str]) -> Optional[str]:
+    """Map an internal ``db_type`` to a sqlglot dialect name (or None)."""
+    if not db_type:
+        return None
+    return _DIALECT_BY_DB_TYPE.get(db_type.strip().lower())
+
+
+def _root_destructive_verb(statement: Any, root_name: str) -> str:
+    """Name the operation for a destructive (non read-only) statement root."""
+    if root_name in _EXP_NAME_TO_VERB:
+        return _EXP_NAME_TO_VERB[root_name]
+    if root_name == "Command" and statement.this:
+        return str(statement.this).strip().upper() or _UNKNOWN_DESTRUCTIVE_TYPE
+    return _UNKNOWN_DESTRUCTIVE_TYPE
+
+
+def _parse_statements_or_none(sql_query: str, dialect: Optional[str]) -> Optional[list]:
+    """Parse *sql_query* into a list of sqlglot statements.
+
+    Returns ``None`` when the statement must be treated as destructive without
+    inspection: a MySQL executable-comment marker is present (sqlglot silently
+    drops its server-executed payload), or the SQL cannot be parsed at all.
     """
-    text = sql_query.lstrip()
-    while text:
-        if text.startswith("--"):
-            newline = text.find("\n")
-            if newline == -1:
-                return ""
-            text = text[newline + 1:].lstrip()
-        elif text.startswith("/*"):
-            end = text.find("*/")
-            if end == -1:
-                return ""
-            text = text[end + 2:].lstrip()
-        else:
-            break
-    return text
+    if dialect in (None, "mysql") and _EXECUTABLE_COMMENT_MARKER.search(sql_query):
+        return None
+    sqlglot_logger = logging.getLogger("sqlglot")
+    previous_level = sqlglot_logger.level
+    # Quiet sqlglot's expected "unsupported syntax" warnings only for our parse,
+    # without mutating the "sqlglot" logger globally at import time.
+    sqlglot_logger.setLevel(logging.ERROR)
+    try:
+        return [stmt for stmt in sqlglot.parse(sql_query, read=dialect) if stmt is not None]
+    except Exception:  # pylint: disable=broad-exception-caught
+        return None
+    finally:
+        sqlglot_logger.setLevel(previous_level)
 
 
-def detect_destructive_operation(sql_query: str) -> tuple[str, bool]:
+def detect_destructive_operation(
+    sql_query: Optional[str], db_type: Optional[str] = None
+) -> tuple[str, bool]:
     """Return ``(sql_type, is_destructive)`` for a SQL statement.
 
-    Strips leading SQL comments before classifying so attackers cannot
-    bypass destructive-op confirmation by prefixing a comment.
+    Parses *sql_query* with sqlglot (dialect-aware when *db_type* is given) and
+    classifies FAIL-CLOSED: a statement is non-destructive only if it parses,
+    every statement's root is a known read-only type (SELECT / set operation /
+    VALUES / SHOW / DESCRIBE), and no nested node is a write/DDL/privilege/bulk
+    operation. Everything else — writes and DDL (including data-modifying CTEs,
+    ``SELECT ... INTO``, ``MERGE``, ``REPLACE``, ``GRANT``/``REVOKE``,
+    ``COPY``/``LOAD``, ``RENAME``, ``CALL``, ``DO``), stacked statements,
+    generically-parsed commands (``RESET``, ``SHUTDOWN``, ``UNDROP``, ...),
+    MySQL executable comments, and anything sqlglot cannot parse — is treated as
+    destructive so it cannot bypass the confirmation prompt or the demo-graph
+    read-only guard. The reported ``sql_type`` names the operation when known.
+
+    Note: a routine with side effects that is shaped like a read (e.g.
+    ``SELECT setval(...)`` / ``SELECT my_mutating_func()``) is indistinguishable
+    from a pure read by SQL shape alone and is NOT caught here; enforce that with
+    database-level read-only transactions/credentials.
     """
-    if not sql_query:
+    if not sql_query or not sql_query.strip():
         return "", False
-    cleaned = _strip_sql_comments_and_whitespace(sql_query)
-    sql_type = cleaned.split()[0].upper() if cleaned else ""
-    return sql_type, sql_type in DESTRUCTIVE_OPS
+    statements = _parse_statements_or_none(sql_query, _sqlglot_dialect(db_type))
+    if statements is None:
+        # Executable comment or unparseable → cannot prove read-only → confirm.
+        return _UNKNOWN_DESTRUCTIVE_TYPE, True
+    if not statements:
+        return "", False
+    for statement in statements:
+        root_name = type(statement).__name__
+        if root_name not in _READONLY_ROOT_NAMES:
+            return _root_destructive_verb(statement, root_name), True
+        for node in statement.walk():
+            node = node[0] if isinstance(node, tuple) else node
+            name = type(node).__name__
+            if name in _DESTRUCTIVE_EXP_NAMES:
+                return _EXP_NAME_TO_VERB.get(name, name.upper()), True
+    return type(statements[0]).__name__.upper(), False
 
 
 def auto_quote_sql_identifiers(

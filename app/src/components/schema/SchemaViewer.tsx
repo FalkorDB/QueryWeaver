@@ -386,7 +386,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
       <div
         data-testid="schema-panel"
         className={`fixed top-0 h-full bg-background border-r border-border flex flex-col transition-all duration-300
-          ${isOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'}
+          translate-x-0
           md:z-30 z-50
           w-[80vw] max-w-[400px] md:max-w-none
         `}
