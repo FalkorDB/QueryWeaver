@@ -27,12 +27,48 @@ class SQLServerConnectionError(Exception):
     """Exception raised for SQL Server connection errors."""
 
 
+def validate_ident(identifier: str, identifier_type: str = "identifier") -> str:
+    """Validate that an identifier is safe to interpolate into T-SQL.
+
+    T-SQL cannot bind identifiers as parameters, so table, schema and column
+    names must be interpolated. This is an anchored allow-list: only characters
+    that can legitimately appear in a SQL Server object name are accepted, and
+    everything capable of breaking out of a bracket-delimited identifier
+    (``]``, quotes, semicolons, backslashes, control characters) is rejected.
+
+    Args:
+        identifier: Raw identifier, typically read from the system catalog.
+        identifier_type: Label used in the error message.
+
+    Returns:
+        The identifier, unchanged, once validated.
+
+    Raises:
+        ValueError: If the identifier is empty, over-long, or contains a
+            character outside the allow-list.
+    """
+    if not identifier or len(identifier) > 128:
+        raise ValueError(
+            f"Invalid {identifier_type}: {identifier!r}. "
+            "Must be between 1 and 128 characters."
+        )
+    if not re.fullmatch(r'[A-Za-z0-9_$#@ .\-]+', identifier):
+        raise ValueError(
+            f"Invalid {identifier_type}: {identifier!r}. Only letters, digits, "
+            "underscore, dollar, hash, at-sign, space, dot and dash are allowed."
+        )
+    return identifier
+
+
 def quote_ident(identifier: str) -> str:
     """Bracket-quote a T-SQL identifier, escaping any embedded ``]``.
 
     SQL Server escapes a closing bracket inside a delimited identifier by
     doubling it, so ``my]table`` must become ``[my]]table]``. Without this a
     crafted identifier would terminate the quote early.
+
+    This is defence in depth: callers that interpolate the result into a
+    statement validate the identifier with :func:`validate_ident` first.
 
     Args:
         identifier: Raw identifier as read from the system catalog.
@@ -81,13 +117,16 @@ class SQLServerLoader(BaseLoader):
         bracket-quoted separately so the schema prefix survives.
         """
         schema, _, bare_table = table_name.rpartition('.')
-        qualified = quote_ident(bare_table)
+        qualified = quote_ident(validate_ident(bare_table, "table name"))
         if schema:
-            qualified = f"{quote_ident(schema)}.{qualified}"
+            qualified = f"{quote_ident(validate_ident(schema, 'schema name'))}.{qualified}"
 
-        col = quote_ident(col_name)
-        # ``sample_size`` is coerced to int; identifiers are bracket-quoted with
-        # ``]`` escaped, since T-SQL cannot bind identifiers as parameters.
+        col = quote_ident(validate_ident(col_name, "column name"))
+        if not isinstance(sample_size, int) or sample_size <= 0:
+            raise ValueError(f"sample_size must be a positive integer, got {sample_size!r}")
+
+        # Identifiers are allow-list validated and bracket-quoted with ``]``
+        # escaped, since T-SQL cannot bind identifiers as parameters.
         query = (
             f"SELECT DISTINCT TOP {int(sample_size)} {col}"
             f" FROM {qualified}"
@@ -137,13 +176,19 @@ class SQLServerLoader(BaseLoader):
 
         Returns:
             The requested schema, or ``dbo`` when not specified.
+
+        Raises:
+            ValueError: If the requested schema is not a valid identifier.
         """
         try:
             parsed = urlparse(connection_url)
             schema = parse_qs(parsed.query).get('schema', [''])[0]
-            return unquote(schema).strip() or DEFAULT_SCHEMA
+            schema = unquote(schema).strip()
         except (ValueError, AttributeError):
             return DEFAULT_SCHEMA
+        if not schema:
+            return DEFAULT_SCHEMA
+        return validate_ident(schema, "schema name")
 
     @staticmethod
     def _parse_sqlserver_url(connection_url: str) -> Dict[str, Any]:
