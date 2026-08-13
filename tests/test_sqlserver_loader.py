@@ -388,7 +388,7 @@ class TestIntrospection:
     def test_tables_info_builds_entities(self):
         """A full table walk produces the expected entity structure."""
         cursor = FakeCursor([
-            [{"table_name": "Orders", "table_comment": "All orders"}],
+            [{"table_name": "Orders", "schema_name": "dbo", "table_comment": "All orders"}],
             [{
                 "column_name": "id",
                 "data_type": "int",
@@ -405,6 +405,29 @@ class TestIntrospection:
         assert entities["Orders"]["description"] == "All orders"
         assert list(entities["Orders"]["columns"]) == ["id"]
         assert entities["Orders"]["foreign_keys"] == []
+
+    def test_sample_query_uses_catalog_schema_not_url_schema(self):
+        """Sample queries qualify with the schema echoed back by ``sys.schemas``.
+
+        The catalog value comes from the server, so the connection URL string
+        is never interpolated into a statement.
+        """
+        cursor = FakeCursor([
+            [{"table_name": "Orders", "schema_name": "Sales", "table_comment": ""}],
+            [{
+                "column_name": "id",
+                "data_type": "int",
+                "is_nullable": False,
+                "column_default": None,
+                "column_key": "PRI",
+                "column_comment": "",
+            }],
+            [{"id": 7}],
+            [],  # foreign keys
+        ])
+        SQLServerLoader.extract_tables_info(cursor, "sales")
+        sample_query = cursor.executed[2][0]
+        assert "FROM [Sales].[Orders]" in sample_query
 
 
 class TestSerialization:
@@ -502,7 +525,7 @@ class TestLoad:
     async def test_load_success_closes_connection(self):
         """A successful load reports table count and releases resources."""
         cursor = FakeCursor([
-            [{"table_name": "Orders", "table_comment": ""}],
+            [{"table_name": "Orders", "schema_name": "dbo", "table_comment": ""}],
             [],   # columns
             [],   # foreign keys
             [],   # relationships

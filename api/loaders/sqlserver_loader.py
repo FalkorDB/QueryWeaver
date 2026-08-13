@@ -79,6 +79,38 @@ def quote_ident(identifier: str) -> str:
     return f"[{identifier.replace(']', ']]')}]"
 
 
+_KEY_TYPES = {
+    'PRI': 'PRIMARY KEY',
+    'MUL': 'FOREIGN KEY',
+    'UNI': 'UNIQUE KEY',
+}
+
+
+def _build_column_description(col_info: Dict[str, Any], key_type: str, is_nullable: str) -> str:
+    """Build the human-readable description shown for a column.
+
+    Args:
+        col_info: One row from the column catalog query.
+        key_type: Resolved key kind, or ``NONE``.
+        is_nullable: ``YES`` or ``NO``.
+
+    Returns:
+        The description string.
+    """
+    comment = col_info['column_comment']
+    parts = [
+        str(comment) if comment
+        else f"Column {col_info['column_name']} of type {col_info['data_type']}"
+    ]
+    if key_type != 'NONE':
+        parts.append(f"({key_type})")
+    if is_nullable == 'NO':
+        parts.append("(NOT NULL)")
+    if col_info['column_default'] is not None:
+        parts.append(f"(Default: {col_info['column_default']})")
+    return ' '.join(parts)
+
+
 class SQLServerLoader(BaseLoader):
     """
     Loader for SQL Server databases that connects and extracts schema information.
@@ -329,10 +361,13 @@ class SQLServerLoader(BaseLoader):
         """
         entities = {}
 
-        # Get all tables in the requested schema
+        # Get all tables in the requested schema. ``s.name`` is selected back so
+        # sample queries qualify tables with the server's own canonical schema
+        # name rather than the string taken from the connection URL.
         cursor.execute("""
             SELECT
                 t.name AS table_name,
+                s.name AS schema_name,
                 ISNULL(CAST(ep.value AS NVARCHAR(MAX)), '') AS table_comment
             FROM sys.tables t
             JOIN sys.schemas s ON t.schema_id = s.schema_id
@@ -351,9 +386,12 @@ class SQLServerLoader(BaseLoader):
         for table_info in tqdm.tqdm(tables, desc="Extracting table information"):
             table_name = table_info['table_name']
             table_comment = table_info['table_comment']
+            catalog_schema = table_info['schema_name']
 
             # Get column information for this table
-            columns_info = SQLServerLoader.extract_columns_info(cursor, schema, table_name)
+            columns_info = SQLServerLoader.extract_columns_info(
+                cursor, schema, table_name, catalog_schema
+            )
 
             # Get foreign keys for this table
             foreign_keys = SQLServerLoader.extract_foreign_keys(cursor, schema, table_name)
@@ -374,14 +412,20 @@ class SQLServerLoader(BaseLoader):
         return entities
 
     @staticmethod
-    def extract_columns_info(cursor, schema: str, table_name: str) -> Dict[str, Any]:
+    def extract_columns_info(
+        cursor, schema: str, table_name: str, catalog_schema: str = None
+    ) -> Dict[str, Any]:
         """
         Extract column information for a specific table.
 
         Args:
             cursor: Database cursor
-            schema: Schema owning the table
+            schema: Schema owning the table, used as a bound query parameter
             table_name: Name of the table
+            catalog_schema: Schema name as returned by ``sys.schemas``. Sample
+                queries interpolate this rather than *schema*, so the value
+                comes from the server rather than the connection URL. Falls
+                back to *schema* when not supplied.
 
         Returns:
             Dict containing column information
@@ -430,52 +474,23 @@ class SQLServerLoader(BaseLoader):
         columns = cursor.fetchall()
         columns_info = {}
 
+        qualified_table = f"{catalog_schema or schema}.{table_name}"
+
         for col_info in columns:
             col_name = col_info['column_name']
-            data_type = col_info['data_type']
             is_nullable = 'YES' if col_info['is_nullable'] else 'NO'
-            column_default = col_info['column_default']
-            column_key = col_info['column_key']
-            column_comment = col_info['column_comment']
-
-            # Determine key type
-            if column_key == 'PRI':
-                key_type = 'PRIMARY KEY'
-            elif column_key == 'MUL':
-                key_type = 'FOREIGN KEY'
-            elif column_key == 'UNI':
-                key_type = 'UNIQUE KEY'
-            else:
-                key_type = 'NONE'
-
-            # Generate column description
-            description_parts = []
-            if column_comment:
-                description_parts.append(str(column_comment))
-            else:
-                description_parts.append(f"Column {col_name} of type {data_type}")
-
-            if key_type != 'NONE':
-                description_parts.append(f"({key_type})")
-
-            if is_nullable == 'NO':
-                description_parts.append("(NOT NULL)")
-
-            if column_default is not None:
-                description_parts.append(f"(Default: {column_default})")
-
-            # Extract sample values for the column (stored separately, not in description)
-            sample_values = SQLServerLoader.extract_sample_values_for_column(
-                cursor, f"{schema}.{table_name}", col_name
-            )
+            key_type = _KEY_TYPES.get(col_info['column_key'], 'NONE')
 
             columns_info[col_name] = {
-                'type': data_type,
+                'type': col_info['data_type'],
                 'null': is_nullable,
                 'key': key_type,
-                'description': ' '.join(description_parts),
-                'default': column_default,
-                'sample_values': sample_values
+                'description': _build_column_description(col_info, key_type, is_nullable),
+                'default': col_info['column_default'],
+                # Stored separately, not folded into the description.
+                'sample_values': SQLServerLoader.extract_sample_values_for_column(
+                    cursor, qualified_table, col_name
+                ),
             }
 
         return columns_info
