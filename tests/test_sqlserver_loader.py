@@ -292,7 +292,7 @@ class TestIntrospection:
     def test_columns_query_binds_schema_and_table(self):
         """Column introspection is scoped by schema *and* table."""
         cursor = FakeCursor([[]])
-        SQLServerLoader.extract_columns_info(cursor, "sales", "Orders")
+        SQLServerLoader.extract_columns_info(cursor, "sales", "Orders", "Sales")
         query, params = cursor.executed[0]
         assert params == ("sales", "Orders")
         assert "s.name = %s AND t.name = %s" in query
@@ -310,7 +310,7 @@ class TestIntrospection:
             }],
             [{"id": 1}],  # sample values query
         ])
-        info = SQLServerLoader.extract_columns_info(cursor, "dbo", "Orders")
+        info = SQLServerLoader.extract_columns_info(cursor, "dbo", "Orders", "dbo")
         assert info["id"]["type"] == "int"
         assert info["id"]["null"] == "NO"
         assert info["id"]["key"] == "PRIMARY KEY"
@@ -330,9 +330,12 @@ class TestIntrospection:
             }],
             [],
         ])
-        SQLServerLoader.extract_columns_info(cursor, "sales", "Orders")
+        SQLServerLoader.extract_columns_info(cursor, "sales", "Orders", "Sales")
+        # The column query binds the URL schema; the sample query interpolates
+        # the catalog-returned one.
+        assert cursor.executed[0][1] == ("sales", "Orders")
         sample_query, _ = cursor.executed[1]
-        assert "FROM [sales].[Orders]" in sample_query
+        assert "FROM [Sales].[Orders]" in sample_query
 
     def test_foreign_keys_mapping(self):
         """Foreign key rows map onto the loader's FK dicts."""

@@ -413,19 +413,20 @@ class SQLServerLoader(BaseLoader):
 
     @staticmethod
     def extract_columns_info(
-        cursor, schema: str, table_name: str, catalog_schema: str = None
+        cursor, schema: str, table_name: str, catalog_schema: str
     ) -> Dict[str, Any]:
         """
         Extract column information for a specific table.
 
         Args:
             cursor: Database cursor
-            schema: Schema owning the table, used as a bound query parameter
-            table_name: Name of the table
+            schema: Schema owning the table. Only ever passed to the driver as
+                a bound query parameter, never interpolated into a statement.
+            table_name: Name of the table, as returned by ``sys.tables``
             catalog_schema: Schema name as returned by ``sys.schemas``. Sample
                 queries interpolate this rather than *schema*, so the value
-                comes from the server rather than the connection URL. Falls
-                back to *schema* when not supplied.
+                that reaches a statement body comes from the server rather
+                than from the connection URL.
 
         Returns:
             Dict containing column information
@@ -474,7 +475,7 @@ class SQLServerLoader(BaseLoader):
         columns = cursor.fetchall()
         columns_info = {}
 
-        qualified_table = f"{catalog_schema or schema}.{table_name}"
+        qualified_table = f"{catalog_schema}.{table_name}"
 
         for col_info in columns:
             col_name = col_info['column_name']
