@@ -12,10 +12,16 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
+# ``api.core`` must be initialised before any loader module is imported.
+# ``api.core.__init__`` eagerly pulls in the pipeline, which imports the
+# loaders, so importing a loader first leaves ``graph_loader`` half-built.
+import api.core  # noqa: F401  pylint: disable=unused-import
+
 from api.loaders.sqlserver_loader import (
     SQLServerLoader,
     SQLServerQueryError,
     quote_ident,
+    validate_ident,
 )
 
 
@@ -97,6 +103,70 @@ class TestQuoteIdent:
         assert quoted.startswith("[") and quoted.endswith("]")
         # The only unescaped ']' is the final delimiter.
         assert quoted[1:-1].replace("]]", "") .count("]") == 0
+
+
+class TestValidateIdent:
+    """Allow-list validation applied before any identifier interpolation."""
+
+    @pytest.mark.parametrize("name", [
+        "Orders", "my-table name", "col_1", "tbl$", "#temp", "a.b", "x@y",
+    ])
+    def test_accepts_legitimate_names(self, name):
+        """Characters that can legally appear in an object name pass through."""
+        assert validate_ident(name) == name
+
+    @pytest.mark.parametrize("name", [
+        "x] FROM sys.tables; DROP TABLE users --",
+        "my]table",
+        "tbl'; DROP TABLE t --",
+        'tbl"',
+        "tbl;",
+        "tbl\\x",
+        "tbl\nDROP",
+    ])
+    def test_rejects_breakout_attempts(self, name):
+        """Anything able to escape a bracket delimiter is refused."""
+        with pytest.raises(ValueError):
+            validate_ident(name)
+
+    def test_rejects_empty(self):
+        """An empty identifier is not a valid object name."""
+        with pytest.raises(ValueError):
+            validate_ident("")
+
+    def test_rejects_over_long(self):
+        """SQL Server object names cap at 128 characters."""
+        with pytest.raises(ValueError):
+            validate_ident("a" * 129)
+
+    def test_error_names_the_identifier_type(self):
+        """The message says which kind of identifier was rejected."""
+        with pytest.raises(ValueError, match="schema name"):
+            validate_ident("bad;name", "schema name")
+
+
+class TestSampleQueryValidation:
+    """The sample query refuses hostile identifiers outright."""
+
+    @pytest.mark.parametrize("table,column", [
+        ("dbo.x] FROM sys.tables --", "c"),
+        ("dbo.T", "c] FROM sys.tables --"),
+        ("bad;schema.T", "c"),
+    ])
+    def test_hostile_identifier_is_rejected(self, table, column):
+        """Validation happens before the statement is built or executed."""
+        cursor = FakeCursor([[]])
+        with pytest.raises(ValueError):
+            SQLServerLoader._execute_sample_query(cursor, table, column)
+        assert cursor.executed == []
+
+    @pytest.mark.parametrize("size", [0, -1, "5"])
+    def test_invalid_sample_size_rejected(self, size):
+        """``sample_size`` must be a positive integer."""
+        cursor = FakeCursor([[]])
+        with pytest.raises(ValueError):
+            SQLServerLoader._execute_sample_query(cursor, "dbo.T", "c", sample_size=size)
+        assert cursor.executed == []
 
 
 class TestParseUrl:
