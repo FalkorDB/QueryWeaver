@@ -266,7 +266,7 @@ async def main():
     # Initialize with FalkorDB connection
     qw = QueryWeaver(falkordb_url="redis://localhost:6379")
 
-    # Connect a PostgreSQL or MySQL database
+    # Connect a PostgreSQL, MySQL, SQL Server or Snowflake database
     conn = await qw.connect_database("postgresql://user:pass@host:5432/mydb")
     print(f"Connected: {conn.database_id}")  # "mydb"
 
@@ -310,7 +310,7 @@ async with QueryWeaver(falkordb_url="redis://host-a:6379", user_id="tenant_a") a
 
 | Method | Description |
 |--------|-------------|
-| `connect_database(db_url)` | Connect PostgreSQL/MySQL and load schema |
+| `connect_database(db_url)` | Connect PostgreSQL/MySQL/SQL Server/Snowflake and load schema |
 | `query(database, question)` | Convert natural language to SQL and execute |
 | `get_schema(database)` | Retrieve database schema (tables and relationships) |
 | `list_databases()` | List all connected databases |
@@ -356,7 +356,7 @@ if result.requires_confirmation:
 - Python 3.12+
 - FalkorDB instance (local or remote)
 - OpenAI or Azure OpenAI API key (for LLM)
-- Target SQL database (PostgreSQL or MySQL)
+- Target SQL database (PostgreSQL, MySQL, SQL Server or Snowflake)
 
 ## Development
 

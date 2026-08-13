@@ -115,8 +115,9 @@ def get_database_type_and_loader(
     PostgreSQL for backward compatibility on the server path.
 
     When ``sdk_only`` is True, raises ``InvalidArgumentError`` for vendors
-    that need the ``[server]`` extra (snowflake) or for unknown URL schemes,
-    so SDK callers get a clean error instead of a deferred ``ImportError``.
+    that need the ``[server]`` extra (snowflake, sqlserver) or for unknown URL
+    schemes, so SDK callers get a clean error instead of a deferred
+    ``ImportError``.
     """
     if not db_url or db_url == "No URL available for this database.":
         return None, None
@@ -138,6 +139,17 @@ def get_database_type_and_loader(
         # pylint: disable=import-outside-toplevel
         from api.loaders.snowflake_loader import SnowflakeLoader
         return 'snowflake', SnowflakeLoader
+    if db_url_lower.startswith('sqlserver://'):
+        if sdk_only:
+            raise InvalidArgumentError(
+                "SQL Server requires the [server] extra: "
+                "pip install queryweaver[server]"
+            )
+        # Lazy-import: pymssql is in the [server] extra, not in the core SDK
+        # install.
+        # pylint: disable=import-outside-toplevel
+        from api.loaders.sqlserver_loader import SQLServerLoader
+        return 'sqlserver', SQLServerLoader
 
     if sdk_only:
         raise InvalidArgumentError(
@@ -205,6 +217,8 @@ _DIALECT_BY_DB_TYPE = {
     "postgres": "postgres",
     "mysql": "mysql",
     "snowflake": "snowflake",
+    "sqlserver": "tsql",
+    "mssql": "tsql",
 }
 
 # sqlglot expression class names that represent a write, DDL, privilege change,
