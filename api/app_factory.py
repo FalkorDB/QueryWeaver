@@ -17,6 +17,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from api.auth.oauth_handlers import setup_oauth_handlers
 from api.auth.user_management import SECRET_KEY
+from api.analytics import report_error
 from api.routes.auth import auth_router, init_auth
 from api.routes.graphs import graphs_router
 from api.routes.database import database_router
@@ -339,7 +340,12 @@ def create_app():  # pylint: disable=too-many-statements
         if isinstance(exc, HTTPException):
             raise exc
 
-        # For other errors, let them bubble up
+        await report_error(request, exc)
+        logging.exception(
+            "Unhandled error for %s %s", request.method, request.url.path, exc_info=exc
+        )
+
+        # Preserve the existing FastAPI 500 response behavior.
         raise exc
 
     # Serve React app for all non-API routes (SPA catch-all)
