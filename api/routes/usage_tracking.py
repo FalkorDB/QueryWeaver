@@ -26,6 +26,7 @@ import base64
 import binascii
 import hashlib
 import logging
+import uuid
 from typing import Optional
 
 from api.config import ORGANIZATIONS_GRAPH
@@ -44,11 +45,26 @@ SET u.query_count    = coalesce(u.query_count, 0) + 1,
     u.last_active    = timestamp(),
     u.first_query_at = coalesce(u.first_query_at, timestamp())
 CREATE (u)-[:PERFORMED]->(e:UsageEvent {
+    query_id: $query_id,
     graph_id: $graph_id,
     is_demo: $is_demo,
     success: $success,
+    question: $question,
+    error: $error,
     timestamp: timestamp()
 })
+FOREACH (_ IN CASE WHEN $success THEN [] ELSE [1] END |
+    CREATE (error:Error {
+        source: 'queryweaver',
+        type: 'QueryError',
+        message: CASE WHEN $error = '' THEN 'Query could not be completed' ELSE $error END,
+        endpoint: '/graphs/' + $graph_id,
+        method: 'POST',
+        timestamp: timestamp()
+    })
+    CREATE (u)-[:ENCOUNTERED]->(error)
+    CREATE (e)-[:FAILED_WITH]->(error)
+)
 """
 
 
@@ -74,16 +90,28 @@ def _decode_email(user_id: str) -> Optional[str]:
     return email
 
 
-async def _write_usage(email: str, graph_id: str, is_demo: bool, success: bool, db) -> None:
+async def _write_usage(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    email: str,
+    query_id: str,
+    graph_id: str,
+    is_demo: bool,
+    success: bool,
+    question: str,
+    error: str,
+    db,
+) -> None:
     """Perform the single Cypher write against the Organizations graph."""
     organizations_graph = resolve_db(db).select_graph(ORGANIZATIONS_GRAPH)
     await organizations_graph.query(
         _RECORD_USAGE_CYPHER,
         {
             "email": email,
+            "query_id": query_id,
             "graph_id": graph_id,
             "is_demo": is_demo,
             "success": success,
+            "question": question,
+            "error": error,
         },
     )
     # Structured-ish log line so usage is visible to log aggregators even
@@ -98,10 +126,13 @@ async def _write_usage(email: str, graph_id: str, is_demo: bool, success: bool, 
     )
 
 
-def record_query_usage_background(
+def record_query_usage_background(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     user_id: str,
     namespaced: str,
     success: bool,
+    question: str,
+    error: str = "",
+    query_id: Optional[str] = None,
     *,
     db=None,
     task_sink: Optional[set] = None,
@@ -118,6 +149,9 @@ def record_query_usage_background(
         namespaced: The fully-namespaced graph name the query ran against;
             already demo-aware, so it doubles as the recorded ``graph_id``.
         success: Whether SQL execution succeeded (no execution error).
+        question: The natural-language question associated with the attempt.
+        error: The pipeline or execution error for failed attempts.
+        query_id: Request-scoped identifier used to link an unhandled error.
         db: Optional FalkorDB handle; resolves to the server singleton when None.
         task_sink: Optional set the scheduled task is added to (and auto-removed
             from on completion) so callers can await any in-flight tracking
@@ -131,7 +165,16 @@ def record_query_usage_background(
     sink = task_sink if task_sink is not None else background_tasks_var.get()
 
     task = asyncio.create_task(
-        _write_usage(email, namespaced, is_demo, success, db)
+        _write_usage(
+            email,
+            query_id or str(uuid.uuid4()),
+            namespaced,
+            is_demo,
+            success,
+            question[:4000],
+            error[:4000],
+            db,
+        )
     )
 
     if sink is not None:
