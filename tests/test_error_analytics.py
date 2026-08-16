@@ -10,6 +10,19 @@ from api import analytics
 pytestmark = [pytest.mark.unit]
 
 
+def test_safe_message_redacts_credentials():
+    """Persisted messages must not contain common credential values."""
+    error = RuntimeError(
+        "password=hunter2 token: abc123 redis://default:secret@db.example:6379"
+    )
+
+    message = analytics._safe_message(error)  # pylint: disable=protected-access
+
+    assert "hunter2" not in message
+    assert "abc123" not in message
+    assert "secret@" not in message
+
+
 @pytest.mark.asyncio
 async def test_report_error_writes_org_graph(monkeypatch):
     """Unhandled errors should be written with QueryWeaver attribution."""

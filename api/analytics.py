@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 
 from fastapi import Request
 from falkordb.asyncio import FalkorDB
@@ -9,6 +10,17 @@ from redis.asyncio import BlockingConnectionPool
 
 LOGGER = logging.getLogger(__name__)
 ANALYTICS_GRAPH = os.getenv("ORGANIZATIONS_GRAPH", "Organizations")
+_SENSITIVE_VALUE = re.compile(
+    r"(?i)(password|token|secret|api[_-]?key|authorization)"
+    r"(\s*[=:]\s*|\s+)([^\s,;]+)"
+)
+
+
+def _safe_message(exc: Exception) -> str:
+    """Redact common credential forms before persisting an exception message."""
+    message = _SENSITIVE_VALUE.sub(r"\1\2[REDACTED]", str(exc))
+    message = re.sub(r"(?i)(redis(?:s)?://[^:@/\s]+:)[^@/\s]+@", r"\1[REDACTED]@", message)
+    return message[:4000]
 
 
 async def report_error(request: Request, exc: Exception) -> bool:
@@ -42,7 +54,7 @@ async def report_error(request: Request, exc: Exception) -> bool:
             """,
             {
                 "type": type(exc).__name__,
-                "message": str(exc)[:4000],
+                "message": _safe_message(exc),
                 "endpoint": request.url.path,
                 "method": request.method,
                 "user_email": user_email,
