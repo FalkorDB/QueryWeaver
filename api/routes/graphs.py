@@ -35,7 +35,9 @@ from api.routes.usage_tracking import record_query_usage_background
 graphs_router = APIRouter(tags=["Graphs & Databases"])
 
 
-async def _serialize_pipeline(gen, *, user_id, namespaced, question, query_id):
+async def _serialize_pipeline(  # pylint: disable=too-many-arguments
+    gen, *, user_id: str, namespaced: str, question: str, query_id: str, endpoint: str
+):
     """Serialize pipeline events to the wire format and stop on ``_Final``.
 
     Pure encoding loop — no exception handling here. Each route handler
@@ -65,6 +67,7 @@ async def _serialize_pipeline(gen, *, user_id, namespaced, question, query_id):
             question=question,
             error=final.error_message or "",
             query_id=query_id,
+            endpoint=endpoint,
         )
 
 
@@ -208,6 +211,7 @@ async def query_graph(
                 namespaced=namespaced,
                 question=question,
                 query_id=query_id,
+                endpoint=request.url.path,
             ):
                 yield chunk
         except Exception:  # pylint: disable=broad-exception-caught
@@ -223,6 +227,7 @@ async def query_graph(
                 question=question,
                 error="Unhandled streaming query failure",
                 query_id=query_id,
+                endpoint=request.url.path,
             )
             yield json.dumps({
                 "type": "error",
@@ -269,6 +274,7 @@ async def confirm_destructive_operation(
                 namespaced=namespaced,
                 question=question,
                 query_id=query_id,
+                endpoint=request.url.path,
             ):
                 yield chunk
         except Exception:  # pylint: disable=broad-exception-caught
@@ -282,6 +288,7 @@ async def confirm_destructive_operation(
                 question=question,
                 error="Unhandled confirmed-query failure",
                 query_id=query_id,
+                endpoint=request.url.path,
             )
             yield json.dumps({
                 "type": "error",

@@ -83,6 +83,7 @@ class TestRecordQueryUsage:
             "success": True,
             "question": "How many users?",
             "error": "",
+            "endpoint": "",
         }
 
     @pytest.mark.asyncio
@@ -97,7 +98,9 @@ class TestRecordQueryUsage:
             )
             await _drain(sink)
 
-        _cypher, params = graph.query.await_args.args
+        cypher, params = graph.query.await_args.args
+        assert "CREATE (e)-[:FAILED_WITH]->(error)" in cypher
+        assert "CREATE (error:Error" in cypher
         assert params["success"] is False
         assert params["question"] == "Broken query"
         assert params["error"] == "syntax error"
@@ -163,7 +166,7 @@ class TestUngatedDesign:
         params = set(inspect.signature(record_query_usage_background).parameters)
         assert params == {
             "user_id", "namespaced", "success", "question", "error", "query_id",
-            "db", "task_sink"
+            "endpoint", "db", "task_sink"
         }
         assert "use_memory" not in params
         assert "provider" not in params

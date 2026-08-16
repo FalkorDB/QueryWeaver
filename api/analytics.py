@@ -3,6 +3,7 @@
 import logging
 import os
 import re
+import asyncio
 
 from fastapi import Request
 from falkordb.asyncio import FalkorDB
@@ -36,29 +37,32 @@ async def report_error(request: Request, exc: Exception) -> bool:
         client = FalkorDB(connection_pool=pool)
         graph = client.select_graph(ANALYTICS_GRAPH)
         user_email = getattr(request.state, "user_email", None)
-        await graph.query(
-            """
-            CREATE (e:Error {
-                source: 'queryweaver',
-                type: $type,
-                message: $message,
-                endpoint: $endpoint,
-                method: $method,
-                timestamp: timestamp()
-            })
-            WITH e
-            OPTIONAL MATCH (u:User {email: $user_email})
-            FOREACH (_ IN CASE WHEN u IS NULL THEN [] ELSE [1] END |
-                CREATE (u)-[:ENCOUNTERED]->(e)
-            )
-            """,
-            {
-                "type": type(exc).__name__,
-                "message": _safe_message(exc),
-                "endpoint": request.url.path,
-                "method": request.method,
-                "user_email": user_email,
-            },
+        await asyncio.wait_for(
+            graph.query(
+                """
+                CREATE (e:Error {
+                    source: 'queryweaver',
+                    type: $type,
+                    message: $message,
+                    endpoint: $endpoint,
+                    method: $method,
+                    timestamp: timestamp()
+                })
+                WITH e
+                OPTIONAL MATCH (u:User {email: $user_email})
+                FOREACH (_ IN CASE WHEN u IS NULL THEN [] ELSE [1] END |
+                    CREATE (u)-[:ENCOUNTERED]->(e)
+                )
+                """,
+                {
+                    "type": type(exc).__name__,
+                    "message": _safe_message(exc),
+                    "endpoint": request.url.path,
+                    "method": request.method,
+                    "user_email": user_email,
+                },
+            ),
+            timeout=2,
         )
         return True
     except Exception as analytics_error:  # pylint: disable=broad-exception-caught

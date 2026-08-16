@@ -58,7 +58,7 @@ FOREACH (_ IN CASE WHEN $success THEN [] ELSE [1] END |
         source: 'queryweaver',
         type: 'QueryError',
         message: CASE WHEN $error = '' THEN 'Query could not be completed' ELSE $error END,
-        endpoint: '/graphs/' + $graph_id,
+        endpoint: $endpoint,
         method: 'POST',
         timestamp: timestamp()
     })
@@ -98,6 +98,7 @@ async def _write_usage(  # pylint: disable=too-many-arguments,too-many-positiona
     success: bool,
     question: str,
     error: str,
+    endpoint: str,
     db,
 ) -> None:
     """Perform the single Cypher write against the Organizations graph."""
@@ -112,6 +113,7 @@ async def _write_usage(  # pylint: disable=too-many-arguments,too-many-positiona
             "success": success,
             "question": question,
             "error": error,
+            "endpoint": endpoint,
         },
     )
     # Structured-ish log line so usage is visible to log aggregators even
@@ -133,6 +135,7 @@ def record_query_usage_background(  # pylint: disable=too-many-arguments,too-man
     question: str,
     error: str = "",
     query_id: Optional[str] = None,
+    endpoint: str = "",
     *,
     db=None,
     task_sink: Optional[set] = None,
@@ -151,7 +154,8 @@ def record_query_usage_background(  # pylint: disable=too-many-arguments,too-man
         success: Whether SQL execution succeeded (no execution error).
         question: The natural-language question associated with the attempt.
         error: The pipeline or execution error for failed attempts.
-        query_id: Request-scoped identifier used to link an unhandled error.
+        query_id: Request-scoped identifier attached to the UsageEvent for correlation.
+        endpoint: Route path that handled the query.
         db: Optional FalkorDB handle; resolves to the server singleton when None.
         task_sink: Optional set the scheduled task is added to (and auto-removed
             from on completion) so callers can await any in-flight tracking
@@ -173,6 +177,7 @@ def record_query_usage_background(  # pylint: disable=too-many-arguments,too-man
             success,
             question[:4000],
             error[:4000],
+            endpoint,
             db,
         )
     )
