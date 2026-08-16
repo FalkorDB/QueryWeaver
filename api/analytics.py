@@ -18,9 +18,10 @@ async def report_error(request: Request, exc: Exception) -> bool:
         LOGGER.error("Cannot report QueryWeaver error: FALKORDB_URL is not configured")
         return False
 
-    pool = BlockingConnectionPool.from_url(url, decode_responses=True)
-    client = FalkorDB(connection_pool=pool)
+    pool = None
     try:
+        pool = BlockingConnectionPool.from_url(url, decode_responses=True)
+        client = FalkorDB(connection_pool=pool)
         graph = client.select_graph(ANALYTICS_GRAPH)
         user_email = getattr(request.state, "user_email", None)
         await graph.query(
@@ -52,4 +53,8 @@ async def report_error(request: Request, exc: Exception) -> bool:
         LOGGER.error("Failed to report QueryWeaver error to analytics: %s", analytics_error)
         return False
     finally:
-        await pool.aclose()
+        if pool is not None:
+            try:
+                await pool.aclose()
+            except Exception:  # pylint: disable=broad-exception-caught
+                LOGGER.debug("Failed to close analytics Redis pool", exc_info=True)

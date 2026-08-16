@@ -7,6 +7,8 @@ from fastapi import Request
 
 from api import analytics
 
+pytestmark = [pytest.mark.unit]
+
 
 @pytest.mark.asyncio
 async def test_report_error_writes_org_graph(monkeypatch):
@@ -45,3 +47,32 @@ async def test_report_error_writes_org_graph(monkeypatch):
         "user_email": "user@example.com",
     }
     pool.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_report_error_without_url_returns_false(monkeypatch):
+    """Missing analytics configuration must not mask the original error."""
+    monkeypatch.delenv("FALKORDB_URL", raising=False)
+    request = Request({
+        "type": "http", "method": "GET", "path": "/", "headers": [],
+        "query_string": b"", "scheme": "http", "server": ("localhost", 80),
+    })
+
+    assert await analytics.report_error(request, RuntimeError("boom")) is False
+
+
+@pytest.mark.asyncio
+async def test_report_error_swallows_setup_failure(monkeypatch):
+    """Invalid connection configuration must preserve best-effort behavior."""
+    monkeypatch.setenv("FALKORDB_URL", "invalid")
+    request = Request({
+        "type": "http", "method": "GET", "path": "/", "headers": [],
+        "query_string": b"", "scheme": "http", "server": ("localhost", 80),
+    })
+
+    with patch.object(
+        analytics.BlockingConnectionPool,
+        "from_url",
+        side_effect=ValueError("invalid URL"),
+    ):
+        assert await analytics.report_error(request, RuntimeError("boom")) is False
