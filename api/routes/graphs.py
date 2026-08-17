@@ -2,6 +2,7 @@
 
 import json
 import logging
+import uuid
 from fastapi import APIRouter, Request, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
@@ -34,7 +35,9 @@ from api.routes.usage_tracking import record_query_usage_background
 graphs_router = APIRouter(tags=["Graphs & Databases"])
 
 
-async def _serialize_pipeline(gen, *, user_id, namespaced):
+async def _serialize_pipeline(  # pylint: disable=too-many-arguments
+    gen, *, user_id: str, namespaced: str, question: str, query_id: str, endpoint: str
+):
     """Serialize pipeline events to the wire format and stop on ``_Final``.
 
     Pure encoding loop — no exception handling here. Each route handler
@@ -61,6 +64,10 @@ async def _serialize_pipeline(gen, *, user_id, namespaced):
         record_query_usage_background(
             user_id, namespaced,
             success=final.is_valid and final.error_message is None,
+            question=question,
+            error=final.error_message or "",
+            query_id=query_id,
+            endpoint=endpoint,
         )
 
 
@@ -195,10 +202,16 @@ async def query_graph(
         return JSONResponse(content={"error": "Invalid query request"}, status_code=400)
 
     async def stream():
+        question = chat_data.chat[-1]
+        query_id = str(uuid.uuid4())
         try:
             async for chunk in _serialize_pipeline(
                 run_query(request.state.user_id, graph_id, chat_data),
-                user_id=request.state.user_id, namespaced=namespaced,
+                user_id=request.state.user_id,
+                namespaced=namespaced,
+                question=question,
+                query_id=query_id,
+                endpoint=request.url.path,
             ):
                 yield chunk
         except Exception:  # pylint: disable=broad-exception-caught
@@ -208,7 +221,13 @@ async def query_graph(
             # Pipeline crashed before _Final, so _serialize_pipeline didn't
             # record — count this attempt as a failure here.
             record_query_usage_background(
-                request.state.user_id, namespaced, success=False
+                request.state.user_id,
+                namespaced,
+                success=False,
+                question=question,
+                error="Unhandled streaming query failure",
+                query_id=query_id,
+                endpoint=request.url.path,
             )
             yield json.dumps({
                 "type": "error",
@@ -246,10 +265,16 @@ async def confirm_destructive_operation(
         return JSONResponse(content={"error": "Invalid confirmation request"}, status_code=400)
 
     async def stream():
+        question = str(confirm_data.chat[-1]) if confirm_data.chat else ""
+        query_id = str(uuid.uuid4())
         try:
             async for chunk in _serialize_pipeline(
                 run_confirmed(request.state.user_id, graph_id, confirm_data),
-                user_id=request.state.user_id, namespaced=namespaced,
+                user_id=request.state.user_id,
+                namespaced=namespaced,
+                question=question,
+                query_id=query_id,
+                endpoint=request.url.path,
             ):
                 yield chunk
         except Exception:  # pylint: disable=broad-exception-caught
@@ -257,7 +282,13 @@ async def confirm_destructive_operation(
             logging.exception("Streaming confirmed-destructive query failed")
             # Pipeline crashed before _Final — record the failed attempt here.
             record_query_usage_background(
-                request.state.user_id, namespaced, success=False
+                request.state.user_id,
+                namespaced,
+                success=False,
+                question=question,
+                error="Unhandled confirmed-query failure",
+                query_id=query_id,
+                endpoint=request.url.path,
             )
             yield json.dumps({
                 "type": "error",
