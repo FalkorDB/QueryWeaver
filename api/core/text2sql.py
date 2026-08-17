@@ -82,7 +82,7 @@ class ConfirmRequest(BaseModel):
     """
     sql_query: str
     confirmation: str = ""
-    chat: list = []
+    chat: list[str] = []
     custom_api_key: str | None = None
     custom_model: str | None = None
     use_memory: bool = False
