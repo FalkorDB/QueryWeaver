@@ -330,6 +330,11 @@ def create_app():  # pylint: disable=too-many-statements
         request: Request, exc: Exception
     ):  # pylint: disable=unused-argument
         """Handle OAuth-related errors gracefully"""
+        await report_error(request, exc)
+        logging.exception(
+            "Unhandled error for %s %s", request.method, request.url.path
+        )
+
         # Check if it's an OAuth-related error
         # TODO check this scenario, pylint: disable=fixme
         if "token" in str(exc).lower() or "oauth" in str(exc).lower():
@@ -339,11 +344,6 @@ def create_app():  # pylint: disable=too-many-statements
         # If it's an HTTPException, re-raise so FastAPI handles it properly
         if isinstance(exc, HTTPException):
             raise exc
-
-        await report_error(request, exc)
-        logging.exception(
-            "Unhandled error for %s %s", request.method, request.url.path, exc_info=exc
-        )
 
         # Preserve the existing FastAPI 500 response behavior.
         raise exc

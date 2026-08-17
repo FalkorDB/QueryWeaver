@@ -10,28 +10,8 @@ from api import analytics
 pytestmark = [pytest.mark.unit]
 
 
-def test_safe_message_redacts_credentials():
-    """Persisted messages must not contain common credential values."""
-    error = RuntimeError(
-        "password=hunter2 token: abc123 redis://default:secret@db.example:6379"
-    )
-
-    message = analytics._safe_message(error)  # pylint: disable=protected-access
-
-    assert "hunter2" not in message
-    assert "abc123" not in message
-    assert "secret@" not in message
-
-
-@pytest.mark.asyncio
-async def test_report_error_writes_org_graph(monkeypatch):
-    """Unhandled errors should be written with QueryWeaver attribution."""
-    monkeypatch.setenv("FALKORDB_URL", "redis://analytics.example:6379")
-    graph = AsyncMock()
-    client = MagicMock()
-    client.select_graph.return_value = graph
-    pool = AsyncMock()
-    scope = {
+def _request() -> Request:
+    request = Request({
         "type": "http",
         "method": "POST",
         "path": "/graphs/query",
@@ -39,18 +19,48 @@ async def test_report_error_writes_org_graph(monkeypatch):
         "query_string": b"",
         "scheme": "https",
         "server": ("queryweaver.example", 443),
-    }
-    request = Request(scope)
+    })
     request.state.user_email = "user@example.com"
+    return request
 
-    with (
-        patch.object(analytics.BlockingConnectionPool, "from_url", return_value=pool),
-        patch.object(analytics, "FalkorDB", return_value=client),
+
+def test_safe_message_redacts_credentials():
+    """Persisted messages must not contain common credential values."""
+    error = RuntimeError(
+        'password=hunter2 token: abc123 Authorization: ****** '
+        '"api_key": "json-secret" ******db.example:5432/app '
+        '******host/db'
+    )
+
+    message = analytics._safe_message(error)  # pylint: disable=protected-access
+
+    for secret in (
+        "hunter2", "abc123", "bearer-secret", "json-secret",
+        "pg-secret", "mysql-secret",
     ):
-        result = await analytics.report_error(request, RuntimeError("sales demo failed"))
+        assert secret not in message
+
+
+def test_safe_message_preserves_diagnostic_phrases():
+    """Words such as password and token are not secrets without a separator."""
+    message = analytics._safe_message(  # pylint: disable=protected-access
+        RuntimeError('password authentication failed; token expired')
+    )
+    assert "password authentication failed" in message
+    assert "token expired" in message
+
+
+@pytest.mark.asyncio
+async def test_report_error_writes_org_graph():
+    """Unhandled errors should be written with QueryWeaver attribution."""
+    graph = AsyncMock()
+    client = MagicMock()
+    client.select_graph.return_value = graph
+
+    with patch.object(analytics, "db", client):
+        result = await analytics.report_error(_request(), RuntimeError("sales demo failed"))
 
     assert result is True
-    graph.query.assert_awaited_once()
     params = graph.query.await_args.args[1]
     assert params == {
         "type": "RuntimeError",
@@ -59,33 +69,12 @@ async def test_report_error_writes_org_graph(monkeypatch):
         "method": "POST",
         "user_email": "user@example.com",
     }
-    pool.aclose.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_report_error_without_url_returns_false(monkeypatch):
-    """Missing analytics configuration must not mask the original error."""
-    monkeypatch.delenv("FALKORDB_URL", raising=False)
-    request = Request({
-        "type": "http", "method": "GET", "path": "/", "headers": [],
-        "query_string": b"", "scheme": "http", "server": ("localhost", 80),
-    })
-
-    assert await analytics.report_error(request, RuntimeError("boom")) is False
-
-
-@pytest.mark.asyncio
-async def test_report_error_swallows_setup_failure(monkeypatch):
-    """Invalid connection configuration must preserve best-effort behavior."""
-    monkeypatch.setenv("FALKORDB_URL", "invalid")
-    request = Request({
-        "type": "http", "method": "GET", "path": "/", "headers": [],
-        "query_string": b"", "scheme": "http", "server": ("localhost", 80),
-    })
-
-    with patch.object(
-        analytics.BlockingConnectionPool,
-        "from_url",
-        side_effect=ValueError("invalid URL"),
-    ):
-        assert await analytics.report_error(request, RuntimeError("boom")) is False
+async def test_report_error_swallows_setup_failure():
+    """Analytics connection failures must preserve best-effort behavior."""
+    broken_db = MagicMock()
+    broken_db.select_graph.side_effect = ConnectionError("offline")
+    with patch.object(analytics, "db", broken_db):
+        assert await analytics.report_error(_request(), RuntimeError("boom")) is False

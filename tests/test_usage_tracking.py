@@ -9,6 +9,7 @@ and that failures never propagate to the caller.
 import asyncio
 import base64
 import inspect
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -75,9 +76,9 @@ class TestRecordQueryUsage:
         assert "MATCH (u:User {email: $email})" in cypher
         assert ":UsageEvent" in cypher
         assert ":FAILED_WITH" in cypher
+        uuid.UUID(params.pop("query_id"))
         assert params == {
             "email": EMAIL,
-            "query_id": params["query_id"],
             "graph_id": f"{USER_ID}_mydb",
             "is_demo": False,
             "success": True,
@@ -104,6 +105,21 @@ class TestRecordQueryUsage:
         assert params["success"] is False
         assert params["question"] == "Broken query"
         assert params["error"] == "syntax error"
+
+    @pytest.mark.asyncio
+    async def test_preserves_explicit_query_id(self):
+        """The route correlation ID must be persisted unchanged."""
+        db, graph = _mock_db()
+        sink: set = set()
+        with patch.object(usage_tracking, "resolve_db", return_value=db), \
+                patch.object(usage_tracking, "is_general_graph", return_value=False):
+            record_query_usage_background(
+                USER_ID, f"{USER_ID}_mydb", success=False, question="Broken",
+                error="failure", query_id="query-123", db=db, task_sink=sink
+            )
+            await _drain(sink)
+
+        assert graph.query.await_args.args[1]["query_id"] == "query-123"
 
     @pytest.mark.asyncio
     async def test_demo_graph_is_flagged(self):

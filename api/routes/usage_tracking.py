@@ -32,6 +32,7 @@ from typing import Optional
 from api.config import ORGANIZATIONS_GRAPH
 from api.core.db_resolver import resolve_db
 from api.core.pipeline import background_tasks_var, is_general_graph
+from api.helpers.redaction import redact_sensitive_text
 
 # Single round-trip: bump the User counters/timestamps and append a UsageEvent.
 # Uses MATCH (not MERGE) on User so an unknown email is a silent no-op rather
@@ -53,11 +54,11 @@ CREATE (u)-[:PERFORMED]->(e:UsageEvent {
     error: $error,
     timestamp: timestamp()
 })
-FOREACH (_ IN CASE WHEN $success THEN [] ELSE [1] END |
+FOREACH (_ IN CASE WHEN $error = '' THEN [] ELSE [1] END |
     CREATE (error:Error {
         source: 'queryweaver',
         type: 'QueryError',
-        message: CASE WHEN $error = '' THEN 'Query could not be completed' ELSE $error END,
+        message: $error,
         endpoint: $endpoint,
         method: 'POST',
         timestamp: timestamp()
@@ -175,8 +176,8 @@ def record_query_usage_background(  # pylint: disable=too-many-arguments,too-man
             namespaced,
             is_demo,
             success,
-            question[:4000],
-            error[:4000],
+            redact_sensitive_text(str(question)),
+            redact_sensitive_text(error),
             endpoint,
             db,
         )

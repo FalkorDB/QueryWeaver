@@ -1,41 +1,26 @@
 """Best-effort error reporting to the organization analytics graph."""
 
-import logging
-import os
-import re
 import asyncio
+import logging
 
 from fastapi import Request
-from falkordb.asyncio import FalkorDB
-from redis.asyncio import BlockingConnectionPool
+
+from api.config import ORGANIZATIONS_GRAPH
+from api.extensions import db
+from api.helpers.redaction import redact_sensitive_text
 
 LOGGER = logging.getLogger(__name__)
-ANALYTICS_GRAPH = os.getenv("ORGANIZATIONS_GRAPH", "Organizations")
-_SENSITIVE_VALUE = re.compile(
-    r"(?i)(password|token|secret|api[_-]?key|authorization)"
-    r"(\s*[=:]\s*|\s+)([^\s,;]+)"
-)
 
 
 def _safe_message(exc: Exception) -> str:
     """Redact common credential forms before persisting an exception message."""
-    message = _SENSITIVE_VALUE.sub(r"\1\2[REDACTED]", str(exc))
-    message = re.sub(r"(?i)(redis(?:s)?://[^:@/\s]+:)[^@/\s]+@", r"\1[REDACTED]@", message)
-    return message[:4000]
+    return redact_sensitive_text(str(exc))
 
 
 async def report_error(request: Request, exc: Exception) -> bool:
     """Record an unhandled QueryWeaver error without affecting the response."""
-    url = os.getenv("FALKORDB_URL")
-    if not url:
-        LOGGER.error("Cannot report QueryWeaver error: FALKORDB_URL is not configured")
-        return False
-
-    pool = None
     try:
-        pool = BlockingConnectionPool.from_url(url, decode_responses=True)
-        client = FalkorDB(connection_pool=pool)
-        graph = client.select_graph(ANALYTICS_GRAPH)
+        graph = db.select_graph(ORGANIZATIONS_GRAPH)
         user_email = getattr(request.state, "user_email", None)
         await asyncio.wait_for(
             graph.query(
@@ -66,11 +51,9 @@ async def report_error(request: Request, exc: Exception) -> bool:
         )
         return True
     except Exception as analytics_error:  # pylint: disable=broad-exception-caught
-        LOGGER.error("Failed to report QueryWeaver error to analytics: %s", analytics_error)
+        LOGGER.error(
+            "Failed to report QueryWeaver error to analytics: %s",
+            analytics_error,
+            exc_info=True,
+        )
         return False
-    finally:
-        if pool is not None:
-            try:
-                await pool.aclose()
-            except Exception:  # pylint: disable=broad-exception-caught
-                LOGGER.debug("Failed to close analytics Redis pool", exc_info=True)

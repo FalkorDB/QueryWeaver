@@ -265,7 +265,7 @@ async def confirm_destructive_operation(
         return JSONResponse(content={"error": "Invalid confirmation request"}, status_code=400)
 
     async def stream():
-        question = confirm_data.chat[-1] if confirm_data.chat else ""
+        question = str(confirm_data.chat[-1]) if confirm_data.chat else ""
         query_id = str(uuid.uuid4())
         try:
             async for chunk in _serialize_pipeline(
