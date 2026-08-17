@@ -15,7 +15,7 @@ _SENSITIVE_VALUE = re.compile(
     """
 )
 _CONNECTION_PASSWORD = re.compile(
-    r"(?i)\b([a-z][a-z0-9+.\-]*://[^:@/\s]+:)[^@/\s]+@"
+    r"(?i)\b([a-z][a-z0-9+.\-]*://[^:@/\s]*:)[^@/\s]+@"
 )
 
 

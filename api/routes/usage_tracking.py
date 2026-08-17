@@ -13,8 +13,10 @@ For each query we maintain, fire-and-forget:
   (``query_count``/``success_count``/``error_count``/``last_active``/
   ``first_query_at``) for cheap reads.
 * A per-query ``(:UsageEvent)`` node linked ``(User)-[:PERFORMED]->`` carrying
-  ``graph_id``/``is_demo``/``success``/``timestamp`` for time-series, per-DB
-  and success-rate analytics.
+  ``query_id``/``graph_id``/``is_demo``/``success``/``question``/``error``/
+  ``timestamp`` for time-series, per-DB, and success-rate analytics. Failed
+  executions also create ``(UsageEvent)-[:FAILED_WITH]->(Error)`` and
+  ``(User)-[:ENCOUNTERED]->(Error)`` relationships.
 
 Writes never block or fail a request: they run as background tasks whose
 exceptions are logged and swallowed, mirroring
@@ -42,7 +44,7 @@ _RECORD_USAGE_CYPHER = """
 MATCH (u:User {email: $email})
 SET u.query_count    = coalesce(u.query_count, 0) + 1,
     u.success_count  = coalesce(u.success_count, 0) + (CASE WHEN $success THEN 1 ELSE 0 END),
-    u.error_count    = coalesce(u.error_count, 0) + (CASE WHEN $success THEN 0 ELSE 1 END),
+    u.error_count    = coalesce(u.error_count, 0) + (CASE WHEN $error = '' THEN 0 ELSE 1 END),
     u.last_active    = timestamp(),
     u.first_query_at = coalesce(u.first_query_at, timestamp())
 CREATE (u)-[:PERFORMED]->(e:UsageEvent {

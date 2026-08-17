@@ -105,6 +105,7 @@ class TestRecordQueryUsage:
         assert params["success"] is False
         assert params["question"] == "Broken query"
         assert params["error"] == "syntax error"
+        assert "CASE WHEN $error = '' THEN 0 ELSE 1 END" in cypher
 
     @pytest.mark.asyncio
     async def test_preserves_explicit_query_id(self):

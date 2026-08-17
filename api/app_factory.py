@@ -330,7 +330,7 @@ def create_app():  # pylint: disable=too-many-statements
         request: Request, exc: Exception
     ):  # pylint: disable=unused-argument
         """Handle OAuth-related errors gracefully"""
-        await report_error(request, exc)
+        report_error(request, exc)
         logging.exception(
             "Unhandled error for %s %s", request.method, request.url.path
         )

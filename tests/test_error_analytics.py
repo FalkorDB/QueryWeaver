@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import asyncio
 import pytest
 from fastapi import Request
 
@@ -29,7 +30,8 @@ def test_safe_message_redacts_credentials():
     error = RuntimeError(
         'password=hunter2 token: abc123 Authorization: ****** '
         '"api_key": "json-secret" ******db.example:5432/app '
-        '******host/db'
+        '******host/db '
+        'redis://:redis-secret@cache.example:6379'
     )
 
     message = analytics._safe_message(error)  # pylint: disable=protected-access
@@ -37,6 +39,7 @@ def test_safe_message_redacts_credentials():
     for secret in (
         "hunter2", "abc123", "bearer-secret", "json-secret",
         "pg-secret", "mysql-secret",
+        "redis-secret",
     ):
         assert secret not in message
 
@@ -57,10 +60,13 @@ async def test_report_error_writes_org_graph():
     client = MagicMock()
     client.select_graph.return_value = graph
 
-    with patch.object(analytics, "db", client):
-        result = await analytics.report_error(_request(), RuntimeError("sales demo failed"))
+    sink: set = set()
+    with patch.object(analytics, "_DB_OVERRIDE", client):
+        analytics.report_error(
+            _request(), RuntimeError("sales demo failed"), task_sink=sink
+        )
+        await asyncio.gather(*list(sink))
 
-    assert result is True
     params = graph.query.await_args.args[1]
     assert params == {
         "type": "RuntimeError",
@@ -74,7 +80,11 @@ async def test_report_error_writes_org_graph():
 @pytest.mark.asyncio
 async def test_report_error_swallows_setup_failure():
     """Analytics connection failures must preserve best-effort behavior."""
+    sink: set = set()
     broken_db = MagicMock()
     broken_db.select_graph.side_effect = ConnectionError("offline")
-    with patch.object(analytics, "db", broken_db):
-        assert await analytics.report_error(_request(), RuntimeError("boom")) is False
+    with patch.object(analytics, "_DB_OVERRIDE", broken_db):
+        analytics.report_error(_request(), RuntimeError("boom"), task_sink=sink)
+        results = await asyncio.gather(*list(sink), return_exceptions=True)
+
+    assert isinstance(results[0], ConnectionError)
