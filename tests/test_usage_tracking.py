@@ -9,6 +9,7 @@ and that failures never propagate to the caller.
 import asyncio
 import base64
 import inspect
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -64,7 +65,8 @@ class TestRecordQueryUsage:
         with patch.object(usage_tracking, "resolve_db", return_value=db), \
                 patch.object(usage_tracking, "is_general_graph", return_value=False):
             record_query_usage_background(
-                USER_ID, f"{USER_ID}_mydb", success=True, db=db, task_sink=sink
+                USER_ID, f"{USER_ID}_mydb", success=True, question="How many users?",
+                db=db, task_sink=sink
             )
             await _drain(sink)
 
@@ -73,11 +75,16 @@ class TestRecordQueryUsage:
         cypher, params = graph.query.await_args.args
         assert "MATCH (u:User {email: $email})" in cypher
         assert ":UsageEvent" in cypher
+        assert ":FAILED_WITH" in cypher
+        uuid.UUID(params.pop("query_id"))
         assert params == {
             "email": EMAIL,
             "graph_id": f"{USER_ID}_mydb",
             "is_demo": False,
             "success": True,
+            "question": "How many users?",
+            "error": "",
+            "endpoint": "",
         }
 
     @pytest.mark.asyncio
@@ -87,12 +94,33 @@ class TestRecordQueryUsage:
         with patch.object(usage_tracking, "resolve_db", return_value=db), \
                 patch.object(usage_tracking, "is_general_graph", return_value=False):
             record_query_usage_background(
-                USER_ID, f"{USER_ID}_mydb", success=False, db=db, task_sink=sink
+                USER_ID, f"{USER_ID}_mydb", success=False, question="Broken query",
+                error="syntax error", db=db, task_sink=sink
             )
             await _drain(sink)
 
-        _cypher, params = graph.query.await_args.args
+        cypher, params = graph.query.await_args.args
+        assert "CREATE (e)-[:FAILED_WITH]->(error)" in cypher
+        assert "CREATE (error:Error" in cypher
         assert params["success"] is False
+        assert params["question"] == "Broken query"
+        assert params["error"] == "syntax error"
+        assert "CASE WHEN $error = '' THEN 0 ELSE 1 END" in cypher
+
+    @pytest.mark.asyncio
+    async def test_preserves_explicit_query_id(self):
+        """The route correlation ID must be persisted unchanged."""
+        db, graph = _mock_db()
+        sink: set = set()
+        with patch.object(usage_tracking, "resolve_db", return_value=db), \
+                patch.object(usage_tracking, "is_general_graph", return_value=False):
+            record_query_usage_background(
+                USER_ID, f"{USER_ID}_mydb", success=False, question="Broken",
+                error="failure", query_id="query-123", db=db, task_sink=sink
+            )
+            await _drain(sink)
+
+        assert graph.query.await_args.args[1]["query_id"] == "query-123"
 
     @pytest.mark.asyncio
     async def test_demo_graph_is_flagged(self):
@@ -101,7 +129,8 @@ class TestRecordQueryUsage:
         with patch.object(usage_tracking, "resolve_db", return_value=db), \
                 patch.object(usage_tracking, "is_general_graph", return_value=True):
             record_query_usage_background(
-                USER_ID, "DEMO_CRM", success=True, db=db, task_sink=sink
+                USER_ID, "DEMO_CRM", success=True, question="Demo question",
+                db=db, task_sink=sink
             )
             await _drain(sink)
 
@@ -115,7 +144,8 @@ class TestRecordQueryUsage:
         sink: set = set()
         with patch.object(usage_tracking, "resolve_db", return_value=db):
             record_query_usage_background(
-                "!!!bad!!!", "x_y", success=True, db=db, task_sink=sink
+                "!!!bad!!!", "x_y", success=True, question="Question",
+                db=db, task_sink=sink
             )
             await _drain(sink)
 
@@ -134,7 +164,8 @@ class TestRecordQueryUsage:
                 patch.object(usage_tracking.logging, "error") as mock_log_error:
             # The synchronous call must not raise despite the write failing.
             record_query_usage_background(
-                USER_ID, f"{USER_ID}_mydb", success=True, db=db, task_sink=sink
+                USER_ID, f"{USER_ID}_mydb", success=True, question="Question",
+                db=db, task_sink=sink
             )
             await _drain(sink)
 
@@ -150,6 +181,9 @@ class TestUngatedDesign:
         """Tracking cannot be gated by ``use_memory`` or the LLM provider:
         the recorder simply has no such inputs."""
         params = set(inspect.signature(record_query_usage_background).parameters)
-        assert params == {"user_id", "namespaced", "success", "db", "task_sink"}
+        assert params == {
+            "user_id", "namespaced", "success", "question", "error", "query_id",
+            "endpoint", "db", "task_sink"
+        }
         assert "use_memory" not in params
         assert "provider" not in params
