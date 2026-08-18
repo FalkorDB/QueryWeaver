@@ -1,6 +1,8 @@
 """Utility functions for agents."""
 
 import json
+import logging
+import time
 from typing import Any, Dict, List
 
 from litellm import completion
@@ -8,8 +10,15 @@ from api.config import Config
 
 
 def run_completion(messages: List[Dict[str, str]], custom_model: str = None,
-                   custom_api_key: str = None, **kwargs) -> str:
+                   custom_api_key: str = None, *, label: str = "llm",
+                   **kwargs) -> str:
     """Run an LLM completion with optional custom model/key overrides.
+
+    Applies ``Config.LLM_TIMEOUT`` unless the caller passes an explicit
+    ``timeout``, and logs the call duration. Both exist because the 2026-07-29
+    demo failure was an LLM call that stalled with no timeout and left no
+    trace of how long it ran. ``label`` names the caller in those log lines
+    and is not forwarded to the provider.
 
     Returns the content string from the first choice.
     """
@@ -17,13 +26,33 @@ def run_completion(messages: List[Dict[str, str]], custom_model: str = None,
         "model": custom_model if custom_model else Config.COMPLETION_MODEL,
         "messages": messages,
         "top_p": 1,
+        "timeout": Config.LLM_TIMEOUT,
         **kwargs,
     }
 
     if custom_api_key:
         completion_args["api_key"] = custom_api_key
 
-    result = completion(**completion_args)
+    started = time.monotonic()
+    try:
+        result = completion(**completion_args)
+    except Exception:
+        logging.warning(
+            "llm_call label=%s model=%s duration=%.2fs outcome=error",
+            label, completion_args["model"], time.monotonic() - started,
+        )
+        raise
+    elapsed = time.monotonic() - started
+    logging.info(
+        "llm_call label=%s model=%s duration=%.2fs outcome=ok",
+        label, completion_args["model"], elapsed,
+    )
+    if elapsed >= Config.LLM_SLOW_CALL_THRESHOLD:
+        logging.warning(
+            "llm_call label=%s model=%s duration=%.2fs exceeded slow-call "
+            "threshold of %.0fs", label, completion_args["model"], elapsed,
+            Config.LLM_SLOW_CALL_THRESHOLD,
+        )
     return result.choices[0].message.content
 
 

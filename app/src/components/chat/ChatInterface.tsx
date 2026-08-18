@@ -236,8 +236,11 @@ const ChatInterface = ({
         setTimeout(() => scrollToBottom(), 50);
       }
 
-      // Add SQL query message with analysis info (even if SQL is empty)
-      if (sqlQuery !== undefined || Object.keys(analysisInfo).length > 0) {
+      // Add SQL query message with analysis info. sqlQuery is initialized to
+      // "" and is never undefined, so the old `!== undefined` guard was always
+      // true and painted an empty "Query Analysis" card on runs that failed
+      // before any SQL was generated (incident 2026-07-29).
+      if (sqlQuery || Object.keys(analysisInfo).length > 0) {
         const sqlMessage: ChatMessageData = {
           id: (Date.now() + 2).toString(),
           type: "sql-query",

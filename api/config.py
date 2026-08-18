@@ -133,6 +133,18 @@ class Config:
         COMPLETION_MODEL = _user_completion or "azure/gpt-4.1"
         EMBEDDING_MODEL_NAME = _user_embedding or "azure/text-embedding-ada-002"
 
+    # Wall-clock ceiling for a single agent LLM call, in seconds. Passed
+    # through to litellm, which aborts the underlying HTTP request — so a
+    # hung provider surfaces as a clean error instead of stalling the
+    # response stream indefinitely (incident 2026-07-29).
+    LLM_TIMEOUT: float = float(os.getenv("LLM_TIMEOUT", "90"))  # pylint: disable=invalid-name
+
+    # A call slower than this is logged at WARNING. Normal analysis calls
+    # completed in ~6s during the incident window, so this flags outliers
+    # well before they reach the timeout.
+    # pylint: disable-next=invalid-name
+    LLM_SLOW_CALL_THRESHOLD: float = float(os.getenv("LLM_SLOW_CALL_THRESHOLD", "20"))
+
     DB_MAX_DISTINCT: int = 100  # pylint: disable=invalid-name
     DB_UNIQUENESS_THRESHOLD: float = 0.5  # pylint: disable=invalid-name
     SHORT_MEMORY_LENGTH = 5  # Maximum number of questions to keep in short-term memory

@@ -253,7 +253,7 @@ class MemoryTool:
                 """
         try:
 
-            if len(history[1]) == 0:
+            if not history[1]:
                 messages = [{"role": "user", "content": prompt}]
             else:
                 messages = []
@@ -277,6 +277,9 @@ class MemoryTool:
             await driver.execute_query(query, user_id=self.user_id, summary=content)
             return True
         except Exception as e:
+            # Previously swallowed silently, which hid a recurring failure on
+            # this path entirely (incident 2026-07-29).
+            logging.error("Error updating user information: %s", e)
             return False
 
     async def add_new_memory(self, conversation: Dict[str, Any], history: Tuple[List[str], List[str]]) -> bool:
@@ -733,7 +736,7 @@ class MemoryTool:
         
         try:
 
-            if len(history[1]) == 0:
+            if not history[1]:
                 messages = [{"role": "user", "content": prompt}]
             else:
                 messages = []
@@ -769,7 +772,10 @@ class AzureOpenAIConfig:
         
         self.api_key = os.getenv('AZURE_API_KEY')
         self.endpoint = os.getenv('AZURE_API_BASE') 
-        self.api_version = os.getenv('AZURE_API_VERSION', '2024-02-01')
+        # Graphiti's OpenAI client uses the Responses API, which requires
+        # api-version 2025-03-01-preview or later. Older values make every
+        # episode write fail with HTTP 400 (incident 2026-07-29).
+        self.api_version = os.getenv('AZURE_API_VERSION', '2025-03-01-preview')
         self.model_choice = "gpt-4.1"  # Use the model name directly
         
         # Extract just the model name without provider prefix for Graphiti

@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from api.auth.user_management import token_required
 from api.core.schema_loader import load_database
+from api.routes.streaming import STREAM_HEADERS, with_keepalive
 from api.routes.tokens import UNAUTHORIZED_RESPONSE
 
 database_router = APIRouter(tags=["Database Connection"])
@@ -30,4 +31,8 @@ async def connect_database(request: Request, db_request: DatabaseConnectionReque
     Requires authentication.
     """
     generator = await load_database(db_request.url, request.state.user_id)
-    return StreamingResponse(generator, media_type="application/json")
+    return StreamingResponse(
+        with_keepalive(generator),
+        media_type="application/json",
+        headers=STREAM_HEADERS,
+    )

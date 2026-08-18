@@ -1,5 +1,6 @@
 """Relevancy agent for determining relevancy of queries to database schema."""
 
+import asyncio
 import json
 from .utils import BaseAgent, parse_response, run_completion
 
@@ -82,8 +83,14 @@ class RelevancyAgent(BaseAgent):
             }
         )
 
-        answer = run_completion(
-            self.messages, self.custom_model, self.custom_api_key, temperature=0
+        # ``run_completion`` is synchronous. Awaiting it off-loop matters even
+        # though this method is already ``async``: the caller runs it as a task
+        # alongside table-finding, and a blocking call here would stall that
+        # task — and every other request — rather than overlap with it.
+        answer = await asyncio.to_thread(
+            run_completion,
+            self.messages, self.custom_model, self.custom_api_key,
+            label="relevancy", temperature=0,
         )
         self.messages.append({"role": "assistant", "content": answer})
         return parse_response(answer)

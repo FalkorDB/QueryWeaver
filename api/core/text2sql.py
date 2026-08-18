@@ -407,7 +407,12 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
     agent_an = AnalysisAgent(
         queries_history, result_history, custom_api_key, custom_model,
     )
-    answer_an = agent_an.get_analysis(
+    # ``get_analysis`` is a synchronous LLM call. Running it directly here
+    # would block the event loop for its full duration, stalling every other
+    # in-flight request and preventing any stream from flushing bytes
+    # (incident 2026-07-29). Off-loop via a worker thread.
+    answer_an = await asyncio.to_thread(
+        agent_an.get_analysis,
         queries_history[-1], tables, db_description, instructions, memory_context,
         db_type, user_rules_spec,
     )
@@ -427,7 +432,8 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
         follow_up_agent = FollowUpAgent(
             queries_history, result_history, custom_api_key, custom_model,
         )
-        follow_up = follow_up_agent.generate_follow_up_question(
+        follow_up = await asyncio.to_thread(
+            follow_up_agent.generate_follow_up_question,
             user_question=queries_history[-1],
             analysis_result=answer_an,
         )
@@ -536,7 +542,11 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
                     )
                 return loader_class.execute_sql_query(sql, db_url)
 
-            healing_result = healer.heal_and_execute(
+            # Same reasoning as ``get_analysis`` above, and worse here: this
+            # chains up to ``max_healing_attempts`` sequential LLM calls plus
+            # SQL execution, all synchronous.
+            healing_result = await asyncio.to_thread(
+                healer.heal_and_execute,
                 initial_sql=sql_query,
                 initial_error=str(exec_error),
                 execute_sql_func=_run_sql,
@@ -593,7 +603,8 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
             "message": f"Step {step_num}: Generating user-friendly response",
         }
 
-        user_readable_response = format_ai_response(
+        user_readable_response = await asyncio.to_thread(
+            format_ai_response,
             queries_history=queries_history,
             result_history=result_history,
             sql_query=sql_query,
@@ -755,7 +766,8 @@ async def run_confirmed(  # pylint: disable=too-many-locals,too-many-branches,to
         yield {"type": "reasoning_step",
                "message": f"Step {step_num}: Generating user-friendly response"}
 
-        user_readable_response = format_ai_response(
+        user_readable_response = await asyncio.to_thread(
+            format_ai_response,
             queries_history=queries_history or [question],
             result_history=None,
             sql_query=sql_query,
