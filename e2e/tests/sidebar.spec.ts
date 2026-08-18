@@ -64,4 +64,28 @@ test.describe('Left Sidebar Tests', () => {
     const isClosedAgain = await sidebar.isSchemaPanelVisible();
     expect(isClosedAgain).toBeFalsy();
   });
+
+  // Routing tests: verify react-router (v8) navigation still works after the
+  // react-router-dom -> react-router migration.
+  test('settings button navigates to /settings and back navigates home', async () => {
+    const sidebar = await browser.createNewPage(Sidebar, getBaseUrl());
+    await browser.setPageToFullScreen();
+
+    await sidebar.clickOnSettingsButton();
+    await sidebar.waitForUrl('**/settings');
+    expect(sidebar.getCurrentURL()).toContain('/settings');
+
+    await sidebar.refreshPage();
+    expect(sidebar.getCurrentURL()).toContain('/settings');
+  });
+
+  test('unknown route renders the not-found page', async () => {
+    const sidebar = await browser.createNewPage(Sidebar, `${getBaseUrl()}/this-route-does-not-exist`);
+    await browser.setPageToFullScreen();
+
+    await sidebar.waitForUrl('**/this-route-does-not-exist');
+    const bodyText = await sidebar.getPageContent();
+    expect(bodyText).toContain('404');
+    expect(bodyText).toContain('Oops! Page not found');
+  });
 });
