@@ -14,8 +14,8 @@ def run_completion(messages: List[Dict[str, str]], custom_model: str = None,
                    **kwargs) -> str:
     """Run an LLM completion with optional custom model/key overrides.
 
-    Applies ``Config.LLM_TIMEOUT`` unless the caller passes an explicit
-    ``timeout``, and logs the call duration. Both exist because the 2026-07-29
+    Applies ``Config.LLM_TIMEOUT`` per attempt and a pinned retry budget
+    unless the caller overrides them, and logs the call duration. Both exist because the 2026-07-29
     demo failure was an LLM call that stalled with no timeout and left no
     trace of how long it ran. ``label`` names the caller in those log lines
     and is not forwarded to the provider.
@@ -27,6 +27,11 @@ def run_completion(messages: List[Dict[str, str]], custom_model: str = None,
         "messages": messages,
         "top_p": 1,
         "timeout": Config.LLM_TIMEOUT,
+        # ``timeout`` is per attempt, so the retry budget has to be pinned too
+        # or the effective ceiling becomes a multiple of it. litellm's outer
+        # retry loop is disabled in favour of the SDK-level count.
+        "max_retries": Config.LLM_MAX_RETRIES,
+        "num_retries": 0,
         **kwargs,
     }
 
