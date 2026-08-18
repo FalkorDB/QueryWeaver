@@ -1,7 +1,7 @@
 """Tests for the streaming keepalive wrapper.
 
 The 2026-07-29 demo failure was a stream that emitted nothing for the whole
-SQL-generation phase and was severed mid-body. ``_with_keepalive`` keeps bytes
+SQL-generation phase and was severed mid-body. ``with_keepalive`` keeps bytes
 flowing through those silent gaps.
 """
 

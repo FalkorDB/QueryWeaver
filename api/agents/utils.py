@@ -9,8 +9,8 @@ from litellm import completion
 from api.config import Config
 
 
-def run_completion(messages: List[Dict[str, str]], custom_model: str = None,
-                   custom_api_key: str = None, *, label: str = "llm",
+def run_completion(messages: List[Dict[str, str]], custom_model: str | None = None,
+                   custom_api_key: str | None = None, *, label: str = "llm",
                    **kwargs) -> str:
     """Run an LLM completion with optional custom model/key overrides.
 

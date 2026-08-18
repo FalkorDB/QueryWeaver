@@ -93,8 +93,10 @@ test.describe('Chat Feature Tests', () => {
     // off-topic explanation reaches the user as a normal AI message instead
     // (asserted below). This previously asserted the empty card was visible,
     // which masked the phantom card seen in the 2026-07-29 incident.
-    const sqlMessageVisible = await homePage.isSQLQueryMessageVisible();
-    expect(sqlMessageVisible).toBeFalsy();
+    // Strict web-first assertion: toHaveCount(0) waits for the final DOM
+    // state and fails on a broken selector, unlike the boolean helper which
+    // catches locator errors and returns false.
+    await expect(homePage.sqlQueryCard).toHaveCount(0);
 
     // And therefore no SQL content anywhere.
     const hasSQLContent = await homePage.verifySQLQueryContains("SELECT");

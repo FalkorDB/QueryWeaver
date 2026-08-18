@@ -86,7 +86,7 @@ For Azure OpenAI:
 ```bash
 export AZURE_API_KEY=...
 export AZURE_API_BASE=https://<resource>.openai.azure.com/
-export AZURE_API_VERSION=2024-12-01-preview
+export AZURE_API_VERSION=2025-03-01-preview
 ```
 
 Other supported providers: `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`,

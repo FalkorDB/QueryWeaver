@@ -27,7 +27,7 @@ from graphiti_core.cross_encoder import OpenAIRerankerClient
 from graphiti_core.search.search_config_recipes import NODE_HYBRID_SEARCH_RRF
 
 
-from litellm import completion
+from api.agents.utils import run_completion
 
 
 def extract_embedding_model_name(full_model_name: str) -> str:
@@ -261,14 +261,14 @@ class MemoryTool:
                     messages.append({"role": "user", "content": query})
                     messages.append({"role": "assistant", "content": result})
             messages.append({"role": "user", "content": prompt})
-            response = completion(
-                model=Config.COMPLETION_MODEL,
-                messages=messages,
-                temperature=0.1
-            )
-            
-            # Parse the direct text response (no JSON parsing needed)
-            content = response.choices[0].message.content.strip()
+            # Synchronous LLM call inside an async method that runs as a
+            # detached task: calling it directly would block the event loop
+            # and stall unrelated streaming responses. ``run_completion`` also
+            # applies the shared timeout and retry bounds.
+            content = (await asyncio.to_thread(
+                run_completion, messages, label="memory.user_summary",
+                temperature=0.1,
+            )).strip()
             query = """
             MATCH (u:Entity {name: $user_id})
             SET u.summary = $summary
@@ -744,14 +744,12 @@ class MemoryTool:
                     messages.append({"role": "user", "content": query})
                     messages.append({"role": "assistant", "content": result})
             messages.append({"role": "user", "content": prompt})
-            response = completion(
-                model=Config.COMPLETION_MODEL,
-                messages=messages,
-                temperature=0.1
-            )
-            
-            # Parse the direct text response (no JSON parsing needed)
-            content = response.choices[0].message.content.strip()
+            # Same reasoning as ``update_user_information`` above: off-loop,
+            # with the shared timeout and retry bounds.
+            content = (await asyncio.to_thread(
+                run_completion, messages, label="memory.conversation_summary",
+                temperature=0.1,
+            )).strip()
             return {
                 "database_summary": content
             }
