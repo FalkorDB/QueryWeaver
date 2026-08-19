@@ -553,7 +553,13 @@ class PostgresLoader(BaseLoader):
         url_options = url_params.get("options", [""])[0]
         kwargs: Dict[str, Any] = {}
 
-        if "statement_timeout" in url_options:
+        # Match an actual directive, not the bare word: a substring test would
+        # also hit something like ``-c application_name=statement_timeout_probe``
+        # and silently skip our bound.
+        has_statement_timeout = re.search(
+            r"(?:^|\s)-c\s*statement_timeout\s*=", url_options
+        )
+        if has_statement_timeout:
             options = url_options
         else:
             timeout_ms = Config.DB_STATEMENT_TIMEOUT * 1000

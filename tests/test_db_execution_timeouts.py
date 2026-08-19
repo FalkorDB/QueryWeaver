@@ -12,10 +12,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import api.core  # noqa: F401  (import first: the loaders import via api.core)
 from api.config import Config
-from api.loaders.mysql_loader import MySQLLoader
-from api.loaders.postgres_loader import PostgresLoader
+# Imported via api.core.pipeline: importing api.loaders.postgres_loader first
+# hits a circular import (pipeline imports the loaders, the loaders import
+# api.core). Going through pipeline initialises the package in the right order,
+# which also makes the snowflake import below work.
+from api.core.pipeline import MySQLLoader, PostgresLoader
 from api.loaders.snowflake_loader import SnowflakeLoader
 
 PG_URL = "postgresql://u:p@h:5432/db"
@@ -48,6 +50,20 @@ def test_postgres_url_timeouts_win():
 
     kwargs = PostgresLoader._execution_connect_kwargs(f"{PG_URL}?connect_timeout=3")
     assert "connect_timeout" not in kwargs
+
+
+@pytest.mark.unit
+def test_postgres_ignores_a_statement_timeout_lookalike():
+    """Only a real ``-c statement_timeout=`` directive counts.
+
+    A substring test would treat this option value as an existing timeout and
+    silently skip the configured bound.
+    """
+    kwargs = PostgresLoader._execution_connect_kwargs(
+        f"{PG_URL}?options=-c%20application_name%3Dstatement_timeout_probe"
+    )
+    assert "application_name=statement_timeout_probe" in kwargs["options"]
+    assert f"-c statement_timeout={Config.DB_STATEMENT_TIMEOUT * 1000}" in kwargs["options"]
 
 
 @pytest.mark.unit
