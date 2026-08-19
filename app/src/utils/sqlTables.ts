@@ -39,9 +39,16 @@ const tableName = (qualified: string): string => {
 const FROM_ARG_FUNCTIONS = new Set(['extract', 'substring', 'trim', 'overlay']);
 
 /**
+ * Blanks the body of quoted identifiers, keeping offsets intact, so a scan can
+ * ignore punctuation inside them (`TRIM(BOTH "x)" FROM name)`).
+ */
+const maskQuoted = (sql: string): string =>
+  sql.replace(/"[^"]*"|`[^`]*`|\[[^\]]*\]/g, (span) => ' '.repeat(span.length));
+
+/**
  * True when the `FROM` at `index` belongs to a call such as
  * `EXTRACT(YEAR FROM ts)` or `TRIM(BOTH ' ' FROM name)`, where what follows is
- * a column rather than a table.
+ * a column rather than a table. `sql` must be quote-masked.
  */
 const isFunctionArgumentFrom = (sql: string, index: number): boolean => {
   let depth = 0;
@@ -76,6 +83,10 @@ export const extractTablesFromSQL = (sql: string): string[] => {
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/'(?:''|[^'])*'/g, "''");
 
+  // Offset-preserving copy used for the parenthesis scan only; the extraction
+  // below still reads `cleaned` so quoted names stay intact.
+  const masked = maskQuoted(cleaned);
+
   const tables: string[] = [];
   const seen = new Set<string>();
 
@@ -99,7 +110,7 @@ export const extractTablesFromSQL = (sql: string): string[] => {
   while ((keyword = keywordRe.exec(cleaned)) !== null) {
     // Only `FROM` accepts a comma-separated list of tables.
     const acceptsList = keyword[1].toLowerCase() === 'from';
-    if (acceptsList && isFunctionArgumentFrom(cleaned, keyword.index)) continue;
+    if (acceptsList && isFunctionArgumentFrom(masked, keyword.index)) continue;
     let index = keywordRe.lastIndex;
 
     for (;;) {
