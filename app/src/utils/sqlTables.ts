@@ -37,7 +37,7 @@ const tableName = (qualified: string): string => {
 
 // `<name> [(cols)] AS [[NOT] MATERIALIZED] (` at the start of a CTE entry.
 const CTE_ENTRY =
-  /^\s*([A-Za-z_][\w$]*)(?:\s*\([^)]*\))?\s+as\s+(?:(?:not\s+)?materialized\s+)?\(/i;
+  /^\s*("[^"]*"|`[^`]*`|\[[^\]]*\]|[A-Za-z_][\w$]*)(?:\s*\([^)]*\))?\s+as\s+(?:(?:not\s+)?materialized\s+)?\(/i;
 
 /**
  * Names introduced by `WITH <name> AS (...)` — they are not real tables.
@@ -59,7 +59,7 @@ const collectCteNames = (sql: string): Set<string> => {
       const entry = CTE_ENTRY.exec(sql.slice(index));
       // Anything else at depth 0 means the CTE list is over.
       if (!entry) break;
-      names.add(entry[1].toLowerCase());
+      names.add(unquote(entry[1]).toLowerCase());
       index += entry[0].length;
       depth = 1;
       continue;
