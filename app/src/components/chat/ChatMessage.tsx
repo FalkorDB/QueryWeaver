@@ -31,11 +31,13 @@ interface ChatMessageProps {
   };
   progress?: number; // Progress percentage for AI steps
   user?: UserType | null; // User info for avatar
+  isQueryHighlighted?: boolean; // Whether this query's tables are highlighted in the schema canvas
+  onToggleQueryHighlight?: () => void; // Select/unselect this query to highlight it in the schema canvas
   onConfirm?: () => void;
   onCancel?: () => void;
 }
 
-const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmationData, progress, user, onConfirm, onCancel }: ChatMessageProps) => {
+const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmationData, progress, user, isQueryHighlighted, onToggleQueryHighlight, onConfirm, onCancel }: ChatMessageProps) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopyQuery = async () => {
@@ -46,6 +48,13 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmati
     } catch (err) {
       console.error('Failed to copy text:', err);
     }
+  };
+
+  // Clicking the query toggles the schema highlight, but a click that ends a
+  // text selection must not steal the selection from the user.
+  const handleQueryBlockClick = () => {
+    if (window.getSelection()?.toString()) return;
+    onToggleQueryHighlight?.();
   };
 
   if (type === 'confirmation') {
@@ -148,6 +157,7 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmati
   if (type === 'sql-query') {
     const hasSQL = content && content.trim().length > 0;
     const isValid = analysisInfo?.isValid !== false; // Default to true if not specified
+    const isClickable = hasSQL && Boolean(onToggleQueryHighlight);
 
     return (
       <div className="px-6" data-testid="sql-query-message">
@@ -165,6 +175,23 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmati
                 <span className={`text-base font-semibold ${isValid ? 'text-primary' : 'text-warning'}`}>
                   {hasSQL ? 'Generated SQL Query' : 'Query Analysis'}
                 </span>
+                {isQueryHighlighted && (
+                  <Badge variant="outline" className="ml-auto text-xs border-primary text-primary">
+                    Shown in schema
+                  </Badge>
+                )}
+                {isClickable && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    data-testid="sql-highlight-toggle"
+                    aria-pressed={isQueryHighlighted}
+                    onClick={onToggleQueryHighlight}
+                    className={`h-7 px-2 text-xs ${isQueryHighlighted ? '' : 'ml-auto'}`}
+                  >
+                    {isQueryHighlighted ? 'Clear schema highlight' : 'Show in schema'}
+                  </Button>
+                )}
               </div>
 
               {hasSQL && (
@@ -183,9 +210,22 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmati
                         <Copy className="w-4 h-4 text-muted-foreground" />
                       )}
                     </Button>
-                    <pre className="bg-background text-foreground p-3 rounded text-sm mb-3 w-fit min-w-full font-mono whitespace-pre-wrap break-words overflow-wrap-anywhere">
+                    <pre
+                      data-testid="sql-query-block"
+                      onClick={isClickable ? handleQueryBlockClick : undefined}
+                      className={`bg-background text-foreground p-3 pr-12 rounded text-sm mb-1 w-fit min-w-full font-mono whitespace-pre-wrap break-words overflow-wrap-anywhere transition-colors ${
+                        isClickable ? 'cursor-pointer hover:ring-1 hover:ring-primary/50' : ''
+                      } ${isQueryHighlighted ? 'ring-2 ring-primary bg-primary/5' : ''}`}
+                    >
                       <code className="language-sql">{content}</code>
                     </pre>
+                    {isClickable && (
+                      <p className="text-xs text-muted-foreground mb-3">
+                        {isQueryHighlighted
+                          ? 'Click the query again to clear the schema highlight.'
+                          : 'Click the query to highlight its tables and relations in the schema.'}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
