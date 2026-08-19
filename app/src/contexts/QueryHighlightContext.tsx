@@ -30,15 +30,14 @@ export const QueryHighlightProvider: React.FC<{ children: React.ReactNode }> = (
   }, [selectedGraph?.id, clearQueryHighlight]);
 
   const toggleQueryHighlight = useCallback((messageId: string, sql: string) => {
-    setSelectedQueryId((current) => {
-      if (current === messageId) {
-        setHighlightedTables([]);
-        return null;
-      }
-      setHighlightedTables(extractTablesFromSQL(sql));
-      return messageId;
-    });
-  }, []);
+    if (selectedQueryId === messageId) {
+      clearQueryHighlight();
+      return;
+    }
+
+    setSelectedQueryId(messageId);
+    setHighlightedTables(extractTablesFromSQL(sql));
+  }, [selectedQueryId, clearQueryHighlight]);
 
   const value = useMemo(
     () => ({ selectedQueryId, highlightedTables, toggleQueryHighlight, clearQueryHighlight }),

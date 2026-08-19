@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, RefObject } from 'react';
 import type {
   FalkorDBCanvas,
@@ -97,6 +97,13 @@ const SchemaCanvasControls = ({
 
   // Remembers the last direction picked per layout so switching back restores it.
   const directionsRef = useRef<Record<string, string>>({ tree: 'td', radial: 'out' });
+
+  // A new schema invalidates the search term and its suggestions.
+  useEffect(() => {
+    setSearch('');
+    setSuggestionsOpen(false);
+    setActiveSuggestion(0);
+  }, [tables]);
 
   const suggestions = useMemo(() => {
     const term = search.trim().toLowerCase();

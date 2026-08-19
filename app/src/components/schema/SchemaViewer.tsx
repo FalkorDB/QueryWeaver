@@ -50,6 +50,10 @@ const endpointId = (endpoint: unknown): string => {
 const linkKey = (source: unknown, target: unknown): string =>
   [endpointId(source), endpointId(target)].sort().join('|');
 
+// Must stay above the canvas' `interaction.zoomToFitDelay` (50ms default) so the
+// highlight framing is applied after the canvas' own initial fit.
+const HIGHLIGHT_ZOOM_DELAY_MS = 100;
+
 const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: SchemaViewerProps) => {
   const canvasRef = useRef<FalkorDBCanvas>(null);
   const resizeRef = useRef<HTMLDivElement>(null);
@@ -282,7 +286,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
   };
 
   const linkColorFor = useCallback((sourceId: number, targetId: number) => {
-    if (hasHighlight && highlightedLinkKeys.has(`${sourceId}-${targetId}`)) return HIGHLIGHT_COLOR;
+    if (hasHighlight && highlightedLinkKeys.has(linkKey(sourceId, targetId))) return HIGHLIGHT_COLOR;
     return theme === 'light' ? '#9ca3af' : '#4b5563';
   }, [theme, hasHighlight, highlightedLinkKeys]);
 
@@ -524,7 +528,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
 
     const timer = setTimeout(() => {
       canvas.zoomToFit(1.5, (node: GraphNode) => highlightedNodeIds.has(node.id));
-    }, 100);
+    }, HIGHLIGHT_ZOOM_DELAY_MS);
 
     return () => clearTimeout(timer);
   }, [canvasLoaded, hasHighlight, highlightedNodeIds]);

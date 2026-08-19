@@ -35,53 +35,32 @@ const tableName = (qualified: string): string => {
   return unquote(parts[parts.length - 1] ?? '');
 };
 
-// `<name> [(cols)] AS [[NOT] MATERIALIZED] (` at the start of a CTE entry.
-const CTE_ENTRY =
-  /^\s*("[^"]*"|`[^`]*`|\[[^\]]*\]|[A-Za-z_][\w$]*)(?:\s*\([^)]*\))?\s+as\s+(?:(?:not\s+)?materialized\s+)?\(/i;
+// Functions that use FROM as an argument separator rather than a table clause.
+const FROM_ARG_FUNCTIONS = new Set(['extract', 'substring', 'trim', 'overlay']);
 
 /**
- * Names introduced by `WITH <name> AS (...)` — they are not real tables.
- *
- * Only the leading `WITH` clause is scanned, and only at paren depth 0, so
- * derived-table aliases such as `JOIN (SELECT ...) AS t (a, b)` are not
- * mistaken for CTEs.
+ * True when the `FROM` at `index` belongs to a call such as
+ * `EXTRACT(YEAR FROM ts)` or `TRIM(BOTH ' ' FROM name)`, where what follows is
+ * a column rather than a table.
  */
-const collectCteNames = (sql: string): Set<string> => {
-  const names = new Set<string>();
-  const withClause = /^\s*with\s+(?:recursive\s+)?/i.exec(sql);
-  if (!withClause) return names;
-
-  let index = withClause[0].length;
+const isFunctionArgumentFrom = (sql: string, index: number): boolean => {
   let depth = 0;
 
-  while (index < sql.length) {
-    if (depth === 0) {
-      const entry = CTE_ENTRY.exec(sql.slice(index));
-      // Anything else at depth 0 means the CTE list is over.
-      if (!entry) break;
-      names.add(unquote(entry[1]).toLowerCase());
-      index += entry[0].length;
-      depth = 1;
-      continue;
-    }
-
-    const char = sql[index];
-    if (char === '(') {
+  // Walk back to the innermost unclosed `(` and look at the name before it.
+  for (let i = index - 1; i >= 0; i -= 1) {
+    const char = sql[i];
+    if (char === ')') {
       depth += 1;
-    } else if (char === ')') {
-      depth -= 1;
+    } else if (char === '(') {
       if (depth === 0) {
-        // Another CTE only follows after a comma.
-        const comma = /^\s*,/.exec(sql.slice(index + 1));
-        if (!comma) break;
-        index += 1 + comma[0].length;
-        continue;
+        const callee = /([A-Za-z_][\w$]*)\s*$/.exec(sql.slice(0, i));
+        return !!callee && FROM_ARG_FUNCTIONS.has(callee[1].toLowerCase());
       }
+      depth -= 1;
     }
-    index += 1;
   }
 
-  return names;
+  return false;
 };
 
 /**
@@ -97,14 +76,17 @@ export const extractTablesFromSQL = (sql: string): string[] => {
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/'(?:''|[^'])*'/g, "''");
 
-  const cteNames = collectCteNames(cleaned);
   const tables: string[] = [];
   const seen = new Set<string>();
 
+  // CTE names are deliberately kept: a CTE may shadow a real table
+  // (`WITH orders AS (SELECT * FROM public.orders) SELECT * FROM orders`), and
+  // callers match the result against the schema, so a name that is not a table
+  // simply never matches.
   const add = (qualified: string) => {
     const name = tableName(qualified);
     const key = name.toLowerCase();
-    if (!name || RESERVED.has(key) || cteNames.has(key) || seen.has(key)) return;
+    if (!name || RESERVED.has(key) || seen.has(key)) return;
     seen.add(key);
     tables.push(name);
   };
@@ -117,6 +99,7 @@ export const extractTablesFromSQL = (sql: string): string[] => {
   while ((keyword = keywordRe.exec(cleaned)) !== null) {
     // Only `FROM` accepts a comma-separated list of tables.
     const acceptsList = keyword[1].toLowerCase() === 'from';
+    if (acceptsList && isFunctionArgumentFrom(cleaned, keyword.index)) continue;
     let index = keywordRe.lastIndex;
 
     for (;;) {
