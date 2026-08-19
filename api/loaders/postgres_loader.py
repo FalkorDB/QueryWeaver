@@ -538,6 +538,34 @@ class PostgresLoader(BaseLoader):
             return False, error_msg
 
     @staticmethod
+    def _execution_connect_kwargs(db_url: str) -> Dict[str, Any]:
+        """Timeout keywords for executing a user query.
+
+        Offloading execution to a thread keeps the event loop free, but only a
+        server-side ``statement_timeout`` bounds the query itself — a thread
+        blocked in a socket read cannot be cancelled from Python.
+
+        Keyword arguments override values in the DSN, so anything the URL
+        already specifies is merged rather than replaced: a bare ``options=``
+        would silently drop a URL-supplied ``search_path``.
+        """
+        url_params = parse_qs(urlparse(db_url).query)
+        url_options = url_params.get("options", [""])[0]
+        kwargs: Dict[str, Any] = {}
+
+        if "statement_timeout" in url_options:
+            options = url_options
+        else:
+            timeout_ms = Config.DB_STATEMENT_TIMEOUT * 1000
+            options = f"{url_options} -c statement_timeout={timeout_ms}".strip()
+        if options:
+            kwargs["options"] = options
+
+        if "connect_timeout" not in url_params:
+            kwargs["connect_timeout"] = Config.DB_CONNECT_TIMEOUT
+        return kwargs
+
+    @staticmethod
     def execute_sql_query(sql_query: str, db_url: str) -> List[Dict[str, Any]]:
         """
         Execute a SQL query on the PostgreSQL database and return the results.
@@ -551,14 +579,8 @@ class PostgresLoader(BaseLoader):
             List of dictionaries containing the query results
         """
         try:
-            # Bound both connection and execution. Offloading this call to a
-            # thread keeps the event loop free, but only a server-side
-            # statement_timeout bounds the query itself — and a thread blocked
-            # in a socket read cannot be cancelled from Python.
             conn = psycopg2.connect(
-                db_url,
-                connect_timeout=Config.DB_CONNECT_TIMEOUT,
-                options=f"-c statement_timeout={Config.DB_STATEMENT_TIMEOUT * 1000}",
+                db_url, **PostgresLoader._execution_connect_kwargs(db_url)
             )
             cursor = conn.cursor()
 

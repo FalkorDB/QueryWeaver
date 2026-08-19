@@ -42,21 +42,23 @@ async def with_keepalive(chunks, interval: float = STREAM_KEEPALIVE_INTERVAL):
     a plain ``async for`` so its closure follows ordinary task cancellation
     instead of an ``aclose()`` racing an in-flight pull.
     """
-    queue: asyncio.Queue = asyncio.Queue()
+    # maxsize=1 keeps backpressure: without it a slow client would let the
+    # whole source stream accumulate in memory.
+    queue: asyncio.Queue = asyncio.Queue(maxsize=1)
     finished = object()
 
     async def _pump():
         try:
             async for chunk in chunks:
-                queue.put_nowait(chunk)
-        except asyncio.CancelledError:
-            raise
-        except BaseException as exc:  # pylint: disable=broad-exception-caught
+                await queue.put(chunk)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             # Hand the failure to the consumer so the route's error handling
             # still sees it, rather than losing it inside this task.
-            queue.put_nowait(exc)
+            # CancelledError is a BaseException, so it is not caught here and
+            # propagates as cancellation should.
+            await queue.put(exc)
         else:
-            queue.put_nowait(finished)
+            await queue.put(finished)
 
     pump = asyncio.ensure_future(_pump())
     try:
@@ -68,7 +70,7 @@ async def with_keepalive(chunks, interval: float = STREAM_KEEPALIVE_INTERVAL):
                 continue
             if item is finished:
                 return
-            if isinstance(item, BaseException):
+            if isinstance(item, Exception):
                 raise item
             yield item
     finally:

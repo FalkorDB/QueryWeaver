@@ -514,11 +514,12 @@ class MySQLLoader(BaseLoader):
             conn_params = MySQLLoader._parse_mysql_url(db_url)
 
             # Bound connect and socket waits so a hung server cannot pin this
-            # worker thread indefinitely. setdefault so a URL-supplied value
-            # still wins.
-            conn_params.setdefault("connect_timeout", Config.DB_CONNECT_TIMEOUT)
-            conn_params.setdefault("read_timeout", Config.DB_STATEMENT_TIMEOUT)
-            conn_params.setdefault("write_timeout", Config.DB_STATEMENT_TIMEOUT)
+            # worker thread indefinitely. ``_parse_mysql_url`` discards the
+            # URL's query string, so there is no URL-supplied value to preserve
+            # here — these are the only timeouts in play.
+            conn_params["connect_timeout"] = Config.DB_CONNECT_TIMEOUT
+            conn_params["read_timeout"] = Config.DB_STATEMENT_TIMEOUT
+            conn_params["write_timeout"] = Config.DB_STATEMENT_TIMEOUT
 
             # Connect to MySQL database
             conn = pymysql.connect(**conn_params)

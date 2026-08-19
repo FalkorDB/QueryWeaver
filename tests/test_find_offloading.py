@@ -76,7 +76,7 @@ async def test_find_does_not_block_the_event_loop(slow_find_deps):
 
     ticker_task = asyncio.ensure_future(ticker())
     started = time.monotonic()
-    await graph_module.find("g", ["show me customers"], "CRM demo.")
+    tables = await graph_module.find("g", ["show me customers"], "CRM demo.")
     elapsed = time.monotonic() - started
     stop.set()
     await ticker_task
@@ -96,3 +96,6 @@ async def test_find_does_not_block_the_event_loop(slow_find_deps):
     # And the longest gap between ticks stays far below the stall duration.
     gaps = [b - a for a, b in zip(ticks, ticks[1:])]
     assert max(gaps) < STALL / 2, f"loop blocked for {max(gaps):.2f}s"
+
+    # The fake graph returns no rows, so the call still completes normally.
+    assert tables == []

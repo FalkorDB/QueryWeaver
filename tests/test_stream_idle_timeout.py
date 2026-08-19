@@ -71,7 +71,7 @@ class _Loader:
 @pytest.fixture(name="pipeline_stubs")
 def _pipeline_stubs(monkeypatch):
     """Stub the external seams, leaving the pipeline's own structure real."""
-    import api.core.text2sql as t2s
+    from api.core import text2sql as t2s
 
     _Loader.stall = False
 

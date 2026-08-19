@@ -134,12 +134,16 @@ async def test_cancellation_at_arbitrary_moments_never_raises():
         try:
             await task
         except asyncio.CancelledError:
+            # Expected: we cancelled it. The assertion is about teardown, not
+            # about how the consumer ended.
             pass
 
         # Starlette closes the body iterator after cancelling it.
         try:
             await agen.aclose()
         except asyncio.CancelledError:
+            # Also acceptable: closing during cancellation may surface the
+            # cancellation itself. Only a RuntimeError is a defect.
             pass
         except RuntimeError as exc:         # the regression we are guarding
             errors.append(f"step={step}: {exc}")

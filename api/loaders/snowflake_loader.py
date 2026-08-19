@@ -648,13 +648,16 @@ class SnowflakeLoader(BaseLoader):
             conn_params = SnowflakeLoader._parse_snowflake_url(db_url)
 
             # Bound login, network waits and server-side statement runtime.
-            # setdefault so a URL-supplied value still wins.
-            conn_params.setdefault("login_timeout", Config.DB_CONNECT_TIMEOUT)
-            conn_params.setdefault("network_timeout", Config.DB_STATEMENT_TIMEOUT)
-            conn_params.setdefault(
-                "session_parameters",
-                {"STATEMENT_TIMEOUT_IN_SECONDS": Config.DB_STATEMENT_TIMEOUT},
+            # ``_parse_snowflake_url`` hardcodes login_timeout/network_timeout,
+            # so these must be assigned — setdefault would be a no-op and the
+            # configured values would never apply.
+            conn_params["login_timeout"] = Config.DB_CONNECT_TIMEOUT
+            conn_params["network_timeout"] = Config.DB_STATEMENT_TIMEOUT
+            session_parameters = dict(conn_params.get("session_parameters") or {})
+            session_parameters.setdefault(
+                "STATEMENT_TIMEOUT_IN_SECONDS", Config.DB_STATEMENT_TIMEOUT
             )
+            conn_params["session_parameters"] = session_parameters
 
             # Connect to Snowflake database
             conn = snowflake.connector.connect(**conn_params)
