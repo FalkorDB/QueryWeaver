@@ -33,30 +33,44 @@ async def with_keepalive(chunks, interval: float = STREAM_KEEPALIVE_INTERVAL):
     including silent gaps introduced later. A bare delimiter splits into an
     empty part on the client, which every consumer's parser already skips, so
     this needs no protocol change and no client change.
+
+    The producer runs as a task feeding a queue rather than having this
+    generator race ``anext`` against a timeout directly. That matters for
+    teardown: a client disconnect cancels the ASGI task, and cleanup that has
+    to ``await`` cannot complete once cancellation is pending. Here the only
+    cleanup is ``cancel()``, which never awaits, and ``chunks`` is consumed by
+    a plain ``async for`` so its closure follows ordinary task cancellation
+    instead of an ``aclose()`` racing an in-flight pull.
     """
-    iterator = aiter(chunks)
+    queue: asyncio.Queue = asyncio.Queue()
+    finished = object()
+
+    async def _pump():
+        try:
+            async for chunk in chunks:
+                queue.put_nowait(chunk)
+        except asyncio.CancelledError:
+            raise
+        except BaseException as exc:  # pylint: disable=broad-exception-caught
+            # Hand the failure to the consumer so the route's error handling
+            # still sees it, rather than losing it inside this task.
+            queue.put_nowait(exc)
+        else:
+            queue.put_nowait(finished)
+
+    pump = asyncio.ensure_future(_pump())
     try:
         while True:
-            pending = asyncio.ensure_future(anext(iterator))
             try:
-                while True:
-                    done, _ = await asyncio.wait({pending}, timeout=interval)
-                    if done:
-                        break
-                    yield MESSAGE_DELIMITER
-                yield pending.result()
-            except StopAsyncIteration:
+                item = await asyncio.wait_for(queue.get(), timeout=interval)
+            except asyncio.TimeoutError:
+                yield MESSAGE_DELIMITER
+                continue
+            if item is finished:
                 return
-            finally:
-                # A client disconnect arrives as GeneratorExit at one of the
-                # yields above; without this the in-flight pull is orphaned
-                # and keeps running after the response is gone. Waiting for
-                # the cancellation to settle also releases the inner
-                # generator, which cannot be closed while a pull is in flight.
-                if not pending.done():
-                    pending.cancel()
-                    await asyncio.wait({pending})
+            if isinstance(item, BaseException):
+                raise item
+            yield item
     finally:
-        aclose = getattr(iterator, "aclose", None)
-        if aclose is not None:
-            await aclose()
+        # Non-awaiting cleanup: safe even when cancellation is already pending.
+        pump.cancel()

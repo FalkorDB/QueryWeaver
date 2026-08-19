@@ -11,6 +11,7 @@ import psycopg2
 from psycopg2 import sql
 import tqdm
 
+from api.config import Config
 from api.loaders.base_loader import BaseLoader  # pylint: disable=import-error
 from api.loaders.graph_loader import load_to_graph  # pylint: disable=import-error
 
@@ -550,8 +551,15 @@ class PostgresLoader(BaseLoader):
             List of dictionaries containing the query results
         """
         try:
-            # Connect to PostgreSQL database
-            conn = psycopg2.connect(db_url)
+            # Bound both connection and execution. Offloading this call to a
+            # thread keeps the event loop free, but only a server-side
+            # statement_timeout bounds the query itself — and a thread blocked
+            # in a socket read cannot be cancelled from Python.
+            conn = psycopg2.connect(
+                db_url,
+                connect_timeout=Config.DB_CONNECT_TIMEOUT,
+                options=f"-c statement_timeout={Config.DB_STATEMENT_TIMEOUT * 1000}",
+            )
             cursor = conn.cursor()
 
             # Execute the SQL query

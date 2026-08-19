@@ -15,6 +15,7 @@ import tqdm
 import snowflake.connector
 from snowflake.connector import DictCursor
 
+from api.config import Config
 from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
 
@@ -645,6 +646,15 @@ class SnowflakeLoader(BaseLoader):
         try:
             # Parse connection URL
             conn_params = SnowflakeLoader._parse_snowflake_url(db_url)
+
+            # Bound login, network waits and server-side statement runtime.
+            # setdefault so a URL-supplied value still wins.
+            conn_params.setdefault("login_timeout", Config.DB_CONNECT_TIMEOUT)
+            conn_params.setdefault("network_timeout", Config.DB_STATEMENT_TIMEOUT)
+            conn_params.setdefault(
+                "session_parameters",
+                {"STATEMENT_TIMEOUT_IN_SECONDS": Config.DB_STATEMENT_TIMEOUT},
+            )
 
             # Connect to Snowflake database
             conn = snowflake.connector.connect(**conn_params)

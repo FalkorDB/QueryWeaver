@@ -11,6 +11,7 @@ import pymysql
 from pymysql.cursors import DictCursor
 
 
+from api.config import Config
 from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
 
@@ -511,6 +512,13 @@ class MySQLLoader(BaseLoader):
         try:
             # Parse connection URL
             conn_params = MySQLLoader._parse_mysql_url(db_url)
+
+            # Bound connect and socket waits so a hung server cannot pin this
+            # worker thread indefinitely. setdefault so a URL-supplied value
+            # still wins.
+            conn_params.setdefault("connect_timeout", Config.DB_CONNECT_TIMEOUT)
+            conn_params.setdefault("read_timeout", Config.DB_STATEMENT_TIMEOUT)
+            conn_params.setdefault("write_timeout", Config.DB_STATEMENT_TIMEOUT)
 
             # Connect to MySQL database
             conn = pymysql.connect(**conn_params)

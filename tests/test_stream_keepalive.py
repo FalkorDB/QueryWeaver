@@ -101,3 +101,70 @@ async def test_close_mid_gap_tears_down_the_inner_stream():
     await agen.aclose()
 
     await asyncio.wait_for(closed.wait(), timeout=1)
+
+
+@pytest.mark.unit
+async def test_cancellation_at_arbitrary_moments_never_raises():
+    """Teardown must be clean no matter when cancellation lands.
+
+    A client disconnect cancels the ASGI task at an arbitrary point. Cleanup
+    that awaits cannot finish once cancellation is pending, which previously
+    let an ``aclose()`` race an in-flight pull and raise
+    ``asynchronous generator is already running``. Sweep the cancellation
+    point across the keepalive cycle to cover that window.
+    """
+    errors = []
+
+    for step in range(60):
+        async def source():
+            yield "first"
+            await asyncio.sleep(5)          # silent gap, pull stays in flight
+            yield "never"  # pragma: no cover
+
+        agen = with_keepalive(source(), interval=0.01)
+
+        async def consume(gen):
+            async for _ in gen:
+                pass
+
+        task = asyncio.ensure_future(consume(agen))
+        # Sweep across (and past) the keepalive interval in small increments.
+        await asyncio.sleep(0.001 + step * 0.0005)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        # Starlette closes the body iterator after cancelling it.
+        try:
+            await agen.aclose()
+        except asyncio.CancelledError:
+            pass
+        except RuntimeError as exc:         # the regression we are guarding
+            errors.append(f"step={step}: {exc}")
+
+    assert not errors, "teardown raised: " + "; ".join(errors)
+
+
+@pytest.mark.unit
+async def test_producer_is_cancelled_when_consumer_stops_early():
+    """Abandoning the stream must not leave the pipeline running."""
+    cancelled = asyncio.Event()
+
+    async def source():
+        try:
+            yield "first"
+            await asyncio.sleep(60)
+            yield "never"  # pragma: no cover
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+        finally:
+            cancelled.set()
+
+    agen = with_keepalive(source(), interval=0.01)
+    assert await agen.__anext__() == "first"
+    await agen.aclose()
+
+    await asyncio.wait_for(cancelled.wait(), timeout=2)
