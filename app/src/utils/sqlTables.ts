@@ -83,8 +83,9 @@ export const extractTablesFromSQL = (sql: string): string[] => {
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/'(?:''|[^'])*'/g, "''");
 
-  // Offset-preserving copy used for the parenthesis scan only; the extraction
-  // below still reads `cleaned` so quoted names stay intact.
+  // Offset-preserving copy used for the keyword and parenthesis scans, so a
+  // quoted identifier such as `"from users"` cannot look like a clause. The
+  // extraction below still reads `cleaned` so quoted names stay intact.
   const masked = maskQuoted(cleaned);
 
   const tables: string[] = [];
@@ -107,7 +108,7 @@ export const extractTablesFromSQL = (sql: string): string[] => {
   const aliasRe = /^\s+(?:as\s+)?([A-Za-z_][\w$]*)/i;
 
   let keyword: RegExpExecArray | null;
-  while ((keyword = keywordRe.exec(cleaned)) !== null) {
+  while ((keyword = keywordRe.exec(masked)) !== null) {
     // Only `FROM` accepts a comma-separated list of tables.
     const acceptsList = keyword[1].toLowerCase() === 'from';
     if (acceptsList && isFunctionArgumentFrom(masked, keyword.index)) continue;
