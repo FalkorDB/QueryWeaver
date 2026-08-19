@@ -6,6 +6,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { DatabaseProvider } from "@/contexts/DatabaseContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
 import { ChatProvider } from "@/contexts/ChatContext";
+import { QueryHighlightProvider } from "@/contexts/QueryHighlightContext";
 import Index from "./pages/Index";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
@@ -18,17 +19,19 @@ const App = () => (
       <DatabaseProvider>
         <SettingsProvider>
           <ChatProvider>
-            <TooltipProvider>
-              <Toaster />
-              <BrowserRouter>
-                <Routes>
-                  <Route path="/" element={<Index />} />
-                  <Route path="/settings" element={<Settings />} />
-                  {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </BrowserRouter>
-            </TooltipProvider>
+            <QueryHighlightProvider>
+              <TooltipProvider>
+                <Toaster />
+                <BrowserRouter>
+                  <Routes>
+                    <Route path="/" element={<Index />} />
+                    <Route path="/settings" element={<Settings />} />
+                    {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </BrowserRouter>
+              </TooltipProvider>
+            </QueryHighlightProvider>
           </ChatProvider>
         </SettingsProvider>
       </DatabaseProvider>

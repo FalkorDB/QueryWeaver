@@ -13,6 +13,7 @@ import SchemaViewer from "@/components/schema";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDatabase } from "@/contexts/DatabaseContext";
+import { useQueryHighlight } from "@/contexts/QueryHighlightContext";
 import { DatabaseService } from "@/services/database";
 import { useToast } from "@/components/ui/use-toast";
 import { csrfHeaders } from "@/lib/csrf";
@@ -27,6 +28,7 @@ import {
 const Index = () => {
   const { isAuthenticated, isLoading: authLoading, logout, user } = useAuth();
   const { selectedGraph, graphs, selectGraph, uploadSchema } = useDatabase();
+  const { selectedQueryId } = useQueryHighlight();
   const { toast } = useToast();
   const [showDatabaseModal, setShowDatabaseModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -130,6 +132,13 @@ const Index = () => {
   }, []);
 
   // No need to fetch rules - we just pass the toggle state to backend
+
+  // Reveal the schema panel when a SQL query is selected in the chat
+  useEffect(() => {
+    if (selectedQueryId) {
+      setShowSchemaViewer(true);
+    }
+  }, [selectedQueryId]);
 
   // Show login modal when not authenticated after loading completes
   useEffect(() => {

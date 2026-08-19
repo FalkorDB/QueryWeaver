@@ -5,6 +5,7 @@ import { useDatabase } from "@/contexts/DatabaseContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useChat } from "@/contexts/ChatContext";
+import { useQueryHighlight } from "@/contexts/QueryHighlightContext";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import ChatMessage from "./ChatMessage";
@@ -58,6 +59,7 @@ const ChatInterface = ({
   const { selectedGraph } = useDatabase();
   const { vendor, apiKey, modelName, isApiKeyValid } = useSettings();
   const { messages, setMessages, conversationHistory, isProcessing, setIsProcessing } = useChat();
+  const { selectedQueryId, toggleQueryHighlight } = useQueryHighlight();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -510,6 +512,8 @@ const ChatInterface = ({
               analysisInfo={msg.analysisInfo}
               confirmationData={msg.confirmationData}
               user={user}
+              isQueryHighlighted={msg.type === 'sql-query' && selectedQueryId === msg.id}
+              onToggleQueryHighlight={msg.type === 'sql-query' ? () => toggleQueryHighlight(msg.id, msg.content) : undefined}
               onConfirm={msg.type === 'confirmation' ? () => handleConfirmDestructive(msg.id) : undefined}
               onCancel={msg.type === 'confirmation' ? () => handleCancelDestructive(msg.id) : undefined}
             />
