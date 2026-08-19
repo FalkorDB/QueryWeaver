@@ -38,6 +38,18 @@ const HIGHLIGHT_COLOR = '#8b5cf6';
 /** Opacity applied to schema elements the selected query does not touch. */
 const DIMMED_OPACITY = 0.25;
 
+/** Link endpoints are ids before the layout runs and node objects afterwards. */
+const endpointId = (endpoint: unknown): string => {
+  if (endpoint && typeof endpoint === 'object' && 'id' in endpoint) {
+    return String((endpoint as { id: unknown }).id);
+  }
+  return String(endpoint);
+};
+
+/** Direction-agnostic key so a relation matches however the canvas orders it. */
+const linkKey = (source: unknown, target: unknown): string =>
+  [endpointId(source), endpointId(target)].sort().join('|');
+
 const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: SchemaViewerProps) => {
   const canvasRef = useRef<FalkorDBCanvas>(null);
   const resizeRef = useRef<HTMLDivElement>(null);
@@ -73,7 +85,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
 
     schemaData.links.forEach((link) => {
       if (nodeIds.has(link.source) && nodeIds.has(link.target)) {
-        linkKeys.add(`${link.source}-${link.target}`);
+        linkKeys.add(linkKey(link.source, link.target));
       }
     });
 
@@ -101,7 +113,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
         if (link.source === focusTargetId || link.target === focusTargetId) {
           nodeIds.add(link.source);
           nodeIds.add(link.target);
-          linkKeys.add(`${link.source}-${link.target}`);
+          linkKeys.add(linkKey(link.source, link.target));
         }
       });
     }
@@ -111,6 +123,17 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
 
   // A query highlight always dims the rest; hover only dims in focus mode.
   const dimInactive = hasHighlight || (focusMode && emphasisNodeIds.size > 0);
+
+  // Hover/selection emphasis is hidden while a query highlight is active, so
+  // drop it when the highlight clears instead of letting it reappear.
+  const hadHighlightRef = useRef(false);
+  useEffect(() => {
+    if (hadHighlightRef.current && !hasHighlight) {
+      setHoveredNodeId(null);
+      setSelectedTableId(null);
+    }
+    hadHighlightRef.current = hasHighlight;
+  }, [hasHighlight]);
 
   // Search options for the canvas controls.
   const tableOptions = useMemo<SchemaTableOption[]>(() => {
@@ -437,11 +460,14 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
     };
 
 
-    const linkKeyOf = (link: GraphLink) => `${link.source?.id}-${link.target?.id}`;
+    const linkKeyOf = (link: GraphLink) => linkKey(link.source, link.target);
 
     canvas.setConfig({
       dimmed: dimInactive,
       dimOpacity: DIMMED_OPACITY,
+      // Nodes are drawn by `nodeCanvasObject`, which replaces the canvas' own
+      // node renderer — so node dimming is applied manually there and this
+      // predicate only keeps the config coherent. Links still dim natively.
       isNodeDimmed: (node: GraphNode) => !emphasisNodeIds.has(node.id),
       isLinkDimmed: (link: GraphLink) => !emphasisLinkKeys.has(linkKeyOf(link)),
       isNodeSelected: (node: GraphNode) =>

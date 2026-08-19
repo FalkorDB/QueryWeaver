@@ -133,12 +133,13 @@ const Index = () => {
 
   // No need to fetch rules - we just pass the toggle state to backend
 
-  // Reveal the schema panel when a SQL query is selected in the chat
+  // Reveal the schema panel when a SQL query is selected in the chat, but only
+  // when a database is connected — otherwise the panel has nothing to render.
   useEffect(() => {
-    if (selectedQueryId) {
+    if (selectedQueryId && selectedGraph) {
       setShowSchemaViewer(true);
     }
-  }, [selectedQueryId]);
+  }, [selectedQueryId, selectedGraph]);
 
   // Show login modal when not authenticated after loading completes
   useEffect(() => {

@@ -156,7 +156,10 @@ const SchemaCanvasControls = ({
     if (!canvas) return;
 
     if (selectedTableId !== null) {
-      const node = canvas.getGraphData()?.nodes.find((n) => n.id === selectedTableId);
+      // Canvas node ids may be normalised to strings, so compare loosely.
+      const node = canvas
+        .getGraphData()
+        ?.nodes.find((n) => String(n.id) === String(selectedTableId));
 
       if (node) {
         canvas.centerAt(node.x ?? 0, node.y ?? 0, 300);
@@ -178,9 +181,16 @@ const SchemaCanvasControls = ({
     }
   };
 
-  const handleLayoutChange = (value: string) => {
+  const handleLayoutChange = (value: string, directionOverride?: string) => {
     const mode = value as LayoutMode;
-    const dir = mode === 'force' ? '' : directionsRef.current[mode] || getDefaultDirection(mode);
+    const dir =
+      mode === 'force'
+        ? ''
+        : (directionOverride ?? (directionsRef.current[mode] || getDefaultDirection(mode)));
+
+    if (mode !== 'force') {
+      directionsRef.current = { ...directionsRef.current, [mode]: dir };
+    }
 
     // Direction options must be applied before setLayout so the layout engine uses them.
     applyDirection(mode, dir);
@@ -189,7 +199,14 @@ const SchemaCanvasControls = ({
     setLayout(mode);
     setDirection(dir);
     // Tree and radial layouts are deterministic, so the canvas pins their nodes.
-    setPinned(mode !== 'force');
+    const nextPinned = mode !== 'force';
+    setPinned(nextPinned);
+    canvasRef.current?.setPinOnDragEnd(nextPinned);
+
+    if (nextPinned) {
+      setAnimation(false);
+      canvasRef.current?.setAnimation(false);
+    }
   };
 
   const handleDirectionChange = (value: string, targetLayout: LayoutMode) => {
@@ -214,6 +231,7 @@ const SchemaCanvasControls = ({
 
     if (next) {
       setAnimation(false);
+      canvasRef.current?.setAnimation(false);
     }
   };
 
@@ -311,8 +329,9 @@ const SchemaCanvasControls = ({
                   key={d.value}
                   className={`pl-8 relative ${layout === 'tree' && direction === d.value ? 'bg-accent' : ''}`}
                   onSelect={() => {
-                    if (layout !== 'tree') handleLayoutChange('tree');
-                    handleDirectionChange(d.value, 'tree');
+                    // Switching layout already applies the picked direction first.
+                    if (layout !== 'tree') handleLayoutChange('tree', d.value);
+                    else handleDirectionChange(d.value, 'tree');
                   }}
                 >
                   {layout === 'tree' && direction === d.value && (
@@ -340,8 +359,9 @@ const SchemaCanvasControls = ({
                   key={d.value}
                   className={`pl-8 relative ${layout === 'radial' && direction === d.value ? 'bg-accent' : ''}`}
                   onSelect={() => {
-                    if (layout !== 'radial') handleLayoutChange('radial');
-                    handleDirectionChange(d.value, 'radial');
+                    // Switching layout already applies the picked direction first.
+                    if (layout !== 'radial') handleLayoutChange('radial', d.value);
+                    else handleDirectionChange(d.value, 'radial');
                   }}
                 >
                   {layout === 'radial' && direction === d.value && (

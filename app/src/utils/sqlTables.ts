@@ -25,20 +25,62 @@ const IDENTIFIER =
 const unquote = (identifier: string): string =>
   identifier.replace(/^["`[]/, '').replace(/["`\]]$/, '');
 
+// A single (possibly quoted) part of a qualified name. Quoted forms come first
+// so that a dot inside quotes stays part of the same name.
+const NAME_PART = /"[^"]*"|`[^`]*`|\[[^\]]*\]|[A-Za-z_][\w$]*/g;
+
 /** Keep only the table part of a qualified name (`public.users` → `users`). */
 const tableName = (qualified: string): string => {
-  const parts = qualified.split('.').map((part) => unquote(part.trim()));
-  return parts[parts.length - 1] ?? '';
+  const parts = qualified.match(NAME_PART) ?? [];
+  return unquote(parts[parts.length - 1] ?? '');
 };
 
-/** Names introduced by `WITH <name> AS (...)` — they are not real tables. */
+// `<name> [(cols)] AS [[NOT] MATERIALIZED] (` at the start of a CTE entry.
+const CTE_ENTRY =
+  /^\s*([A-Za-z_][\w$]*)(?:\s*\([^)]*\))?\s+as\s+(?:(?:not\s+)?materialized\s+)?\(/i;
+
+/**
+ * Names introduced by `WITH <name> AS (...)` — they are not real tables.
+ *
+ * Only the leading `WITH` clause is scanned, and only at paren depth 0, so
+ * derived-table aliases such as `JOIN (SELECT ...) AS t (a, b)` are not
+ * mistaken for CTEs.
+ */
 const collectCteNames = (sql: string): Set<string> => {
   const names = new Set<string>();
-  const re = /\b([A-Za-z_][\w$]*)\s+AS\s*\(/gi;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(sql)) !== null) {
-    names.add(match[1].toLowerCase());
+  const withClause = /^\s*with\s+(?:recursive\s+)?/i.exec(sql);
+  if (!withClause) return names;
+
+  let index = withClause[0].length;
+  let depth = 0;
+
+  while (index < sql.length) {
+    if (depth === 0) {
+      const entry = CTE_ENTRY.exec(sql.slice(index));
+      // Anything else at depth 0 means the CTE list is over.
+      if (!entry) break;
+      names.add(entry[1].toLowerCase());
+      index += entry[0].length;
+      depth = 1;
+      continue;
+    }
+
+    const char = sql[index];
+    if (char === '(') {
+      depth += 1;
+    } else if (char === ')') {
+      depth -= 1;
+      if (depth === 0) {
+        // Another CTE only follows after a comma.
+        const comma = /^\s*,/.exec(sql.slice(index + 1));
+        if (!comma) break;
+        index += 1 + comma[0].length;
+        continue;
+      }
+    }
+    index += 1;
   }
+
   return names;
 };
 

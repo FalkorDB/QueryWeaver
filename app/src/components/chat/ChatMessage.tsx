@@ -50,6 +50,13 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmati
     }
   };
 
+  // Clicking the query toggles the schema highlight, but a click that ends a
+  // text selection must not steal the selection from the user.
+  const handleQueryBlockClick = () => {
+    if (window.getSelection()?.toString()) return;
+    onToggleQueryHighlight?.();
+  };
+
   if (type === 'confirmation') {
     const operationType = (confirmationData?.operationType ?? 'UNKNOWN').toUpperCase();
     const isHighRisk = ['DELETE', 'DROP', 'TRUNCATE'].includes(operationType);
@@ -173,6 +180,18 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmati
                     Shown in schema
                   </Badge>
                 )}
+                {isClickable && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    data-testid="sql-highlight-toggle"
+                    aria-pressed={isQueryHighlighted}
+                    onClick={onToggleQueryHighlight}
+                    className={`h-7 px-2 text-xs ${isQueryHighlighted ? '' : 'ml-auto'}`}
+                  >
+                    {isQueryHighlighted ? 'Clear schema highlight' : 'Show in schema'}
+                  </Button>
+                )}
               </div>
 
               {hasSQL && (
@@ -192,20 +211,10 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmati
                       )}
                     </Button>
                     <pre
-                      role={isClickable ? 'button' : undefined}
-                      tabIndex={isClickable ? 0 : undefined}
-                      aria-pressed={isClickable ? isQueryHighlighted : undefined}
-                      aria-label={isClickable ? (isQueryHighlighted ? 'Clear the schema highlight' : 'Highlight the tables used by this query') : undefined}
                       data-testid="sql-query-block"
-                      onClick={isClickable ? onToggleQueryHighlight : undefined}
-                      onKeyDown={isClickable ? (event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          onToggleQueryHighlight?.();
-                        }
-                      } : undefined}
+                      onClick={isClickable ? handleQueryBlockClick : undefined}
                       className={`bg-background text-foreground p-3 pr-12 rounded text-sm mb-1 w-fit min-w-full font-mono whitespace-pre-wrap break-words overflow-wrap-anywhere transition-colors ${
-                        isClickable ? 'cursor-pointer hover:ring-1 hover:ring-primary/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary' : ''
+                        isClickable ? 'cursor-pointer hover:ring-1 hover:ring-primary/50' : ''
                       } ${isQueryHighlighted ? 'ring-2 ring-primary bg-primary/5' : ''}`}
                     >
                       <code className="language-sql">{content}</code>
