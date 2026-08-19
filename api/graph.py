@@ -6,9 +6,9 @@ import logging
 from itertools import combinations
 from typing import Any, Dict, List
 
-from litellm import completion
 from pydantic import BaseModel
 
+from api.agents.utils import run_completion
 from api.config import Config
 from api.core.db_resolver import resolve_db
 
@@ -300,10 +300,14 @@ async def find( # pylint: disable=too-many-locals
 
     logging.info("Calling LLM to find relevant tables/columns for query")
 
-    completion_result = completion(
-        model=Config.COMPLETION_MODEL,
-        response_format=Descriptions,
-        messages=[
+    # Both this LLM call and the embedding call below are synchronous network
+    # calls, and this coroutine is launched with ``asyncio.create_task``. Run
+    # directly they would block the event loop before the first await, which
+    # makes that "concurrency" illusory and prevents any stream from flushing
+    # keepalives — the exact point where the 2026-07-29 demo queries stalled.
+    completion_content = await asyncio.to_thread(
+        run_completion,
+        [
             {
                 "role": "system",
                 "content": Config.FIND_SYSTEM_PROMPT.format(
@@ -318,17 +322,21 @@ async def find( # pylint: disable=too-many-locals
                 })
             },
         ],
+        label="find.tables",
+        response_format=Descriptions,
         temperature=0,
     )
 
-    json_data = json.loads(completion_result.choices[0].message.content)
+    json_data = json.loads(completion_content)
     descriptions = Descriptions(**json_data)
     descriptions_text = ([desc.description for desc in descriptions.tables_descriptions] +
                          [desc.description for desc in descriptions.columns_descriptions])
     if not descriptions_text:
         return []
 
-    embedding_results = Config.EMBEDDING_MODEL.embed(descriptions_text)
+    embedding_results = await asyncio.to_thread(
+        Config.EMBEDDING_MODEL.embed, descriptions_text,
+    )
 
     # Split embeddings back into table and column embeddings
     table_embeddings = embedding_results[:len(descriptions.tables_descriptions)]

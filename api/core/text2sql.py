@@ -519,7 +519,12 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
 
     try:
         try:
-            query_results = loader_class.execute_sql_query(sql_query, db_url)
+            # Off-loop: driver execution is synchronous, and a slow query would
+            # otherwise block every other request and stop keepalives from
+            # flushing on this one.
+            query_results = await asyncio.to_thread(
+                loader_class.execute_sql_query, sql_query, db_url,
+            )
         except Exception as exec_error:  # pylint: disable=broad-exception-caught
             yield {
                 "type": "reasoning_step",
@@ -753,7 +758,10 @@ async def run_confirmed(  # pylint: disable=too-many-locals,too-many-branches,to
         is_schema_modifying, operation_type = check_schema_modification(
             sql_query, loader_class,
         )
-        query_results = loader_class.execute_sql_query(sql_query, db_url)
+        # Off-loop, as in ``run_query`` above.
+        query_results = await asyncio.to_thread(
+            loader_class.execute_sql_query, sql_query, db_url,
+        )
         yield {"type": "query_result", "data": query_results}
 
         if is_schema_modifying:
