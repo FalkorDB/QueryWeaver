@@ -135,6 +135,8 @@ async def test_cancelling_a_schema_load_still_closes_the_connection(
         try:
             await consumer
         except asyncio.CancelledError:
+            # Expected: we cancelled it. What matters is the cleanup that runs
+            # afterwards, asserted below.
             pass
         await agen.aclose()
 
