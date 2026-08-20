@@ -459,7 +459,7 @@ QueryWeaver supports Google and GitHub OAuth. Create OAuth credentials for each 
 
 #### Environment-specific OAuth settings
 
-For production/staging deployments, session cookies are HTTPS-only by default. Only an explicit `APP_ENV=development` turns that off, so a deployment that forgets the variable still gets secure cookies. Set `APP_ENV=development` for plain-HTTP local runs, otherwise the browser drops the cookie and you get OAuth CSRF state mismatch errors.
+For production/staging deployments, session cookies are HTTPS-only by default. Only an `APP_ENV` that reads as `development` once trimmed and lower-cased turns that off, so a deployment that forgets the variable still gets secure cookies. Set `APP_ENV=development` for plain-HTTP local runs, otherwise the browser drops the cookie and you get OAuth CSRF state mismatch errors.
 
 ```bash
 # For production/staging (HTTPS-only session cookies - also the default)
@@ -587,7 +587,7 @@ GitHub Actions run unit and E2E tests on pushes and pull requests. Failures capt
 - FalkorDB connection issues: start the DB helper `make docker-falkordb` or check network/host settings.
 - Playwright/browser failures: install browsers with `uv run playwright install` and ensure system deps are present.
 - Missing environment variables: copy `.env.example` and fill required values.
-- **OAuth "mismatching_state: CSRF Warning!" errors**: Session cookies are HTTPS-only unless `APP_ENV` is exactly `development`. Set `APP_ENV=development` for plain-HTTP environments; use `production` or `staging` (or leave the variable out entirely) for HTTPS deployments.
+- **OAuth "mismatching_state: CSRF Warning!" errors**: Session cookies are HTTPS-only unless `APP_ENV` reads as `development` once trimmed and lower-cased. Set `APP_ENV=development` for plain-HTTP environments; use `production` or `staging` (or leave the variable out entirely) for HTTPS deployments.
 
 ## Project layout (high level)
 
