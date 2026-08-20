@@ -587,8 +587,9 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
 
   // Bring the highlighted tables into view when a query is selected. A slow
   // layout may not have produced coordinates yet, so keep retrying until it has.
+  // Reopening the viewer re-runs this, since the canvas is unmounted while closed.
   useEffect(() => {
-    if (!canvasLoaded || !hasHighlight) return;
+    if (!isOpen || !canvasLoaded || !hasHighlight) return;
 
     let frame = 0;
     const deadline = Date.now() + HIGHLIGHT_ZOOM_TIMEOUT_MS;
@@ -606,7 +607,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
       clearTimeout(timer);
       cancelAnimationFrame(frame);
     };
-  }, [canvasLoaded, hasHighlight, highlightedNodeIds, frameNodes]);
+  }, [isOpen, canvasLoaded, hasHighlight, highlightedNodeIds, frameNodes]);
 
   if (!isOpen) return null;
 
