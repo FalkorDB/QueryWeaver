@@ -6,7 +6,7 @@ export interface User {
   email: string;
   name?: string;
   picture?: string;
-  provider?: 'google' | 'github';
+  provider?: 'google' | 'github' | 'email';
 }
 
 // Authentication types

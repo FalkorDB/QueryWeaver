@@ -15,6 +15,7 @@ from fastmcp.server.providers.openapi import MCPType, RouteMap
 
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
+from api.auth.browser_session import session_ttl_seconds
 from api.auth.oauth_handlers import setup_oauth_handlers
 from api.auth.user_management import SECRET_KEY
 from api.analytics import report_error
@@ -64,6 +65,15 @@ def _is_secure_request(request: Request) -> bool:
         first_proto = forwarded_proto.split(",")[0].strip().lower()
         return first_proto == "https"
     return request.url.scheme == "https"
+
+
+def _session_cookie_https_only() -> bool:
+    """Whether the session cookie must be HTTPS-only.
+
+    Secure by default: only a local ``APP_ENV=development`` run opts out, since
+    a Secure cookie is silently dropped over plain HTTP.
+    """
+    return os.getenv("APP_ENV", "development").strip().lower() != "development"
 
 
 class CSRFMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods
@@ -266,8 +276,10 @@ def create_app():  # pylint: disable=too-many-statements
         SessionMiddleware,
         secret_key=SECRET_KEY,
         same_site="lax",  # allow top-level OAuth GET redirects to send cookies
-        https_only=False,  # True for HTTPS environments (staging/prod), False for HTTP dev
-        max_age=60 * 60 * 24 * 14,  # 14 days - measured by seconds
+        # The session cookie now carries the browser login itself, so it must be
+        # HTTPS-only everywhere except local HTTP development.
+        https_only=_session_cookie_https_only(),
+        max_age=session_ttl_seconds(),
     )
 
     # Add security middleware

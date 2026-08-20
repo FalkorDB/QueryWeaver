@@ -20,8 +20,16 @@ from jinja2 import Environment, FileSystemLoader, FileSystemBytecodeCache, selec
 from starlette.config import Config
 from pydantic import BaseModel
 
+from api.auth.browser_session import (
+    clear_browser_session,
+    establish_browser_session,
+    is_provisioned,
+    mark_provisioned,
+    read_browser_session,
+)
 from api.auth.user_management import delete_user_token, ensure_user_in_organizations, validate_user
 from api.config import ORGANIZATIONS_GRAPH
+from api.core.errors import AuthBackendUnavailableError
 from api.extensions import db
 
 # Import GENERAL_PREFIX from graphs route
@@ -136,11 +144,10 @@ def _validate_email(email: str) -> bool:
 
 async def _set_mail_hash(email: str, password_hash: str) -> bool:
     """Set email hash for the user in the database."""
+    # Sanitized up front so the error path below can log it too.
+    safe_email = _sanitize_for_log(email)
     try:
         organizations_graph = db.select_graph(ORGANIZATIONS_GRAPH)
-
-        # Sanitize inputs for logging
-        safe_email = _sanitize_for_log(email)
 
         # Create new email identity and user
         create_query = """
@@ -238,7 +245,56 @@ async def _authenticate_email_user(email: str, password: str):
 
     except Exception as e:
         logging.error("Error authenticating email user: %s", e)
-        return False, "Internal error"
+        # Not "wrong password" — we never got to check. Surfaced separately so the
+        # caller can answer 503 instead of accusing the user of bad credentials.
+        raise AuthBackendUnavailableError(str(e)) from e
+
+
+async def _complete_login(request: Request, provider: str, user_data: dict) -> str:
+    """Finish a successful login and return the API token to hand to the browser.
+
+    Order matters: the signed session cookie *is* the browser's credential, so it
+    is established regardless of whether the Organizations-graph write lands. A
+    FalkorDB outage during login therefore costs the user their stored profile
+    (retried later from ``/auth-status``), not their ability to log in.
+    """
+    email = user_data.get("email")
+    if not email:
+        # Every identity in the system is keyed by email; without one there is
+        # nothing to log the user in as. Fail loudly instead of half-succeeding.
+        logging.warning("No email address available from %s", provider)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No email address available from {provider}",
+        )
+
+    handler = getattr(request.app.state, "callback_handler", None)
+    if handler is None:
+        logging.error("OAuth callback handler not registered in app state")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Authentication handler not configured",
+        )
+
+    api_token = secrets.token_urlsafe(32)  # ~43 chars, hard to guess
+    provisioned = bool(await handler(provider, user_data, api_token))
+    if not provisioned:
+        logging.warning(
+            "Logged in via %s from the session cookie alone; the user store write did not land",
+            provider,
+        )
+
+    establish_browser_session(
+        request,
+        email=email,
+        name=user_data.get("name"),
+        picture=user_data.get("picture"),
+        provider=provider,
+        provider_user_id=user_data.get("id"),
+        provisioned=provisioned,
+    )
+    return api_token
+
 
 # ---- Email Authentication Routes ----
 @auth_router.post("/signup/email")
@@ -316,6 +372,15 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
 
         logging.info("User registration successful: %s", _sanitize_for_log(email))
 
+        establish_browser_session(
+            request,
+            email=email,
+            name=f"{first_name} {last_name}",
+            provider="email",
+            provider_user_id=email,
+            provisioned=True,
+        )
+
         response = JSONResponse({
             "success": True,
         }, status_code=201)
@@ -363,7 +428,14 @@ async def email_login(request: Request, login_data: EmailLoginRequest) -> JSONRe
             )
 
         # Authenticate user
-        success, result = await _authenticate_email_user(email, password)
+        try:
+            success, result = await _authenticate_email_user(email, password)
+        except AuthBackendUnavailableError:
+            return JSONResponse(
+                {"success": False,
+                 "error": "Authentication service temporarily unavailable - please retry"},
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
 
         if not success:
             return JSONResponse(
@@ -380,7 +452,7 @@ async def email_login(request: Request, login_data: EmailLoginRequest) -> JSONRe
                 if identity_node and hasattr(identity_node, "properties")
                 else {}
             )
-            
+
             user_data = {
                 'id': identity_props.get("provider_user_id", email),
                 'email': identity_props.get('email', email),
@@ -388,23 +460,16 @@ async def email_login(request: Request, login_data: EmailLoginRequest) -> JSONRe
                 'picture': identity_props.get('picture', ''),
             }
 
-            # Call the registered Google callback handler if it exists to store user data.
-            handler = getattr(request.app.state, "callback_handler", None)
-            if handler:
-                api_token = secrets.token_urlsafe(32)  # ~43 chars, hard to guess
+            api_token = await _complete_login(request, 'email', user_data)
+            response = JSONResponse({"success": True}, status_code=200)
+            response.set_cookie(
+                key="api_token",
+                value=api_token,
+                httponly=True,
+                secure=_is_request_secure(request)
+            )
+            return response
 
-                # Call the registered handler (await if async)
-                await handler('email', user_data, api_token)
-                response = JSONResponse({"success": True}, status_code=200)
-                
-                response.set_cookie(
-                    key="api_token",
-                    value=api_token,
-                    httponly=True,
-                    secure=_is_request_secure(request)
-                )
-                return response
-            
         return JSONResponse(
             {"success": False, "error": "Authentication failed"},
             status_code=status.HTTP_401_UNAUTHORIZED
@@ -538,26 +603,17 @@ async def google_authorized(request: Request) -> RedirectResponse:
             }
 
             # Call the registered Google callback handler if it exists to store user data.
-            handler = getattr(request.app.state, "callback_handler", None)
-            if handler:
-                api_token = secrets.token_urlsafe(32)  # ~43 chars, hard to guess
+            api_token = await _complete_login(request, 'google', user_data)
 
-                # Call the registered handler (await if async)
-                await handler('google', user_data, api_token)
+            redirect = RedirectResponse(url="/", status_code=302)
+            redirect.set_cookie(
+                key="api_token",
+                value=api_token,
+                httponly=True,
+                secure=_is_request_secure(request)
+            )
 
-                redirect = RedirectResponse(url="/", status_code=302)
-                redirect.set_cookie(
-                    key="api_token",
-                    value=api_token,
-                    httponly=True,
-                    secure=True
-                )
-
-                return redirect
-
-            # Handler not set - log and raise error to prevent silent failure
-            logging.error("Google OAuth callback handler not registered in app state")
-            raise HTTPException(status_code=500, detail="Authentication handler not configured")
+            return redirect
 
         # If we reach here, user_info was falsy
         logging.warning("No user info received from Google OAuth")
@@ -642,26 +698,17 @@ async def github_authorized(request: Request) -> RedirectResponse:
             }
 
             # Call the registered GitHub callback handler if it exists to store user data.
-            handler = getattr(request.app.state, "callback_handler", None)
-            if handler:
-                api_token = secrets.token_urlsafe(32)  # ~43 chars, hard to guess
+            api_token = await _complete_login(request, 'github', user_data)
 
-                # Call the registered handler (await if async)
-                await handler('github', user_data, api_token)
+            redirect = RedirectResponse(url="/", status_code=302)
+            redirect.set_cookie(
+                key="api_token",
+                value=api_token,
+                httponly=True,
+                secure=_is_request_secure(request)
+            )
 
-                redirect = RedirectResponse(url="/", status_code=302)
-                redirect.set_cookie(
-                    key="api_token",
-                    value=api_token,
-                    httponly=True,
-                    secure=True
-                )
-
-                return redirect
-
-            # Handler not set - log and raise error to prevent silent failure
-            logging.error("GitHub OAuth callback handler not registered in app state")
-            raise HTTPException(status_code=500, detail="Authentication handler not configured")
+            return redirect
 
         # If we reach here, user_info was falsy
         logging.warning("No user info received from GitHub OAuth")
@@ -683,18 +730,29 @@ async def github_callback_compat(request: Request) -> RedirectResponse:
 @auth_router.get("/auth-status")
 async def auth_status(request: Request) -> JSONResponse:
     """Check authentication status for the React app.
-    
+
     Returns:
         JSONResponse: Authentication status with user info if authenticated
     """
-    user_info, is_authenticated = await validate_user(request)
-    
-    if is_authenticated and user_info:
+    try:
+        user_info, is_authenticated = await validate_user(request)
+    except AuthBackendUnavailableError:
+        # Only reachable for an explicitly supplied API token; a browser login
+        # never consults the database.
         return JSONResponse(
+            content={"authenticated": False,
+                     "error": "Authentication service temporarily unavailable"},
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+
+    if is_authenticated and user_info:
+        response = JSONResponse(
             content={
                 "authenticated": True,
                 "user": {
-                    "id": str(user_info.get("id")),
+                    # Falls back to the email so the id is always a usable string
+                    # for clients, even for database-backed API tokens.
+                    "id": str(user_info.get("id") or user_info.get("email")),
                     "email": user_info.get("email"),
                     "name": user_info.get("name"),
                     "picture": user_info.get("picture"),
@@ -702,13 +760,57 @@ async def auth_status(request: Request) -> JSONResponse:
                 }
             }
         )
-    
+        await _retry_pending_provisioning(request, response)
+        return response
+
     # Not authenticated - return 200 with authenticated: false
     # This is NOT an error - unauthenticated users can still use the app
     return JSONResponse(
         content={"authenticated": False},
         status_code=200
     )
+
+
+async def _retry_pending_provisioning(request: Request, response: JSONResponse) -> None:
+    """Finish a login whose Organizations-graph write failed at the time.
+
+    Logging in no longer needs FalkorDB, so a user can be signed in without a
+    stored ``User``/``Identity`` record. This retries that write on the next
+    status poll and is strictly best-effort: it must never change the
+    authentication verdict.
+    """
+    if is_provisioned(request):
+        return
+
+    session_user = read_browser_session(request)
+    if not session_user:
+        return
+
+    handler = getattr(request.app.state, "callback_handler", None)
+    if handler is None:
+        return
+
+    api_token = secrets.token_urlsafe(32)
+    user_data = {
+        'id': session_user.get("id") or session_user.get("email"),
+        'email': session_user.get("email"),
+        'name': session_user.get("name"),
+        'picture': session_user.get("picture"),
+    }
+    try:
+        succeeded = bool(await handler(session_user.get("provider"), user_data, api_token))
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logging.warning("Deferred user provisioning failed: %s", e)
+        return
+
+    if succeeded:
+        mark_provisioned(request)
+        response.set_cookie(
+            key="api_token",
+            value=api_token,
+            httponly=True,
+            secure=_is_request_secure(request)
+        )
 
 
 @auth_router.get("/logout")
@@ -720,6 +822,10 @@ async def logout(request: Request):
     - GET: For direct navigation (bookmarks, links, old clients)
     - POST: For programmatic logout from the app
     """
+    # The browser session is the primary credential, so it must go first --
+    # otherwise deleting the api_token cookie would leave the user logged in.
+    clear_browser_session(request)
+
     # For GET requests, redirect to home page
     if request.method == "GET":
         response = RedirectResponse(url="/", status_code=302)

@@ -129,7 +129,7 @@ OpenAPI JSON: https://app.queryweaver.ai/openapi.json
 
 ### Overview
 
-QueryWeaver exposes a small REST API for managing graphs (database schemas) and running Text2SQL queries. All endpoints that modify or access user-scoped data require authentication via a bearer token. In the browser the app uses session cookies and OAuth flows; for CLI and scripts you can use an API token (see `tokens` routes or the web UI to create one).
+QueryWeaver exposes a small REST API for managing graphs (database schemas) and running Text2SQL queries. All endpoints that modify or access user-scoped data require authentication. In the browser the app uses a signed session cookie established by OAuth or email/password; for CLI and scripts you can use an API token (see `tokens` routes or the web UI to create one).
 
 Core endpoints
 - GET /graphs — list available graphs for the authenticated user
@@ -139,6 +139,27 @@ Core endpoints
 
 Authentication
 - Add an Authorization header: `Authorization: Bearer <API_TOKEN>`
+
+#### Three separate credentials
+
+QueryWeaver keeps its three kinds of "login" independent of one another, so a
+failure in one never looks like a failure in another:
+
+| Credential | What it proves | Where it lives | Depends on FalkorDB? |
+| --- | --- | --- | --- |
+| Browser login | Who is using the app | Signed session cookie, established once by OAuth or a password | No |
+| API token | A script may act as a user | `Token` node in the Organizations graph, sent as `Authorization: Bearer …` | Yes |
+| Data-source connection | Access to *your* database | Supplied per request, never stored | No (it is your own database) |
+
+Because the browser login is a signed cookie, staying logged in costs no database
+round trip and survives a FalkorDB outage — you keep your session and only the
+operations that genuinely need the graph fail. Requests that supply an API token
+explicitly are always checked against the database and are answered with `503`
+(not `401`) when it cannot be reached, so clients retry instead of re-authenticating.
+
+A browser login lasts 24 hours by default; set `BROWSER_SESSION_TTL_HOURS` to
+change that. Logging out clears the session cookie and revokes the API token
+issued alongside it.
 
 Examples
 

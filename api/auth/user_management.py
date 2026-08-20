@@ -9,7 +9,9 @@ from typing import Tuple, Optional, Dict, Any
 
 from fastapi import Request, HTTPException, status
 from pydantic import BaseModel
+from api.auth.browser_session import read_browser_session
 from api.config import ORGANIZATIONS_GRAPH
+from api.core.errors import AuthBackendUnavailableError
 from api.extensions import db
 
 # Get secret key for sessions
@@ -37,7 +39,12 @@ class IdentityInfo(BaseModel):
 
 async def _get_user_info(api_token: str) -> Optional[Dict[str, Any]]:
     """
-    Get user information from the database by email.
+    Look up the owner of an API token in the Organizations graph.
+
+    Returns ``None`` when the token is unknown or expired, and raises
+    :class:`AuthBackendUnavailableError` when the graph itself is unreachable —
+    the two cases must not collapse into one, or an outage looks like a bad
+    credential.
     """
     query = """
         MATCH (i:Identity)-[:HAS_TOKEN]->(t:Token {id: $api_token})
@@ -54,24 +61,24 @@ async def _get_user_info(api_token: str) -> Optional[Dict[str, Any]]:
                 "api_token": api_token,
             },
         )
-
-        if result.result_set:
-            single_result = result.result_set[0]
-            token_valid = single_result[3]
-
-            if token_valid:
-                return {
-                    "email": single_result[0],
-                    "name": single_result[1],
-                    "picture": single_result[2],
-                }
-            # Delete invalid/expired token from DB for cleanup
-            await delete_user_token(api_token)
-
-        return None
     except Exception as e:  # pylint: disable=broad-exception-caught
         logging.error("Error fetching user info: %s", e)
-        return None
+        raise AuthBackendUnavailableError(str(e)) from e
+
+    if result.result_set:
+        single_result = result.result_set[0]
+        token_valid = single_result[3]
+
+        if token_valid:
+            return {
+                "email": single_result[0],
+                "name": single_result[1],
+                "picture": single_result[2],
+            }
+        # Delete invalid/expired token from DB for cleanup
+        await delete_user_token(api_token)
+
+    return None
 
 
 async def delete_user_token(api_token: str):
@@ -197,58 +204,78 @@ async def update_identity_last_login(provider, provider_user_id):
         )
 
 
-def get_token(request: Request) -> Optional[str]:
-    """
-    Extract the API token from the request.
-    """
+def get_explicit_api_token(request: Request) -> Optional[str]:
+    """Extract an API token the caller passed *deliberately*.
 
-    # Check cookies
-    api_token = request.cookies.get("api_token")
-    if api_token:
-        return api_token
-
-    # Check query parameters
+    A ``Bearer`` header or an ``api_token`` query parameter is a programmatic
+    credential: the caller means to act as that token, so it is never allowed to
+    fall back to whoever happens to be logged in to this browser.
+    """
     api_token = request.query_params.get("api_token")
     if api_token:
         return api_token
 
-    # Check Authorization header
     auth_header = request.headers.get("authorization") or request.headers.get(
         "Authorization"
     )
     if auth_header:
-        try:
-            parts = auth_header.split(None, 1)
-            if len(parts) == 2 and parts[0].lower() == "bearer":
-                return parts[1].strip()
-        except Exception:  # pylint: disable=broad-exception-caught
-            pass
+        parts = auth_header.split(None, 1)
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            return parts[1].strip() or None
 
     return None
 
 
+def get_cookie_api_token(request: Request) -> Optional[str]:
+    """Extract the ambient ``api_token`` cookie, if any."""
+    return request.cookies.get("api_token") or None
+
+
+def get_token(request: Request) -> Optional[str]:
+    """
+    Extract the API token from the request.
+    """
+    return get_cookie_api_token(request) or get_explicit_api_token(request)
+
+
 async def validate_user(request: Request) -> Tuple[Optional[Dict[str, Any]], bool]:
     """
-    Helper function to validate token.
-    Returns (user_info, is_authenticated).
-    Includes refresh handling for Google.
+    Resolve the caller's identity. Returns ``(user_info, is_authenticated)``.
+
+    Credentials are tried in order of how explicit they are:
+
+    1. A deliberate API token (``Bearer`` header or ``?api_token=``). It is
+       database-backed, and a bad one fails outright rather than silently
+       downgrading to whoever is logged in to this browser.
+    2. The browser login session — a signed cookie, so it stays valid while
+       FalkorDB is down. This is what keeps the login screen from reappearing
+       during an outage; database-backed work still fails at query time.
+    3. The legacy ``api_token`` cookie, for sessions issued before browser
+       logins became self-contained.
+
+    Raises :class:`AuthBackendUnavailableError` when an explicitly supplied API
+    token cannot be checked because the Organizations graph is unreachable.
     """
-    try:
-        api_token = get_token(request)
+    explicit_token = get_explicit_api_token(request)
+    if explicit_token:
+        db_info = await _get_user_info(explicit_token)
+        return (db_info, True) if db_info else (None, False)
 
-        if not api_token:
+    session_user = read_browser_session(request)
+    if session_user:
+        return session_user, True
+
+    cookie_token = get_cookie_api_token(request)
+    if cookie_token:
+        try:
+            db_info = await _get_user_info(cookie_token)
+        except AuthBackendUnavailableError:
+            logging.warning("Auth store unreachable while validating the api_token cookie")
             return None, False
-
-        db_info = await _get_user_info(api_token)
-
         if db_info:
             return db_info, True
 
-        return None, False
-
-    except Exception as e:  # pylint: disable=broad-exception-caught
-        logging.error("Unexpected error in validate_user: %s", e)
-        return None, False
+    return None, False
 
 
 def token_required(func):
@@ -284,6 +311,14 @@ def token_required(func):
 
         except HTTPException:
             raise
+        except AuthBackendUnavailableError as e:
+            # The token may well be valid — we just could not check it. Saying
+            # 401 here would tell clients to re-authenticate over a transient
+            # outage; 503 tells them to retry.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication service temporarily unavailable - please retry",
+            ) from e
         except Exception as e:
             logging.error("Unexpected error in token_required: %s", e)
             raise HTTPException(
