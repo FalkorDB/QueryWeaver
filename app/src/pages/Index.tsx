@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -13,6 +13,7 @@ import SchemaViewer from "@/components/schema";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDatabase } from "@/contexts/DatabaseContext";
+import { useQueryHighlight } from "@/contexts/QueryHighlightContext";
 import { DatabaseService } from "@/services/database";
 import { useToast } from "@/components/ui/use-toast";
 import { csrfHeaders } from "@/lib/csrf";
@@ -27,6 +28,7 @@ import {
 const Index = () => {
   const { isAuthenticated, isLoading: authLoading, logout, user } = useAuth();
   const { selectedGraph, graphs, selectGraph, uploadSchema } = useDatabase();
+  const { selectedQueryId, clearQueryHighlight } = useQueryHighlight();
   const { toast } = useToast();
   const [showDatabaseModal, setShowDatabaseModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -130,6 +132,21 @@ const Index = () => {
   }, []);
 
   // No need to fetch rules - we just pass the toggle state to backend
+
+  // Reveal the schema panel when a SQL query is selected in the chat, but only
+  // when a database is connected — otherwise the panel has nothing to render.
+  useEffect(() => {
+    if (selectedQueryId && selectedGraph) {
+      setShowSchemaViewer(true);
+    }
+  }, [selectedQueryId, selectedGraph]);
+
+  // Closing the panel also drops the highlight, so the chat toggle does not stay
+  // marked as active while nothing is highlighted.
+  const closeSchemaViewer = useCallback(() => {
+    setShowSchemaViewer(false);
+    clearQueryHighlight();
+  }, [clearQueryHighlight]);
 
   // Show login modal when not authenticated after loading completes
   useEffect(() => {
@@ -344,7 +361,11 @@ const Index = () => {
       
       {/* Left Sidebar */}
       <Sidebar 
-        onSchemaClick={() => { if (!isRefreshingSchema) setShowSchemaViewer(!showSchemaViewer); }}
+        onSchemaClick={() => {
+          if (isRefreshingSchema) return;
+          if (showSchemaViewer) closeSchemaViewer();
+          else setShowSchemaViewer(true);
+        }}
         isSchemaOpen={showSchemaViewer}
         isCollapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -353,7 +374,7 @@ const Index = () => {
       {/* Schema Viewer */}
       <SchemaViewer 
         isOpen={showSchemaViewer}
-        onClose={() => setShowSchemaViewer(false)}
+        onClose={closeSchemaViewer}
         onWidthChange={setSchemaViewerWidth}
         sidebarWidth={sidebarWidth}
       />
