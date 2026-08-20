@@ -38,6 +38,23 @@ const HIGHLIGHT_COLOR = '#8b5cf6';
 /** Opacity applied to schema elements the selected query does not touch. */
 const DIMMED_OPACITY = 0.25;
 
+// Geometry of a rendered table card, shared by the drawing code and the
+// viewport framing below.
+const NODE_WIDTH = 160;
+const NODE_LINE_HEIGHT = 14;
+const NODE_PADDING = 8;
+const NODE_HEADER_HEIGHT = 20;
+
+const tableNodeHeight = (columnCount: number): number =>
+  NODE_HEADER_HEIGHT + columnCount * NODE_LINE_HEIGHT + NODE_PADDING * 2;
+
+/** Gap in pixels kept between the framed tables and the canvas edges. */
+const FIT_PADDING_PX = 32;
+/** Upper bound on the framing zoom, so a single small table is not blown up. */
+const FIT_MAX_ZOOM = 1.5;
+const FIT_MIN_ZOOM = 0.05;
+const FIT_ANIMATION_MS = 300;
+
 /** Link endpoints are ids before the layout runs and node objects afterwards. */
 const endpointId = (endpoint: unknown): string => {
   if (endpoint && typeof endpoint === 'object' && 'id' in endpoint) {
@@ -176,7 +193,6 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
     return () => observer.disconnect();
   }, []);
 
-  const NODE_WIDTH = 160;
   const MIN_WIDTH = 300;
   const MAX_WIDTH_PERCENT = 0.6;
   const DEFAULT_WIDTH_PERCENT = 0.5;
@@ -290,15 +306,62 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
     return theme === 'light' ? '#9ca3af' : '#4b5563';
   }, [theme, hasHighlight, highlightedLinkKeys]);
 
+  // The canvas' own zoomToFit frames node centres, so a tall table gets clipped
+  // and a single table is zoomed to the configured maximum whatever its size.
+  // Frame the rendered cards instead.
+  const frameNodes = useCallback((match?: (nodeId: number) => boolean) => {
+    const canvas = canvasRef.current;
+
+    if (!canvas || !schemaData) return;
+
+    const rect = canvas.getBoundingClientRect();
+
+    if (!rect.width || !rect.height) return;
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    canvas.getGraphData()?.nodes.forEach((node) => {
+      if (node.x === undefined || node.y === undefined) return;
+      if (match && !match(Number(node.id))) return;
+
+      const columns = schemaData.nodesMap.get(Number(node.id))?.columns ?? [];
+      const halfHeight = tableNodeHeight(columns.length) / 2;
+
+      minX = Math.min(minX, node.x - NODE_WIDTH / 2);
+      maxX = Math.max(maxX, node.x + NODE_WIDTH / 2);
+      minY = Math.min(minY, node.y - halfHeight);
+      maxY = Math.max(maxY, node.y + halfHeight);
+    });
+
+    // Nothing matched, or the layout has not produced coordinates yet.
+    if (!Number.isFinite(minX)) return;
+
+    const fitZoom = Math.min(
+      (rect.width - FIT_PADDING_PX * 2) / (maxX - minX),
+      (rect.height - FIT_PADDING_PX * 2) / (maxY - minY)
+    );
+
+    canvas.centerAt((minX + maxX) / 2, (minY + maxY) / 2, FIT_ANIMATION_MS);
+
+    const zoom = Math.min(Math.max(fitZoom, FIT_MIN_ZOOM), FIT_MAX_ZOOM);
+    // The canvas' own zoom() is instant, so go through force-graph to keep the
+    // pan and the zoom on the same animation.
+    const graph = canvas.getGraph();
+
+    if (graph) {
+      graph.zoom(zoom, FIT_ANIMATION_MS);
+    } else {
+      canvas.zoom(zoom);
+    }
+  }, [schemaData]);
+
   // Convert schema data to canvas format
   const convertToCanvasData = useCallback((data: SchemaData): Data => {
     const nodes = data.nodes.map((node) => {
-      // Calculate node size based on height (same calculation as in nodeCanvasObject)
-      const columns = node.columns || [];
-      const lineHeight = 14;
-      const padding = 8;
-      const headerHeight = 20;
-      const nodeHeight = headerHeight + columns.length * lineHeight + padding * 2;
+      const nodeHeight = tableNodeHeight((node.columns || []).length);
 
       // Use the larger dimension as collision radius (in pixels)
       const size = Math.max(NODE_WIDTH / 2, nodeHeight / 2);
@@ -340,9 +403,9 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
     if (!canvas || !canvasLoaded || !schemaData) return;
 
     const nodeCanvasObject = (node: GraphNode, ctx: CanvasRenderingContext2D) => {
-      const lineHeight = 14;
-      const padding = 8;
-      const headerHeight = 20;
+      const lineHeight = NODE_LINE_HEIGHT;
+      const padding = NODE_PADDING;
+      const headerHeight = NODE_HEADER_HEIGHT;
       const fontSize = 12;
 
       // Theme-aware colors
@@ -364,7 +427,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
 
       const columns = schemaNode.columns || [];
 
-      const nodeHeight = headerHeight + columns.length * lineHeight + padding * 2;
+      const nodeHeight = tableNodeHeight(columns.length);
 
       const previousAlpha = ctx.globalAlpha;
       if (isDimmed) {
@@ -448,10 +511,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
       if (!schemaNode) return;
 
       const columns = schemaNode.columns || [];
-      const lineHeight = 14;
-      const padding = 8;
-      const headerHeight = 20;
-      const nodeHeight = headerHeight + columns.length * lineHeight + padding * 2;
+      const nodeHeight = tableNodeHeight(columns.length);
 
       ctx.fillStyle = color;
       const areaPadding = 5;
@@ -522,16 +582,14 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
 
   // Bring the highlighted tables into view when a query is selected
   useEffect(() => {
-    const canvas = canvasRef.current;
-
-    if (!canvas || !canvasLoaded || !hasHighlight) return;
+    if (!canvasLoaded || !hasHighlight) return;
 
     const timer = setTimeout(() => {
-      canvas.zoomToFit(1.5, (node: GraphNode) => highlightedNodeIds.has(node.id));
+      frameNodes((nodeId) => highlightedNodeIds.has(nodeId));
     }, HIGHLIGHT_ZOOM_DELAY_MS);
 
     return () => clearTimeout(timer);
-  }, [canvasLoaded, hasHighlight, highlightedNodeIds]);
+  }, [canvasLoaded, hasHighlight, highlightedNodeIds, frameNodes]);
 
   if (!isOpen) return null;
 
@@ -580,6 +638,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
           onFocusModeChange={setFocusMode}
           selectedTableId={selectedTableId}
           onSelectTable={setSelectedTableId}
+          onFrameNodes={frameNodes}
         />
 
         {/* Highlight status */}
