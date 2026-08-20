@@ -1,6 +1,5 @@
 """Snowflake loader for loading database schemas into FalkorDB graphs."""
 
-import asyncio
 import base64
 import datetime
 import decimal
@@ -19,6 +18,7 @@ from snowflake.connector import DictCursor
 from api.config import Config
 from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
+from api.loaders.introspection import run_introspection
 
 
 class SnowflakeQueryError(Exception):
@@ -257,6 +257,14 @@ class SnowflakeLoader(BaseLoader):
         conn = None
         cursor = None
         try:
+            # Bound the introspection itself, not just the login: cancelling
+            # the awaiting task cannot stop this thread.
+            conn_params = dict(conn_params)
+            conn_params["network_timeout"] = Config.DB_SCHEMA_TIMEOUT
+            conn_params["session_parameters"] = {
+                **(conn_params.get("session_parameters") or {}),
+                "STATEMENT_TIMEOUT_IN_SECONDS": Config.DB_SCHEMA_TIMEOUT,
+            }
             conn = snowflake.connector.connect(**conn_params)
             cursor = conn.cursor(DictCursor)
             entities = SnowflakeLoader.extract_tables_info(
@@ -295,7 +303,7 @@ class SnowflakeLoader(BaseLoader):
             schema_name = conn_params['schema'].upper()
 
             yield True, "Extracting table information..."
-            entities, relationships = await asyncio.to_thread(
+            entities, relationships = await run_introspection(
                 SnowflakeLoader._introspect_schema,
                 conn_params, db_name, schema_name,
             )

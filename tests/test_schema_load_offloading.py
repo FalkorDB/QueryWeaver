@@ -7,11 +7,13 @@ whole load and can be severed by an idle timeout.
 """
 
 import asyncio
+import threading
 import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from api.config import Config
 from api.core.pipeline import MySQLLoader, PostgresLoader
 
 STALL = 0.3
@@ -183,3 +185,93 @@ async def test_failed_introspection_still_closes_the_connection(
     # ...and the connection is closed regardless.
     assert conn.close.called, "connection leaked when introspection failed"
 
+
+
+@pytest.mark.unit
+@patch("api.loaders.postgres_loader.load_to_graph")
+@patch("api.loaders.postgres_loader.PostgresLoader.extract_relationships", _slow)
+@patch("api.loaders.postgres_loader.PostgresLoader.extract_tables_info", _slow)
+@patch("api.loaders.postgres_loader.psycopg2.connect")
+async def test_postgres_schema_introspection_is_time_bounded(
+    mock_connect, mock_load_to_graph
+):
+    """Introspection carries its own, larger server-side deadline.
+
+    A connect timeout alone is not enough: cancelling the awaiting task cannot
+    stop the driver call, so a database that accepts the connection and then
+    stalls would hold the session and the worker until it answered.
+    """
+    async def noop(*_args, **_kwargs):
+        return None
+
+    mock_load_to_graph.side_effect = noop
+    mock_connect.return_value = MagicMock()
+
+    async for _ in PostgresLoader.load("pfx", "postgresql://u:p@h:5432/db"):
+        pass
+
+    kwargs = mock_connect.call_args.kwargs
+    assert kwargs["connect_timeout"] == Config.DB_CONNECT_TIMEOUT
+    expected = f"-c statement_timeout={Config.DB_SCHEMA_TIMEOUT * 1000}"
+    assert kwargs["options"] == expected
+    # Deliberately larger than the user-query ceiling: metadata work over a
+    # whole database legitimately outlasts a single query.
+    assert Config.DB_SCHEMA_TIMEOUT > Config.DB_STATEMENT_TIMEOUT
+
+
+@pytest.mark.unit
+@patch("api.loaders.mysql_loader.pymysql.connect")
+async def test_mysql_schema_introspection_is_time_bounded(mock_connect):
+    cursor = MagicMock()
+    cursor.description = None
+    mock_connect.return_value.cursor.return_value = cursor
+
+    with patch.object(MySQLLoader, "extract_tables_info", lambda *_a: {}), \
+         patch.object(MySQLLoader, "extract_relationships", lambda *_a: {}), \
+         patch("api.loaders.mysql_loader.load_to_graph") as load_to_graph:
+        async def noop(*_args, **_kwargs):
+            return None
+
+        load_to_graph.side_effect = noop
+        async for _ in MySQLLoader.load("pfx", "mysql://u:p@h:3306/db"):
+            pass
+
+    kwargs = mock_connect.call_args.kwargs
+    assert kwargs["connect_timeout"] == Config.DB_CONNECT_TIMEOUT
+    assert kwargs["read_timeout"] == Config.DB_SCHEMA_TIMEOUT
+    assert kwargs["write_timeout"] == Config.DB_SCHEMA_TIMEOUT
+
+
+@pytest.mark.unit
+async def test_schema_introspection_concurrency_is_bounded(monkeypatch):
+    """Only DB_SCHEMA_CONCURRENCY introspections may hold workers at once.
+
+    The executor is shared with every other offloaded call, so unbounded schema
+    work against a stalled database could starve LLM, embedding and user-SQL
+    calls alike.
+    """
+    import api.loaders.introspection as introspection
+
+    monkeypatch.setattr(introspection, "_SLOTS", None)
+    monkeypatch.setattr(Config, "DB_SCHEMA_CONCURRENCY", 2, raising=False)
+
+    live = 0
+    peak = 0
+    lock = threading.Lock()
+
+    def blocking_work():
+        nonlocal live, peak
+        with lock:
+            live += 1
+            peak = max(peak, live)
+        time.sleep(STALL)
+        with lock:
+            live -= 1
+        return "done"
+
+    results = await asyncio.gather(
+        *(introspection.run_introspection(blocking_work) for _ in range(6))
+    )
+
+    assert results == ["done"] * 6
+    assert peak <= 2, f"{peak} introspections ran concurrently, cap is 2"

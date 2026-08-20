@@ -6,6 +6,7 @@ This module contains the configuration for the text2sql module.
 import os
 import time
 import logging
+import math
 import dataclasses
 from typing import Union
 
@@ -127,6 +128,13 @@ def _positive_env(name: str, default: str, cast=int):
         raise ValueError(
             f"{name} must be a positive number (got {raw!r})"
         ) from exc
+    # ``nan`` and ``inf`` are floats that pass a ``<= 0`` test: nan compares
+    # False against everything, and inf is a deadline that never expires.
+    if not math.isfinite(value):
+        raise ValueError(
+            f"{name} must be a finite number (got {raw!r}); nan and inf are not "
+            "usable deadlines"
+        )
     if value <= 0:
         raise ValueError(
             f"{name} must be greater than 0 (got {raw!r}); a zero or negative "
@@ -136,7 +144,7 @@ def _positive_env(name: str, default: str, cast=int):
 
 
 @dataclasses.dataclass
-class Config:
+class Config:  # pylint: disable=too-many-instance-attributes
     """
     Configuration class for the text2sql module.
     """
@@ -223,6 +231,21 @@ class Config:
     DB_CONNECT_TIMEOUT: int = _positive_env("DB_CONNECT_TIMEOUT", "10")
     # pylint: disable-next=invalid-name
     DB_STATEMENT_TIMEOUT: int = _positive_env("DB_STATEMENT_TIMEOUT", "60")
+
+    # Schema introspection gets its own, larger deadline: it is metadata work
+    # over a whole database, so the user-query ceiling is too tight, but it
+    # still needs a bound. Cancelling the awaiting task does not stop the
+    # driver call, so without this a stalled database holds both a session and
+    # a worker thread until it decides to answer.
+    # pylint: disable-next=invalid-name
+    DB_SCHEMA_TIMEOUT: int = _positive_env("DB_SCHEMA_TIMEOUT", "300")
+
+    # How many schema introspections may occupy worker threads at once. The
+    # default executor is shared with every other offloaded call (LLM,
+    # embedding, user SQL), so unbounded schema work on a stalled database
+    # could starve all of it.
+    # pylint: disable-next=invalid-name
+    DB_SCHEMA_CONCURRENCY: int = _positive_env("DB_SCHEMA_CONCURRENCY", "2")
 
     DB_MAX_DISTINCT: int = 100  # pylint: disable=invalid-name
     DB_UNIQUENESS_THRESHOLD: float = 0.5  # pylint: disable=invalid-name

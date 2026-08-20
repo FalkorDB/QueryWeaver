@@ -1,6 +1,5 @@
 """PostgreSQL loader for loading database schemas into FalkorDB graphs."""
 
-import asyncio
 import re
 import datetime
 import decimal
@@ -15,6 +14,14 @@ import tqdm
 from api.config import Config
 from api.loaders.base_loader import BaseLoader  # pylint: disable=import-error
 from api.loaders.graph_loader import load_to_graph  # pylint: disable=import-error
+from api.loaders.introspection import run_introspection
+
+# A real ``-c statement_timeout=<value>`` directive, case-insensitive (GUC
+# names are), capturing an optionally quoted value that may carry a unit.
+_STATEMENT_TIMEOUT_RE = re.compile(
+    r"(?i)(?:^|\s)-c\s*statement_timeout\s*=\s*"
+    r"('[^']*'|\"[^\"]*\"|\S*)"
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -142,6 +149,37 @@ class PostgresLoader(BaseLoader):
             return 'public'
 
     @staticmethod
+    def _statement_timeout_ms(raw: str):
+        """Normalise a ``statement_timeout`` value to milliseconds.
+
+        PostgreSQL accepts a bare number (milliseconds) or a number with a unit
+        (``us``, ``ms``, ``s``, ``min``, ``h``, ``d``), optionally quoted. A
+        URL asking for ``5s`` is stricter than a 60s ceiling and should be
+        honoured, so the value has to be understood rather than pattern-matched
+        as digits. Returns ``None`` when the value is not something we can
+        compare, in which case the configured ceiling is used instead.
+        """
+        value = raw.strip().strip('"\'')
+        match = re.fullmatch(
+            r"(?i)\s*(\d+(?:\.\d+)?)\s*(us|ms|s|min|h|d)?\s*", value
+        )
+        if not match:
+            return None
+        amount = float(match.group(1))
+        unit = (match.group(2) or "ms").lower()
+        factors = {
+            "us": 0.001, "ms": 1, "s": 1000,
+            "min": 60_000, "h": 3_600_000, "d": 86_400_000,
+        }
+        milliseconds = amount * factors[unit]
+        if milliseconds <= 0:
+            return None
+        # Round up so a sub-millisecond request (e.g. ``500us``) is honoured as
+        # the strictest representable bound rather than truncated to 0 and
+        # discarded, which would silently loosen it to the ceiling.
+        return max(1, int(milliseconds))
+
+    @staticmethod
     def _introspect_schema(connection_url: str, schema: str):
         """Connect, introspect and close — all inside one worker thread.
 
@@ -160,8 +198,14 @@ class PostgresLoader(BaseLoader):
         conn = None
         cursor = None
         try:
+            # A server-side deadline for the introspection itself, larger
+            # than the user-query ceiling but still bounded: cancelling the
+            # awaiting task cannot stop this thread, so a stalled database
+            # would otherwise hold the session and the worker indefinitely.
             conn = psycopg2.connect(
-                connection_url, connect_timeout=Config.DB_CONNECT_TIMEOUT
+                connection_url,
+                connect_timeout=Config.DB_CONNECT_TIMEOUT,
+                options=f"-c statement_timeout={Config.DB_SCHEMA_TIMEOUT * 1000}",
             )
             cursor = conn.cursor()
 
@@ -209,7 +253,7 @@ class PostgresLoader(BaseLoader):
                 db_name = db_name.split('?')[0]
 
             yield True, "Extracting table information..."
-            entities, relationships = await asyncio.to_thread(
+            entities, relationships = await run_introspection(
                 PostgresLoader._introspect_schema, connection_url, schema
             )
 
@@ -567,32 +611,28 @@ class PostgresLoader(BaseLoader):
         url_options = url_params.get("options", [""])[0]
         kwargs: Dict[str, Any] = {}
 
-        # The configured values are maximums, not defaults: a URL may tighten
-        # them but must not loosen them or switch them off. In libpq a timeout
-        # of 0 means "no limit", which would let one query hold an
-        # uncancellable worker thread indefinitely.
+        # The configured value is a maximum, not a default: a URL may tighten
+        # it but must not loosen it or switch it off. In libpq a timeout of 0
+        # means "no limit", which would let one query hold an uncancellable
+        # worker thread indefinitely.
         #
-        # Every accepted directive is removed and exactly one normalised bound
-        # appended. Leaving any in place is not safe: libpq applies the last
-        # occurrence, so `statement_timeout=1000 ... statement_timeout=0` would
-        # end up unbounded, and a unit-bearing value like `2min` is not
-        # comparable to our millisecond ceiling.
-        #
-        # The pattern matches a real directive, not the bare word: a substring
-        # test would also hit `-c application_name=statement_timeout_probe`.
+        # Every directive is removed and exactly one canonical bound appended.
+        # Leaving any in place is unsafe: libpq applies the last occurrence, so
+        # `statement_timeout=1000 ... statement_timeout=0` would end up
+        # unbounded. GUC names are case-insensitive, so an uppercase directive
+        # left behind would win over ours.
         timeout_ms = Config.DB_STATEMENT_TIMEOUT * 1000
-        directive = re.compile(r"(?:^|\s)-c\s*statement_timeout\s*=\s*(\S*)")
-        found = directive.findall(url_options)
-        stripped = directive.sub(" ", url_options).strip()
+        requested = [
+            ms for ms in (
+                PostgresLoader._statement_timeout_ms(raw)
+                for raw in _STATEMENT_TIMEOUT_RE.findall(url_options)
+            )
+            if ms is not None and ms > 0
+        ]
+        # Strictest wins, and never looser than the configured ceiling.
+        effective_ms = min([timeout_ms, *requested])
 
-        # Honour a URL value only when it is unambiguous: a single directive,
-        # plain milliseconds, and no looser than the configured ceiling.
-        effective_ms = timeout_ms
-        if len(found) == 1 and found[0].isdigit():
-            requested = int(found[0])
-            if 0 < requested <= timeout_ms:
-                effective_ms = requested
-
+        stripped = _STATEMENT_TIMEOUT_RE.sub(" ", url_options).strip()
         options = f"{stripped} -c statement_timeout={effective_ms}".strip()
         if options:
             kwargs["options"] = options

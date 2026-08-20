@@ -133,24 +133,56 @@ def test_snowflake_overrides_parser_timeout_defaults(mock_connect):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("url_options,reason", [
-    ("-c%20statement_timeout%3D1000%20-c%20statement_timeout%3D0", "duplicate, last disables"),
-    ("-c%20statement_timeout%3D0%20-c%20statement_timeout%3D1000", "duplicate, first disables"),
-    ("-c%20statement_timeout%3D2min", "unit-bearing value"),
-    ("-c%20statement_timeout%3D%20", "empty value"),
-    ("-c%20statement_timeout%3D-5", "negative value"),
+@pytest.mark.parametrize("url_options,expected_ms,reason", [
+    # libpq applies the last directive, so none may survive; the strictest
+    # positive value wins and a disabling 0 is ignored entirely.
+    ("-c%20statement_timeout%3D1000%20-c%20statement_timeout%3D0", 1000,
+     "duplicate, last disables"),
+    ("-c%20statement_timeout%3D0%20-c%20statement_timeout%3D1000", 1000,
+     "duplicate, first disables"),
+    ("-c%20STATEMENT_TIMEOUT%3D0%20-c%20statement_timeout%3D3000", 3000,
+     "mixed case duplicate"),
+    ("-c%20statement_timeout%3D2min", None, "looser unit value"),
+    ("-c%20statement_timeout%3D0", None, "disabled"),
+    ("-c%20statement_timeout%3D%20", None, "empty value"),
+    ("-c%20statement_timeout%3D-5", None, "negative value"),
+    ("-c%20statement_timeout%3D0s", None, "zero with a unit"),
 ])
-def test_postgres_clamp_is_not_bypassable(url_options, reason):
-    """libpq applies the last directive, so none may survive.
+def test_postgres_clamp_is_not_bypassable(url_options, expected_ms, reason):
+    """Exactly one directive survives, never looser than the ceiling.
 
-    Leaving an accepted directive in place lets ``statement_timeout=1000 ...
-    statement_timeout=0`` end up unbounded, and a unit-bearing value like
-    ``2min`` is not comparable to the millisecond ceiling.
+    ``expected_ms=None`` means the configured ceiling applies.
     """
+    ceiling = Config.DB_STATEMENT_TIMEOUT * 1000
     kwargs = PostgresLoader._execution_connect_kwargs(f"{PG_URL}?options={url_options}")
-    expected = f"-c statement_timeout={Config.DB_STATEMENT_TIMEOUT * 1000}"
-    assert kwargs["options"] == expected, reason
-    assert kwargs["options"].count("statement_timeout") == 1, reason
+    options = kwargs["options"]
+
+    assert options.lower().count("statement_timeout") == 1, reason
+    assert options == f"-c statement_timeout={expected_ms or ceiling}", reason
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("value,expected_ms", [
+    ("5s", 5_000),          # stricter than the 60s ceiling, so honoured
+    ("5000", 5_000),        # bare numbers are milliseconds
+    ("'5s'", 5_000),        # quoted
+    ("500us", 1),           # sub-millisecond rounds up rather than truncating
+    ("1min", 60_000),       # equal to the ceiling
+    ("2min", None),         # looser, so clamped
+])
+def test_postgres_honours_stricter_units_and_case(value, expected_ms):
+    """PostgreSQL accepts units, quotes and any case; all must be understood.
+
+    Treating only lowercase bare digits as valid silently loosened a URL asking
+    for ``5s`` to the configured 60s.
+    """
+    ceiling = Config.DB_STATEMENT_TIMEOUT * 1000
+    quoted = value.replace("'", "%27").replace(" ", "%20")
+    for name in ("statement_timeout", "STATEMENT_TIMEOUT", "Statement_Timeout"):
+        kwargs = PostgresLoader._execution_connect_kwargs(
+            f"{PG_URL}?options=-c%20{name}%3D{quoted}"
+        )
+        assert kwargs["options"] == f"-c statement_timeout={expected_ms or ceiling}", name
 
 
 @pytest.mark.unit

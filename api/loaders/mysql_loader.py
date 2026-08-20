@@ -1,6 +1,5 @@
 """MySQL loader for loading database schemas into FalkorDB graphs."""
 
-import asyncio
 import datetime
 import decimal
 import logging
@@ -15,6 +14,7 @@ from pymysql.cursors import DictCursor
 from api.config import Config
 from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
+from api.loaders.introspection import run_introspection
 
 
 class MySQLQueryError(Exception):
@@ -170,8 +170,14 @@ class MySQLLoader(BaseLoader):
         conn = None
         cursor = None
         try:
+            # Socket deadlines for the introspection itself, larger than the
+            # user-query ceiling but still bounded: cancelling the awaiting
+            # task cannot stop this thread.
             conn = pymysql.connect(
-                connect_timeout=Config.DB_CONNECT_TIMEOUT, **conn_params
+                connect_timeout=Config.DB_CONNECT_TIMEOUT,
+                read_timeout=Config.DB_SCHEMA_TIMEOUT,
+                write_timeout=Config.DB_SCHEMA_TIMEOUT,
+                **conn_params,
             )
             cursor = conn.cursor(DictCursor)
             entities = MySQLLoader.extract_tables_info(cursor, db_name)
@@ -206,7 +212,7 @@ class MySQLLoader(BaseLoader):
             db_name = conn_params['database']
 
             yield True, "Extracting table information..."
-            entities, relationships = await asyncio.to_thread(
+            entities, relationships = await run_introspection(
                 MySQLLoader._introspect_schema, conn_params, db_name
             )
 
