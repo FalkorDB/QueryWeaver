@@ -70,6 +70,8 @@ const linkKey = (source: unknown, target: unknown): string =>
 // Must stay above the canvas' `interaction.zoomToFitDelay` (50ms default) so the
 // highlight framing is applied after the canvas' own initial fit.
 const HIGHLIGHT_ZOOM_DELAY_MS = 100;
+/** How long to keep retrying the highlight framing while the layout settles. */
+const HIGHLIGHT_ZOOM_TIMEOUT_MS = 2000;
 
 const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: SchemaViewerProps) => {
   const canvasRef = useRef<FalkorDBCanvas>(null);
@@ -309,14 +311,14 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
   // The canvas' own zoomToFit frames node centres, so a tall table gets clipped
   // and a single table is zoomed to the configured maximum whatever its size.
   // Frame the rendered cards instead.
-  const frameNodes = useCallback((match?: (nodeId: number) => boolean) => {
+  const frameNodes = useCallback((match?: (nodeId: number) => boolean): boolean => {
     const canvas = canvasRef.current;
 
-    if (!canvas || !schemaData) return;
+    if (!canvas || !schemaData) return false;
 
     const rect = canvas.getBoundingClientRect();
 
-    if (!rect.width || !rect.height) return;
+    if (!rect.width || !rect.height) return false;
 
     let minX = Infinity;
     let maxX = -Infinity;
@@ -337,11 +339,12 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
     });
 
     // Nothing matched, or the layout has not produced coordinates yet.
-    if (!Number.isFinite(minX)) return;
+    if (!Number.isFinite(minX)) return false;
 
+    // A panel narrower than the padding would otherwise ask for a negative area.
     const fitZoom = Math.min(
-      (rect.width - FIT_PADDING_PX * 2) / (maxX - minX),
-      (rect.height - FIT_PADDING_PX * 2) / (maxY - minY)
+      Math.max(rect.width - FIT_PADDING_PX * 2, 1) / (maxX - minX),
+      Math.max(rect.height - FIT_PADDING_PX * 2, 1) / (maxY - minY)
     );
 
     canvas.centerAt((minX + maxX) / 2, (minY + maxY) / 2, FIT_ANIMATION_MS);
@@ -356,6 +359,8 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
     } else {
       canvas.zoom(zoom);
     }
+
+    return true;
   }, [schemaData]);
 
   // Convert schema data to canvas format
@@ -580,15 +585,27 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
     canvas.setGraphData(canvasData);
   }, [schemaData, canvasLoaded, convertToCanvasData]);
 
-  // Bring the highlighted tables into view when a query is selected
+  // Bring the highlighted tables into view when a query is selected. A slow
+  // layout may not have produced coordinates yet, so keep retrying until it has.
   useEffect(() => {
     if (!canvasLoaded || !hasHighlight) return;
 
-    const timer = setTimeout(() => {
-      frameNodes((nodeId) => highlightedNodeIds.has(nodeId));
-    }, HIGHLIGHT_ZOOM_DELAY_MS);
+    let frame = 0;
+    const deadline = Date.now() + HIGHLIGHT_ZOOM_TIMEOUT_MS;
 
-    return () => clearTimeout(timer);
+    const attempt = () => {
+      if (frameNodes((nodeId) => highlightedNodeIds.has(nodeId))) return;
+      if (Date.now() >= deadline) return;
+
+      frame = requestAnimationFrame(attempt);
+    };
+
+    const timer = setTimeout(attempt, HIGHLIGHT_ZOOM_DELAY_MS);
+
+    return () => {
+      clearTimeout(timer);
+      cancelAnimationFrame(frame);
+    };
   }, [canvasLoaded, hasHighlight, highlightedNodeIds, frameNodes]);
 
   if (!isOpen) return null;
