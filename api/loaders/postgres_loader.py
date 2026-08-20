@@ -142,6 +142,45 @@ class PostgresLoader(BaseLoader):
             return 'public'
 
     @staticmethod
+    def _introspect_schema(connection_url: str, schema: str):
+        """Connect, introspect and close — all inside one worker thread.
+
+        Everything touching the driver lives here so the connection and cursor
+        are created, used and closed by the same thread. Closing them from the
+        event loop instead (in the generator's ``finally``) can run while an
+        offloaded introspection is still using them, because cancelling a
+        ``to_thread`` call does not stop the thread it is running in: the
+        result is two threads on one connection. Keeping cleanup in the worker
+        also means a client disconnect cannot leak the connection.
+
+        Only the connect is time-bounded: introspecting a very large schema can
+        legitimately outlast DB_STATEMENT_TIMEOUT, which is sized for user
+        queries.
+        """
+        conn = None
+        cursor = None
+        try:
+            conn = psycopg2.connect(
+                connection_url, connect_timeout=Config.DB_CONNECT_TIMEOUT
+            )
+            cursor = conn.cursor()
+
+            # Set the session search_path to the parsed schema so unqualified
+            # table references (e.g. in sample queries) resolve correctly.
+            cursor.execute(
+                sql.SQL("SET search_path TO {}").format(sql.Identifier(schema))
+            )
+
+            entities = PostgresLoader.extract_tables_info(cursor, schema)
+            relationships = PostgresLoader.extract_relationships(cursor, schema)
+            return entities, relationships
+        finally:
+            if cursor is not None:
+                cursor.close()
+            if conn is not None:
+                conn.close()
+
+    @staticmethod
     async def load(  # pylint: disable=arguments-differ
         prefix: str,
         connection_url: str,
@@ -160,55 +199,19 @@ class PostgresLoader(BaseLoader):
         Returns:
             Tuple[bool, str]: Success status and message
         """
-        conn = None
-        cursor = None
         try:
             # Parse schema from connection URL (defaults to 'public')
             schema = PostgresLoader.parse_schema_from_url(connection_url)
-
-            # Off-loop: psycopg2 is a blocking driver and this generator backs
-            # the connect/refresh streaming responses. Running introspection
-            # inline blocks the event loop, so those streams cannot emit
-            # keepalives while a large schema loads. Only the connect is
-            # time-bounded here: introspecting a very large schema can
-            # legitimately outlast DB_STATEMENT_TIMEOUT, which is sized for
-            # user queries.
-            conn = await asyncio.to_thread(
-                psycopg2.connect,
-                connection_url,
-                connect_timeout=Config.DB_CONNECT_TIMEOUT,
-            )
-            cursor = conn.cursor()
-
-            # Set the session search_path to the parsed schema so unqualified
-            # table references (e.g. in sample queries) resolve correctly.
-            await asyncio.to_thread(
-                cursor.execute,
-                sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)),
-            )
 
             # Extract database name from connection URL
             db_name = connection_url.split('/')[-1]
             if '?' in db_name:
                 db_name = db_name.split('?')[0]
 
-            # Get all table information
             yield True, "Extracting table information..."
-            entities = await asyncio.to_thread(
-                PostgresLoader.extract_tables_info, cursor, schema
+            entities, relationships = await asyncio.to_thread(
+                PostgresLoader._introspect_schema, connection_url, schema
             )
-
-            yield True, "Extracting relationship information..."
-            # Get all relationship information
-            relationships = await asyncio.to_thread(
-                PostgresLoader.extract_relationships, cursor, schema
-            )
-
-            # Close database connection before graph loading
-            cursor.close()
-            cursor = None
-            conn.close()
-            conn = None
 
             yield True, "Loading data into graph..."
             # Load data into graph
@@ -224,11 +227,6 @@ class PostgresLoader(BaseLoader):
         except Exception as e:  # pylint: disable=broad-exception-caught
             logging.error("Error loading PostgreSQL schema: %s", e)
             yield False, "Failed to load PostgreSQL database schema"
-        finally:
-            if cursor is not None:
-                cursor.close()
-            if conn is not None:
-                conn.close()
 
     @staticmethod
     def extract_tables_info(cursor: Any, schema: str = 'public') -> Dict[str, Any]:
@@ -570,26 +568,32 @@ class PostgresLoader(BaseLoader):
         kwargs: Dict[str, Any] = {}
 
         # The configured values are maximums, not defaults: a URL may tighten
-        # them but must not loosen them or switch them off. In libpq and
-        # psycopg2 a timeout of 0 means "no limit", which would let one query
-        # hold a shared worker thread indefinitely.
+        # them but must not loosen them or switch them off. In libpq a timeout
+        # of 0 means "no limit", which would let one query hold an
+        # uncancellable worker thread indefinitely.
         #
-        # Match an actual directive, not the bare word: a substring test would
-        # also hit something like ``-c application_name=statement_timeout_probe``
-        # and silently skip our bound.
+        # Every accepted directive is removed and exactly one normalised bound
+        # appended. Leaving any in place is not safe: libpq applies the last
+        # occurrence, so `statement_timeout=1000 ... statement_timeout=0` would
+        # end up unbounded, and a unit-bearing value like `2min` is not
+        # comparable to our millisecond ceiling.
+        #
+        # The pattern matches a real directive, not the bare word: a substring
+        # test would also hit `-c application_name=statement_timeout_probe`.
         timeout_ms = Config.DB_STATEMENT_TIMEOUT * 1000
-        url_statement_timeout = re.search(
-            r"(?:^|\s)-c\s*statement_timeout\s*=\s*(\d+)", url_options
-        )
-        if url_statement_timeout and 0 < int(url_statement_timeout.group(1)) <= timeout_ms:
-            options = url_options
-        else:
-            # Drop any existing directive so ours is not merely appended
-            # alongside a disabled or looser value.
-            stripped = re.sub(
-                r"(?:^|\s)-c\s*statement_timeout\s*=\s*\S*", " ", url_options
-            ).strip()
-            options = f"{stripped} -c statement_timeout={timeout_ms}".strip()
+        directive = re.compile(r"(?:^|\s)-c\s*statement_timeout\s*=\s*(\S*)")
+        found = directive.findall(url_options)
+        stripped = directive.sub(" ", url_options).strip()
+
+        # Honour a URL value only when it is unambiguous: a single directive,
+        # plain milliseconds, and no looser than the configured ceiling.
+        effective_ms = timeout_ms
+        if len(found) == 1 and found[0].isdigit():
+            requested = int(found[0])
+            if 0 < requested <= timeout_ms:
+                effective_ms = requested
+
+        options = f"{stripped} -c statement_timeout={effective_ms}".strip()
         if options:
             kwargs["options"] = options
 

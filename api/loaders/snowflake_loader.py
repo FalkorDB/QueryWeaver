@@ -243,6 +243,36 @@ class SnowflakeLoader(BaseLoader):
         return conn_params
 
     @staticmethod
+    def _introspect_schema(
+        conn_params: Dict[str, Any], db_name: str, schema_name: str
+    ):
+        """Connect, introspect and close — all inside one worker thread.
+
+        Same reasoning as the other loaders: cleanup belongs in the thread that
+        owns the connection. Cancelling a ``to_thread`` call does not stop the
+        thread, and without a ``finally`` here a client disconnect leaked the
+        session outright. The parser's login/network timeouts bound the
+        connect.
+        """
+        conn = None
+        cursor = None
+        try:
+            conn = snowflake.connector.connect(**conn_params)
+            cursor = conn.cursor(DictCursor)
+            entities = SnowflakeLoader.extract_tables_info(
+                cursor, db_name, schema_name
+            )
+            relationships = SnowflakeLoader.extract_relationships(
+                cursor, db_name, schema_name
+            )
+            return entities, relationships
+        finally:
+            if cursor is not None:
+                cursor.close()
+            if conn is not None:
+                conn.close()
+
+    @staticmethod
     async def load(prefix: str, connection_url: str) -> AsyncGenerator[
         tuple[bool, str], None
     ]:
@@ -259,37 +289,16 @@ class SnowflakeLoader(BaseLoader):
         try:
             # Parse connection URL
             conn_params = SnowflakeLoader._parse_snowflake_url(connection_url)
-
-            # Off-loop, as in the other loaders: this generator backs the
-            # connect/refresh streaming responses, and inline introspection
-            # blocks the event loop so no stream can emit keepalives. The
-            # parser's login/network timeouts already bound the connect.
-            conn = await asyncio.to_thread(
-                snowflake.connector.connect, **conn_params
-            )
-            cursor = conn.cursor(DictCursor)
-
-            # Get database and schema name
             db_name = conn_params['database']
             # Snowflake stores unquoted identifiers in UPPERCASE;
             # INFORMATION_SCHEMA lookups require the canonical form.
             schema_name = conn_params['schema'].upper()
 
-            # Get all table information
             yield True, "Extracting table information..."
-            entities = await asyncio.to_thread(
-                SnowflakeLoader.extract_tables_info, cursor, db_name, schema_name
+            entities, relationships = await asyncio.to_thread(
+                SnowflakeLoader._introspect_schema,
+                conn_params, db_name, schema_name,
             )
-
-            # Get all relationship information
-            yield True, "Extracting relationship information..."
-            relationships = await asyncio.to_thread(
-                SnowflakeLoader.extract_relationships, cursor, db_name, schema_name
-            )
-
-            # Close database connection
-            cursor.close()
-            conn.close()
 
             # Load data into graph
             yield True, "Loading data into graph..."

@@ -130,3 +130,37 @@ def test_snowflake_overrides_parser_timeout_defaults(mock_connect):
         params["session_parameters"]["STATEMENT_TIMEOUT_IN_SECONDS"]
         == Config.DB_STATEMENT_TIMEOUT
     )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("url_options,reason", [
+    ("-c%20statement_timeout%3D1000%20-c%20statement_timeout%3D0", "duplicate, last disables"),
+    ("-c%20statement_timeout%3D0%20-c%20statement_timeout%3D1000", "duplicate, first disables"),
+    ("-c%20statement_timeout%3D2min", "unit-bearing value"),
+    ("-c%20statement_timeout%3D%20", "empty value"),
+    ("-c%20statement_timeout%3D-5", "negative value"),
+])
+def test_postgres_clamp_is_not_bypassable(url_options, reason):
+    """libpq applies the last directive, so none may survive.
+
+    Leaving an accepted directive in place lets ``statement_timeout=1000 ...
+    statement_timeout=0`` end up unbounded, and a unit-bearing value like
+    ``2min`` is not comparable to the millisecond ceiling.
+    """
+    kwargs = PostgresLoader._execution_connect_kwargs(f"{PG_URL}?options={url_options}")
+    expected = f"-c statement_timeout={Config.DB_STATEMENT_TIMEOUT * 1000}"
+    assert kwargs["options"] == expected, reason
+    assert kwargs["options"].count("statement_timeout") == 1, reason
+
+
+@pytest.mark.unit
+def test_postgres_clamp_keeps_unrelated_options():
+    """Stripping the timeout directives must not drop other settings."""
+    kwargs = PostgresLoader._execution_connect_kwargs(
+        f"{PG_URL}?options=-c%20search_path%3Dfoo%20-c%20statement_timeout%3D0"
+    )
+    assert "search_path=foo" in kwargs["options"]
+    assert kwargs["options"].endswith(
+        f"-c statement_timeout={Config.DB_STATEMENT_TIMEOUT * 1000}"
+    )
+

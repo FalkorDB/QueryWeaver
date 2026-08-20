@@ -338,13 +338,6 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
 
     logging.info("User Query: %s", sanitize_query(queries_history[-1]))
 
-    # Memory tool created concurrently with relevancy/find work — small perf
-    # win for streaming, harmless for SDK. Lazy-imported via _create_memory_tool.
-    memory_tool_task = (
-        asyncio.create_task(_create_memory_tool(user_id, namespaced, db=db))
-        if use_memory else None
-    )
-
     yield {
         "type": "reasoning_step",
         "final_response": False,
@@ -369,24 +362,21 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
         ))
         return
 
-    # Concurrent: relevancy check + table-finding
-    find_task = asyncio.create_task(
-        find(namespaced, queries_history, db_description, db=db)
-    )
+    # Relevancy runs before table-finding and memory-tool creation, not
+    # alongside them. Both of those make provider calls in worker threads, and
+    # a thread blocked in a socket read cannot be cancelled from Python: on an
+    # off-topic question, cancelling the task abandons the *task* while the
+    # call keeps running to completion, consuming executor capacity and
+    # provider quota after the response has already been sent. Repeated
+    # off-topic requests could saturate the thread pool that every other
+    # offloaded call depends on. Sequencing costs one relevancy round-trip on
+    # answerable questions and starts no work that cannot be used.
     agent_rel = RelevancyAgent(
         queries_history, result_history, custom_api_key, custom_model,
     )
-    relevancy_task = asyncio.create_task(
-        agent_rel.get_answer(queries_history[-1], db_description)
-    )
-    answer_rel = await relevancy_task
+    answer_rel = await agent_rel.get_answer(queries_history[-1], db_description)
 
     if answer_rel["status"] != "On-topic":
-        find_task.cancel()
-        try:
-            await find_task
-        except asyncio.CancelledError:
-            logging.debug("Find task cancelled (off-topic query)")
         msg = "Off topic question: " + answer_rel["reason"]
         yield {"type": "followup_questions", "final_response": True, "message": msg}
         yield _Final(_build_query_result(
@@ -396,12 +386,28 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
         ))
         return
 
-    tables = await find_task
+    # Concurrent now that both results are certain to be used. Gathered
+    # together so neither task is left unobserved if the other fails.
+    find_task = asyncio.create_task(
+        find(namespaced, queries_history, db_description, db=db)
+    )
+    memory_tool_task = (
+        asyncio.create_task(_create_memory_tool(user_id, namespaced, db=db))
+        if use_memory else None
+    )
+    pending = [t for t in (find_task, memory_tool_task) if t is not None]
+    gathered = await asyncio.gather(*pending, return_exceptions=True)
+
+    tables = gathered[0]
+    if isinstance(tables, BaseException):
+        raise tables
 
     memory_tool = None
     memory_context = None
     if memory_tool_task is not None:
-        memory_tool = await memory_tool_task
+        memory_tool = gathered[1]
+        if isinstance(memory_tool, BaseException):
+            raise memory_tool
         memory_context = await memory_tool.search_memories(query=queries_history[-1])
 
     agent_an = AnalysisAgent(

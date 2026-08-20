@@ -154,6 +154,36 @@ class MySQLLoader(BaseLoader):
         }
 
     @staticmethod
+    def _introspect_schema(conn_params: Dict[str, Any], db_name: str):
+        """Connect, introspect and close — all inside one worker thread.
+
+        Cleanup lives in the same thread that owns the connection. Cancelling a
+        ``to_thread`` call does not stop the thread, so closing from the event
+        loop could run alongside an in-flight introspection; and without a
+        ``finally`` here a client disconnect leaked the connection outright,
+        which exhausts database sessions under repeated disconnects.
+
+        Only the connect is time-bounded: introspecting a very large schema can
+        legitimately outlast DB_STATEMENT_TIMEOUT, which is sized for user
+        queries.
+        """
+        conn = None
+        cursor = None
+        try:
+            conn = pymysql.connect(
+                connect_timeout=Config.DB_CONNECT_TIMEOUT, **conn_params
+            )
+            cursor = conn.cursor(DictCursor)
+            entities = MySQLLoader.extract_tables_info(cursor, db_name)
+            relationships = MySQLLoader.extract_relationships(cursor, db_name)
+            return entities, relationships
+        finally:
+            if cursor is not None:
+                cursor.close()
+            if conn is not None:
+                conn.close()
+
+    @staticmethod
     async def load(  # pylint: disable=arguments-differ
         prefix: str,
         connection_url: str,
@@ -173,38 +203,12 @@ class MySQLLoader(BaseLoader):
         try:
             # Parse connection URL
             conn_params = MySQLLoader._parse_mysql_url(connection_url)
-
-            # Off-loop: pymysql is a blocking driver and this generator backs
-            # the connect/refresh streaming responses. Inline introspection
-            # blocks the event loop, so those streams cannot emit keepalives
-            # while a large schema loads. Only the connect is time-bounded
-            # here; introspecting a very large schema can legitimately outlast
-            # DB_STATEMENT_TIMEOUT, which is sized for user queries.
-            conn = await asyncio.to_thread(
-                pymysql.connect,
-                connect_timeout=Config.DB_CONNECT_TIMEOUT,
-                **conn_params,
-            )
-            cursor = conn.cursor(DictCursor)
-
-            # Get database name
             db_name = conn_params['database']
 
-            # Get all table information
             yield True, "Extracting table information..."
-            entities = await asyncio.to_thread(
-                MySQLLoader.extract_tables_info, cursor, db_name
+            entities, relationships = await asyncio.to_thread(
+                MySQLLoader._introspect_schema, conn_params, db_name
             )
-
-            # Get all relationship information
-            yield True, "Extracting relationship information..."
-            relationships = await asyncio.to_thread(
-                MySQLLoader.extract_relationships, cursor, db_name
-            )
-
-            # Close database connection
-            cursor.close()
-            conn.close()
 
             # Load data into graph
             yield True, "Loading data into graph..."

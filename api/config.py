@@ -112,6 +112,29 @@ def _with_prefix(model: str, provider: str) -> str:
 SUPPORTED_VENDORS = ("openai", "anthropic", "gemini", "azure", "ollama", "cohere")
 
 
+def _positive_env(name: str, default: str, cast=int):
+    """Read a timeout-style env var, rejecting values that disable the bound.
+
+    Zero is not a harmless "unset" here: PostgreSQL treats a 0 timeout as
+    "no limit", which removes the safeguard entirely, and PyMySQL raises at
+    query time on a 0 socket timeout. Fail at startup with a clear message
+    rather than silently losing the protection.
+    """
+    raw = os.getenv(name, default)
+    try:
+        value = cast(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"{name} must be a positive number (got {raw!r})"
+        ) from exc
+    if value <= 0:
+        raise ValueError(
+            f"{name} must be greater than 0 (got {raw!r}); a zero or negative "
+            "timeout disables the safeguard it exists to provide"
+        )
+    return value
+
+
 @dataclasses.dataclass
 class Config:
     """
@@ -172,13 +195,15 @@ class Config:
     # through to litellm, which aborts the underlying HTTP request — so a
     # hung provider surfaces as a clean error instead of stalling the
     # response stream indefinitely (incident 2026-07-29).
-    LLM_TIMEOUT: float = float(os.getenv("LLM_TIMEOUT", "90"))  # pylint: disable=invalid-name
+    LLM_TIMEOUT: float = _positive_env("LLM_TIMEOUT", "90", float)  # pylint: disable=invalid-name
 
     # A call slower than this is logged at WARNING. Normal analysis calls
     # completed in ~6s during the incident window, so this flags outliers
     # well before they reach the timeout.
     # pylint: disable-next=invalid-name
-    LLM_SLOW_CALL_THRESHOLD: float = float(os.getenv("LLM_SLOW_CALL_THRESHOLD", "20"))
+    LLM_SLOW_CALL_THRESHOLD: float = _positive_env(
+        "LLM_SLOW_CALL_THRESHOLD", "20", float
+    )
 
     # Retry budget for a single agent LLM call. Kept explicit because the
     # provider SDK and litellm each have their own retry loop, and leaving
@@ -186,16 +211,18 @@ class Config:
     # 3s timeout took 10.8s to fail). Applied as the SDK-level retry count
     # with litellm's outer loop disabled, so the worst case stays close to
     # LLM_TIMEOUT rather than a multiple of it.
+    # Zero is valid here (it means "no retry", a strict ceiling); negative is
+    # not.
     # pylint: disable-next=invalid-name
-    LLM_MAX_RETRIES: int = int(os.getenv("LLM_MAX_RETRIES", "1"))
+    LLM_MAX_RETRIES: int = max(0, int(os.getenv("LLM_MAX_RETRIES", "1")))
 
     # Bounds for user-query execution against the target database. Offloading
     # execution to a thread stops a slow query from blocking other requests,
     # but nothing bounds how long the query itself runs without these.
     # pylint: disable-next=invalid-name
-    DB_CONNECT_TIMEOUT: int = int(os.getenv("DB_CONNECT_TIMEOUT", "10"))
+    DB_CONNECT_TIMEOUT: int = _positive_env("DB_CONNECT_TIMEOUT", "10")
     # pylint: disable-next=invalid-name
-    DB_STATEMENT_TIMEOUT: int = int(os.getenv("DB_STATEMENT_TIMEOUT", "60"))
+    DB_STATEMENT_TIMEOUT: int = _positive_env("DB_STATEMENT_TIMEOUT", "60")
 
     DB_MAX_DISTINCT: int = 100  # pylint: disable=invalid-name
     DB_UNIQUENESS_THRESHOLD: float = 0.5  # pylint: disable=invalid-name
