@@ -12,7 +12,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import api.core  # noqa: F401  pylint: disable=unused-import
 from api.core.pipeline import MySQLLoader, PostgresLoader
 
 STALL = 0.3
@@ -21,19 +20,19 @@ TICK = 0.02
 
 async def _ticks_while_consuming(agen):
     """Drain *agen*, counting event-loop ticks."""
-    ticks = []
     stop = asyncio.Event()
 
     async def ticker():
+        samples = []
         while not stop.is_set():
-            ticks.append(time.monotonic())
+            samples.append(time.monotonic())
             await asyncio.sleep(TICK)
+        return samples
 
     ticker_task = asyncio.ensure_future(ticker())
     steps = [step async for step in agen]
     stop.set()
-    await ticker_task
-    return steps, ticks
+    return steps, await ticker_task
 
 
 def _slow(*_args, **_kwargs):

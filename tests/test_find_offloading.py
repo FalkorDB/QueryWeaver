@@ -66,20 +66,21 @@ def _slow_find_deps(monkeypatch):
 @pytest.mark.unit
 async def test_find_does_not_block_the_event_loop(slow_find_deps):
     """A ticker must keep running while find() is in its blocking calls."""
-    ticks = []
     stop = asyncio.Event()
 
     async def ticker():
+        samples = []
         while not stop.is_set():
-            ticks.append(time.monotonic())
+            samples.append(time.monotonic())
             await asyncio.sleep(TICK)
+        return samples
 
     ticker_task = asyncio.ensure_future(ticker())
     started = time.monotonic()
     tables = await graph_module.find("g", ["show me customers"], "CRM demo.")
     elapsed = time.monotonic() - started
     stop.set()
-    await ticker_task
+    ticks = await ticker_task
 
     # Both blocking calls ran, so this took at least 2 * STALL.
     assert elapsed >= STALL * 2 * 0.9, f"stalls did not run (elapsed {elapsed:.2f}s)"

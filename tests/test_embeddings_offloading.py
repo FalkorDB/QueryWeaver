@@ -37,19 +37,19 @@ def _slow_embedding(monkeypatch):
 
 async def _ticks_during(coro):
     """Count event-loop ticks while *coro* runs."""
-    ticks = []
     stop = asyncio.Event()
 
     async def ticker():
+        samples = []
         while not stop.is_set():
-            ticks.append(time.monotonic())
+            samples.append(time.monotonic())
             await asyncio.sleep(TICK)
+        return samples
 
     ticker_task = asyncio.ensure_future(ticker())
     result = await coro
     stop.set()
-    await ticker_task
-    return result, ticks
+    return result, await ticker_task
 
 
 @pytest.mark.unit
