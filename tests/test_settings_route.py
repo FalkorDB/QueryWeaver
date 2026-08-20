@@ -2,6 +2,8 @@
 
 from unittest.mock import patch, MagicMock
 
+from api.config import Config
+
 import pytest
 
 from api.routes.settings import validate_api_key, ValidateKeyRequest, _sanitize_for_log
@@ -112,11 +114,16 @@ class TestValidateApiKeyEndpoint:
         body = response.body.decode()
         assert '"valid":true' in body
 
+        # The validation call is bounded like every other provider call, so a
+        # bad endpoint cannot hang the route (and with it every open stream).
         mock_completion.assert_called_once_with(
             model="openai/gpt-3.5-turbo",
             messages=[{"role": "user", "content": "test"}],
             max_tokens=1,
             api_key="sk-validkey123456",
+            timeout=Config.LLM_TIMEOUT,
+            max_retries=Config.LLM_MAX_RETRIES,
+            num_retries=0,
         )
 
     @pytest.mark.asyncio
@@ -163,11 +170,16 @@ class TestValidateApiKeyEndpoint:
         response = await validate_api_key.__wrapped__(mock_request, data)
         assert response.status_code == 200
 
+        # The validation call is bounded like every other provider call, so a
+        # bad endpoint cannot hang the route (and with it every open stream).
         mock_completion.assert_called_once_with(
             model="gemini/gemini-pro",
             messages=[{"role": "user", "content": "test"}],
             max_tokens=1,
             api_key="AIzaSyTest123456",
+            timeout=Config.LLM_TIMEOUT,
+            max_retries=Config.LLM_MAX_RETRIES,
+            num_retries=0,
         )
 
     @pytest.mark.asyncio

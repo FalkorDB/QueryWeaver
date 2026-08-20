@@ -1,5 +1,6 @@
 """Graph loader module for loading data into graph databases."""
 
+import asyncio
 import json
 
 import tqdm
@@ -36,7 +37,11 @@ async def load_to_graph(  # pylint: disable=too-many-arguments,too-many-position
     # large schema is loading.
     vec_len = await vector_size_off_loop()
 
-    create_combined_description(entities)
+    # Both of these make blocking provider calls (a batch completion over every
+    # table, then a description completion). This coroutine backs the connect
+    # and refresh streams, so running them inline blocks the event loop and no
+    # stream can emit keepalives while a schema loads.
+    await asyncio.to_thread(create_combined_description, entities)
 
     try:
         # Create vector indices
@@ -59,7 +64,9 @@ async def load_to_graph(  # pylint: disable=too-many-arguments,too-many-position
     except Exception as e:  # pylint: disable=broad-exception-caught
         print(f"Error creating vector indices: {str(e)}")
 
-    db_des = generate_db_description(db_name=db_name, table_names=list(entities.keys()))
+    db_des = await asyncio.to_thread(
+        generate_db_description, db_name=db_name, table_names=list(entities.keys())
+    )
     await graph.query(
         """
         CREATE (d:Database {

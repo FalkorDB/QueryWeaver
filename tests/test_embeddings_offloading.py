@@ -101,6 +101,36 @@ def test_async_callers_do_not_embed_inline():
 
 
 @pytest.mark.unit
+def test_async_callers_do_not_call_llms_inline():
+    """No bare provider call in modules whose coroutines back a stream.
+
+    Every one of these has been a real incident-class bug: a synchronous
+    provider call inside an ``async def`` blocks the event loop, and a blocked
+    loop cannot write keepalives, so open streams are severed regardless of the
+    keepalive wrapper.
+    """
+    import api.graph
+    import api.loaders.graph_loader as graph_loader
+    import api.memory.graphiti_tool as graphiti_tool
+    import api.routes.settings as settings_route
+
+    # Bare provider entry points that must never be invoked on the loop.
+    calls = ("completion(", "batch_completion(", "embedding(")
+    offenders = []
+    for module in (api.graph, graph_loader, graphiti_tool, settings_route):
+        source = inspect.getsource(module)
+        for lineno, line in enumerate(source.splitlines(), start=1):
+            stripped = line.strip()
+            if stripped.startswith("#") or "import" in stripped:
+                continue
+            if any(call in stripped for call in calls):
+                if "to_thread" not in stripped and "off_loop" not in stripped:
+                    offenders.append(f"{module.__name__}:{lineno}: {stripped}")
+
+    assert not offenders, "inline provider call(s):\n" + "\n".join(offenders)
+
+
+@pytest.mark.unit
 def test_embedding_calls_are_time_bounded():
     """A hung provider must not pin a worker thread forever."""
     kwargs = Config.EMBEDDING_MODEL._embedding_kwargs()

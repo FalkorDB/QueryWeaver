@@ -1,11 +1,14 @@
 """Settings and configuration routes for the text2sql API."""
 
+import asyncio
+import functools
 import logging
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from litellm import completion
 
+from api.config import Config
 from api.auth.user_management import token_required
 from api.routes.tokens import UNAUTHORIZED_RESPONSE
 
@@ -74,11 +77,20 @@ async def validate_api_key(request: Request, data: ValidateKeyRequest):  # pylin
         # Construct model name for LiteLLM (vendor/model format)
         full_model_name = f"{vendor}/{model}"
 
-        test_response = completion(
-            model=full_model_name,
-            messages=[{"role": "user", "content": "test"}],
-            max_tokens=1,
-            api_key=api_key,
+        # Off-loop and time-bounded: this is a blocking provider call inside an
+        # async route, so running it inline blocks the event loop — and with it
+        # every open query stream — for as long as the provider takes.
+        test_response = await asyncio.to_thread(
+            functools.partial(
+                completion,
+                model=full_model_name,
+                messages=[{"role": "user", "content": "test"}],
+                max_tokens=1,
+                api_key=api_key,
+                timeout=Config.LLM_TIMEOUT,
+                max_retries=Config.LLM_MAX_RETRIES,
+                num_retries=0,
+            )
         )
 
         # If we get here without exception, the key is valid
