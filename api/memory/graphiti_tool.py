@@ -28,6 +28,10 @@ from graphiti_core.search.search_config_recipes import NODE_HYBRID_SEARCH_RRF
 
 
 from api.agents.utils import run_completion
+from api.embeddings import (
+    embed_one_off_loop,
+    vector_size_off_loop,
+)
 
 
 def extract_embedding_model_name(full_model_name: str) -> str:
@@ -96,7 +100,7 @@ class MemoryTool:
         await self._ensure_entity_nodes_direct(user_id, graph_id)
 
 
-        vector_size = Config.EMBEDDING_MODEL.get_vector_size()
+        vector_size = await vector_size_off_loop()
         driver = self.graphiti_client.driver
         await driver.execute_query(f"CREATE VECTOR INDEX FOR (p:Query) ON (p.embeddings) OPTIONS {{dimension:{vector_size}, similarityFunction:'euclidean'}}")
 
@@ -124,7 +128,7 @@ class MemoryTool:
             
             if not user_check_result[0]:  # If no records found, create user node
                 user_uuid = str(uuid.uuid4())
-                user_name_embedding = Config.EMBEDDING_MODEL.embed(user_node_name)[0]
+                user_name_embedding = await embed_one_off_loop(user_node_name)
                 
                 user_node_data = {
                     'uuid': user_uuid,
@@ -161,7 +165,7 @@ class MemoryTool:
             
             if not database_check_result[0]:  # If no records found, create database node
                 database_uuid = str(uuid.uuid4())
-                database_name_embedding = Config.EMBEDDING_MODEL.embed(database_node_name)[0]
+                database_name_embedding = await embed_one_off_loop(database_node_name)
                 
                 database_node_data = {
                     'uuid': database_uuid,
@@ -355,7 +359,7 @@ class MemoryTool:
             escaped_query = query.replace("'", "\\'").replace('"', '\\"')
             escaped_sql = sql_query.replace("'", "\\'").replace('"', '\\"')
             escaped_error = error.replace("'", "\\'").replace('"', '\\"') if error else ""
-            embeddings = Config.EMBEDDING_MODEL.embed(escaped_query)[0]
+            embeddings = await embed_one_off_loop(escaped_query)
 
             # First check if a Query node with the same user_query and sql_query already exists
             check_query = f"""
@@ -438,7 +442,7 @@ class MemoryTool:
             if not database_node_exists:
                 return []
 
-            query_embedding = Config.EMBEDDING_MODEL.embed(query)[0]
+            query_embedding = await embed_one_off_loop(query)
             cypher_query = f"""
                     CALL db.idx.vector.queryNodes('Query', 'embeddings', 10, vecf32($embedding))
                         YIELD node, score

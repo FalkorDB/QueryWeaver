@@ -1,5 +1,6 @@
 """MySQL loader for loading database schemas into FalkorDB graphs."""
 
+import asyncio
 import datetime
 import decimal
 import logging
@@ -173,8 +174,17 @@ class MySQLLoader(BaseLoader):
             # Parse connection URL
             conn_params = MySQLLoader._parse_mysql_url(connection_url)
 
-            # Connect to MySQL database
-            conn = pymysql.connect(**conn_params)
+            # Off-loop: pymysql is a blocking driver and this generator backs
+            # the connect/refresh streaming responses. Inline introspection
+            # blocks the event loop, so those streams cannot emit keepalives
+            # while a large schema loads. Only the connect is time-bounded
+            # here; introspecting a very large schema can legitimately outlast
+            # DB_STATEMENT_TIMEOUT, which is sized for user queries.
+            conn = await asyncio.to_thread(
+                pymysql.connect,
+                connect_timeout=Config.DB_CONNECT_TIMEOUT,
+                **conn_params,
+            )
             cursor = conn.cursor(DictCursor)
 
             # Get database name
@@ -182,11 +192,15 @@ class MySQLLoader(BaseLoader):
 
             # Get all table information
             yield True, "Extracting table information..."
-            entities = MySQLLoader.extract_tables_info(cursor, db_name)
+            entities = await asyncio.to_thread(
+                MySQLLoader.extract_tables_info, cursor, db_name
+            )
 
             # Get all relationship information
             yield True, "Extracting relationship information..."
-            relationships = MySQLLoader.extract_relationships(cursor, db_name)
+            relationships = await asyncio.to_thread(
+                MySQLLoader.extract_relationships, cursor, db_name
+            )
 
             # Close database connection
             cursor.close()

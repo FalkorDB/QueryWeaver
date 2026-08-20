@@ -4,6 +4,7 @@ This module contains the configuration for the text2sql module.
 """
 
 import os
+import time
 import logging
 import dataclasses
 from typing import Union
@@ -40,9 +41,24 @@ class EmbeddingsModel:
         self.model_name = model_name
         self.config = config
 
+    def _embedding_kwargs(self) -> dict:
+        """Timeout and retry bounds, matching the completion path.
+
+        These are blocking network calls, so an unbounded one pins whichever
+        thread runs it. ``timeout`` is per attempt, so the retry budget is
+        pinned too or the effective ceiling becomes a multiple of it.
+        """
+        return {
+            "timeout": Config.LLM_TIMEOUT,
+            "max_retries": Config.LLM_MAX_RETRIES,
+            "num_retries": 0,
+        }
+
     def embed(self, text: Union[str, list]) -> list:
         """
         Get the embeddings of the text
+
+        Blocking: call via ``api.embeddings.embed_off_loop`` from async code.
 
         Args:
             text (str|list): The text(s) to embed
@@ -51,7 +67,21 @@ class EmbeddingsModel:
             list: The embeddings of the text
 
         """
-        embeddings = embedding(model=self.model_name, input=text)
+        started = time.monotonic()
+        try:
+            embeddings = embedding(
+                model=self.model_name, input=text, **self._embedding_kwargs()
+            )
+        except Exception:
+            logging.warning(
+                "embed_call model=%s duration=%.2fs outcome=error",
+                self.model_name, time.monotonic() - started,
+            )
+            raise
+        logging.info(
+            "embed_call model=%s duration=%.2fs outcome=ok",
+            self.model_name, time.monotonic() - started,
+        )
         embeddings = [embedding["embedding"] for embedding in embeddings.data]
         return embeddings
 
@@ -59,11 +89,16 @@ class EmbeddingsModel:
         """
         Get the size of the vector
 
+        Blocking: call via ``api.embeddings.vector_size_off_loop`` from async
+        code.
+
         Returns:
             int: The size of the vector
 
         """
-        response = embedding(input=["Hello World"], model=self.model_name)
+        response = embedding(
+            input=["Hello World"], model=self.model_name, **self._embedding_kwargs()
+        )
         size = len(response.data[0]["embedding"])
         return size
 

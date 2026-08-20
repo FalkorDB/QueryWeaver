@@ -1,5 +1,6 @@
 """PostgreSQL loader for loading database schemas into FalkorDB graphs."""
 
+import asyncio
 import re
 import datetime
 import decimal
@@ -165,14 +166,25 @@ class PostgresLoader(BaseLoader):
             # Parse schema from connection URL (defaults to 'public')
             schema = PostgresLoader.parse_schema_from_url(connection_url)
 
-            # Connect to PostgreSQL database
-            conn = psycopg2.connect(connection_url)
+            # Off-loop: psycopg2 is a blocking driver and this generator backs
+            # the connect/refresh streaming responses. Running introspection
+            # inline blocks the event loop, so those streams cannot emit
+            # keepalives while a large schema loads. Only the connect is
+            # time-bounded here: introspecting a very large schema can
+            # legitimately outlast DB_STATEMENT_TIMEOUT, which is sized for
+            # user queries.
+            conn = await asyncio.to_thread(
+                psycopg2.connect,
+                connection_url,
+                connect_timeout=Config.DB_CONNECT_TIMEOUT,
+            )
             cursor = conn.cursor()
 
             # Set the session search_path to the parsed schema so unqualified
             # table references (e.g. in sample queries) resolve correctly.
-            cursor.execute(
-                sql.SQL("SET search_path TO {}").format(sql.Identifier(schema))
+            await asyncio.to_thread(
+                cursor.execute,
+                sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)),
             )
 
             # Extract database name from connection URL
@@ -182,11 +194,15 @@ class PostgresLoader(BaseLoader):
 
             # Get all table information
             yield True, "Extracting table information..."
-            entities = PostgresLoader.extract_tables_info(cursor, schema)
+            entities = await asyncio.to_thread(
+                PostgresLoader.extract_tables_info, cursor, schema
+            )
 
             yield True, "Extracting relationship information..."
             # Get all relationship information
-            relationships = PostgresLoader.extract_relationships(cursor, schema)
+            relationships = await asyncio.to_thread(
+                PostgresLoader.extract_relationships, cursor, schema
+            )
 
             # Close database connection before graph loading
             cursor.close()
@@ -553,22 +569,40 @@ class PostgresLoader(BaseLoader):
         url_options = url_params.get("options", [""])[0]
         kwargs: Dict[str, Any] = {}
 
+        # The configured values are maximums, not defaults: a URL may tighten
+        # them but must not loosen them or switch them off. In libpq and
+        # psycopg2 a timeout of 0 means "no limit", which would let one query
+        # hold a shared worker thread indefinitely.
+        #
         # Match an actual directive, not the bare word: a substring test would
         # also hit something like ``-c application_name=statement_timeout_probe``
         # and silently skip our bound.
-        has_statement_timeout = re.search(
-            r"(?:^|\s)-c\s*statement_timeout\s*=", url_options
+        timeout_ms = Config.DB_STATEMENT_TIMEOUT * 1000
+        url_statement_timeout = re.search(
+            r"(?:^|\s)-c\s*statement_timeout\s*=\s*(\d+)", url_options
         )
-        if has_statement_timeout:
+        if url_statement_timeout and 0 < int(url_statement_timeout.group(1)) <= timeout_ms:
             options = url_options
         else:
-            timeout_ms = Config.DB_STATEMENT_TIMEOUT * 1000
-            options = f"{url_options} -c statement_timeout={timeout_ms}".strip()
+            # Drop any existing directive so ours is not merely appended
+            # alongside a disabled or looser value.
+            stripped = re.sub(
+                r"(?:^|\s)-c\s*statement_timeout\s*=\s*\S*", " ", url_options
+            ).strip()
+            options = f"{stripped} -c statement_timeout={timeout_ms}".strip()
         if options:
             kwargs["options"] = options
 
-        if "connect_timeout" not in url_params:
-            kwargs["connect_timeout"] = Config.DB_CONNECT_TIMEOUT
+        url_connect_timeout = url_params.get("connect_timeout", [None])[0]
+        connect_timeout = Config.DB_CONNECT_TIMEOUT
+        if url_connect_timeout is not None:
+            try:
+                requested = int(url_connect_timeout)
+            except ValueError:
+                requested = 0
+            if 0 < requested <= connect_timeout:
+                connect_timeout = requested
+        kwargs["connect_timeout"] = connect_timeout
         return kwargs
 
     @staticmethod

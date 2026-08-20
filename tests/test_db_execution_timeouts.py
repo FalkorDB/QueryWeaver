@@ -41,15 +41,39 @@ def test_postgres_preserves_url_options():
 
 
 @pytest.mark.unit
-def test_postgres_url_timeouts_win():
-    """An explicit value in the URL is not overridden."""
+def test_postgres_url_may_tighten_the_bounds():
+    """A stricter URL value is honoured."""
     kwargs = PostgresLoader._execution_connect_kwargs(
         f"{PG_URL}?options=-c%20statement_timeout%3D1234"
     )
     assert kwargs["options"] == "-c statement_timeout=1234"
 
     kwargs = PostgresLoader._execution_connect_kwargs(f"{PG_URL}?connect_timeout=3")
-    assert "connect_timeout" not in kwargs
+    assert kwargs["connect_timeout"] == 3
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("statement_timeout", ["0", "999999999"])
+def test_postgres_url_cannot_loosen_or_disable_statement_timeout(statement_timeout):
+    """Configured values are maximums, not defaults.
+
+    ``statement_timeout=0`` means "no limit" in libpq, so honouring it would
+    let one query hold a shared worker thread indefinitely.
+    """
+    kwargs = PostgresLoader._execution_connect_kwargs(
+        f"{PG_URL}?options=-c%20statement_timeout%3D{statement_timeout}"
+    )
+    # Exact equality: the URL directive is replaced, not appended alongside.
+    assert kwargs["options"] == f"-c statement_timeout={Config.DB_STATEMENT_TIMEOUT * 1000}"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("connect_timeout", ["0", "600"])
+def test_postgres_url_cannot_loosen_or_disable_connect_timeout(connect_timeout):
+    kwargs = PostgresLoader._execution_connect_kwargs(
+        f"{PG_URL}?connect_timeout={connect_timeout}"
+    )
+    assert kwargs["connect_timeout"] == Config.DB_CONNECT_TIMEOUT
 
 
 @pytest.mark.unit

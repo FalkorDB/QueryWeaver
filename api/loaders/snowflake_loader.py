@@ -1,5 +1,6 @@
 """Snowflake loader for loading database schemas into FalkorDB graphs."""
 
+import asyncio
 import base64
 import datetime
 import decimal
@@ -259,8 +260,13 @@ class SnowflakeLoader(BaseLoader):
             # Parse connection URL
             conn_params = SnowflakeLoader._parse_snowflake_url(connection_url)
 
-            # Connect to Snowflake database
-            conn = snowflake.connector.connect(**conn_params)
+            # Off-loop, as in the other loaders: this generator backs the
+            # connect/refresh streaming responses, and inline introspection
+            # blocks the event loop so no stream can emit keepalives. The
+            # parser's login/network timeouts already bound the connect.
+            conn = await asyncio.to_thread(
+                snowflake.connector.connect, **conn_params
+            )
             cursor = conn.cursor(DictCursor)
 
             # Get database and schema name
@@ -271,11 +277,15 @@ class SnowflakeLoader(BaseLoader):
 
             # Get all table information
             yield True, "Extracting table information..."
-            entities = SnowflakeLoader.extract_tables_info(cursor, db_name, schema_name)
+            entities = await asyncio.to_thread(
+                SnowflakeLoader.extract_tables_info, cursor, db_name, schema_name
+            )
 
             # Get all relationship information
             yield True, "Extracting relationship information..."
-            relationships = SnowflakeLoader.extract_relationships(cursor, db_name, schema_name)
+            relationships = await asyncio.to_thread(
+                SnowflakeLoader.extract_relationships, cursor, db_name, schema_name
+            )
 
             # Close database connection
             cursor.close()

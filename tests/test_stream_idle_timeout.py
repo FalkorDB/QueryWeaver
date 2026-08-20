@@ -194,3 +194,56 @@ async def test_slow_sql_execution_keeps_stream_alive(pipeline_stubs):
     assert keepalives >= 2, "no keepalive during the SQL-execution stall"
     assert max_gap < MAX_IDLE, f"stream idle for {max_gap:.2f}s during SQL execution"
     assert any('"query_result"' in p for p in payloads)
+
+
+@pytest.mark.unit
+async def test_slow_memory_search_keeps_stream_alive(pipeline_stubs, monkeypatch):
+    """Stage 4: memory search, which the browser enables by default.
+
+    ``ChatInterface`` sends ``useMemory = true``, so this path is on for real
+    traffic even though the request model defaults it to ``False``. The lookup
+    runs inside the silent window before the SQL chunk, and it embeds the query
+    — a blocking network call.
+    """
+    t2s = pipeline_stubs["text2sql"]
+
+    class _MemoryTool:
+        async def search_memories(self, query):
+            # Mirrors the real path: the embedding is offloaded, not inline.
+            await asyncio.to_thread(time.sleep, STALL)
+            return "previously asked about accounts"
+
+    async def fake_create_memory_tool(user_id, graph_id, db=None):
+        return _MemoryTool()
+
+    monkeypatch.setattr(t2s, "_create_memory_tool", fake_create_memory_tool)
+
+    class _MemoryChat(_Chat):
+        def __init__(self):
+            super().__init__()
+            self.use_memory = True
+
+    from api.core.text2sql import _Final
+
+    async def serialize(gen):
+        async for event in gen:
+            if isinstance(event, _Final):
+                break
+            yield json.dumps(event) + MESSAGE_DELIMITER
+
+    gaps, keepalives, payloads = [], 0, []
+    last = time.monotonic()
+    async for chunk in with_keepalive(
+        serialize(t2s.run_query("u", "g", _MemoryChat())), interval=INTERVAL
+    ):
+        now = time.monotonic()
+        gaps.append(now - last)
+        last = now
+        if chunk == MESSAGE_DELIMITER:
+            keepalives += 1
+        else:
+            payloads.append(chunk)
+
+    assert keepalives >= 2, "no keepalive during the memory-search stall"
+    assert max(gaps) < MAX_IDLE, f"stream idle for {max(gaps):.2f}s during memory search"
+    assert any('"ai_response"' in p for p in payloads)
