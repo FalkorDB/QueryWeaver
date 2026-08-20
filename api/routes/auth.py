@@ -31,6 +31,7 @@ from api.auth.user_management import delete_user_token, ensure_user_in_organizat
 from api.config import ORGANIZATIONS_GRAPH
 from api.core.errors import AuthBackendUnavailableError
 from api.extensions import db
+from api.helpers.request_security import is_secure_request
 
 # Import GENERAL_PREFIX from graphs route
 GENERAL_PREFIX = os.getenv("GENERAL_PREFIX")
@@ -200,14 +201,7 @@ async def _email_account_exists(email: str) -> bool:
 
 def _is_request_secure(request: Request) -> bool:
     """Determine if the request is secure (HTTPS)."""
-    
-    # Check X-Forwarded-Proto first (proxy-aware)
-    forwarded_proto = request.headers.get("x-forwarded-proto")
-    if forwarded_proto:
-        return forwarded_proto == "https"
-    
-    # Fallback to request URL scheme
-    return request.url.scheme == "https"
+    return is_secure_request(request)
 
 async def _authenticate_email_user(email: str, password: str):
     """Authenticate an email user."""
@@ -760,7 +754,7 @@ async def auth_status(request: Request) -> JSONResponse:
                 }
             }
         )
-        await _retry_pending_provisioning(request, response)
+        await _retry_pending_provisioning(request)
         return response
 
     # Not authenticated - return 200 with authenticated: false
@@ -771,13 +765,17 @@ async def auth_status(request: Request) -> JSONResponse:
     )
 
 
-async def _retry_pending_provisioning(request: Request, response: JSONResponse) -> None:
+async def _retry_pending_provisioning(request: Request) -> None:
     """Finish a login whose Organizations-graph write failed at the time.
 
     Logging in no longer needs FalkorDB, so a user can be signed in without a
     stored ``User``/``Identity`` record. This retries that write on the next
     status poll and is strictly best-effort: it must never change the
     authentication verdict.
+
+    Only the identity records are repaired - no API token is minted here. The
+    browser login stands on its own, and a read-only status poll is the wrong
+    place to hand out a fresh programmatic credential.
     """
     if is_provisioned(request):
         return
@@ -786,31 +784,26 @@ async def _retry_pending_provisioning(request: Request, response: JSONResponse) 
     if not session_user:
         return
 
-    handler = getattr(request.app.state, "callback_handler", None)
-    if handler is None:
+    email = session_user.get("email")
+    provider = session_user.get("provider")
+    if not email or not provider:
         return
 
-    api_token = secrets.token_urlsafe(32)
-    user_data = {
-        'id': session_user.get("id") or session_user.get("email"),
-        'email': session_user.get("email"),
-        'name': session_user.get("name"),
-        'picture': session_user.get("picture"),
-    }
     try:
-        succeeded = bool(await handler(session_user.get("provider"), user_data, api_token))
+        _, identity_info = await ensure_user_in_organizations(
+            session_user.get("id") or email,
+            email,
+            session_user.get("name"),
+            provider,
+            None,
+            session_user.get("picture"),
+        )
     except Exception as e:  # pylint: disable=broad-exception-caught
         logging.warning("Deferred user provisioning failed: %s", e)
         return
 
-    if succeeded:
+    if identity_info is not None:
         mark_provisioned(request)
-        response.set_cookie(
-            key="api_token",
-            value=api_token,
-            httponly=True,
-            secure=_is_request_secure(request)
-        )
 
 
 @auth_router.get("/logout")

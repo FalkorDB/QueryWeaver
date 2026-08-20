@@ -31,8 +31,10 @@ def setup_oauth_handlers(app: FastAPI, oauth: OAuth):
                 logging.error("Missing required fields from %s OAuth response", provider)
                 return False
 
-            # Check if identity exists in Organizations graph, create if new
-            _, _ = await ensure_user_in_organizations(
+            # Check if identity exists in Organizations graph, create if new.
+            # The first element is "is new identity", not a success flag, so the
+            # returned info is what tells us the records were actually persisted.
+            _, identity_info = await ensure_user_in_organizations(
                 user_id,
                 email,
                 name,
@@ -40,6 +42,13 @@ def setup_oauth_handlers(app: FastAPI, oauth: OAuth):
                 api_token,
                 user_info.get("picture"),
             )
+            if identity_info is None:
+                logging.error(
+                    "Could not persist %s identity for %s - deferring provisioning",
+                    provider,
+                    email,
+                )
+                return False
 
             return True
         except Exception as exc:  # capture exception for logging, pylint: disable=broad-exception-caught

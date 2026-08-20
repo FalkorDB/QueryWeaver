@@ -18,6 +18,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from api.auth.browser_session import session_ttl_seconds
 from api.auth.oauth_handlers import setup_oauth_handlers
 from api.auth.user_management import SECRET_KEY
+from api.helpers.request_security import is_secure_request
 from api.analytics import report_error
 from api.routes.auth import auth_router, init_auth
 from api.routes.graphs import graphs_router
@@ -59,21 +60,21 @@ class SecurityMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-
 
 def _is_secure_request(request: Request) -> bool:
     """Determine if the request is over HTTPS."""
-    forwarded_proto = request.headers.get("x-forwarded-proto")
-    if forwarded_proto:
-        # Normalize: proxies may send comma-separated or mixed-case values
-        first_proto = forwarded_proto.split(",")[0].strip().lower()
-        return first_proto == "https"
-    return request.url.scheme == "https"
+    return is_secure_request(request)
 
 
 def _session_cookie_https_only() -> bool:
     """Whether the session cookie must be HTTPS-only.
 
-    Secure by default: only a local ``APP_ENV=development`` run opts out, since
-    a Secure cookie is silently dropped over plain HTTP.
+    Fail secure: the cookie now carries the browser login itself, so a missing
+    ``APP_ENV`` must not silently downgrade it. Only an explicit
+    ``APP_ENV=development`` opts out, because a Secure cookie is dropped over
+    the plain HTTP a local run serves.
     """
-    return os.getenv("APP_ENV", "development").strip().lower() != "development"
+    app_env = os.getenv("APP_ENV")
+    if app_env is None:
+        return True
+    return app_env.strip().lower() != "development"
 
 
 class CSRFMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods

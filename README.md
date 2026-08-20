@@ -161,6 +161,12 @@ A browser login lasts 24 hours by default; set `BROWSER_SESSION_TTL_HOURS` to
 change that. Logging out clears the session cookie and revokes the API token
 issued alongside it.
 
+The trade-off of a signed session cookie is that it cannot be revoked from
+the server before it expires: the TTL bounds the damage, and rotating
+`FASTAPI_SECRET_KEY` invalidates every browser login at once. API tokens keep
+their server-side record and so can still be revoked individually and
+immediately. Shorten `BROWSER_SESSION_TTL_HOURS` if you need a tighter window.
+
 Examples
 
 1) List graphs (GET)
@@ -453,17 +459,17 @@ QueryWeaver supports Google and GitHub OAuth. Create OAuth credentials for each 
 
 #### Environment-specific OAuth settings
 
-For production/staging deployments, set `APP_ENV=production` or `APP_ENV=staging` in your environment to enable secure session cookies (HTTPS-only). This prevents OAuth CSRF state mismatch errors.
+For production/staging deployments, session cookies are HTTPS-only by default. Only an explicit `APP_ENV=development` turns that off, so a deployment that forgets the variable still gets secure cookies. Set `APP_ENV=development` for plain-HTTP local runs, otherwise the browser drops the cookie and you get OAuth CSRF state mismatch errors.
 
 ```bash
-# For production/staging (enables HTTPS-only session cookies)
+# For production/staging (HTTPS-only session cookies - also the default)
 APP_ENV=production
 
 # For development (allows HTTP session cookies)
 APP_ENV=development
 ```
 
-**Important**: If you're getting "mismatching_state: CSRF Warning!" errors on staging/production, ensure `APP_ENV` is set to `production` or `staging` to enable secure session handling.
+**Important**: If you're getting "mismatching_state: CSRF Warning!" errors on a plain-HTTP environment, ensure `APP_ENV` is set to `development`.
 
 ### AI/LLM configuration
 
@@ -581,7 +587,7 @@ GitHub Actions run unit and E2E tests on pushes and pull requests. Failures capt
 - FalkorDB connection issues: start the DB helper `make docker-falkordb` or check network/host settings.
 - Playwright/browser failures: install browsers with `uv run playwright install` and ensure system deps are present.
 - Missing environment variables: copy `.env.example` and fill required values.
-- **OAuth "mismatching_state: CSRF Warning!" errors**: Set `APP_ENV=production` (or `staging`) in your environment for HTTPS deployments, or `APP_ENV=development` for HTTP development environments. This ensures session cookies are configured correctly for your deployment type.
+- **OAuth "mismatching_state: CSRF Warning!" errors**: Session cookies are HTTPS-only unless `APP_ENV` is exactly `development`. Set `APP_ENV=development` for plain-HTTP environments; use `production` or `staging` (or leave the variable out entirely) for HTTPS deployments.
 
 ## Project layout (high level)
 

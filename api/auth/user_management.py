@@ -109,14 +109,20 @@ async def ensure_user_in_organizations(  # pylint: disable=too-many-arguments, d
     email: str,
     name: str,
     provider: str,
-    api_token: str,
+    api_token: Optional[str],
     picture: str | None = None,
 ) -> tuple[bool, Optional[IdentityInfo]]:
     """
     Check if identity exists in Organizations graph, create if not.
     Creates separate Identity and User nodes with proper relationships.
     Uses MERGE for atomic operations and better performance.
-    Returns (is_new_user, user_info)
+
+    Pass ``api_token=None`` to persist only the User/Identity records without
+    minting a programmatic token — used when repairing an existing browser
+    login that was established while the graph was unreachable.
+
+    Returns (is_new_identity, user_info). ``user_info`` is ``None`` when the
+    records could not be persisted, so callers should test that, not the flag.
     """
     # Input validation
 
@@ -128,7 +134,7 @@ async def ensure_user_in_organizations(  # pylint: disable=too-many-arguments, d
         organizations_graph = db.select_graph(ORGANIZATIONS_GRAPH)
         first_name, last_name = _extract_name_parts(name)
 
-        merge_query = _build_user_merge_query()
+        merge_query = _build_user_merge_query(include_token=api_token is not None)
         query_params = _build_query_params(
             provider,
             provider_user_id,
@@ -263,6 +269,10 @@ async def validate_user(request: Request) -> Tuple[Optional[Dict[str, Any]], boo
 
     session_user = read_browser_session(request)
     if session_user:
+        # Deliberately no database lookup: that is the point of the signed
+        # session. The cost is that it cannot be revoked server-side before it
+        # expires, so the TTL bounds the exposure and rotating the signing key
+        # is the kill switch. API tokens keep a revocable server-side record.
         return session_user, True
 
     cookie_token = get_cookie_api_token(request)
@@ -395,8 +405,24 @@ def _extract_name_parts(name: str) -> tuple:
     return first_name, last_name
 
 
-def _build_user_merge_query() -> str:
-    """Build the Cypher query for user/identity merge operations."""
+def _build_user_merge_query(include_token: bool = True) -> str:
+    """Build the Cypher query for user/identity merge operations.
+
+    ``include_token`` drops the Token MERGE so an identity can be persisted
+    without issuing a programmatic credential.
+    """
+    token_clause = (
+        """
+        // Then, create a session linked to the Identity and store the API_Token
+        MERGE (token:Token {id: $api_token})
+        ON CREATE SET
+            token.created_at = timestamp(),
+            token.expires_at = timestamp() + 86400000  // 24h expiry
+        MERGE (identity)-[:HAS_TOKEN]->(token)
+        """
+        if include_token
+        else ""
+    )
     return """
         // First, ensure user exists (merge by email)
         MERGE (user:User {email: $email})
@@ -421,14 +447,7 @@ def _build_user_merge_query() -> str:
 
         // Ensure relationship exists
         MERGE (identity)-[:AUTHENTICATES]->(user)
-
-        // Then, create a session linked to the Identity and store the API_Token
-        MERGE (token:Token {id: $api_token})
-        ON CREATE SET
-            token.created_at = timestamp(),
-            token.expires_at = timestamp() + 86400000  // 24h expiry
-        MERGE (identity)-[:HAS_TOKEN]->(token)
-
+""" + token_clause + """
         // Return results with flags to determine if this was a new user/identity
         RETURN
             identity,
@@ -446,7 +465,7 @@ def _build_query_params(  # pylint: disable=too-many-arguments
     picture: str | None = None,
     first_name: str,
     last_name: str,
-    api_token: str
+    api_token: Optional[str]
 ) -> dict:
     """Build query parameters for the database operation."""
     return {
