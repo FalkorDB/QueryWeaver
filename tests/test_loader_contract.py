@@ -12,9 +12,11 @@ import inspect
 
 import pytest
 
-import api.core  # noqa: F401  pylint: disable=unused-import
-from api.loaders.mysql_loader import MySQLLoader
-from api.loaders.postgres_loader import PostgresLoader
+# Imported via api.core.pipeline: importing a loader module first hits a
+# circular import (pipeline imports the loaders, the loaders import api.core).
+# Going through pipeline initialises the package in the right order, which also
+# makes the snowflake import below work.
+from api.core.pipeline import MySQLLoader, PostgresLoader
 from api.loaders.snowflake_loader import SnowflakeLoader
 
 LOADERS = [PostgresLoader, MySQLLoader, SnowflakeLoader]
