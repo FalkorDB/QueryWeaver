@@ -2,9 +2,7 @@
 import json
 from typing import Dict, List, Optional, TypedDict
 
-from litellm import batch_completion
-
-from api.agents.utils import run_completion
+from api.agents.utils import run_batch_completion, run_completion
 from api.config import Config
 
 
@@ -84,16 +82,16 @@ def create_combined_description(  # pylint: disable=too-many-locals
 
     for batch_start in range(0, len(messages_list), batch_size):
         batch_messages = messages_list[batch_start : batch_start + batch_size]
-        # Bounded like every other provider call: this is blocking, and
-        # ``load_to_graph`` runs it inside the connect/refresh streams.
-        response = batch_completion(
+        # Bounded and retried like every other provider call: one LLM_TIMEOUT
+        # budget for the batch, transient failures retried with what remains.
+        # (The raw litellm knobs are a trap here: it treats ``num_retries`` as
+        # overriding ``max_retries``, so passing the pair retried nothing.)
+        response = run_batch_completion(
+            batch_messages,
             model=Config.COMPLETION_MODEL,
-            messages=batch_messages,
             temperature=0,
             max_tokens=50,
-            timeout=Config.LLM_TIMEOUT,
-            max_retries=Config.LLM_MAX_RETRIES,
-            num_retries=0,
+            label="table-descriptions",
         )
 
         for offset, batch_response in enumerate(response):

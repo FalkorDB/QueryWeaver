@@ -121,9 +121,9 @@ class TestValidateApiKeyEndpoint:
             messages=[{"role": "user", "content": "test"}],
             max_tokens=1,
             api_key="sk-validkey123456",
-            timeout=Config.LLM_TIMEOUT,
-            max_retries=Config.LLM_MAX_RETRIES,
-            num_retries=0,
+            # One bounded attempt via the shared helper: a 401 is the
+            # probe's answer, so library retries stay off.
+            **Config.llm_call_bounds(),
         )
 
     @pytest.mark.asyncio
@@ -177,9 +177,9 @@ class TestValidateApiKeyEndpoint:
             messages=[{"role": "user", "content": "test"}],
             max_tokens=1,
             api_key="AIzaSyTest123456",
-            timeout=Config.LLM_TIMEOUT,
-            max_retries=Config.LLM_MAX_RETRIES,
-            num_retries=0,
+            # One bounded attempt via the shared helper: a 401 is the
+            # probe's answer, so library retries stay off.
+            **Config.llm_call_bounds(),
         )
 
     @pytest.mark.asyncio

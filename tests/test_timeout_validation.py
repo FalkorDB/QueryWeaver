@@ -131,6 +131,9 @@ def test_run_completion_makes_exactly_the_budgeted_attempts(monkeypatch, retries
     monkeypatch.setattr(agent_utils.Config, "LLM_TIMEOUT", 5.0, raising=False)
     monkeypatch.setattr(agent_utils.Config, "LLM_MAX_RETRIES", retries, raising=False)
 
+    # Backoff between retries is real behaviour but slow in a test.
+    monkeypatch.setattr(agent_utils, "_RETRY_BACKOFF_SECONDS", 0.001)
+
     calls = []
 
     def failing_completion(**kwargs):
@@ -156,6 +159,8 @@ def test_run_completion_stops_retrying_when_the_budget_is_spent(monkeypatch):
 
     monkeypatch.setattr(agent_utils.Config, "LLM_TIMEOUT", 0.3, raising=False)
     monkeypatch.setattr(agent_utils.Config, "LLM_MAX_RETRIES", 5, raising=False)
+
+    monkeypatch.setattr(agent_utils, "_RETRY_BACKOFF_SECONDS", 0.001)
 
     calls = []
 

@@ -87,9 +87,10 @@ async def validate_api_key(request: Request, data: ValidateKeyRequest):  # pylin
                 messages=[{"role": "user", "content": "test"}],
                 max_tokens=1,
                 api_key=api_key,
-                timeout=Config.LLM_TIMEOUT,
-                max_retries=Config.LLM_MAX_RETRIES,
-                num_retries=0,
+                # One bounded attempt, retries off: a key-validation probe
+                # wants the provider's verdict, and a 401 is that verdict -
+                # replaying it would only delay the answer.
+                **Config.llm_call_bounds(),
             )
         )
 

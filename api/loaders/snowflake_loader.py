@@ -1,6 +1,7 @@
 """Snowflake loader for loading database schemas into FalkorDB graphs."""
 
 import base64
+import contextlib
 import datetime
 import decimal
 import logging
@@ -677,6 +678,8 @@ class SnowflakeLoader(BaseLoader):
         Returns:
             List of dictionaries containing the query results
         """
+        conn = None
+        cursor = None
         try:
             # Parse connection URL
             conn_params = SnowflakeLoader._parse_snowflake_url(db_url)
@@ -736,25 +739,26 @@ class SnowflakeLoader(BaseLoader):
             # Commit the transaction for write operations
             conn.commit()
 
-            # Close database connection
-            cursor.close()
-            conn.close()
-
             return result_list
 
         except snowflake.connector.Error as e:
-            # Rollback in case of error
-            if 'conn' in locals():
-                conn.rollback()
-                cursor.close()
-                conn.close()
+            # Bounded by the network/socket timeouts above, and suppressed so
+            # a rollback failure cannot mask the error that got us here.
+            if conn is not None:
+                with contextlib.suppress(Exception):
+                    conn.rollback()
             logging.error("Snowflake query execution error: %s", e)
             raise SnowflakeQueryError(f"Snowflake query execution error: {str(e)}") from e
         except Exception as e:
-            # Rollback in case of error
-            if 'conn' in locals():
-                conn.rollback()
-                cursor.close()
-                conn.close()
+            if conn is not None:
+                with contextlib.suppress(Exception):
+                    conn.rollback()
             logging.error("Error executing SQL query: %s", e)
             raise SnowflakeQueryError(f"Error executing SQL query: {str(e)}") from e
+        finally:
+            if cursor is not None:
+                with contextlib.suppress(Exception):
+                    cursor.close()
+            if conn is not None:
+                with contextlib.suppress(Exception):
+                    conn.close()

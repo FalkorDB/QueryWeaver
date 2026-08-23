@@ -1,5 +1,6 @@
 """PostgreSQL loader for loading database schemas into FalkorDB graphs."""
 
+import contextlib
 import re
 import datetime
 import decimal
@@ -264,10 +265,14 @@ class PostgresLoader(BaseLoader):
                 relationships = PostgresLoader.extract_relationships(cursor, schema)
             return entities, relationships
         finally:
+            # A raise from cleanup (e.g. on a socket the deadline guard shut
+            # down) must not mask the introspection error itself.
             if cursor is not None:
-                cursor.close()
+                with contextlib.suppress(Exception):
+                    cursor.close()
             if conn is not None:
-                conn.close()
+                with contextlib.suppress(Exception):
+                    conn.close()
 
     @staticmethod
     async def load(  # pylint: disable=arguments-differ
@@ -736,69 +741,80 @@ class PostgresLoader(BaseLoader):
         Returns:
             List of dictionaries containing the query results
         """
+        conn = None
+        cursor = None
         try:
             conn = psycopg2.connect(
                 db_url, **PostgresLoader._execution_connect_kwargs(db_url)
             )
             cursor = conn.cursor()
-            guard = deadline_guard(conn, Config.DB_STATEMENT_TIMEOUT, "query execution")
 
-            # Execute the SQL query
-            with guard:
-                cursor.execute(sql_query)
+            # One guard spans execute, fetch, commit and rollback: a peer that
+            # answers the query but stalls while returning rows or on the
+            # commit holds the worker just as effectively as one that stalls
+            # on the execute itself.
+            with deadline_guard(
+                conn, Config.DB_STATEMENT_TIMEOUT, "query execution"
+            ):
+                try:
+                    cursor.execute(sql_query)
 
-            # Check if the query returns results (SELECT queries)
-            if cursor.description is not None:
-                # This is a SELECT query or similar that returns rows
-                columns = [desc[0] for desc in cursor.description]
-                results = cursor.fetchall()
-                result_list = []
-                for row in results:
-                    # Serialize each value to ensure JSON compatibility
-                    serialized_row = {
-                        columns[i]: PostgresLoader._serialize_value(row[i])
-                        for i in range(len(columns))
-                    }
-                    result_list.append(serialized_row)
-            else:
-                # This is an INSERT, UPDATE, DELETE, or other non-SELECT query
-                # Return information about the operation
-                affected_rows = cursor.rowcount
-                sql_type = sql_query.strip().split()[0].upper()
+                    # Check if the query returns results (SELECT queries)
+                    if cursor.description is not None:
+                        # This is a SELECT query or similar that returns rows
+                        columns = [desc[0] for desc in cursor.description]
+                        results = cursor.fetchall()
+                        result_list = []
+                        for row in results:
+                            # Serialize each value to ensure JSON compatibility
+                            serialized_row = {
+                                columns[i]: PostgresLoader._serialize_value(row[i])
+                                for i in range(len(columns))
+                            }
+                            result_list.append(serialized_row)
+                    else:
+                        # This is an INSERT, UPDATE, DELETE, or other
+                        # non-SELECT query - return information about it
+                        affected_rows = cursor.rowcount
+                        sql_type = sql_query.strip().split()[0].upper()
 
-                if sql_type in ['INSERT', 'UPDATE', 'DELETE']:
-                    result_list = [{
-                        "operation": sql_type,
-                        "affected_rows": affected_rows,
-                        "status": "success"
-                    }]
-                else:
-                    # For other types of queries (CREATE, DROP, etc.)
-                    result_list = [{
-                        "operation": sql_type,
-                        "status": "success"
-                    }]
+                        if sql_type in ['INSERT', 'UPDATE', 'DELETE']:
+                            result_list = [{
+                                "operation": sql_type,
+                                "affected_rows": affected_rows,
+                                "status": "success"
+                            }]
+                        else:
+                            # For other types of queries (CREATE, DROP, etc.)
+                            result_list = [{
+                                "operation": sql_type,
+                                "status": "success"
+                            }]
 
-            # Commit the transaction for write operations
-            conn.commit()
-
-            # Close database connection
-            cursor.close()
-            conn.close()
+                    # Commit the transaction for write operations
+                    conn.commit()
+                except Exception:
+                    # The rollback is a network round trip too, so it stays
+                    # inside the guard - and it is suppressed so it cannot
+                    # mask the error that got us here (after a deadline
+                    # shutdown it raises immediately on the dead socket).
+                    with contextlib.suppress(Exception):
+                        conn.rollback()
+                    raise
 
             return result_list
 
         except psycopg2.Error as e:
-            # Rollback in case of error
-            if 'conn' in locals():
-                conn.rollback()
-                cursor.close()
-                conn.close()
             raise PostgreSQLConnectionError(f"PostgreSQL query execution error: {str(e)}") from e
         except Exception as e:
-            # Rollback in case of error
-            if 'conn' in locals():
-                conn.rollback()
-                cursor.close()
-                conn.close()
             raise PostgreSQLQueryError(f"Error executing SQL query: {str(e)}") from e
+        finally:
+            # Runs on a healthy connection or on one whose socket the guard
+            # already shut down; either way a raise from cleanup must not
+            # mask the real error.
+            if cursor is not None:
+                with contextlib.suppress(Exception):
+                    cursor.close()
+            if conn is not None:
+                with contextlib.suppress(Exception):
+                    conn.close()

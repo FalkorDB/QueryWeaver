@@ -5,8 +5,14 @@ import logging
 import time
 from typing import Any, Dict, List
 
-from litellm import completion
+from litellm import batch_completion, completion
 from api.config import Config
+
+# Backoff between retryable failures: base doubles per attempt, capped so a
+# late retry cannot sleep away the whole budget. Module-level so tests can
+# shrink it.
+_RETRY_BACKOFF_SECONDS = 0.5
+_RETRY_BACKOFF_CAP_SECONDS = 8.0
 
 
 def _log_success(label: str, model: str, attempt: int, attempts: int,
@@ -22,6 +28,71 @@ def _log_success(label: str, model: str, attempt: int, attempts: int,
             "threshold of %.0fs", label, model, elapsed,
             Config.LLM_SLOW_CALL_THRESHOLD,
         )
+
+
+def _retryable(exc: Exception) -> bool:
+    """Whether a failed attempt is worth spending remaining budget on.
+
+    Transport-level failures (timeouts, dropped connections) carry no status
+    code and are treated as transient. When the provider did answer, its
+    verdict decides: 408/429/5xx describe the service's moment and can change
+    on a replay; everything else (400, 401, 403, 404, ...) describes the
+    request itself, so a retry would replay the same failure — a bad API key
+    does not become valid by asking twice.
+    """
+    status_code = getattr(exc, "status_code", None)
+    if status_code is None:
+        return True
+    return status_code in (408, 429) or status_code >= 500
+
+
+def _retry_after_seconds(exc: Exception) -> float | None:
+    """The provider's Retry-After, if the failure carried one."""
+    headers = getattr(getattr(exc, "response", None), "headers", None)
+    if headers is None:
+        return None
+    try:
+        value = headers.get("retry-after")
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _retry_delay(exc: Exception, attempt: int) -> float:
+    """Seconds to wait before the next attempt.
+
+    The provider's own Retry-After wins when present (a 429 tells us exactly
+    when trying again stops being rude); otherwise a small exponential
+    backoff, so a struggling service is not hammered at full speed.
+    """
+    retry_after = _retry_after_seconds(exc)
+    if retry_after is not None and retry_after >= 0:
+        return min(retry_after, _RETRY_BACKOFF_CAP_SECONDS)
+    return min(_RETRY_BACKOFF_SECONDS * (2 ** (attempt - 1)),
+               _RETRY_BACKOFF_CAP_SECONDS)
+
+
+def _pause_before_retry(delay: float, deadline: float) -> bool:
+    """Sleep *delay* before the next attempt.
+
+    Returns ``False`` when sleeping would outlive the budget, in which case
+    there is no point in another attempt at all.
+    """
+    if delay >= deadline - time.monotonic():
+        return False
+    time.sleep(delay)
+    return True
+
+
+def _log_failure(label: str, model: str, attempt: str, *,
+                 elapsed: float, exc: Exception) -> None:
+    """Record a failed attempt and whether it is worth replaying."""
+    logging.warning(
+        "llm_call label=%s model=%s attempt=%s duration=%.2fs "
+        "outcome=error error=%s retryable=%s",
+        label, model, attempt, elapsed,
+        type(exc).__name__, _retryable(exc),
+    )
 
 
 def _attempt(base_args: Dict[str, Any], remaining: float, overrides: Dict[str, Any]):
@@ -92,12 +163,15 @@ def run_completion(messages: List[Dict[str, str]], custom_model: str | None = No
             result = _attempt(base_args, remaining, kwargs)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             last_error = exc
-            logging.warning(
-                "llm_call label=%s model=%s attempt=%d/%d duration=%.2fs "
-                "outcome=error error=%s",
-                label, base_args["model"], attempt, attempts,
-                time.monotonic() - started, type(exc).__name__,
-            )
+            _log_failure(label, base_args["model"], f"{attempt}/{attempts}",
+                         elapsed=time.monotonic() - started, exc=exc)
+            if not _retryable(exc):
+                # The provider judged the request itself invalid; a replay
+                # would fail identically, so surface it now.
+                raise
+            if attempt < attempts and not _pause_before_retry(
+                    _retry_delay(exc, attempt), deadline):
+                break  # sleeping would outlive the budget
             continue
 
         _log_success(label, base_args["model"], attempt, attempts,
@@ -110,6 +184,78 @@ def run_completion(messages: List[Dict[str, str]], custom_model: str | None = No
         f"llm_call label={label} exhausted its {Config.LLM_TIMEOUT}s budget "
         "before an attempt could start"
     )
+
+
+def _fail_unanswered_slots(results: List[Any], label: str) -> None:
+    """Turn every still-``None`` slot into an explicit failure.
+
+    A slot can hold ``None`` when the library answered short or the budget ran
+    out before the slot was ever attempted. Callers branch on
+    ``isinstance(..., Exception)`` and treat everything else as a response, so
+    ``None`` must leave as a failure, not a response.
+    """
+    for i, item in enumerate(results):
+        if item is None:
+            results[i] = TimeoutError(
+                f"llm_call label={label} slot {i} got no answer within the "
+                f"{Config.LLM_TIMEOUT}s budget"
+            )
+
+
+def run_batch_completion(messages_list: List[List[Dict[str, str]]], *,
+                         label: str = "llm-batch", **base_args) -> List[Any]:
+    """Batch counterpart of ``run_completion``: same budget, same verdicts.
+
+    litellm's ``batch_completion`` reports a failed item by returning the
+    exception in that item's slot, and its own retry knobs conflict (it treats
+    ``num_retries`` as overriding ``max_retries``), so callers passing the pair
+    got no retry at all. This drives the whole batch against one ``LLM_TIMEOUT``
+    budget instead and retries only the items whose failure was transient
+    (:func:`_retryable`), with whatever budget remains.
+
+    Returns a list aligned with *messages_list*; an item that never succeeded
+    holds its final exception, which is the contract callers already handle.
+    """
+    results: List[Any] = [None] * len(messages_list)
+    pending = list(range(len(messages_list)))
+    attempts = Config.llm_attempts()
+    deadline = time.monotonic() + Config.LLM_TIMEOUT
+
+    for attempt in range(1, attempts + 1):
+        remaining = deadline - time.monotonic()
+        if not pending or remaining <= 0:
+            break
+
+        started = time.monotonic()
+        batch = batch_completion(**{
+            **base_args,
+            "messages": [messages_list[i] for i in pending],
+            **Config.llm_call_bounds(timeout=remaining),
+        })
+
+        retry_slots = []
+        for slot, response in zip(pending, batch):
+            results[slot] = response
+            if isinstance(response, Exception) and _retryable(response):
+                retry_slots.append(slot)
+
+        failed = sum(1 for i in pending if isinstance(results[i], Exception))
+        logging.info(
+            "llm_call label=%s model=%s attempt=%d/%d duration=%.2fs "
+            "outcome=%d/%d ok (%d retryable)",
+            label, base_args.get("model"), attempt, attempts,
+            time.monotonic() - started, len(pending) - failed, len(pending),
+            len(retry_slots),
+        )
+
+        pending = retry_slots
+        if pending and attempt < attempts and not _pause_before_retry(
+                max(_retry_delay(results[i], attempt) for i in pending),
+                deadline):
+            break  # sleeping would outlive the budget
+
+    _fail_unanswered_slots(results, label)
+    return results
 
 
 class BaseAgent:  # pylint: disable=too-few-public-methods
