@@ -204,7 +204,9 @@ class TestGraphsRoutes:
             ("schema.json", 501),
             ("schema.xml", 501),
             ("schema.csv", 501),
+            ("schema.JSON", 501),
             ("schema.txt", 415),
+            ("schema", 415),
         ],
     )
     def test_load_graph_upload(self, client, filename, status):
@@ -217,11 +219,34 @@ class TestGraphsRoutes:
 
         assert response.status_code == status
 
-    def test_load_graph_json_payload(self, client):
-        """A JSON body never reaches the loader: ``File(None)`` forces multipart parsing."""
-        response = client.post("/graphs", headers=BEARER, json={"database": "testdb"})
+    def test_load_graph_multipart_without_file(self, client):
+        """A multipart body with no ``file`` part is rejected."""
+        response = client.post("/graphs", headers=BEARER, data={"database": "testdb"})
 
         assert response.status_code == 415
+
+    def test_load_graph_json_payload(self, client):
+        """A valid JSON body reaches the (unimplemented) JSON loader."""
+        response = client.post("/graphs", headers=BEARER, json={"database": "testdb"})
+
+        assert response.status_code == 501
+
+    def test_load_graph_rejects_invalid_json_payload(self, client):
+        """A JSON body missing ``database`` fails validation before the loader."""
+        response = client.post("/graphs", headers=BEARER, json={"nope": 1})
+
+        assert response.status_code == 422
+
+    @pytest.mark.parametrize("content_type", ["application/xml", "text/xml"])
+    def test_load_graph_xml_payload(self, client, content_type):
+        """An XML body reaches the (unimplemented) OData loader."""
+        response = client.post(
+            "/graphs",
+            headers={**BEARER, "Content-Type": content_type},
+            content=b"<schema/>",
+        )
+
+        assert response.status_code == 501
 
     def test_load_graph_without_payload(self, client):
         """No body and no file is an unsupported content type."""
