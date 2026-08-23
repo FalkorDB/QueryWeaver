@@ -14,24 +14,30 @@ def run_completion(messages: List[Dict[str, str]], custom_model: str | None = No
                    **kwargs) -> str:
     """Run an LLM completion with optional custom model/key overrides.
 
-    Applies ``Config.LLM_TIMEOUT`` per attempt and a pinned retry budget
-    unless the caller overrides them, and logs the call duration. Both exist because the 2026-07-29
-    demo failure was an LLM call that stalled with no timeout and left no
-    trace of how long it ran. ``label`` names the caller in those log lines
-    and is not forwarded to the provider.
+    Bounds the call with ``Config.llm_call_bounds()``: ``LLM_TIMEOUT`` is the
+    budget for the whole call, divided across attempts, so retries cannot push
+    the real ceiling past it. Duration is logged. Both exist because the
+    2026-07-29 demo failure was an LLM call that stalled with no timeout and
+    left no trace of how long it ran. ``label`` names the caller in those log
+    lines and is not forwarded to the provider.
+
+    A caller may still override the bounds explicitly; doing so is logged so it
+    cannot silently weaken the ceiling.
 
     Returns the content string from the first choice.
     """
+    bounds = Config.llm_call_bounds()
+    overrides = {key: kwargs[key] for key in bounds if key in kwargs}
+    if overrides:
+        logging.info(
+            "llm_call label=%s bound overrides in effect: %s", label, overrides
+        )
+
     completion_args = {
         "model": custom_model if custom_model else Config.COMPLETION_MODEL,
         "messages": messages,
         "top_p": 1,
-        "timeout": Config.LLM_TIMEOUT,
-        # ``timeout`` is per attempt, so the retry budget has to be pinned too
-        # or the effective ceiling becomes a multiple of it. litellm's outer
-        # retry loop is disabled in favour of the SDK-level count.
-        "max_retries": Config.LLM_MAX_RETRIES,
-        "num_retries": 0,
+        **bounds,
         **kwargs,
     }
 

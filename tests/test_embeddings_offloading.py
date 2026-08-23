@@ -134,6 +134,11 @@ def test_async_callers_do_not_call_llms_inline():
 def test_embedding_calls_are_time_bounded():
     """A hung provider must not pin a worker thread forever."""
     kwargs = Config.EMBEDDING_MODEL._embedding_kwargs()
-    assert kwargs["timeout"] == Config.LLM_TIMEOUT
-    assert kwargs["max_retries"] == Config.LLM_MAX_RETRIES
+    # LLM_TIMEOUT is the budget for the whole call, so the per-attempt value is
+    # that budget divided across attempts; retries cannot push the real ceiling
+    # past it.
+    attempts = Config.LLM_MAX_RETRIES + 1
+    assert kwargs == Config.llm_call_bounds()
+    assert kwargs["timeout"] == Config.LLM_TIMEOUT / attempts
+    assert kwargs["timeout"] * attempts <= Config.LLM_TIMEOUT
     assert kwargs["num_retries"] == 0

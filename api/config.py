@@ -49,11 +49,7 @@ class EmbeddingsModel:
         thread runs it. ``timeout`` is per attempt, so the retry budget is
         pinned too or the effective ceiling becomes a multiple of it.
         """
-        return {
-            "timeout": Config.LLM_TIMEOUT,
-            "max_retries": Config.LLM_MAX_RETRIES,
-            "num_retries": 0,
-        }
+        return Config.llm_call_bounds()
 
     def embed(self, text: Union[str, list]) -> list:
         """
@@ -223,6 +219,24 @@ class Config:  # pylint: disable=too-many-instance-attributes
     # not.
     # pylint: disable-next=invalid-name
     LLM_MAX_RETRIES: int = max(0, int(os.getenv("LLM_MAX_RETRIES", "1")))
+
+    @classmethod
+    def llm_call_bounds(cls) -> dict:
+        """Provider kwargs that bound one logical LLM call end to end.
+
+        ``LLM_TIMEOUT`` is the budget for the whole call, not per attempt. The
+        provider applies its timeout to each attempt, so the per-attempt value
+        is the budget divided by the number of attempts — otherwise a retry
+        pushes the real ceiling to a multiple of the configured one, which is
+        what made a 3s timeout take 10.8s to fail before the retry budget was
+        pinned. litellm's own retry loop stays off so the two cannot compound.
+        """
+        attempts = cls.LLM_MAX_RETRIES + 1
+        return {
+            "timeout": cls.LLM_TIMEOUT / attempts,
+            "max_retries": cls.LLM_MAX_RETRIES,
+            "num_retries": 0,
+        }
 
     # Bounds for user-query execution against the target database. Offloading
     # execution to a thread stops a slow query from blocking other requests,
