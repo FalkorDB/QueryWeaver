@@ -7,6 +7,7 @@ timeout. Both are worse than refusing to start.
 
 import importlib
 import time
+import types
 
 import pytest
 
@@ -184,3 +185,66 @@ def test_library_retry_knobs_are_disabled():
 
     bounds = agent_utils.Config.llm_call_bounds(timeout=7)
     assert bounds == {"timeout": 7, "max_retries": 0, "num_retries": 0}
+
+
+def _rate_limited(retry_after, source="litellm_response_headers"):
+    """A 429-style exception carrying its delay where litellm puts it."""
+    exc = RuntimeError("rate limited")
+    setattr(exc, source, {"retry-after": retry_after})
+    # litellm's own reconstructed response does NOT carry provider headers;
+    # reading it is what silently lost every Retry-After.
+    exc.response = types.SimpleNamespace(headers={})
+    return exc
+
+
+@pytest.mark.unit
+def test_retry_after_is_read_from_litellms_headers():
+    """The provider's delay lives on litellm_response_headers, not response."""
+    import api.agents.utils as agent_utils
+
+    assert agent_utils._retry_after_seconds(_rate_limited("10")) == 10.0
+    # Nothing to honour when no header is present anywhere.
+    assert agent_utils._retry_after_seconds(RuntimeError("boom")) is None
+
+
+@pytest.mark.unit
+def test_retry_after_accepts_an_http_date():
+    import api.agents.utils as agent_utils
+    from email.utils import format_datetime
+    from datetime import datetime, timedelta, timezone
+
+    when = datetime.now(timezone.utc) + timedelta(seconds=30)
+    delay = agent_utils._retry_after_seconds(_rate_limited(format_datetime(when)))
+    assert delay is not None and 25 <= delay <= 31
+
+
+@pytest.mark.unit
+def test_retry_after_is_honoured_in_full_not_capped():
+    """Truncating the delay produced a retry certain to be refused again."""
+    import api.agents.utils as agent_utils
+
+    delay = agent_utils._retry_delay(_rate_limited("30"), attempt=1)
+    assert delay == 30.0
+    assert delay > agent_utils._RETRY_BACKOFF_CAP_SECONDS
+
+
+@pytest.mark.unit
+def test_retry_is_skipped_when_the_delay_will_not_fit(monkeypatch):
+    """A delay longer than the remaining budget means no second attempt."""
+    import api.agents.utils as agent_utils
+
+    monkeypatch.setattr(agent_utils.Config, "LLM_TIMEOUT", 2.0, raising=False)
+    monkeypatch.setattr(agent_utils.Config, "LLM_MAX_RETRIES", 3, raising=False)
+
+    calls = []
+
+    def rate_limited_completion(**_kwargs):
+        calls.append(1)
+        raise _rate_limited("30")
+
+    monkeypatch.setattr(agent_utils, "completion", rate_limited_completion)
+
+    with pytest.raises(RuntimeError, match="rate limited"):
+        agent_utils.run_completion([{"role": "user", "content": "hi"}], label="probe")
+
+    assert len(calls) == 1, "slept-or-retried past a delay that could not fit"

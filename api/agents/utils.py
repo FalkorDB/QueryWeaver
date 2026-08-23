@@ -3,6 +3,8 @@
 import json
 import logging
 import time
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List
 
 from litellm import batch_completion, completion
@@ -46,28 +48,66 @@ def _retryable(exc: Exception) -> bool:
     return status_code in (408, 429) or status_code >= 500
 
 
-def _retry_after_seconds(exc: Exception) -> float | None:
-    """The provider's Retry-After, if the failure carried one."""
-    headers = getattr(getattr(exc, "response", None), "headers", None)
+def _retry_after_header(exc: Exception):
+    """The raw ``Retry-After`` value from wherever the client stashed it."""
+    for source in ("litellm_response_headers", "response_headers"):
+        headers = getattr(exc, source, None)
+        if headers is not None:
+            break
+    else:
+        headers = getattr(getattr(exc, "response", None), "headers", None)
     if headers is None:
         return None
     try:
-        value = headers.get("retry-after")
-        return float(value) if value is not None else None
+        return headers.get("retry-after")
+    except (AttributeError, TypeError):
+        return None
+
+
+def _http_date_delay(value) -> float | None:
+    """Seconds until an HTTP-date ``Retry-After``, the spec's other form."""
+    try:
+        when = parsedate_to_datetime(str(value))
     except (TypeError, ValueError):
         return None
+    if when is None:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return max(0.0, (when - datetime.now(timezone.utc)).total_seconds())
+
+
+def _retry_after_seconds(exc: Exception) -> float | None:
+    """The provider's ``Retry-After``, if the failure carried one.
+
+    litellm keeps the provider's original headers on the exception as
+    ``litellm_response_headers``; ``exc.response.headers`` is litellm's own
+    reconstructed response and does not carry them, so reading that returned
+    ``None`` for every real 429 and the backoff fell back to its own guess.
+
+    Both header spellings are accepted: a delay in seconds, or an HTTP date.
+    """
+    value = _retry_after_header(exc)
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return _http_date_delay(value)
 
 
 def _retry_delay(exc: Exception, attempt: int) -> float:
     """Seconds to wait before the next attempt.
 
-    The provider's own Retry-After wins when present (a 429 tells us exactly
-    when trying again stops being rude); otherwise a small exponential
-    backoff, so a struggling service is not hammered at full speed.
+    The provider's own ``Retry-After`` wins when present — a 429 states exactly
+    when trying again stops being rude — and is honoured in full rather than
+    truncated: the caller already refuses a delay that outlives the budget, so
+    capping it here only produced a retry that was certain to be rejected
+    again. The exponential fallback stays capped, since it is a guess.
     """
     retry_after = _retry_after_seconds(exc)
     if retry_after is not None and retry_after >= 0:
-        return min(retry_after, _RETRY_BACKOFF_CAP_SECONDS)
+        return retry_after
     return min(_RETRY_BACKOFF_SECONDS * (2 ** (attempt - 1)),
                _RETRY_BACKOFF_CAP_SECONDS)
 

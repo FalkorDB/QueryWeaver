@@ -7,26 +7,31 @@ detect a dead TCP peer. A stalled backend or a proxy that keeps the connection
 alive without answering satisfies all three while the client stays blocked in a
 read — holding a worker thread that cancellation cannot reclaim.
 
-This closes that gap from the outside: a timer asks the server to cancel the
-in-flight query and, failing that, shuts the connection's socket down at the OS
-level, which makes the blocked read raise in the worker so the thread is
-released.
+This closes that gap from the outside: a timer shuts the connection's socket
+down at the OS level, which makes the blocked read raise in the worker so the
+thread is released.
 
-The escalation must not itself be blockable by the stall it exists to break:
+The escalation must not itself be blockable by the stall it exists to break,
+which rules out both cooperative options:
 
-* ``conn.cancel()`` (PQcancel) opens its *own* connection to the server, so
-  against a black-holed host the cancel itself can hang. It therefore runs on
-  a dedicated daemon timer thread that nothing waits for — a hanging cancel
-  costs one parked thread until the kernel gives up, never the escalation.
+* ``conn.cancel()`` (PQcancel) is deliberately *not* used. It opens its own
+  connection to the server, so against a black-holed host the cancel itself
+  hangs — and psycopg2 does not release the GIL around it, so a hanging cancel
+  stalls every Python thread in the process, including the event loop and so
+  every stream keepalive. Running it on a separate daemon thread does not help:
+  a thread that cannot acquire the GIL cannot run. Skipping the cancel costs
+  little, since the backend aborts the query itself once it notices the
+  client's socket has gone.
 * ``conn.close()`` is not usable from another thread while a query is running:
   psycopg2 serialises connection access with an internal lock that the worker
   blocked in ``recv`` is holding, so a close from the timer thread would join
-  the deadlock instead of breaking it. The escalation instead calls
-  ``shutdown(2)`` on the underlying socket via a duplicated file descriptor —
-  a plain syscall that needs no driver lock and no network round trip. The
-  kernel fails the pending read immediately, the driver raises in the worker,
-  and the connection is then closed by the worker's own cleanup path, which
-  holds the lock legitimately.
+  the deadlock instead of breaking it.
+
+What is left is ``shutdown(2)`` on the underlying socket via a duplicated file
+descriptor — a plain syscall that needs no driver lock, no network round trip
+and no GIL-holding driver call. The kernel fails the pending read immediately,
+the driver raises in the worker, and the connection is then closed by the
+worker's own cleanup path, which holds the lock legitimately.
 """
 
 import contextlib
@@ -34,29 +39,6 @@ import logging
 import os
 import socket
 import threading
-
-# How long to wait for a cooperative cancel before shutting the socket down.
-_CANCEL_GRACE_SECONDS = 5.0
-
-
-def _cancel(conn, label: str) -> None:
-    """Ask the server to abort the running statement, if the driver can.
-
-    Best-effort only: this may hang (see the module docstring), and the
-    escalation to ``_shutdown`` does not depend on it returning.
-    """
-    cancel = getattr(conn, "cancel", None)
-    if cancel is None:
-        return
-    logging.warning("%s exceeded its deadline; cancelling the query", label)
-    try:
-        cancel()
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        # PQcancel opens its own connection to the server, so it can fail when
-        # the server is unreachable. The socket shutdown is the fallback.
-        logging.warning("%s cancel failed (%s); the socket shutdown will follow",
-                        label, type(exc).__name__)
-
 
 def _connection_fd(conn):
     """The connection's socket descriptor, or ``None`` if it has none."""
@@ -120,12 +102,12 @@ def _close(conn, label: str) -> None:
 
 @contextlib.contextmanager
 def deadline_guard(conn, seconds: float, label: str = "database call"):
-    """Cancel, then shut down, *conn* if the body outlives *seconds*.
+    """Shut *conn* down if the body outlives *seconds*.
 
     The guard is what makes the configured deadline real for a connection whose
-    peer has stopped answering but has not dropped the socket. Both escalation
-    steps run on their own daemon timer threads and neither waits for the
-    other, so a step that itself hangs cannot postpone the next one.
+    peer has stopped answering but has not dropped the socket. The escalation
+    runs on a daemon timer and performs only a syscall, so nothing on the path
+    can be blocked by the stall it exists to break.
     """
     if not seconds or seconds <= 0:
         yield
@@ -142,19 +124,15 @@ def deadline_guard(conn, seconds: float, label: str = "database call"):
         # preferred whenever it exists.
         escalate, escalate_args = _close, (conn, label)
 
-    cancel_timer = threading.Timer(seconds, _cancel, args=(conn, label))
-    shutdown_timer = threading.Timer(
-        seconds + _CANCEL_GRACE_SECONDS, escalate, args=escalate_args
-    )
-    cancel_timer.daemon = True
-    shutdown_timer.daemon = True
-    cancel_timer.start()
-    shutdown_timer.start()
+    # One timer, firing at the deadline: there is no cooperative step to wait
+    # for, so there is no grace period either.
+    escalation = threading.Timer(seconds, escalate, args=escalate_args)
+    escalation.daemon = True
+    escalation.start()
     try:
         yield
     finally:
-        cancel_timer.cancel()
-        shutdown_timer.cancel()
+        escalation.cancel()
         if dup is not None:
             # Closing the duplicate also disarms a shutdown callback that
             # already started: the socket object refuses use after close, so

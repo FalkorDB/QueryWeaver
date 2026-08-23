@@ -60,12 +60,19 @@ class TestRetryVerdicts:
         )
         assert delay == 0.25
 
-    def test_retry_after_is_capped(self):
-        """A provider asking for an hour cannot eat the whole budget."""
+    def test_retry_after_is_honoured_in_full(self):
+        """A long delay is reported as-is; the caller decides whether it fits.
+
+        Truncating it here produced a retry that was certain to be refused
+        again — and the budget check already declines a delay it cannot afford,
+        so an hour-long Retry-After simply means no retry rather than a capped
+        one.
+        """
         delay = agent_utils._retry_delay(
             _ProviderError(429, retry_after="3600"), attempt=1
         )
-        assert delay <= agent_utils._RETRY_BACKOFF_CAP_SECONDS
+        assert delay == 3600.0
+        assert delay > agent_utils._RETRY_BACKOFF_CAP_SECONDS
 
     def test_garbage_retry_after_falls_back_to_backoff(self):
         delay = agent_utils._retry_delay(

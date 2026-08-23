@@ -42,29 +42,36 @@ class _Conn:
 
 
 @pytest.mark.unit
-def test_guard_cancels_then_closes_a_stalled_call(monkeypatch):
-    monkeypatch.setattr(deadline, "_CANCEL_GRACE_SECONDS", 0.15)
+def test_guard_escalates_a_stalled_call():
     conn = _Conn()
 
     with deadline.deadline_guard(conn, 0.1, "probe"):
         # Stands in for a read that never returns.
-        assert conn.cancelled.wait(timeout=2), "deadline did not cancel the query"
-        assert conn.closed.wait(timeout=2), "deadline did not close the connection"
+        assert conn.closed.wait(timeout=2), "deadline did not release the call"
 
 
 @pytest.mark.unit
-def test_guard_closes_even_when_cancel_fails(monkeypatch):
-    """PQcancel opens its own connection, so it can fail on an unreachable server."""
-    monkeypatch.setattr(deadline, "_CANCEL_GRACE_SECONDS", 0.15)
-    conn = _Conn(cancel_raises=True)
+def test_guard_never_calls_the_drivers_cancel():
+    """PQcancel is deliberately unused.
+
+    It opens its own connection to the server, so against a black-holed host it
+    hangs — and psycopg2 does not release the GIL around it, which stalls every
+    Python thread in the process, the event loop included. A separate timer
+    thread is no protection: a thread that cannot take the GIL cannot run.
+    """
+    conn = _Conn()
 
     with deadline.deadline_guard(conn, 0.1, "probe"):
-        assert conn.closed.wait(timeout=2), "close fallback did not run"
+        assert conn.closed.wait(timeout=2), "deadline did not release the call"
+
+    assert not conn.cancelled.is_set(), (
+        "cancel was invoked in-process; a hanging PQcancel would freeze every "
+        "thread, including the streams this deadline exists to protect"
+    )
 
 
 @pytest.mark.unit
-def test_guard_leaves_a_prompt_call_alone(monkeypatch):
-    monkeypatch.setattr(deadline, "_CANCEL_GRACE_SECONDS", 0.1)
+def test_guard_leaves_a_prompt_call_alone():
     conn = _Conn()
 
     with deadline.deadline_guard(conn, 5.0, "probe"):
@@ -138,11 +145,10 @@ def _blocked_reader(sock, lock, released):
 
 
 @pytest.mark.unit
-def test_guard_releases_a_read_that_close_would_deadlock_on(monkeypatch):
+def test_guard_releases_a_read_that_close_would_deadlock_on():
     """The reported freeze: the worker blocked in recv holds the driver lock,
     so a close() from the timer thread would join the deadlock. The socket
     shutdown must free the worker anyway."""
-    monkeypatch.setattr(deadline, "_CANCEL_GRACE_SECONDS", 0.15)
     left, right = socket.socketpair()
     lock = threading.Lock()
     conn = _SocketConn(left, lock)
@@ -152,7 +158,7 @@ def test_guard_releases_a_read_that_close_would_deadlock_on(monkeypatch):
         _blocked_reader(left, lock, released)
         with deadline.deadline_guard(conn, 0.1, "probe"):
             assert released.wait(timeout=5), "the blocked read was never released"
-        assert conn.cancelled.is_set(), "cancel should still be attempted first"
+        assert not conn.cancelled.is_set(), "cancel must not be attempted"
     finally:
         right.close()
         with lock:
@@ -160,10 +166,13 @@ def test_guard_releases_a_read_that_close_would_deadlock_on(monkeypatch):
 
 
 @pytest.mark.unit
-def test_guard_does_not_wait_for_a_hanging_cancel(monkeypatch):
-    """PQcancel can hang against a black-holed server; the escalation to the
-    socket shutdown must proceed on its own clock regardless."""
-    monkeypatch.setattr(deadline, "_CANCEL_GRACE_SECONDS", 0.15)
+def test_guard_escalates_on_the_deadline_alone():
+    """The deadline is the whole clock: nothing cooperative precedes it.
+
+    An earlier version cancelled first and shut the socket down only after a
+    grace period, which made the real release time depend on how long PQcancel
+    took — and a GIL-holding cancel could postpone it indefinitely.
+    """
     left, right = socket.socketpair()
     lock = threading.Lock()
     conn = _SocketConn(left, lock, cancel_hangs=True)
@@ -173,8 +182,10 @@ def test_guard_does_not_wait_for_a_hanging_cancel(monkeypatch):
         _blocked_reader(left, lock, released)
         started = time.monotonic()
         with deadline.deadline_guard(conn, 0.1, "probe"):
-            assert released.wait(timeout=5), "shutdown waited on the hanging cancel"
-        assert time.monotonic() - started < 3, "release took far longer than deadline+grace"
+            assert released.wait(timeout=5), "the blocked read was never released"
+        elapsed = time.monotonic() - started
+        assert elapsed < 1.0, f"release took {elapsed:.2f}s for a 0.1s deadline"
+        assert not conn.cancelled.is_set(), "cancel must not be attempted"
     finally:
         conn.release_cancel()
         right.close()
@@ -183,10 +194,9 @@ def test_guard_does_not_wait_for_a_hanging_cancel(monkeypatch):
 
 
 @pytest.mark.unit
-def test_guard_shutdown_leaves_the_drivers_descriptor_valid(monkeypatch):
+def test_guard_shutdown_leaves_the_drivers_descriptor_valid():
     """shutdown(2) runs on a duplicated descriptor: the socket dies, but the
     driver's own fd must stay valid for its cleanup path to close."""
-    monkeypatch.setattr(deadline, "_CANCEL_GRACE_SECONDS", 0.1)
     left, right = socket.socketpair()
     lock = threading.Lock()
     conn = _SocketConn(left, lock)
@@ -204,9 +214,8 @@ def test_guard_shutdown_leaves_the_drivers_descriptor_valid(monkeypatch):
 
 
 @pytest.mark.unit
-def test_guard_falls_back_to_close_without_a_socket(monkeypatch):
+def test_guard_falls_back_to_close_without_a_socket():
     """A connection that exposes no usable descriptor still gets closed."""
-    monkeypatch.setattr(deadline, "_CANCEL_GRACE_SECONDS", 0.1)
 
     class _NoFdConn(_Conn):
         def fileno(self):
