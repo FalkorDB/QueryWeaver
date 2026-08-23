@@ -65,7 +65,7 @@ dev = [
     "pytest-asyncio~=1.4.0",
     "pylint~=4.0.3",
     "playwright~=1.60.0",
-    "pytest-playwright~=0.8.0",
+    "pytest-playwright>=0.8,<0.10",
 ]
 
 # All dependencies (server + dev)
@@ -85,7 +85,7 @@ dev = [
     "pytest>=9.0.3,<9.2.0",
     "pylint~=4.0.3",
     "playwright~=1.60.0",
-    "pytest-playwright~=0.8.0",
+    "pytest-playwright>=0.8,<0.10",
     "pytest-asyncio~=1.4.0",
 ]
 
