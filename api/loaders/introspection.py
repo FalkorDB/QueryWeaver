@@ -25,12 +25,37 @@ def _semaphore() -> asyncio.Semaphore:
 
 
 async def run_introspection(func, /, *args, **kwargs):
-    """Run *func* in a worker thread, holding one introspection slot."""
+    """Run *func* in a worker thread, holding one introspection slot.
+
+    The slot is released when the *thread* finishes, not when the awaiting task
+    ends. Cancelling the awaiting task cannot stop a running worker, so
+    releasing on cancellation would hand the slot to new work while the old
+    thread still holds a worker and a database session — letting the cap be
+    exceeded by exactly the disconnect-driven load it exists to bound.
+
+    Cancellation still reaches the caller: the worker is shielded so it keeps
+    running (and keeps its slot) while the ``CancelledError`` propagates.
+    """
     slots = _semaphore()
     if slots.locked():
         logging.info(
             "schema introspection queued: %d concurrent slots in use",
             Config.DB_SCHEMA_CONCURRENCY,
         )
-    async with slots:
-        return await asyncio.to_thread(func, *args, **kwargs)
+
+    await slots.acquire()
+    try:
+        worker = asyncio.ensure_future(asyncio.to_thread(func, *args, **kwargs))
+    except BaseException:
+        slots.release()
+        raise
+
+    def _release(finished: asyncio.Future) -> None:
+        slots.release()
+        if not finished.cancelled():
+            # Mark any failure retrieved: when the caller was cancelled nobody
+            # is left to await this future.
+            finished.exception()
+
+    worker.add_done_callback(_release)
+    return await asyncio.shield(worker)

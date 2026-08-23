@@ -281,7 +281,7 @@ class SnowflakeLoader(BaseLoader):
                 conn.close()
 
     @staticmethod
-    async def load(prefix: str, connection_url: str) -> AsyncGenerator[
+    async def load(prefix: str, connection_url: str, db=None) -> AsyncGenerator[
         tuple[bool, str], None
     ]:
         """
@@ -311,7 +311,7 @@ class SnowflakeLoader(BaseLoader):
             # Load data into graph
             yield True, "Loading data into graph..."
             await load_to_graph(f"{prefix}_{db_name}", entities, relationships,
-                         db_name=db_name, db_url=connection_url)
+                         db_name=db_name, db_url=connection_url, db=db)
 
             yield True, (f"Snowflake schema loaded successfully. "
                          f"Found {len(entities)} tables.")
@@ -606,7 +606,9 @@ class SnowflakeLoader(BaseLoader):
         return False, ""
 
     @staticmethod
-    async def refresh_graph_schema(graph_id: str, db_url: str) -> Tuple[bool, str]:
+    async def refresh_graph_schema(
+        graph_id: str, db_url: str, db=None
+    ) -> Tuple[bool, str]:
         """
         Refresh the graph schema by clearing existing data and reloading from the database.
 
@@ -621,11 +623,11 @@ class SnowflakeLoader(BaseLoader):
             logging.info("Schema modification detected. Refreshing graph schema.")
 
             # Import here to avoid circular imports
-            from api.extensions import db  # pylint: disable=import-error,import-outside-toplevel
+            from api.core.db_resolver import resolve_db  # pylint: disable=import-outside-toplevel
 
             # Clear existing graph data
             # Drop current graph before reloading
-            graph = db.select_graph(graph_id)
+            graph = resolve_db(db).select_graph(graph_id)
             await graph.delete()
 
             # Extract prefix from graph_id (remove database name part)
@@ -640,7 +642,7 @@ class SnowflakeLoader(BaseLoader):
             # Reuse the existing load method to reload the schema
             success = False
             message = ""
-            async for progress_tuple in SnowflakeLoader.load(prefix, db_url):
+            async for progress_tuple in SnowflakeLoader.load(prefix, db_url, db=db):
                 success, message = progress_tuple
 
             if success:

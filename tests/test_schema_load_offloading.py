@@ -275,3 +275,51 @@ async def test_schema_introspection_concurrency_is_bounded(monkeypatch):
 
     assert results == ["done"] * 6
     assert peak <= 2, f"{peak} introspections ran concurrently, cap is 2"
+
+
+@pytest.mark.unit
+async def test_cancelled_introspection_keeps_its_slot(monkeypatch):
+    """A cancelled introspection must not hand its slot to new work.
+
+    Cancelling the awaiting task cannot stop the worker, so releasing the slot
+    on cancellation lets the cap be exceeded by exactly the disconnect-driven
+    load it exists to bound.
+    """
+    import api.loaders.introspection as introspection
+
+    monkeypatch.setattr(introspection, "_SLOTS", None)
+    monkeypatch.setattr(Config, "DB_SCHEMA_CONCURRENCY", 2, raising=False)
+
+    live = 0
+    peak = 0
+    lock = threading.Lock()
+
+    def blocking_work():
+        nonlocal live, peak
+        with lock:
+            live += 1
+            peak = max(peak, live)
+        time.sleep(STALL * 2)
+        with lock:
+            live -= 1
+
+    # Fill the cap, then cancel both awaiting tasks while the threads run on.
+    first = [
+        asyncio.ensure_future(introspection.run_introspection(blocking_work))
+        for _ in range(2)
+    ]
+    await asyncio.sleep(STALL / 2)
+    for task in first:
+        task.cancel()
+    await asyncio.gather(*first, return_exceptions=True)
+
+    # Slots must still be held by the running threads.
+    second = [
+        asyncio.ensure_future(introspection.run_introspection(blocking_work))
+        for _ in range(4)
+    ]
+    await asyncio.sleep(STALL)
+    assert peak <= 2, f"{peak} workers ran concurrently while the cap was 2"
+
+    await asyncio.gather(*second, return_exceptions=True)
+

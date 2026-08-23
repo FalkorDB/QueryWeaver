@@ -172,3 +172,29 @@ async def test_producer_is_cancelled_when_consumer_stops_early():
     await agen.aclose()
 
     await asyncio.wait_for(cancelled.wait(), timeout=2)
+
+
+@pytest.mark.unit
+async def test_producer_cancellation_reaches_the_consumer():
+    """A cancelling inner stream must end the response, not stall it.
+
+    ``CancelledError`` is a ``BaseException``, so the pump does not relay it as
+    a queue item. Without observing the pump's terminal state the consumer sat
+    on an empty queue emitting keepalives forever — an endless response.
+    """
+    async def source():
+        yield "first"
+        raise asyncio.CancelledError()
+
+    chunks = []
+
+    async def consume():
+        async for chunk in with_keepalive(source(), interval=0.02):
+            chunks.append(chunk)
+
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(consume(), timeout=3)
+
+    assert chunks[0] == "first"
+    # A handful of keepalives during the gap is fine; an unbounded stream is not.
+    assert len(chunks) < 50, "consumer kept emitting keepalives after the producer died"

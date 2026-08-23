@@ -66,6 +66,25 @@ async def with_keepalive(chunks, interval: float = STREAM_KEEPALIVE_INTERVAL):
             try:
                 item = await asyncio.wait_for(queue.get(), timeout=interval)
             except asyncio.TimeoutError:
+                if pump.done():
+                    # The producer ended without a terminal item, so it was
+                    # cancelled — every other exit enqueues one. Emitting
+                    # keepalives from here would never terminate the response.
+                    # Drain anything it managed to enqueue first: the terminal
+                    # item can land between the timeout firing and this check.
+                    while not queue.empty():
+                        queued = queue.get_nowait()
+                        if queued is finished:
+                            return
+                        if isinstance(queued, Exception):
+                            # ``from None``: the timeout is how we noticed, not
+                            # the cause. Chaining it would misreport the error.
+                            raise queued from None
+                        yield queued
+                    # Re-raises the producer's CancelledError, so cancellation
+                    # reaches the consumer instead of stalling it.
+                    pump.result()
+                    return
                 yield MESSAGE_DELIMITER
                 continue
             if item is finished:
