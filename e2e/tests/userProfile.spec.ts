@@ -256,6 +256,7 @@ test.describe('User Profile Tests', () => {
     const secondTokenId = userProfile.extractTokenId(secondTokenValue || '');
 
     // Verify both tokens exist in the list by their IDs
+    await userProfile.waitForTokenRows(2);
     const tokenIds = await userProfile.getTokenIdsFromRows();
     expect(tokenIds).toContain(firstTokenId);
     expect(tokenIds).toContain(secondTokenId);
