@@ -13,8 +13,10 @@ import pytest
 def _reload_config(monkeypatch, **env):
     for key, value in env.items():
         monkeypatch.setenv(key, value)
-    import api.config
-    return importlib.reload(api.config)
+    # ``from ... import`` throughout, for one consistent style; reload needs the
+    # module object, which the alias provides.
+    from api import config as api_config
+    return importlib.reload(api_config)
 
 
 @pytest.mark.unit
