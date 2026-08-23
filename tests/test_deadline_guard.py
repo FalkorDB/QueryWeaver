@@ -12,8 +12,9 @@ import time
 
 import pytest
 
-import api.loaders.deadline as deadline
-from api.loaders.deadline import deadline_guard
+# One import style: the module object is needed anyway, because the tests
+# monkeypatch its grace constant.
+from api.loaders import deadline
 
 
 class _Conn:
@@ -38,7 +39,7 @@ def test_guard_cancels_then_closes_a_stalled_call(monkeypatch):
     monkeypatch.setattr(deadline, "_CANCEL_GRACE_SECONDS", 0.15)
     conn = _Conn()
 
-    with deadline_guard(conn, 0.1, "probe"):
+    with deadline.deadline_guard(conn, 0.1, "probe"):
         # Stands in for a read that never returns.
         assert conn.cancelled.wait(timeout=2), "deadline did not cancel the query"
         assert conn.closed.wait(timeout=2), "deadline did not close the connection"
@@ -50,7 +51,7 @@ def test_guard_closes_even_when_cancel_fails(monkeypatch):
     monkeypatch.setattr(deadline, "_CANCEL_GRACE_SECONDS", 0.15)
     conn = _Conn(cancel_raises=True)
 
-    with deadline_guard(conn, 0.1, "probe"):
+    with deadline.deadline_guard(conn, 0.1, "probe"):
         assert conn.closed.wait(timeout=2), "close fallback did not run"
 
 
@@ -59,7 +60,7 @@ def test_guard_leaves_a_prompt_call_alone(monkeypatch):
     monkeypatch.setattr(deadline, "_CANCEL_GRACE_SECONDS", 0.1)
     conn = _Conn()
 
-    with deadline_guard(conn, 5.0, "probe"):
+    with deadline.deadline_guard(conn, 5.0, "probe"):
         time.sleep(0.05)
 
     time.sleep(0.2)
@@ -71,7 +72,7 @@ def test_guard_leaves_a_prompt_call_alone(monkeypatch):
 @pytest.mark.parametrize("seconds", [0, None, -1])
 def test_guard_is_a_noop_without_a_deadline(seconds):
     conn = _Conn()
-    with deadline_guard(conn, seconds, "probe"):
+    with deadline.deadline_guard(conn, seconds, "probe"):
         pass
     assert not conn.cancelled.is_set()
     assert not conn.closed.is_set()
