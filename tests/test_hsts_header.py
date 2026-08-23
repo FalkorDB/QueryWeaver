@@ -6,6 +6,54 @@ from fastapi.testclient import TestClient
 from api.index import app
 
 
+def parse_csp(csp: str) -> dict[str, list[str]]:
+    """Split a Content-Security-Policy header into {directive: [sources]}."""
+    directives = {}
+    for part in csp.split(";"):
+        tokens = part.split()
+        if tokens:
+            directives[tokens[0]] = tokens[1:]
+    return directives
+
+
+# Expected source lists are spelled out in full rather than substring-matched,
+# so widening a directive has to be a deliberate change in both files.
+EXPECTED_DEFAULT_CSP = {
+    "default-src": ["'self'"],
+    "script-src": ["'self'"],
+    "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+    "img-src": ["'self'", "data:"],
+    "font-src": ["'self'", "https://fonts.gstatic.com"],
+    "connect-src": ["'self'", "https://api.github.com"],
+    "frame-ancestors": ["'none'"],
+    "object-src": ["'none'"],
+    "base-uri": ["'self'"],
+}
+
+EXPECTED_DOCS_CSP = {
+    "default-src": ["'self'"],
+    "script-src": [
+        "'self'",
+        "'unsafe-inline'",
+        "'unsafe-eval'",
+        "https://cdn.jsdelivr.net",
+        "https://unpkg.com",
+    ],
+    "style-src": [
+        "'self'",
+        "'unsafe-inline'",
+        "https://cdn.jsdelivr.net",
+        "https://fonts.googleapis.com",
+    ],
+    "img-src": ["'self'", "data:", "https://cdn.jsdelivr.net"],
+    "font-src": ["'self'", "https://fonts.gstatic.com", "data:"],
+    "connect-src": ["'self'"],
+    "frame-ancestors": ["'none'"],
+    "object-src": ["'none'"],
+    "base-uri": ["'self'"],
+}
+
+
 class TestSecurityHeaders:
     """Test security headers."""
 
@@ -45,14 +93,11 @@ class TestSecurityHeaders:
         assert response.headers.get("x-frame-options") == "DENY"
 
     def test_content_security_policy(self, client):
-        """Test that Content-Security-Policy header is present."""
+        """Test that the SPA CSP matches the expected source lists exactly."""
         response = client.get("/")
         csp = response.headers.get("content-security-policy")
         assert csp is not None
-        assert "default-src 'self'" in csp
-        assert "script-src 'self'" in csp
-        assert "frame-ancestors 'none'" in csp
-        assert "object-src 'none'" in csp
+        assert parse_csp(csp) == EXPECTED_DEFAULT_CSP
 
     def test_referrer_policy(self, client):
         """Test that Referrer-Policy header is present."""
@@ -78,24 +123,29 @@ class TestSecurityHeaders:
         assert "referrer-policy" in response.headers
         assert "permissions-policy" in response.headers
 
-    def test_csp_allows_github_api(self, client):
-        """Test that CSP connect-src allows GitHub API for star counts."""
-        response = client.get("/")
-        csp = response.headers.get("content-security-policy")
-        assert "https://api.github.com" in csp
+    def test_csp_allows_live_cross_origin_fetches(self, client):
+        """Test that the CSP permits every origin the SPA actually calls.
 
-    def test_csp_allows_google_fonts(self, client):
-        """Test that CSP allows Google Fonts for styles and font files."""
+        The SPA reads GitHub star counts from api.github.com and pulls
+        Google Fonts from an @import in app/src/index.css. Dev serves no CSP
+        header, so a missing source here only breaks production.
+        """
         response = client.get("/")
-        csp = response.headers.get("content-security-policy")
-        assert "https://fonts.googleapis.com" in csp
-        assert "https://fonts.gstatic.com" in csp
+        directives = parse_csp(response.headers["content-security-policy"])
+        assert directives["connect-src"] == ["'self'", "https://api.github.com"]
+        assert directives["style-src"] == [
+            "'self'",
+            "'unsafe-inline'",
+            "https://fonts.googleapis.com",
+        ]
+        assert directives["font-src"] == ["'self'", "https://fonts.gstatic.com"]
 
     def test_csp_docs_allows_cdn(self, client):
-        """Test that /docs gets a permissive CSP for CDN assets."""
+        """Test that /docs gets the permissive CSP needed for CDN assets."""
         response = client.get("/docs")
         csp = response.headers.get("content-security-policy")
-        assert "https://cdn.jsdelivr.net" in csp
+        assert csp is not None
+        assert parse_csp(csp) == EXPECTED_DOCS_CSP
 
     def test_security_headers_on_forbidden_static(self, client):
         """Test that early-return 403 responses also include security headers."""
