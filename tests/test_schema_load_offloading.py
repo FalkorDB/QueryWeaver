@@ -252,7 +252,7 @@ async def test_schema_introspection_concurrency_is_bounded(monkeypatch):
     """
     import api.loaders.introspection as introspection
 
-    monkeypatch.setattr(introspection, "_SLOTS", None)
+    monkeypatch.setattr(introspection, "_EXECUTOR", None)
     monkeypatch.setattr(Config, "DB_SCHEMA_CONCURRENCY", 2, raising=False)
 
     live = 0
@@ -287,7 +287,7 @@ async def test_cancelled_introspection_keeps_its_slot(monkeypatch):
     """
     import api.loaders.introspection as introspection
 
-    monkeypatch.setattr(introspection, "_SLOTS", None)
+    monkeypatch.setattr(introspection, "_EXECUTOR", None)
     monkeypatch.setattr(Config, "DB_SCHEMA_CONCURRENCY", 2, raising=False)
 
     live = 0
@@ -323,3 +323,61 @@ async def test_cancelled_introspection_keeps_its_slot(monkeypatch):
 
     await asyncio.gather(*second, return_exceptions=True)
 
+
+
+@pytest.mark.unit
+def test_introspection_pool_survives_a_new_event_loop(monkeypatch):
+    """The cap must not be tied to whichever loop first contended on it.
+
+    A module-level ``asyncio.Semaphore`` binds to the first loop that waits on
+    it and then raises ``is bound to a different event loop`` for every later
+    loop — which breaks any second `asyncio.run()`, including SDK callers.
+    """
+    import api.loaders.introspection as introspection
+
+    monkeypatch.setattr(introspection, "_EXECUTOR", None)
+    monkeypatch.setattr(Config, "DB_SCHEMA_CONCURRENCY", 2, raising=False)
+
+    def work():
+        time.sleep(0.05)
+        return "done"
+
+    async def batch():
+        # More work than workers, so the pool is genuinely contended.
+        return await asyncio.gather(
+            *(introspection.run_introspection(work) for _ in range(3))
+        )
+
+    assert asyncio.run(batch()) == ["done"] * 3
+    # A second, entirely separate loop must work just the same.
+    assert asyncio.run(batch()) == ["done"] * 3
+
+
+@pytest.mark.unit
+@patch("api.loaders.postgres_loader.load_to_graph")
+@patch("api.loaders.postgres_loader.psycopg2.connect")
+async def test_introspection_connect_preserves_url_role(mock_connect, mock_load_to_graph):
+    """Introspection must not silently gain privilege the URL restricted.
+
+    ``options=`` replaces the entire URL-supplied options string. Building it
+    without merging drops ``-c role=app_reader``, so introspection connects as
+    the URL's owning role and can read tables the connection was scoped away
+    from. This guards the connect call itself, not just the kwargs builder.
+    """
+    async def noop(*_args, **_kwargs):
+        return None
+
+    mock_load_to_graph.side_effect = noop
+    mock_connect.return_value = MagicMock()
+
+    url = "postgresql://u:p@h:5432/db?options=-c%20role%3Dapp_reader"
+    with patch.object(PostgresLoader, "extract_tables_info", lambda *_a: {}), \
+         patch.object(PostgresLoader, "extract_relationships", lambda *_a: {}):
+        async for _ in PostgresLoader.load("pfx", url):
+            pass
+
+    options = mock_connect.call_args.kwargs["options"]
+    assert "role=app_reader" in options, (
+        "URL role was dropped — introspection would run with more privilege"
+    )
+    assert f"statement_timeout={Config.DB_SCHEMA_TIMEOUT * 1000}" in options

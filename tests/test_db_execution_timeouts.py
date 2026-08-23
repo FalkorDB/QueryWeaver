@@ -226,3 +226,65 @@ def test_postgres_clamp_keeps_unrelated_options():
         f"-c statement_timeout={Config.DB_STATEMENT_TIMEOUT * 1000}"
     )
 
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("budget_attr", ["DB_STATEMENT_TIMEOUT", "DB_SCHEMA_TIMEOUT"])
+def test_postgres_preserves_url_options_on_every_path(budget_attr):
+    """A privilege-bearing URL option must survive on both connect paths.
+
+    ``options=`` replaces the whole URL-supplied options string, so building it
+    without merging drops things like ``-c role=app_reader`` — introspecting
+    with more privilege than the connection was granted. The schema path used a
+    raw ``options=`` and had exactly that bug.
+    """
+    budget = getattr(Config, budget_attr)
+    kwargs = PostgresLoader._connect_kwargs(
+        f"{PG_URL}?options=-c%20role%3Dapp_reader%20-c%20search_path%3Drestricted",
+        budget,
+    )
+    assert "role=app_reader" in kwargs["options"]
+    assert "search_path=restricted" in kwargs["options"]
+    assert f"-c statement_timeout={budget * 1000}" in kwargs["options"]
+
+
+@pytest.mark.unit
+def test_postgres_bounds_socket_reads_not_just_statements():
+    """A server-side statement_timeout cannot fire on a blackholed socket.
+
+    Packets dropped rather than refused leave the client blocked in a read with
+    no deadline, holding the worker past the configured bound, so the TCP-level
+    limits are what actually terminate it.
+    """
+    kwargs = PostgresLoader._connect_kwargs(PG_URL, Config.DB_STATEMENT_TIMEOUT)
+    assert kwargs["keepalives"] == 1
+    assert kwargs["keepalives_idle"] > 0
+    assert kwargs["keepalives_count"] > 0
+    # libpq 12+ only; the module probes support once at import.
+    from api.loaders.postgres_loader import _TCP_USER_TIMEOUT_SUPPORTED
+    if _TCP_USER_TIMEOUT_SUPPORTED:
+        assert kwargs["tcp_user_timeout"] == Config.DB_STATEMENT_TIMEOUT * 1000
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("value,expected_ms,grammar", [
+    ("077777", 32_767, "bare leading zero is octal"),
+    ("0o777", 511, "explicit octal"),
+    ("0x10", 16, "hexadecimal"),
+    ("0X1F", 31, "hexadecimal, uppercase"),
+    ("0b1010", 10, "binary"),
+    ("+5s", 5_000, "explicit positive sign"),
+    ("1_000", 1_000, "digit separators"),
+    ("-5", None, "negative is not a usable bound"),
+])
+def test_postgres_parses_the_accepted_integer_grammar(value, expected_ms, grammar):
+    """PostgreSQL accepts more than decimal digits for an integer GUC.
+
+    Reading `077777` as decimal 77777ms, or failing to parse `0x10` at all,
+    replaced a stricter request with the looser ceiling.
+    """
+    ceiling = Config.DB_STATEMENT_TIMEOUT * 1000
+    kwargs = PostgresLoader._execution_connect_kwargs(
+        f"{PG_URL}?options=-c%20statement_timeout%3D{value}"
+    )
+    assert kwargs["options"] == f"-c statement_timeout={expected_ms or ceiling}", grammar

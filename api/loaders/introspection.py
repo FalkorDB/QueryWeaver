@@ -1,61 +1,60 @@
 """Bounded execution for schema introspection.
 
-Introspection runs in a worker thread because the drivers are blocking, and
-cancelling the awaiting task does not stop that thread: a stalled database
-holds its session and its worker until it answers. Two bounds follow from
-that — a deadline the server applies (see each loader's connect parameters),
-and a cap on how many introspections may occupy the shared executor at once,
-so a stalled database cannot starve every other offloaded call.
+Introspection runs off the event loop because the drivers are blocking, and
+cancelling the awaiting task cannot stop the worker: a stalled database holds
+its session and its worker until it answers. Two bounds follow — a deadline the
+server applies (see each loader's connect parameters), and a cap on how many
+introspections may run at once, so a stalled database cannot starve the shared
+default executor that every other offloaded call uses.
+
+The cap is a dedicated ``ThreadPoolExecutor`` rather than an
+``asyncio.Semaphore``: a module-level semaphore binds itself to the first loop
+that contends on it and then raises ``is bound to a different event loop`` for
+any later loop, and an executor bounds the *threads* themselves, so a cancelled
+introspection cannot free its slot while its worker is still running.
 """
 
 import asyncio
+import functools
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from api.config import Config
 
-_SLOTS: asyncio.Semaphore | None = None
+_EXECUTOR: ThreadPoolExecutor | None = None
+_EXECUTOR_LOCK = threading.Lock()
 
 
-def _semaphore() -> asyncio.Semaphore:
-    """Create the semaphore lazily, on the loop that first needs it."""
-    global _SLOTS  # pylint: disable=global-statement
-    if _SLOTS is None:
-        _SLOTS = asyncio.Semaphore(Config.DB_SCHEMA_CONCURRENCY)
-    return _SLOTS
+def _executor() -> ThreadPoolExecutor:
+    """Create the process-wide introspection pool once, lazily."""
+    global _EXECUTOR  # pylint: disable=global-statement
+    with _EXECUTOR_LOCK:
+        if _EXECUTOR is None:
+            _EXECUTOR = ThreadPoolExecutor(
+                max_workers=Config.DB_SCHEMA_CONCURRENCY,
+                thread_name_prefix="schema-introspect",
+            )
+        return _EXECUTOR
 
 
 async def run_introspection(func, /, *args, **kwargs):
-    """Run *func* in a worker thread, holding one introspection slot.
+    """Run *func* on the bounded introspection pool.
 
-    The slot is released when the *thread* finishes, not when the awaiting task
-    ends. Cancelling the awaiting task cannot stop a running worker, so
-    releasing on cancellation would hand the slot to new work while the old
-    thread still holds a worker and a database session — letting the cap be
-    exceeded by exactly the disconnect-driven load it exists to bound.
-
-    Cancellation still reaches the caller: the worker is shielded so it keeps
-    running (and keeps its slot) while the ``CancelledError`` propagates.
+    Cancellation reaches the caller while the worker keeps running: the future
+    is shielded, so an abandoned introspection continues to occupy its worker
+    until the driver returns. That is the point — releasing the slot early
+    would let the cap be exceeded by exactly the disconnect-driven load it
+    exists to bound.
     """
-    slots = _semaphore()
-    if slots.locked():
+    pool = _executor()
+    queued = getattr(pool, "_work_queue", None)
+    if queued is not None and queued.qsize():
         logging.info(
-            "schema introspection queued: %d concurrent slots in use",
+            "schema introspection queued: all %d workers busy",
             Config.DB_SCHEMA_CONCURRENCY,
         )
 
-    await slots.acquire()
-    try:
-        worker = asyncio.ensure_future(asyncio.to_thread(func, *args, **kwargs))
-    except BaseException:
-        slots.release()
-        raise
-
-    def _release(finished: asyncio.Future) -> None:
-        slots.release()
-        if not finished.cancelled():
-            # Mark any failure retrieved: when the caller was cancelled nobody
-            # is left to await this future.
-            finished.exception()
-
-    worker.add_done_callback(_release)
-    return await asyncio.shield(worker)
+    loop = asyncio.get_running_loop()
+    future = loop.run_in_executor(pool, functools.partial(func, *args, **kwargs))
+    return await asyncio.shield(future)

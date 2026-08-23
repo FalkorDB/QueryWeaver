@@ -18,6 +18,10 @@ from api.loaders.introspection import run_introspection
 
 # A real ``-c statement_timeout=<value>`` directive, case-insensitive (GUC
 # names are), capturing an optionally quoted value that may carry a unit.
+# ``tcp_user_timeout`` is a libpq 12+ connection parameter; older libpq
+# rejects unknown keywords outright, so probe once rather than assume.
+_TCP_USER_TIMEOUT_SUPPORTED = psycopg2.extensions.libpq_version() >= 120000
+
 _STATEMENT_TIMEOUT_RE = re.compile(
     # PostgreSQL accepts both directive forms in an options string:
     # ``-c name=value`` and ``--name=value``, the latter also with hyphens in
@@ -157,26 +161,46 @@ class PostgresLoader(BaseLoader):
     def _statement_timeout_ms(raw: str):
         """Normalise a ``statement_timeout`` value to milliseconds.
 
-        PostgreSQL accepts a bare number (milliseconds) or a number with a unit
-        (``us``, ``ms``, ``s``, ``min``, ``h``, ``d``), optionally quoted. A
-        URL asking for ``5s`` is stricter than a 60s ceiling and should be
-        honoured, so the value has to be understood rather than pattern-matched
-        as digits. Returns ``None`` when the value is not something we can
-        compare, in which case the configured ceiling is used instead.
+        PostgreSQL accepts more than plain decimal digits: an optional sign, a
+        hexadecimal (``0x``), octal (``0o`` or a bare leading zero) or binary
+        (``0b``) integer, and an optional unit (``us``, ``ms``, ``s``, ``min``,
+        ``h``, ``d``), the whole thing possibly quoted. Only understanding
+        decimals meant `077777` (octal, 32.767s) and `0x10` (16ms) were treated
+        as unparseable or as decimals and then replaced by the ceiling — which
+        *loosened* a stricter request. Returns ``None`` when the value is not
+        something we can compare, in which case the ceiling applies.
         """
         value = raw.strip().strip('"\'')
         match = re.fullmatch(
-            r"(?i)\s*(\d+(?:\.\d+)?)\s*(us|ms|s|min|h|d)?\s*", value
+            r"(?i)\s*([+-]?)\s*"                    # optional sign
+            r"(0[xX][0-9a-fA-F_]+|0[oO][0-7_]+|0[bB][01_]+|\d[\d_]*(?:\.\d+)?)"
+            r"\s*(us|ms|s|min|h|d)?\s*",            # optional unit
+            value,
         )
         if not match:
             return None
-        amount = float(match.group(1))
-        unit = (match.group(2) or "ms").lower()
+
+        sign, digits, unit = match.group(1), match.group(2).replace("_", ""), match.group(3)
+        try:
+            if digits[:2].lower() in ("0x", "0o", "0b"):
+                amount = float(int(digits, 0))
+            elif "." in digits:
+                amount = float(digits)
+            elif len(digits) > 1 and digits.startswith("0"):
+                # A bare leading zero is octal to PostgreSQL, not decimal.
+                amount = float(int(digits, 8))
+            else:
+                amount = float(digits)
+        except ValueError:
+            return None
+
+        if sign == "-":
+            return None                              # negative disables nothing useful
         factors = {
             "us": 0.001, "ms": 1, "s": 1000,
             "min": 60_000, "h": 3_600_000, "d": 86_400_000,
         }
-        milliseconds = amount * factors[unit]
+        milliseconds = amount * factors[(unit or "ms").lower()]
         if milliseconds <= 0:
             return None
         # Round up so a sub-millisecond request (e.g. ``500us``) is honoured as
@@ -207,10 +231,15 @@ class PostgresLoader(BaseLoader):
             # than the user-query ceiling but still bounded: cancelling the
             # awaiting task cannot stop this thread, so a stalled database
             # would otherwise hold the session and the worker indefinitely.
+            # Shares the connect-keyword builder with query execution: a raw
+            # ``options=`` here would replace every URL-supplied option, and
+            # dropping something like ``-c role=app_reader`` would silently
+            # introspect with more privilege than the connection was granted.
             conn = psycopg2.connect(
                 connection_url,
-                connect_timeout=Config.DB_CONNECT_TIMEOUT,
-                options=f"-c statement_timeout={Config.DB_SCHEMA_TIMEOUT * 1000}",
+                **PostgresLoader._connect_kwargs(
+                    connection_url, Config.DB_SCHEMA_TIMEOUT
+                ),
             )
             cursor = conn.cursor()
 
@@ -602,7 +631,12 @@ class PostgresLoader(BaseLoader):
 
     @staticmethod
     def _execution_connect_kwargs(db_url: str) -> Dict[str, Any]:
-        """Timeout keywords for executing a user query.
+        """Connect keywords for executing a user query."""
+        return PostgresLoader._connect_kwargs(db_url, Config.DB_STATEMENT_TIMEOUT)
+
+    @staticmethod
+    def _connect_kwargs(db_url: str, statement_timeout_s: int) -> Dict[str, Any]:
+        """Connect keywords bounding one connection, in seconds.
 
         Offloading execution to a thread keeps the event loop free, but only a
         server-side ``statement_timeout`` bounds the query itself — a thread
@@ -626,7 +660,7 @@ class PostgresLoader(BaseLoader):
         # `statement_timeout=1000 ... statement_timeout=0` would end up
         # unbounded. GUC names are case-insensitive, so an uppercase directive
         # left behind would win over ours.
-        timeout_ms = Config.DB_STATEMENT_TIMEOUT * 1000
+        timeout_ms = statement_timeout_s * 1000
         requested = [
             ms for ms in (
                 PostgresLoader._statement_timeout_ms(raw)
@@ -652,6 +686,19 @@ class PostgresLoader(BaseLoader):
             if 0 < requested <= connect_timeout:
                 connect_timeout = requested
         kwargs["connect_timeout"] = connect_timeout
+
+        # A server-side statement_timeout only fires while the server is still
+        # talking to us. On a blackholed connection — packets dropped rather
+        # than refused — the client blocks in a socket read with no deadline,
+        # keeping the worker alive well past the configured bound. TCP-level
+        # limits are what terminate that, so the OS gives up instead.
+        if "tcp_user_timeout" not in url_params and _TCP_USER_TIMEOUT_SUPPORTED:
+            kwargs["tcp_user_timeout"] = timeout_ms
+        if "keepalives" not in url_params:
+            kwargs["keepalives"] = 1
+            kwargs["keepalives_idle"] = max(1, connect_timeout)
+            kwargs["keepalives_interval"] = max(1, connect_timeout)
+            kwargs["keepalives_count"] = 3
         return kwargs
 
     @staticmethod

@@ -261,6 +261,11 @@ class SnowflakeLoader(BaseLoader):
             # the awaiting task cannot stop this thread.
             conn_params = dict(conn_params)
             conn_params["network_timeout"] = Config.DB_SCHEMA_TIMEOUT
+            # ``network_timeout`` bounds retries, not an individual socket
+            # read: without ``socket_timeout`` a stalled read falls back to
+            # the connector's own 60s default, ignoring the configured
+            # deadline entirely.
+            conn_params["socket_timeout"] = Config.DB_SCHEMA_TIMEOUT
             conn_params["session_parameters"] = {
                 **(conn_params.get("session_parameters") or {}),
                 "STATEMENT_TIMEOUT_IN_SECONDS": Config.DB_SCHEMA_TIMEOUT,
@@ -682,6 +687,8 @@ class SnowflakeLoader(BaseLoader):
             # configured values would never apply.
             conn_params["login_timeout"] = Config.DB_CONNECT_TIMEOUT
             conn_params["network_timeout"] = Config.DB_STATEMENT_TIMEOUT
+            # See the note in ``load``: retries are not socket reads.
+            conn_params["socket_timeout"] = Config.DB_STATEMENT_TIMEOUT
             session_parameters = dict(conn_params.get("session_parameters") or {})
             session_parameters.setdefault(
                 "STATEMENT_TIMEOUT_IN_SECONDS", Config.DB_STATEMENT_TIMEOUT
