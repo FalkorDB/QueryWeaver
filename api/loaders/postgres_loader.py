@@ -19,7 +19,12 @@ from api.loaders.introspection import run_introspection
 # A real ``-c statement_timeout=<value>`` directive, case-insensitive (GUC
 # names are), capturing an optionally quoted value that may carry a unit.
 _STATEMENT_TIMEOUT_RE = re.compile(
-    r"(?i)(?:^|\s)-c\s*statement_timeout\s*=\s*"
+    # PostgreSQL accepts both directive forms in an options string:
+    # ``-c name=value`` and ``--name=value``, the latter also with hyphens in
+    # place of underscores. GUC names are case-insensitive. Missing a form
+    # leaves it in the string, where it either overrides our bound or, if ours
+    # wins, silently loosens a stricter request.
+    r"(?i)(?:^|\s)(?:-c\s*|--)statement[-_]timeout\s*=\s*"
     r"('[^']*'|\"[^\"]*\"|\S*)"
 )
 

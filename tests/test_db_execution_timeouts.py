@@ -162,6 +162,36 @@ def test_postgres_clamp_is_not_bypassable(url_options, expected_ms, reason):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("directive", [
+    "-c%20statement_timeout",      # short form
+    "-cstatement_timeout",         # short form, no space
+    "--statement_timeout",         # long form
+    "--statement-timeout",         # long form, hyphenated
+    "--STATEMENT-TIMEOUT",         # long form, hyphenated, uppercase
+])
+def test_postgres_recognises_every_directive_form(directive):
+    """PostgreSQL accepts ``-c name=value`` and ``--name=value``.
+
+    A form we do not recognise stays in the options string, where it either
+    overrides our bound or — since ours is appended last — silently loosens a
+    stricter request.
+    """
+    ceiling = Config.DB_STATEMENT_TIMEOUT * 1000
+
+    # A disabling value must never survive.
+    disabled = PostgresLoader._execution_connect_kwargs(
+        f"{PG_URL}?options={directive}%3D0"
+    )["options"]
+    assert disabled == f"-c statement_timeout={ceiling}", directive
+
+    # A stricter value must be honoured, whichever form it arrives in.
+    stricter = PostgresLoader._execution_connect_kwargs(
+        f"{PG_URL}?options={directive}%3D5s"
+    )["options"]
+    assert stricter == "-c statement_timeout=5000", directive
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("value,expected_ms", [
     ("5s", 5_000),          # stricter than the 60s ceiling, so honoured
     ("5000", 5_000),        # bare numbers are milliseconds
