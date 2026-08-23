@@ -31,6 +31,7 @@ from api.graph import get_user_rules, set_user_rules
 from api.auth.user_management import token_required
 from api.routes.tokens import UNAUTHORIZED_RESPONSE
 from api.routes.usage_tracking import record_query_usage_background
+from api.routes.streaming import STREAM_HEADERS, with_keepalive
 
 graphs_router = APIRouter(tags=["Graphs & Databases"])
 
@@ -205,14 +206,14 @@ async def query_graph(
         question = chat_data.chat[-1]
         query_id = str(uuid.uuid4())
         try:
-            async for chunk in _serialize_pipeline(
+            async for chunk in with_keepalive(_serialize_pipeline(
                 run_query(request.state.user_id, graph_id, chat_data),
                 user_id=request.state.user_id,
                 namespaced=namespaced,
                 question=question,
                 query_id=query_id,
                 endpoint=request.url.path,
-            ):
+            )):
                 yield chunk
         except Exception:  # pylint: disable=broad-exception-caught
             # Don't leak stack traces (CodeQL: information exposure through
@@ -235,7 +236,9 @@ async def query_graph(
                 "message": "Internal error while processing query",
             }) + MESSAGE_DELIMITER
 
-    return StreamingResponse(stream(), media_type="application/json")
+    return StreamingResponse(
+        stream(), media_type="application/json", headers=STREAM_HEADERS,
+    )
 
 
 @graphs_router.post("/{graph_id}/confirm", responses={401: UNAUTHORIZED_RESPONSE})
@@ -268,14 +271,14 @@ async def confirm_destructive_operation(
         question = str(confirm_data.chat[-1]) if confirm_data.chat else ""
         query_id = str(uuid.uuid4())
         try:
-            async for chunk in _serialize_pipeline(
+            async for chunk in with_keepalive(_serialize_pipeline(
                 run_confirmed(request.state.user_id, graph_id, confirm_data),
                 user_id=request.state.user_id,
                 namespaced=namespaced,
                 question=question,
                 query_id=query_id,
                 endpoint=request.url.path,
-            ):
+            )):
                 yield chunk
         except Exception:  # pylint: disable=broad-exception-caught
             # See note on the query endpoint above (CodeQL).
@@ -296,7 +299,9 @@ async def confirm_destructive_operation(
                 "message": "Internal error while processing confirmation",
             }) + MESSAGE_DELIMITER
 
-    return StreamingResponse(stream(), media_type="application/json")
+    return StreamingResponse(
+        stream(), media_type="application/json", headers=STREAM_HEADERS,
+    )
 
 
 @graphs_router.post("/{graph_id}/refresh", responses={401: UNAUTHORIZED_RESPONSE})
@@ -310,7 +315,11 @@ async def refresh_graph_schema(request: Request, graph_id: str):
     """
     try:
         generator = await refresh_database_schema(request.state.user_id, graph_id)
-        return StreamingResponse(generator, media_type="application/json")
+        return StreamingResponse(
+            with_keepalive(generator),
+            media_type="application/json",
+            headers=STREAM_HEADERS,
+        )
     except (InternalError, InvalidArgumentError) as e:
         # Log detailed error internally, send generic message to user
         if isinstance(e, InternalError):

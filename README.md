@@ -502,7 +502,7 @@ docker run -p 5000:5000 -it \
   -e FASTAPI_SECRET_KEY=your_secret_key \
   -e AZURE_API_KEY=your_azure_api_key \
   -e AZURE_API_BASE=https://your-resource.openai.azure.com/ \
-  -e AZURE_API_VERSION=2024-12-01-preview \
+  -e AZURE_API_VERSION=2025-03-01-preview \
   falkordb/queryweaver
 ```
 

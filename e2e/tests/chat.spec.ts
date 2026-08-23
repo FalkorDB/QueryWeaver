@@ -87,11 +87,18 @@ test.describe('Chat Feature Tests', () => {
     const processingComplete = await homePage.waitForProcessingToComplete();
     expect(processingComplete).toBeTruthy();
 
-    // Verify Query Analysis message appears (but without actual SQL)
-    const sqlMessageVisible = await homePage.isSQLQueryMessageVisible();
-    expect(sqlMessageVisible).toBeTruthy();
+    // Verify NO SQL card at all. An off-topic query never reaches SQL
+    // generation, so there is no SQL and no analysis to show — the card would
+    // render as a bare "Query Analysis" header with nothing under it. The
+    // off-topic explanation reaches the user as a normal AI message instead
+    // (asserted below). This previously asserted the empty card was visible,
+    // which masked the phantom card seen in the 2026-07-29 incident.
+    // Strict web-first assertion: toHaveCount(0) waits for the final DOM
+    // state and fails on a broken selector, unlike the boolean helper which
+    // catches locator errors and returns false.
+    await expect(homePage.sqlQueryCard).toHaveCount(0);
 
-    // Verify NO actual SQL content (should say "Query Analysis" or "Off topic")
+    // And therefore no SQL content anywhere.
     const hasSQLContent = await homePage.verifySQLQueryContains("SELECT");
     expect(hasSQLContent).toBeFalsy();
 

@@ -238,12 +238,23 @@ const ChatInterface = ({
         setTimeout(() => scrollToBottom(), 50);
       }
 
-      // Add SQL query message with analysis info (even if SQL is empty)
-      if (sqlQuery !== undefined || Object.keys(analysisInfo).length > 0) {
+      // Render the SQL card only when there is genuinely something to show.
+      // Two traps here, both of which produced the empty "Query Analysis"
+      // card seen in the 2026-07-29 incident:
+      //   - sqlQuery is initialized to "" and never undefined, so the original
+      //     `sqlQuery !== undefined` guard was always true.
+      //   - analysisInfo is built with all five keys defined unconditionally,
+      //     so counting keys is always > 0 once any sql_query event arrives,
+      //     even when every value is undefined.
+      const trimmedSqlQuery = sqlQuery.trim();
+      const hasAnalysisInfo = Object.values(analysisInfo).some(
+        value => value !== undefined && value !== null && value !== ''
+      );
+      if (trimmedSqlQuery || hasAnalysisInfo) {
         const sqlMessage: ChatMessageData = {
           id: (Date.now() + 2).toString(),
           type: "sql-query",
-          content: sqlQuery,
+          content: trimmedSqlQuery,
           analysisInfo: analysisInfo,
           timestamp: new Date(),
         };

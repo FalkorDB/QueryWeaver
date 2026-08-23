@@ -113,6 +113,15 @@ export class HomePage extends BasePage {
     return this.confirmationMessage;
   }
 
+  /**
+   * Public accessor for the SQL-card locator, so tests can make strict
+   * web-first assertions instead of relying on the boolean helpers, which
+   * swallow locator errors and would pass on a broken selector.
+   */
+  get sqlQueryCard(): Locator {
+    return this.sqlQueryMessage;
+  }
+
   private get confirmationConfirmBtn(): Locator {
     return this.page.getByTestId("confirmation-confirm-button");
   }
