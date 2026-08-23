@@ -242,6 +242,7 @@ test.describe('Chat Feature Tests', () => {
   });
 
   test('destructive operation shows inline confirmation and executes on confirm', { tag: '@requires-ai' }, async () => {
+    test.slow(); // 30s confirmation wait + 50s processing wait exceeds the 60s describe budget
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
@@ -275,8 +276,8 @@ test.describe('Chat Feature Tests', () => {
     expect(processingComplete).toBeTruthy();
 
     // Verify confirmation message is no longer visible
-    const confirmationStillVisible = await homePage.isConfirmationMessageVisible();
-    expect(confirmationStillVisible).toBeFalsy();
+    const confirmationDismissed = await homePage.waitForConfirmationToDisappear();
+    expect(confirmationDismissed).toBeTruthy();
 
     // Verify AI response appears after confirmation
     const finalAIMessageCount = await homePage.getAIMessageCount();

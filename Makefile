@@ -1,4 +1,4 @@
-.PHONY: help install test test-unit test-e2e test-e2e-headed lint format clean setup-dev build lint-frontend test-sdk docker-test-services docker-test-stop build-package
+.PHONY: help install test test-unit test-e2e test-e2e-no-ai test-e2e-headed lint format clean setup-dev build lint-frontend test-sdk docker-test-services docker-test-stop build-package
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -34,15 +34,19 @@ test-unit: ## Run unit tests only (excludes SDK and E2E tests)
 
 
 test-e2e: build-dev ## Run E2E tests headless
-	uv run python -m pytest tests/e2e/ --browser chromium --video=on --screenshot=on
+	npx playwright test --reporter=list
+
+
+test-e2e-no-ai: build-dev ## Run E2E tests that do not need LLM secrets
+	npx playwright test --grep-invert @requires-ai --reporter=list
 
 
 test-e2e-headed: build-dev ## Run E2E tests with browser visible
-	uv run python -m pytest tests/e2e/ --browser chromium --headed
+	npx playwright test --headed --reporter=list
 
 
 test-e2e-debug: build-dev ## Run E2E tests with debugging enabled
-	uv run python -m pytest tests/e2e/ --browser chromium --slowmo=1000
+	npx playwright test --debug
 
 lint: ## Run linting (backend + frontend)
 	@echo "Running backend lint (pylint)"
@@ -59,7 +63,7 @@ format: ## Format code (placeholder - add black/autopep8 if needed)
 clean: ## Clean up test artifacts
 	rm -rf test-results/
 	rm -rf playwright-report/
-	rm -rf tests/e2e/screenshots/
+	rm -rf e2e/.auth/
 	rm -rf __pycache__/
 	rm -rf dist/
 	rm -rf *.egg-info/
