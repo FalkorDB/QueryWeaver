@@ -9,6 +9,35 @@ from litellm import completion
 from api.config import Config
 
 
+def _log_success(label: str, model: str, attempt: int, attempts: int,
+                 elapsed: float) -> None:
+    """Record a completed call, flagging one slow enough to be worth noticing."""
+    logging.info(
+        "llm_call label=%s model=%s attempt=%d/%d duration=%.2fs outcome=ok",
+        label, model, attempt, attempts, elapsed,
+    )
+    if elapsed >= Config.LLM_SLOW_CALL_THRESHOLD:
+        logging.warning(
+            "llm_call label=%s model=%s duration=%.2fs exceeded slow-call "
+            "threshold of %.0fs", label, model, elapsed,
+            Config.LLM_SLOW_CALL_THRESHOLD,
+        )
+
+
+def _attempt(base_args: Dict[str, Any], remaining: float, overrides: Dict[str, Any]):
+    """Issue one provider request bounded by *remaining* seconds.
+
+    Merged into one mapping rather than passed as several ``**`` expansions:
+    duplicate keywords are a ``TypeError`` that way, so a caller overriding
+    ``timeout`` would crash instead of overriding.
+    """
+    return completion(**{
+        **base_args,
+        **Config.llm_call_bounds(timeout=remaining),
+        **overrides,
+    })
+
+
 def run_completion(messages: List[Dict[str, str]], custom_model: str | None = None,
                    custom_api_key: str | None = None, *, label: str = "llm",
                    **kwargs) -> str:
@@ -26,45 +55,61 @@ def run_completion(messages: List[Dict[str, str]], custom_model: str | None = No
 
     Returns the content string from the first choice.
     """
-    bounds = Config.llm_call_bounds()
-    overrides = {key: kwargs[key] for key in bounds if key in kwargs}
+    base_args = {
+        "model": custom_model if custom_model else Config.COMPLETION_MODEL,
+        "messages": messages,
+        "top_p": 1,
+    }
+    if custom_api_key:
+        base_args["api_key"] = custom_api_key
+
+    overrides = {
+        key: kwargs[key]
+        for key in ("timeout", "max_retries", "num_retries")
+        if key in kwargs
+    }
     if overrides:
         logging.info(
             "llm_call label=%s bound overrides in effect: %s", label, overrides
         )
 
-    completion_args = {
-        "model": custom_model if custom_model else Config.COMPLETION_MODEL,
-        "messages": messages,
-        "top_p": 1,
-        **bounds,
-        **kwargs,
-    }
+    attempts = Config.llm_attempts()
+    deadline = time.monotonic() + Config.LLM_TIMEOUT
+    last_error: Exception | None = None
 
-    if custom_api_key:
-        completion_args["api_key"] = custom_api_key
+    for attempt in range(1, attempts + 1):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
 
-    started = time.monotonic()
-    try:
-        result = completion(**completion_args)
-    except Exception:
-        logging.warning(
-            "llm_call label=%s model=%s duration=%.2fs outcome=error",
-            label, completion_args["model"], time.monotonic() - started,
-        )
-        raise
-    elapsed = time.monotonic() - started
-    logging.info(
-        "llm_call label=%s model=%s duration=%.2fs outcome=ok",
-        label, completion_args["model"], elapsed,
+        # Each attempt gets what is left of the budget, so the total cannot
+        # exceed LLM_TIMEOUT however many attempts are made. A retry therefore
+        # only happens when time remains — which is the case that matters, a
+        # fast transient failure rather than a call that already spent the
+        # budget.
+        started = time.monotonic()
+        try:
+            result = _attempt(base_args, remaining, kwargs)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            last_error = exc
+            logging.warning(
+                "llm_call label=%s model=%s attempt=%d/%d duration=%.2fs "
+                "outcome=error error=%s",
+                label, base_args["model"], attempt, attempts,
+                time.monotonic() - started, type(exc).__name__,
+            )
+            continue
+
+        _log_success(label, base_args["model"], attempt, attempts,
+                     time.monotonic() - started)
+        return result.choices[0].message.content
+
+    if last_error is not None:
+        raise last_error
+    raise TimeoutError(
+        f"llm_call label={label} exhausted its {Config.LLM_TIMEOUT}s budget "
+        "before an attempt could start"
     )
-    if elapsed >= Config.LLM_SLOW_CALL_THRESHOLD:
-        logging.warning(
-            "llm_call label=%s model=%s duration=%.2fs exceeded slow-call "
-            "threshold of %.0fs", label, completion_args["model"], elapsed,
-            Config.LLM_SLOW_CALL_THRESHOLD,
-        )
-    return result.choices[0].message.content
 
 
 class BaseAgent:  # pylint: disable=too-few-public-methods

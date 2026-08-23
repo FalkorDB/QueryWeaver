@@ -288,3 +288,54 @@ def test_postgres_parses_the_accepted_integer_grammar(value, expected_ms, gramma
         f"{PG_URL}?options=-c%20statement_timeout%3D{value}"
     )
     assert kwargs["options"] == f"-c statement_timeout={expected_ms or ceiling}", grammar
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("query,reason", [
+    ("tcp_user_timeout=0&keepalives=0", "both disabled"),
+    ("keepalives=0", "keepalives disabled"),
+    ("tcp_user_timeout=0", "tcp_user_timeout disabled"),
+    ("tcp_user_timeout=999999999", "tcp_user_timeout loosened"),
+])
+def test_postgres_url_cannot_disable_socket_safeguards(query, reason):
+    """A URL may tighten the socket bounds, never switch them off."""
+    from api.loaders.postgres_loader import _TCP_USER_TIMEOUT_SUPPORTED
+
+    kwargs = PostgresLoader._connect_kwargs(
+        f"{PG_URL}?{query}", Config.DB_STATEMENT_TIMEOUT
+    )
+    assert kwargs["keepalives"] == 1, reason
+    if _TCP_USER_TIMEOUT_SUPPORTED:
+        assert kwargs["tcp_user_timeout"] == Config.DB_STATEMENT_TIMEOUT * 1000, reason
+
+
+@pytest.mark.unit
+def test_postgres_url_may_tighten_the_socket_bound():
+    from api.loaders.postgres_loader import _TCP_USER_TIMEOUT_SUPPORTED
+
+    kwargs = PostgresLoader._connect_kwargs(
+        f"{PG_URL}?tcp_user_timeout=5000", Config.DB_STATEMENT_TIMEOUT
+    )
+    if _TCP_USER_TIMEOUT_SUPPORTED:
+        assert kwargs["tcp_user_timeout"] == 5000
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("value,expected_ms,grammar", [
+    (".5s", 500, "leading decimal point"),
+    ("5.s", 5_000, "trailing decimal point"),
+    ("5e3ms", 5_000, "exponent notation"),
+    ("5E3ms", 5_000, "exponent, uppercase"),
+    ("1e-1s", 100, "negative exponent"),
+    ("0.5s", 500, "ordinary decimal"),
+])
+def test_postgres_parses_real_number_syntax(value, expected_ms, grammar):
+    """PostgreSQL accepts real syntax for a time GUC, not just integers.
+
+    `.5s` is 500ms and `5e3ms` is 5s to the server; rejecting them replaced a
+    stricter request with the looser ceiling.
+    """
+    kwargs = PostgresLoader._execution_connect_kwargs(
+        f"{PG_URL}?options=-c%20statement_timeout%3D{value.replace('+', '%2B')}"
+    )
+    assert kwargs["options"] == f"-c statement_timeout={expected_ms}", grammar

@@ -13,6 +13,7 @@ import tqdm
 
 from api.config import Config
 from api.loaders.base_loader import BaseLoader  # pylint: disable=import-error
+from api.loaders.deadline import deadline_guard
 from api.loaders.graph_loader import load_to_graph  # pylint: disable=import-error
 from api.loaders.introspection import run_introspection
 
@@ -173,7 +174,10 @@ class PostgresLoader(BaseLoader):
         value = raw.strip().strip('"\'')
         match = re.fullmatch(
             r"(?i)\s*([+-]?)\s*"                    # optional sign
-            r"(0[xX][0-9a-fA-F_]+|0[oO][0-7_]+|0[bB][01_]+|\d[\d_]*(?:\.\d+)?)"
+            r"("
+            r"0[xX][0-9a-fA-F_]+|0[oO][0-7_]+|0[bB][01_]+"   # radix-prefixed
+            r"|(?:\d[\d_]*\.?\d*|\.\d+)(?:[eE][+-]?\d+)?"  # decimal, incl.
+            r")"                                     # ".5", "5." and "5e3"
             r"\s*(us|ms|s|min|h|d)?\s*",            # optional unit
             value,
         )
@@ -184,7 +188,8 @@ class PostgresLoader(BaseLoader):
         try:
             if digits[:2].lower() in ("0x", "0o", "0b"):
                 amount = float(int(digits, 0))
-            elif "." in digits:
+            elif any(ch in digits for ch in ".eE"):
+                # Real syntax (".5", "5.", "5e3") is never octal.
                 amount = float(digits)
             elif len(digits) > 1 and digits.startswith("0"):
                 # A bare leading zero is octal to PostgreSQL, not decimal.
@@ -243,14 +248,20 @@ class PostgresLoader(BaseLoader):
             )
             cursor = conn.cursor()
 
-            # Set the session search_path to the parsed schema so unqualified
-            # table references (e.g. in sample queries) resolve correctly.
-            cursor.execute(
-                sql.SQL("SET search_path TO {}").format(sql.Identifier(schema))
-            )
+            # The server-side deadline only fires while the backend is
+            # answering; this one fires regardless, so a stalled peer cannot
+            # hold the worker past the budget.
+            with deadline_guard(
+                conn, Config.DB_SCHEMA_TIMEOUT, "schema introspection"
+            ):
+                # Set the session search_path to the parsed schema so
+                # unqualified table references resolve correctly.
+                cursor.execute(
+                    sql.SQL("SET search_path TO {}").format(sql.Identifier(schema))
+                )
 
-            entities = PostgresLoader.extract_tables_info(cursor, schema)
-            relationships = PostgresLoader.extract_relationships(cursor, schema)
+                entities = PostgresLoader.extract_tables_info(cursor, schema)
+                relationships = PostgresLoader.extract_relationships(cursor, schema)
             return entities, relationships
         finally:
             if cursor is not None:
@@ -692,13 +703,24 @@ class PostgresLoader(BaseLoader):
         # than refused — the client blocks in a socket read with no deadline,
         # keeping the worker alive well past the configured bound. TCP-level
         # limits are what terminate that, so the OS gives up instead.
-        if "tcp_user_timeout" not in url_params and _TCP_USER_TIMEOUT_SUPPORTED:
-            kwargs["tcp_user_timeout"] = timeout_ms
-        if "keepalives" not in url_params:
-            kwargs["keepalives"] = 1
-            kwargs["keepalives_idle"] = max(1, connect_timeout)
-            kwargs["keepalives_interval"] = max(1, connect_timeout)
-            kwargs["keepalives_count"] = 3
+        # Clamped, not defaulted: ``tcp_user_timeout=0&keepalives=0`` in a URL
+        # would otherwise switch these off entirely. A URL may tighten
+        # tcp_user_timeout, never loosen or disable it.
+        if _TCP_USER_TIMEOUT_SUPPORTED:
+            url_tcp = url_params.get("tcp_user_timeout", [None])[0]
+            tcp_user_timeout = timeout_ms
+            if url_tcp is not None:
+                try:
+                    requested_ms = int(url_tcp)
+                except ValueError:
+                    requested_ms = 0
+                if 0 < requested_ms < tcp_user_timeout:
+                    tcp_user_timeout = requested_ms
+            kwargs["tcp_user_timeout"] = tcp_user_timeout
+        kwargs["keepalives"] = 1
+        kwargs["keepalives_idle"] = max(1, connect_timeout)
+        kwargs["keepalives_interval"] = max(1, connect_timeout)
+        kwargs["keepalives_count"] = 3
         return kwargs
 
     @staticmethod
@@ -719,9 +741,11 @@ class PostgresLoader(BaseLoader):
                 db_url, **PostgresLoader._execution_connect_kwargs(db_url)
             )
             cursor = conn.cursor()
+            guard = deadline_guard(conn, Config.DB_STATEMENT_TIMEOUT, "query execution")
 
             # Execute the SQL query
-            cursor.execute(sql_query)
+            with guard:
+                cursor.execute(sql_query)
 
             # Check if the query returns results (SELECT queries)
             if cursor.description is not None:

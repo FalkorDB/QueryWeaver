@@ -221,20 +221,28 @@ class Config:  # pylint: disable=too-many-instance-attributes
     LLM_MAX_RETRIES: int = max(0, int(os.getenv("LLM_MAX_RETRIES", "1")))
 
     @classmethod
-    def llm_call_bounds(cls) -> dict:
-        """Provider kwargs that bound one logical LLM call end to end.
+    def llm_attempts(cls) -> int:
+        """How many provider requests one logical call may make."""
+        return cls.LLM_MAX_RETRIES + 1
 
-        ``LLM_TIMEOUT`` is the budget for the whole call, not per attempt. The
-        provider applies its timeout to each attempt, so the per-attempt value
-        is the budget divided by the number of attempts — otherwise a retry
-        pushes the real ceiling to a multiple of the configured one, which is
-        what made a 3s timeout take 10.8s to fail before the retry budget was
-        pinned. litellm's own retry loop stays off so the two cannot compound.
+    @classmethod
+    def llm_call_bounds(cls, timeout: float | None = None) -> dict:
+        """Provider kwargs for a single attempt.
+
+        Both library retry mechanisms are disabled. litellm treats
+        ``num_retries`` as overriding ``max_retries``, so the pair
+        ``{max_retries: 1, num_retries: 0}`` made exactly one request while the
+        budget was divided as though two would happen — losing the retry and
+        halving the effective deadline at once. Retries are therefore driven by
+        ``run_completion`` against the remaining budget, where the attempt count
+        and elapsed time are observable.
+
+        ``timeout`` defaults to the whole budget, which is right for
+        single-attempt callers such as embeddings.
         """
-        attempts = cls.LLM_MAX_RETRIES + 1
         return {
-            "timeout": cls.LLM_TIMEOUT / attempts,
-            "max_retries": cls.LLM_MAX_RETRIES,
+            "timeout": cls.LLM_TIMEOUT if timeout is None else timeout,
+            "max_retries": 0,
             "num_retries": 0,
         }
 

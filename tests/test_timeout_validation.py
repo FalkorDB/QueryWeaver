@@ -6,8 +6,17 @@ timeout. Both are worse than refusing to start.
 """
 
 import importlib
+import time
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _restore_config_module():
+    """Reload tests replace api.config; put the pristine module back after."""
+    yield
+    from api import config as api_config
+    importlib.reload(api_config)
 
 
 def _reload_config(monkeypatch, **env):
@@ -52,25 +61,25 @@ def test_defaults_are_positive(monkeypatch):
 @pytest.mark.unit
 @pytest.mark.parametrize("retries,expected_attempts", [(0, 1), (1, 2), (3, 4)])
 def test_llm_timeout_is_a_total_budget(monkeypatch, retries, expected_attempts):
-    """LLM_TIMEOUT bounds the whole call, not each attempt.
+    """LLM_TIMEOUT bounds the whole call, across every attempt.
 
-    The provider applies its timeout per attempt, so leaving the configured
-    value there made the real ceiling a multiple of it: a 3s timeout took
-    10.8s to fail. The per-attempt value is now the budget divided by the
-    number of attempts.
+    The budget is enforced by the retry loop in ``run_completion``, which hands
+    each attempt the remaining time. The library's own retry knobs stay off:
+    litellm treats ``num_retries`` as overriding ``max_retries``, so relying on
+    them made one request while the budget was divided as though several would
+    happen.
     """
-    from api.config import Config
+    from api import config as api_config
 
-    monkeypatch.setattr(Config, "LLM_TIMEOUT", 90.0, raising=False)
-    monkeypatch.setattr(Config, "LLM_MAX_RETRIES", retries, raising=False)
+    monkeypatch.setattr(api_config.Config, "LLM_TIMEOUT", 90.0, raising=False)
+    monkeypatch.setattr(api_config.Config, "LLM_MAX_RETRIES", retries, raising=False)
 
-    bounds = Config.llm_call_bounds()
-    assert bounds["max_retries"] == retries
-    # litellm's own retry loop stays off so the two cannot compound.
+    assert api_config.Config.llm_attempts() == expected_attempts
+    bounds = api_config.Config.llm_call_bounds()
+    assert bounds["max_retries"] == 0
     assert bounds["num_retries"] == 0
-    assert bounds["timeout"] == 90.0 / expected_attempts
-    # The worst case across every attempt stays within the budget.
-    assert bounds["timeout"] * expected_attempts <= Config.LLM_TIMEOUT
+    # Default is the whole budget, which is right for single-attempt callers.
+    assert bounds["timeout"] == 90.0
 
 
 @pytest.mark.unit
@@ -102,3 +111,71 @@ def test_call_site_bound_overrides_are_logged(monkeypatch, caplog):
 
     assert "bound overrides in effect" in caplog.text, "override was not logged"
     assert "timeout" in caplog.text
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("retries", [0, 1, 3])
+def test_run_completion_makes_exactly_the_budgeted_attempts(monkeypatch, retries):
+    """Attempt count must match the configuration, and be observable.
+
+    litellm treats ``num_retries`` as overriding ``max_retries``, so relying on
+    the library pair made one request while the budget was divided as though
+    several would happen — no retry, and half the deadline. Retries are driven
+    here instead.
+    """
+    import api.agents.utils as agent_utils
+
+    # Patch the Config the module under test holds: the reload-based tests in
+    # this file rebind api.config.Config, so a freshly imported reference can be
+    # a different object.
+    monkeypatch.setattr(agent_utils.Config, "LLM_TIMEOUT", 5.0, raising=False)
+    monkeypatch.setattr(agent_utils.Config, "LLM_MAX_RETRIES", retries, raising=False)
+
+    calls = []
+
+    def failing_completion(**kwargs):
+        calls.append(kwargs["timeout"])
+        raise RuntimeError("transient")
+
+    monkeypatch.setattr(agent_utils, "completion", failing_completion)
+
+    with pytest.raises(RuntimeError, match="transient"):
+        agent_utils.run_completion([{"role": "user", "content": "hi"}], label="probe")
+
+    assert len(calls) == retries + 1
+    # Library retries stay off, and each attempt is handed the remaining budget,
+    # so the per-attempt timeout never grows.
+    assert all(t <= 5.0 for t in calls)
+    assert calls == sorted(calls, reverse=True)
+
+
+@pytest.mark.unit
+def test_run_completion_stops_retrying_when_the_budget_is_spent(monkeypatch):
+    """A slow failure consumes the budget, so no further attempt is made."""
+    import api.agents.utils as agent_utils
+
+    monkeypatch.setattr(agent_utils.Config, "LLM_TIMEOUT", 0.3, raising=False)
+    monkeypatch.setattr(agent_utils.Config, "LLM_MAX_RETRIES", 5, raising=False)
+
+    calls = []
+
+    def slow_failing_completion(**_kwargs):
+        calls.append(1)
+        time.sleep(0.2)
+        raise RuntimeError("slow transient")
+
+    monkeypatch.setattr(agent_utils, "completion", slow_failing_completion)
+
+    with pytest.raises(RuntimeError):
+        agent_utils.run_completion([{"role": "user", "content": "hi"}], label="probe")
+
+    assert len(calls) < 6, "kept retrying past the budget"
+
+
+@pytest.mark.unit
+def test_library_retry_knobs_are_disabled():
+    """Both library mechanisms stay off so they cannot compound or override."""
+    import api.agents.utils as agent_utils
+
+    bounds = agent_utils.Config.llm_call_bounds(timeout=7)
+    assert bounds == {"timeout": 7, "max_retries": 0, "num_retries": 0}
