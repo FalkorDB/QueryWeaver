@@ -612,11 +612,11 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, onResizingChange, sideba
         onClick={onClose}
       />
 
-      {/* Schema Viewer */}
+      {/* Schema Viewer. The width transition has to be off while dragging,
+          otherwise every mousemove animates over 300ms and the panel lags
+          behind the cursor. */}
       <div
         data-testid="schema-panel"
-        // The width transition has to be off while dragging, otherwise every
-        // mousemove animates over 300ms and the panel lags behind the cursor.
         className={`fixed top-0 h-full bg-background border-r border-border flex flex-col
           ${isResizing ? '' : 'transition-all duration-300'}
           translate-x-0
@@ -696,7 +696,9 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, onResizingChange, sideba
           )}
         </div>
 
-        {/* Resize Handle */}
+        {/* Resize Handle. Hidden below `md`, where the panel is sized by the
+            `w-[80vw]` class and ignores the `width` state entirely — a handle
+            there would move the ARIA values without moving the panel. */}
         <div
           ref={resizeRef}
           role="separator"
@@ -707,7 +709,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, onResizingChange, sideba
           aria-valuemax={widthBounds.max}
           tabIndex={0}
           data-testid="schema-panel-resize-handle"
-          className="absolute right-0 top-0 w-1 h-full cursor-ew-resize hover:bg-purple-500 focus-visible:bg-purple-500 focus-visible:outline-none transition-colors z-50"
+          className="hidden md:block absolute right-0 top-0 w-1 h-full cursor-ew-resize hover:bg-purple-500 focus-visible:bg-purple-500 focus-visible:outline-none transition-colors z-50"
           onKeyDown={handleResizeKeyDown}
           onMouseDown={(e) => {
             e.preventDefault();
