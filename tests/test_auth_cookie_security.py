@@ -1,25 +1,30 @@
 """Regression tests for the cookie-security and provisioning fixes.
 
-Three separate defects are pinned here:
+Four separate defects are pinned here:
 
 * ``X-Forwarded-Proto`` was compared verbatim, so a proxy sending ``HTTPS`` or
   ``https, http`` silently dropped the ``Secure`` flag on a real HTTPS request.
 * The session cookie lost ``Secure`` whenever ``APP_ENV`` was simply unset,
   which is the easiest deployment mistake to make.
+* The ``api_token`` cookie took its ``Secure`` flag from the request, so a
+  single request steered over plain HTTP handed out the credential unprotected.
 * A login during a FalkorDB outage was marked provisioned even though nothing
   was written, so the deferred repair never ran.
 """
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from api.routes import auth as auth_routes
+
 from api.app_factory import _session_cookie_https_only
 from api.auth.browser_session import establish_browser_session, is_provisioned
 from api.auth.oauth_handlers import setup_oauth_handlers
 from api.auth.user_management import _build_user_merge_query
-from api.helpers.request_security import is_secure_request
+from api.helpers.request_security import is_secure_request, should_mark_cookie_secure
 from api.routes.auth import _retry_pending_provisioning
 
 pytestmark = [pytest.mark.unit, pytest.mark.auth]
@@ -80,6 +85,32 @@ class TestSessionCookieFailsSecure:
     def test_anything_else_is_https_only(self, monkeypatch, value):
         monkeypatch.setenv("APP_ENV", value)
         assert _session_cookie_https_only() is True
+
+
+class TestApiTokenCookieFailsSecure:
+    """The ``api_token`` cookie is a credential, so the transport cannot demote it."""
+
+    def test_plain_http_still_gets_secure_outside_development(self, monkeypatch):
+        monkeypatch.delenv("APP_ENV", raising=False)
+        assert should_mark_cookie_secure(FakeRequest(scheme="http")) is True
+
+    @pytest.mark.parametrize("value", ["production", "staging", "", "dev"])
+    def test_non_development_environments_are_secure(self, monkeypatch, value):
+        monkeypatch.setenv("APP_ENV", value)
+        assert should_mark_cookie_secure(FakeRequest(scheme="http")) is True
+
+    @pytest.mark.parametrize("value", ["development", "DEVELOPMENT", "  development  "])
+    def test_development_follows_the_transport(self, monkeypatch, value):
+        monkeypatch.setenv("APP_ENV", value)
+        assert should_mark_cookie_secure(FakeRequest(scheme="http")) is False
+        assert should_mark_cookie_secure(FakeRequest(scheme="https")) is True
+
+    def test_every_api_token_cookie_uses_the_policy(self):
+        """A single missed call site is enough to leak the credential."""
+        source = Path(auth_routes.__file__).read_text(encoding="utf-8")
+        cookie_writes = source.count('key="api_token"')
+        assert cookie_writes > 0
+        assert source.count("secure=should_mark_cookie_secure(request)") == cookie_writes
 
 
 class TestCallbackReportsRealOutcome:

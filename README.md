@@ -461,6 +461,8 @@ QueryWeaver supports Google and GitHub OAuth. Create OAuth credentials for each 
 
 For production/staging deployments, session cookies are HTTPS-only by default. Only an `APP_ENV` that reads as `development` once trimmed and lower-cased turns that off, so a deployment that forgets the variable still gets secure cookies. Set `APP_ENV=development` for plain-HTTP local runs, otherwise the browser drops the cookie and you get OAuth CSRF state mismatch errors.
 
+The same rule governs the `api_token` cookie. It carries a credential, so its `Secure` flag is not read off the request transport - a single request arriving over plain HTTP would otherwise hand the token out unprotected. Outside an explicit `APP_ENV=development` run it is always `Secure`.
+
 ```bash
 # For production/staging (HTTPS-only session cookies - also the default)
 APP_ENV=production

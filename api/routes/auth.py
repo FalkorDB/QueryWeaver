@@ -31,7 +31,7 @@ from api.auth.user_management import delete_user_token, ensure_user_in_organizat
 from api.config import ORGANIZATIONS_GRAPH
 from api.core.errors import AuthBackendUnavailableError
 from api.extensions import db
-from api.helpers.request_security import is_secure_request
+from api.helpers.request_security import is_secure_request, should_mark_cookie_secure
 
 # Import GENERAL_PREFIX from graphs route
 GENERAL_PREFIX = os.getenv("GENERAL_PREFIX")
@@ -382,7 +382,7 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
             key="api_token",
             value=api_token,
             httponly=True,
-            secure=_is_request_secure(request)
+            secure=should_mark_cookie_secure(request)
         )
         return response
 
@@ -460,7 +460,7 @@ async def email_login(request: Request, login_data: EmailLoginRequest) -> JSONRe
                 key="api_token",
                 value=api_token,
                 httponly=True,
-                secure=_is_request_secure(request)
+                secure=should_mark_cookie_secure(request)
             )
             return response
 
@@ -604,7 +604,7 @@ async def google_authorized(request: Request) -> RedirectResponse:
                 key="api_token",
                 value=api_token,
                 httponly=True,
-                secure=_is_request_secure(request)
+                secure=should_mark_cookie_secure(request)
             )
 
             return redirect
@@ -699,7 +699,7 @@ async def github_authorized(request: Request) -> RedirectResponse:
                 key="api_token",
                 value=api_token,
                 httponly=True,
-                secure=_is_request_secure(request)
+                secure=should_mark_cookie_secure(request)
             )
 
             return redirect
