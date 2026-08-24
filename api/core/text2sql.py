@@ -338,13 +338,6 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
 
     logging.info("User Query: %s", sanitize_query(queries_history[-1]))
 
-    # Memory tool created concurrently with relevancy/find work — small perf
-    # win for streaming, harmless for SDK. Lazy-imported via _create_memory_tool.
-    memory_tool_task = (
-        asyncio.create_task(_create_memory_tool(user_id, namespaced, db=db))
-        if use_memory else None
-    )
-
     yield {
         "type": "reasoning_step",
         "final_response": False,
@@ -369,24 +362,21 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
         ))
         return
 
-    # Concurrent: relevancy check + table-finding
-    find_task = asyncio.create_task(
-        find(namespaced, queries_history, db_description, db=db)
-    )
+    # Relevancy runs before table-finding and memory-tool creation, not
+    # alongside them. Both of those make provider calls in worker threads, and
+    # a thread blocked in a socket read cannot be cancelled from Python: on an
+    # off-topic question, cancelling the task abandons the *task* while the
+    # call keeps running to completion, consuming executor capacity and
+    # provider quota after the response has already been sent. Repeated
+    # off-topic requests could saturate the thread pool that every other
+    # offloaded call depends on. Sequencing costs one relevancy round-trip on
+    # answerable questions and starts no work that cannot be used.
     agent_rel = RelevancyAgent(
         queries_history, result_history, custom_api_key, custom_model,
     )
-    relevancy_task = asyncio.create_task(
-        agent_rel.get_answer(queries_history[-1], db_description)
-    )
-    answer_rel = await relevancy_task
+    answer_rel = await agent_rel.get_answer(queries_history[-1], db_description)
 
     if answer_rel["status"] != "On-topic":
-        find_task.cancel()
-        try:
-            await find_task
-        except asyncio.CancelledError:
-            logging.debug("Find task cancelled (off-topic query)")
         msg = "Off topic question: " + answer_rel["reason"]
         yield {"type": "followup_questions", "final_response": True, "message": msg}
         yield _Final(_build_query_result(
@@ -396,18 +386,39 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
         ))
         return
 
-    tables = await find_task
+    # Concurrent now that both results are certain to be used. Gathered
+    # together so neither task is left unobserved if the other fails.
+    find_task = asyncio.create_task(
+        find(namespaced, queries_history, db_description, db=db)
+    )
+    memory_tool_task = (
+        asyncio.create_task(_create_memory_tool(user_id, namespaced, db=db))
+        if use_memory else None
+    )
+    pending = [t for t in (find_task, memory_tool_task) if t is not None]
+    gathered = await asyncio.gather(*pending, return_exceptions=True)
+
+    tables = gathered[0]
+    if isinstance(tables, BaseException):
+        raise tables
 
     memory_tool = None
     memory_context = None
     if memory_tool_task is not None:
-        memory_tool = await memory_tool_task
+        memory_tool = gathered[1]
+        if isinstance(memory_tool, BaseException):
+            raise memory_tool
         memory_context = await memory_tool.search_memories(query=queries_history[-1])
 
     agent_an = AnalysisAgent(
         queries_history, result_history, custom_api_key, custom_model,
     )
-    answer_an = agent_an.get_analysis(
+    # ``get_analysis`` is a synchronous LLM call. Running it directly here
+    # would block the event loop for its full duration, stalling every other
+    # in-flight request and preventing any stream from flushing bytes
+    # (incident 2026-07-29). Off-loop via a worker thread.
+    answer_an = await asyncio.to_thread(
+        agent_an.get_analysis,
         queries_history[-1], tables, db_description, instructions, memory_context,
         db_type, user_rules_spec,
     )
@@ -427,7 +438,8 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
         follow_up_agent = FollowUpAgent(
             queries_history, result_history, custom_api_key, custom_model,
         )
-        follow_up = follow_up_agent.generate_follow_up_question(
+        follow_up = await asyncio.to_thread(
+            follow_up_agent.generate_follow_up_question,
             user_question=queries_history[-1],
             analysis_result=answer_an,
         )
@@ -513,7 +525,12 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
 
     try:
         try:
-            query_results = loader_class.execute_sql_query(sql_query, db_url)
+            # Off-loop: driver execution is synchronous, and a slow query would
+            # otherwise block every other request and stop keepalives from
+            # flushing on this one.
+            query_results = await asyncio.to_thread(
+                loader_class.execute_sql_query, sql_query, db_url,
+            )
         except Exception as exec_error:  # pylint: disable=broad-exception-caught
             yield {
                 "type": "reasoning_step",
@@ -536,7 +553,11 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
                     )
                 return loader_class.execute_sql_query(sql, db_url)
 
-            healing_result = healer.heal_and_execute(
+            # Same reasoning as ``get_analysis`` above, and worse here: this
+            # chains up to ``max_healing_attempts`` sequential LLM calls plus
+            # SQL execution, all synchronous.
+            healing_result = await asyncio.to_thread(
+                healer.heal_and_execute,
                 initial_sql=sql_query,
                 initial_error=str(exec_error),
                 execute_sql_func=_run_sql,
@@ -593,7 +614,8 @@ async def run_query(  # pylint: disable=too-many-locals,too-many-branches,too-ma
             "message": f"Step {step_num}: Generating user-friendly response",
         }
 
-        user_readable_response = format_ai_response(
+        user_readable_response = await asyncio.to_thread(
+            format_ai_response,
             queries_history=queries_history,
             result_history=result_history,
             sql_query=sql_query,
@@ -742,7 +764,10 @@ async def run_confirmed(  # pylint: disable=too-many-locals,too-many-branches,to
         is_schema_modifying, operation_type = check_schema_modification(
             sql_query, loader_class,
         )
-        query_results = loader_class.execute_sql_query(sql_query, db_url)
+        # Off-loop, as in ``run_query`` above.
+        query_results = await asyncio.to_thread(
+            loader_class.execute_sql_query, sql_query, db_url,
+        )
         yield {"type": "query_result", "data": query_results}
 
         if is_schema_modifying:
@@ -755,7 +780,8 @@ async def run_confirmed(  # pylint: disable=too-many-locals,too-many-branches,to
         yield {"type": "reasoning_step",
                "message": f"Step {step_num}: Generating user-friendly response"}
 
-        user_readable_response = format_ai_response(
+        user_readable_response = await asyncio.to_thread(
+            format_ai_response,
             queries_history=queries_history or [question],
             result_history=None,
             sql_query=sql_query,

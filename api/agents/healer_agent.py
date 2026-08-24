@@ -10,9 +10,7 @@ failed query to generate a corrected version.
 
 import re
 from typing import Dict, Callable, Any
-from litellm import completion
-from api.config import Config
-from .utils import parse_response
+from .utils import parse_response, run_completion
 
 
 class HealerAgent:
@@ -224,14 +222,12 @@ IMPORTANT:
         
         for attempt in range(self.max_healing_attempts):
             # Call LLM
-            response = completion(
-                model=Config.COMPLETION_MODEL,
-                messages=self.messages,
+            content = run_completion(
+                self.messages,
+                label=f"healer.attempt{attempt + 1}",
                 temperature=0.1,
                 max_tokens=2000
             )
-            
-            content = response.choices[0].message.content
             self.messages.append({"role": "assistant", "content": content})
             
             # Parse response

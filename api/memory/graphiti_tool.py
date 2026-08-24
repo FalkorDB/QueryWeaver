@@ -27,7 +27,11 @@ from graphiti_core.cross_encoder import OpenAIRerankerClient
 from graphiti_core.search.search_config_recipes import NODE_HYBRID_SEARCH_RRF
 
 
-from litellm import completion
+from api.agents.utils import run_completion
+from api.embeddings import (
+    embed_one_off_loop,
+    vector_size_off_loop,
+)
 
 
 def extract_embedding_model_name(full_model_name: str) -> str:
@@ -96,7 +100,7 @@ class MemoryTool:
         await self._ensure_entity_nodes_direct(user_id, graph_id)
 
 
-        vector_size = Config.EMBEDDING_MODEL.get_vector_size()
+        vector_size = await vector_size_off_loop()
         driver = self.graphiti_client.driver
         await driver.execute_query(f"CREATE VECTOR INDEX FOR (p:Query) ON (p.embeddings) OPTIONS {{dimension:{vector_size}, similarityFunction:'euclidean'}}")
 
@@ -124,7 +128,7 @@ class MemoryTool:
             
             if not user_check_result[0]:  # If no records found, create user node
                 user_uuid = str(uuid.uuid4())
-                user_name_embedding = Config.EMBEDDING_MODEL.embed(user_node_name)[0]
+                user_name_embedding = await embed_one_off_loop(user_node_name)
                 
                 user_node_data = {
                     'uuid': user_uuid,
@@ -161,7 +165,7 @@ class MemoryTool:
             
             if not database_check_result[0]:  # If no records found, create database node
                 database_uuid = str(uuid.uuid4())
-                database_name_embedding = Config.EMBEDDING_MODEL.embed(database_node_name)[0]
+                database_name_embedding = await embed_one_off_loop(database_node_name)
                 
                 database_node_data = {
                     'uuid': database_uuid,
@@ -253,7 +257,7 @@ class MemoryTool:
                 """
         try:
 
-            if len(history[1]) == 0:
+            if not history[1]:
                 messages = [{"role": "user", "content": prompt}]
             else:
                 messages = []
@@ -261,14 +265,14 @@ class MemoryTool:
                     messages.append({"role": "user", "content": query})
                     messages.append({"role": "assistant", "content": result})
             messages.append({"role": "user", "content": prompt})
-            response = completion(
-                model=Config.COMPLETION_MODEL,
-                messages=messages,
-                temperature=0.1
-            )
-            
-            # Parse the direct text response (no JSON parsing needed)
-            content = response.choices[0].message.content.strip()
+            # Synchronous LLM call inside an async method that runs as a
+            # detached task: calling it directly would block the event loop
+            # and stall unrelated streaming responses. ``run_completion`` also
+            # applies the shared timeout and retry bounds.
+            content = (await asyncio.to_thread(
+                run_completion, messages, label="memory.user_summary",
+                temperature=0.1,
+            )).strip()
             query = """
             MATCH (u:Entity {name: $user_id})
             SET u.summary = $summary
@@ -277,6 +281,9 @@ class MemoryTool:
             await driver.execute_query(query, user_id=self.user_id, summary=content)
             return True
         except Exception as e:
+            # Previously swallowed silently, which hid a recurring failure on
+            # this path entirely (incident 2026-07-29).
+            logging.error("Error updating user information: %s", e)
             return False
 
     async def add_new_memory(self, conversation: Dict[str, Any], history: Tuple[List[str], List[str]]) -> bool:
@@ -352,7 +359,7 @@ class MemoryTool:
             escaped_query = query.replace("'", "\\'").replace('"', '\\"')
             escaped_sql = sql_query.replace("'", "\\'").replace('"', '\\"')
             escaped_error = error.replace("'", "\\'").replace('"', '\\"') if error else ""
-            embeddings = Config.EMBEDDING_MODEL.embed(escaped_query)[0]
+            embeddings = await embed_one_off_loop(escaped_query)
 
             # First check if a Query node with the same user_query and sql_query already exists
             check_query = f"""
@@ -435,7 +442,7 @@ class MemoryTool:
             if not database_node_exists:
                 return []
 
-            query_embedding = Config.EMBEDDING_MODEL.embed(query)[0]
+            query_embedding = await embed_one_off_loop(query)
             cypher_query = f"""
                     CALL db.idx.vector.queryNodes('Query', 'embeddings', 10, vecf32($embedding))
                         YIELD node, score
@@ -733,7 +740,7 @@ class MemoryTool:
         
         try:
 
-            if len(history[1]) == 0:
+            if not history[1]:
                 messages = [{"role": "user", "content": prompt}]
             else:
                 messages = []
@@ -741,14 +748,12 @@ class MemoryTool:
                     messages.append({"role": "user", "content": query})
                     messages.append({"role": "assistant", "content": result})
             messages.append({"role": "user", "content": prompt})
-            response = completion(
-                model=Config.COMPLETION_MODEL,
-                messages=messages,
-                temperature=0.1
-            )
-            
-            # Parse the direct text response (no JSON parsing needed)
-            content = response.choices[0].message.content.strip()
+            # Same reasoning as ``update_user_information`` above: off-loop,
+            # with the shared timeout and retry bounds.
+            content = (await asyncio.to_thread(
+                run_completion, messages, label="memory.conversation_summary",
+                temperature=0.1,
+            )).strip()
             return {
                 "database_summary": content
             }
@@ -769,7 +774,10 @@ class AzureOpenAIConfig:
         
         self.api_key = os.getenv('AZURE_API_KEY')
         self.endpoint = os.getenv('AZURE_API_BASE') 
-        self.api_version = os.getenv('AZURE_API_VERSION', '2024-02-01')
+        # Graphiti's OpenAI client uses the Responses API, which requires
+        # api-version 2025-03-01-preview or later. Older values make every
+        # episode write fail with HTTP 400 (incident 2026-07-29).
+        self.api_version = os.getenv('AZURE_API_VERSION', '2025-03-01-preview')
         self.model_choice = "gpt-4.1"  # Use the model name directly
         
         # Extract just the model name without provider prefix for Graphiti
