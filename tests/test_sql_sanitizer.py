@@ -19,9 +19,15 @@ class TestSQLIdentifierQuoter:
         assert SQLIdentifierQuoter.needs_quoting("OrderItems") is False
 
     def test_needs_quoting_already_quoted(self):
-        """Test that already quoted identifiers don't need quoting again."""
+        """Test that already quoted identifiers don't need quoting again.
+
+        "Already quoted" is dialect-scoped: only the active dialect's delimiter
+        counts, so a backtick pair is pre-quoted for MySQL but is ordinary data
+        for PostgreSQL.
+        """
         assert SQLIdentifierQuoter.needs_quoting('"table-name"') is False
-        assert SQLIdentifierQuoter.needs_quoting('`table-name`') is False
+        assert SQLIdentifierQuoter.needs_quoting('`table-name`', '`') is False
+        assert SQLIdentifierQuoter.needs_quoting('`table-name`', '"') is True
 
     def test_needs_quoting_with_spaces(self):
         """Test that identifiers with spaces need quoting."""
@@ -41,7 +47,7 @@ class TestSQLIdentifierQuoter:
     def test_quote_identifier_no_double_quote(self):
         """Test that already quoted identifiers aren't double-quoted."""
         assert SQLIdentifierQuoter.quote_identifier('"table-name"') == '"table-name"'
-        assert SQLIdentifierQuoter.quote_identifier('`table-name`') == '`table-name`'
+        assert SQLIdentifierQuoter.quote_identifier('`table-name`', '`') == '`table-name`'
 
     def test_extract_table_names_from_query(self):
         """Test extracting table names from SQL queries."""
@@ -231,3 +237,46 @@ class TestIntegrationScenarios:
 
         assert modified is True
         assert 'select * from "table-name"' in result.lower()
+
+
+class TestSQLServerQuoting:
+    """SQL Server bracket-quoting behaviour."""
+
+    def test_get_quote_char_sqlserver(self):
+        """SQL Server uses the opening bracket as its quote character."""
+        assert DatabaseSpecificQuoter.get_quote_char('sqlserver') == '['
+        assert DatabaseSpecificQuoter.get_quote_char('SQLServer') == '['
+        assert DatabaseSpecificQuoter.get_quote_char('mssql') == '['
+
+    def test_quote_identifier_brackets(self):
+        """Identifiers are wrapped in a bracket pair."""
+        assert SQLIdentifierQuoter.quote_identifier('my-table', '[') == '[my-table]'
+
+    def test_quote_identifier_escapes_closing_bracket(self):
+        """A literal ``]`` is doubled so it cannot terminate the delimiter."""
+        assert SQLIdentifierQuoter.quote_identifier('my]table', '[') == '[my]]table]'
+
+    def test_quote_identifier_no_double_quoting(self):
+        """An already-bracketed identifier is left alone."""
+        assert SQLIdentifierQuoter.quote_identifier('[my-table]', '[') == '[my-table]'
+
+    def test_auto_quote_identifiers_sqlserver(self):
+        """Table names with special characters get bracket-quoted."""
+        result, modified = SQLIdentifierQuoter.auto_quote_identifiers(
+            'SELECT * FROM user-accounts', {'user-accounts'}, '['
+        )
+        assert modified is True
+        assert '[user-accounts]' in result
+
+    def test_bracketed_name_still_quoted_for_postgres(self):
+        """``[weird]`` is data on PostgreSQL, so it must still be quoted.
+
+        Regression test: a dialect-agnostic bracket pair made this identifier
+        look pre-quoted and it was emitted unquoted.
+        """
+        assert SQLIdentifierQuoter.needs_quoting('[weird]', '"') is True
+        assert SQLIdentifierQuoter.quote_identifier('[weird]', '"') == '"[weird]"'
+
+    def test_bracketed_name_treated_as_quoted_for_sqlserver(self):
+        """The same identifier is already delimited on SQL Server."""
+        assert SQLIdentifierQuoter.needs_quoting('[weird]', '[') is False

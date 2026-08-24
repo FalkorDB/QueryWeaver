@@ -35,3 +35,4 @@ e2e/.auth/
 # Build artifacts
 clients/python/queryweaver_client.egg-info/
 clients/ts/dist/
+wordlist.dic

@@ -302,3 +302,37 @@ class TestConfirmationMessageIntegration:
         message = build_destructive_confirmation_message(sql_type, sql)
         assert "DELETE" in message
         assert "DESTRUCTIVE OPERATION DETECTED" in message
+
+
+class TestSQLServerDialect:
+    """T-SQL is parsed with the tsql dialect, not dialect-agnostically.
+
+    Regression tests: with no dialect mapping, sqlglot could not parse common
+    T-SQL and the fail-closed path reported ordinary reads as destructive.
+    """
+
+    @pytest.mark.parametrize("sql", [
+        "SELECT TOP 10 * FROM users",
+        "SELECT * FROM [my-table]",
+        "SELECT a, b FROM t FOR JSON PATH",
+        "SELECT [a b] FROM [dbo].[my-tbl]",
+        "SELECT ISNULL(name, '') FROM users",
+    ])
+    def test_reads_are_not_destructive(self, sql):
+        sql_type, is_destructive = detect_destructive_operation(sql, "sqlserver")
+        assert is_destructive is False
+        assert sql_type == "SELECT"
+
+    @pytest.mark.parametrize("sql", [
+        "DROP TABLE users",
+        "TRUNCATE TABLE users",
+        "UPDATE users SET name = 'x'",
+        "SELECT * INTO backup FROM users",
+        "EXEC xp_cmdshell 'dir'",
+        "SELECT 1; DROP TABLE users",
+    ])
+    def test_writes_are_destructive(self, sql):
+        assert detect_destructive_operation(sql, "sqlserver")[1] is True
+
+    def test_mssql_alias_maps_to_tsql(self):
+        assert detect_destructive_operation("SELECT TOP 1 * FROM t", "mssql")[1] is False
