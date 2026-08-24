@@ -10,6 +10,7 @@ from urllib.parse import urlparse, parse_qs, unquote
 import tqdm
 import pymssql
 
+from api.config import Config
 from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
 from api.loaders.introspection import run_introspection
@@ -275,7 +276,24 @@ class SQLServerLoader(BaseLoader):
         return params
 
     @staticmethod
-    def _introspect_schema(conn_params: Dict[str, Any], schema: str):
+    def _with_timeouts(conn_params: Dict[str, Any], query_timeout: int) -> Dict[str, Any]:
+        """Bound how long a connect or a query may pin a worker thread.
+
+        Without these, a blackholed network or a stalled server holds a thread
+        forever and eventually drains the shared introspection executor, taking
+        every other database with it. ``login_timeout`` covers the TCP/login
+        handshake and ``timeout`` the query itself, both in seconds.
+        """
+        return {
+            **conn_params,
+            'login_timeout': Config.DB_CONNECT_TIMEOUT,
+            'timeout': query_timeout,
+        }
+
+    @staticmethod
+    def _introspect_schema(
+        conn_params: Dict[str, Any], schema: str
+    ) -> Tuple[Dict[str, Any], Dict[str, List[Dict[str, str]]]]:
         """Connect, introspect and close — all inside one worker thread.
 
         Everything touching the driver lives here so the connection and cursor
@@ -290,7 +308,9 @@ class SQLServerLoader(BaseLoader):
         conn = None
         cursor = None
         try:
-            conn = pymssql.connect(**conn_params)  # pylint: disable=no-member
+            conn = pymssql.connect(  # pylint: disable=no-member
+                **SQLServerLoader._with_timeouts(conn_params, Config.DB_SCHEMA_TIMEOUT)
+            )
             cursor = conn.cursor(as_dict=True)
 
             entities = SQLServerLoader.extract_tables_info(cursor, schema)
@@ -724,7 +744,9 @@ class SQLServerLoader(BaseLoader):
             conn_params = SQLServerLoader._parse_sqlserver_url(db_url)
 
             # Connect to SQL Server database
-            conn = pymssql.connect(**conn_params)  # pylint: disable=no-member
+            conn = pymssql.connect(  # pylint: disable=no-member
+                **SQLServerLoader._with_timeouts(conn_params, Config.DB_STATEMENT_TIMEOUT)
+            )
             cursor = conn.cursor(as_dict=True)
 
             # Execute the SQL query

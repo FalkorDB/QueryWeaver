@@ -20,6 +20,7 @@ import pytest
 # as an unused import that a linter should strip.
 importlib.import_module("api.core")
 
+from api.config import Config  # noqa: E402  pylint: disable=wrong-import-position
 from api.loaders.sqlserver_loader import (  # noqa: E402  pylint: disable=wrong-import-position
     SQLServerLoader,
     SQLServerQueryError,
@@ -592,3 +593,33 @@ class TestLoad:
         async for success, message in SQLServerLoader.load("user1", "mysql://x/y"):
             results.append((success, message))
         assert results == [(False, "Failed to load SQL Server database schema")]
+
+    @pytest.mark.asyncio
+    async def test_load_bounds_connect_and_query_time(self):
+        """Schema loading caps how long a stalled server can pin a worker."""
+        cursor = FakeCursor([[], []])
+        conn = FakeConnection(cursor)
+        with patch("pymssql.connect", return_value=conn) as mock_connect, \
+             patch("api.loaders.sqlserver_loader.load_to_graph") as mock_load:
+            async def _noop(*args, **kwargs):
+                return None
+            mock_load.side_effect = _noop
+            async for _ in SQLServerLoader.load(
+                    "user1", "sqlserver://sa:pw@localhost/testdb"):
+                pass
+
+        kwargs = mock_connect.call_args.kwargs
+        assert kwargs["login_timeout"] == Config.DB_CONNECT_TIMEOUT
+        assert kwargs["timeout"] == Config.DB_SCHEMA_TIMEOUT
+
+    def test_execute_query_bounds_connect_and_query_time(self):
+        """Query execution uses the shorter statement budget, not the schema one."""
+        cursor = FakeCursor([[]])
+        conn = FakeConnection(cursor)
+        with patch("pymssql.connect", return_value=conn) as mock_connect:
+            SQLServerLoader.execute_sql_query(
+                "SELECT 1", "sqlserver://sa:pw@localhost/testdb")
+
+        kwargs = mock_connect.call_args.kwargs
+        assert kwargs["login_timeout"] == Config.DB_CONNECT_TIMEOUT
+        assert kwargs["timeout"] == Config.DB_STATEMENT_TIMEOUT
