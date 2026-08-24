@@ -356,10 +356,10 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
         # ``api_token=None``: signup logs the browser in with the session cookie
         # and never returns a token, so minting one here would only leave an
         # orphan Token node behind.
-        success, user_info = await ensure_user_in_organizations(email, email,
+        is_new_identity, user_info = await ensure_user_in_organizations(email, email,
                                             f"{first_name} {last_name}", "email", None)
 
-        if not (success and user_info and user_info.get("new_identity")):
+        if not (is_new_identity and user_info and user_info.get("new_identity")):
             # Creation failed (e.g. DB error) or raced with a concurrent signup.
             logging.error("Failed to create new user during signup: %s",
                           _sanitize_for_log(email))

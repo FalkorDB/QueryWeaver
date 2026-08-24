@@ -5,7 +5,7 @@ callbacks can invoke them when processing OAuth responses.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from fastapi import FastAPI
 from authlib.integrations.starlette_client import OAuth
@@ -19,8 +19,15 @@ def setup_oauth_handlers(app: FastAPI, oauth: OAuth):
     # Store oauth in app state for access in routes
     app.state.oauth = oauth
 
-    async def handle_callback(provider: str, user_info: Dict[str, Any], api_token: str):
-        """Handle Provider OAuth callback processing"""
+    async def handle_callback(
+        provider: str, user_info: Dict[str, Any], api_token: Optional[str]
+    ):
+        """Handle Provider OAuth callback processing.
+
+        ``api_token`` is ``None`` for browser logins, which are authenticated by
+        the signed session cookie and never receive a token; the tokens API
+        passes a real one.
+        """
         try:
             user_id = user_info.get("id")
             email = user_info.get("email")
