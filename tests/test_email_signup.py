@@ -108,7 +108,7 @@ class TestEmailSignupCreationFailure:
     @patch("api.routes.auth._set_mail_hash", new_callable=AsyncMock)
     @patch("api.routes.auth._email_account_exists", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
-    async def test_non_new_identity_is_rejected_and_token_cleaned_up(
+    async def test_non_new_identity_is_rejected_and_no_token_minted(
         self, _enabled, mock_exists, mock_set_hash, mock_ensure, mock_delete
     ):
         # Passes the pre-check, but creation reports the identity already existed
@@ -121,7 +121,10 @@ class TestEmailSignupCreationFailure:
         assert response.status_code == 500
         assert "api_token=" not in _set_cookie_header(response)
         mock_set_hash.assert_not_called()
-        mock_delete.assert_awaited_once()
+        # Signup asks for the records without a token, so there is nothing to
+        # revoke on the failure path.
+        assert mock_ensure.await_args.args[-1] is None
+        mock_delete.assert_not_awaited()
 
 
 class TestEmailAccountExistsResultHandling:

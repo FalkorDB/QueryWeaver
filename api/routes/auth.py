@@ -252,11 +252,12 @@ async def _complete_login(request: Request, provider: str, user_data: dict) -> N
     FalkorDB outage during login therefore costs the user their stored profile
     (retried later from ``/auth-status``), not their ability to log in.
 
-    An API token is still minted and persisted, because programmatic clients
-    need one, but it is deliberately never handed to the browser. Storing a
+    No API token is minted here. The browser never receives one — storing a
     bearer credential in a cookie put it on disk in clear text for the whole of
-    its lifetime; the session cookie authenticates the browser instead, and a
-    token is fetched on demand from the tokens API.
+    its lifetime — so a token minted at login would be an orphan `Token` node
+    that nothing can present and logout cannot revoke. `ensure_user_in_organizations`
+    accepts `api_token=None` and persists the User/Identity records without one;
+    programmatic clients mint theirs on demand from the tokens API.
     """
     email = user_data.get("email")
     if not email:
@@ -276,15 +277,14 @@ async def _complete_login(request: Request, provider: str, user_data: dict) -> N
             detail="Authentication handler not configured",
         )
 
-    api_token = secrets.token_urlsafe(32)  # ~43 chars, hard to guess
-    provisioned = bool(await handler(provider, user_data, api_token))
+    provisioned = bool(await handler(provider, user_data, None))
     if not provisioned:
         logging.warning(
             "Logged in via %s from the session cookie alone; the user store write did not land",
             provider,
         )
 
-    establish_browser_session(
+    if not establish_browser_session(
         request,
         email=email,
         name=user_data.get("name"),
@@ -292,7 +292,15 @@ async def _complete_login(request: Request, provider: str, user_data: dict) -> N
         provider=provider,
         provider_user_id=user_data.get("id"),
         provisioned=provisioned,
-    )
+    ):
+        # The session cookie is the only browser credential now, so a failure
+        # here means the redirect would land the user back on a logged-out page
+        # with no way to tell why. Fail the login instead.
+        logging.error("Could not establish a browser session for the %s login", provider)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not establish a login session",
+        )
 
 
 # ---- Email Authentication Routes ----
@@ -345,17 +353,16 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
                 status_code=status.HTTP_409_CONFLICT
             )
 
-        api_token = secrets.token_urlsafe(32)
-        # Create organization association
+        # ``api_token=None``: signup logs the browser in with the session cookie
+        # and never returns a token, so minting one here would only leave an
+        # orphan Token node behind.
         success, user_info = await ensure_user_in_organizations(email, email,
-                                            f"{first_name} {last_name}", "email", api_token)
+                                            f"{first_name} {last_name}", "email", None)
 
         if not (success and user_info and user_info.get("new_identity")):
             # Creation failed (e.g. DB error) or raced with a concurrent signup.
-            # Never issue a token in this case; clean up any token that was linked.
             logging.error("Failed to create new user during signup: %s",
                           _sanitize_for_log(email))
-            await delete_user_token(api_token)
             return JSONResponse(
                 {"success": False, "error": "Registration failed"},
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -371,14 +378,21 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
 
         logging.info("User registration successful: %s", _sanitize_for_log(email))
 
-        establish_browser_session(
+        if not establish_browser_session(
             request,
             email=email,
             name=f"{first_name} {last_name}",
             provider="email",
             provider_user_id=email,
             provisioned=True,
-        )
+        ):
+            # The account exists but the browser has no credential, so reporting
+            # success would leave the user staring at a logged-out page.
+            logging.error("Could not establish a browser session after email signup")
+            return JSONResponse(
+                {"success": False, "error": "Registration failed"},
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
         response = JSONResponse({
             "success": True,

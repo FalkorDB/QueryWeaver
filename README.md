@@ -158,8 +158,10 @@ explicitly are always checked against the database and are answered with `503`
 (not `401`) when it cannot be reached, so clients retry instead of re-authenticating.
 
 A browser login lasts 24 hours by default; set `BROWSER_SESSION_TTL_HOURS` to
-change that. Logging out clears the session cookie and revokes the API token
-issued alongside it.
+change that. Logging out clears the session cookie. No API token is issued to
+the browser, so there is none to revoke — tokens are created explicitly from the
+tokens API and revoked there. (A legacy `api_token` cookie left over from an
+older release is cleared and revoked on logout too.)
 
 The trade-off of a signed session cookie is that it cannot be revoked from
 the server before it expires: the TTL bounds the damage, and rotating
