@@ -610,10 +610,10 @@ class TestLoad:
 
         kwargs = mock_connect.call_args.kwargs
         assert kwargs["login_timeout"] == Config.DB_CONNECT_TIMEOUT
-        assert kwargs["timeout"] == Config.DB_SCHEMA_TIMEOUT
+        assert kwargs["timeout"] == max(Config.DB_SCHEMA_TIMEOUT, Config.DB_STATEMENT_TIMEOUT)
 
     def test_execute_query_bounds_connect_and_query_time(self):
-        """Query execution uses the shorter statement budget, not the schema one."""
+        """Query execution uses the same budget: pymssql timeouts are process-wide."""
         cursor = FakeCursor([[]])
         conn = FakeConnection(cursor)
         with patch("pymssql.connect", return_value=conn) as mock_connect:
@@ -622,4 +622,4 @@ class TestLoad:
 
         kwargs = mock_connect.call_args.kwargs
         assert kwargs["login_timeout"] == Config.DB_CONNECT_TIMEOUT
-        assert kwargs["timeout"] == Config.DB_STATEMENT_TIMEOUT
+        assert kwargs["timeout"] == max(Config.DB_SCHEMA_TIMEOUT, Config.DB_STATEMENT_TIMEOUT)
