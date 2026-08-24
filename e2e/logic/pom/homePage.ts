@@ -994,7 +994,7 @@ export class HomePage extends BasePage {
    * Uses longer timeout than existing methods since AI responses can be slow
    */
   async waitForAIMessage(timeoutMs: number = 30000): Promise<boolean> {
-    return await waitForElementToBeVisible(this.aiMessage, 1000, timeoutMs / 1000);
+    return await waitForElementToBeVisible(this.aiMessage, timeoutMs, 1);
   }
 
   /**
@@ -1059,7 +1059,7 @@ export class HomePage extends BasePage {
    * Wait for toast to appear
    */
   async waitForToast(timeoutMs: number = 5000): Promise<boolean> {
-    return await waitForElementToBeVisible(this.toastNotification, 1000, timeoutMs / 1000);
+    return await waitForElementToBeVisible(this.toastNotification, timeoutMs, 1);
   }
 
   /**
@@ -1155,9 +1155,21 @@ export class HomePage extends BasePage {
   /**
    * Wait for confirmation message to appear
    */
-  async waitForConfirmationMessage(timeout: number = 10000): Promise<boolean> {
+  async waitForConfirmationMessage(timeout: number = 30000): Promise<boolean> {
     try {
       await this.confirmationMessage.waitFor({ state: 'visible', timeout });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Wait for the confirmation message to disappear after confirming/cancelling
+   */
+  async waitForConfirmationToDisappear(timeout: number = 30000): Promise<boolean> {
+    try {
+      await this.confirmationMessage.waitFor({ state: 'hidden', timeout });
       return true;
     } catch {
       return false;
