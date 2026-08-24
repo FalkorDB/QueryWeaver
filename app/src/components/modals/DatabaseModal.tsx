@@ -101,6 +101,11 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
   };
 
   const handleConnect = async () => {
+    // The port field shows the vendor default as a placeholder; treat that hint
+    // as the actual default so leaving the field empty works instead of
+    // failing the "fill in all required fields" check.
+    const effectivePort = port || (selectedDatabase ? getDbProfile(selectedDatabase).port : '');
+
     // Validate based on connection mode
     if (connectionMode === 'url') {
       if (!connectionUrl || !selectedDatabase) {
@@ -130,7 +135,7 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
           return;
         }
       } else {
-        if (!selectedDatabase || !host || !port || !database || !username) {
+        if (!selectedDatabase || !host || !effectivePort || !database || !username) {
           toast({
             title: "Missing Information",
             description: "Please fill in all required fields",
@@ -165,7 +170,7 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
           dbUrl = builtUrl.toString();
         } else {
           const profile = getDbProfile(selectedDatabase);
-          const builtUrl = new URL(`${profile.protocol}://${host}:${port}/${database}`);
+          const builtUrl = new URL(`${profile.protocol}://${host}:${effectivePort}/${database}`);
           builtUrl.username = username;
           builtUrl.password = password;
 

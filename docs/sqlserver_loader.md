@@ -46,7 +46,7 @@ sqlserver://appuser:s3cr3t@sql.example.com:1433/reporting?schema=dbo&encrypt=tru
 
 ### Schema Extraction
 
-- Tables and views in the selected schema
+- Tables in the selected schema (views are not extracted)
 - Columns with data types, nullability, defaults and primary-key flags
 - Extended properties (`MS_Description`) used as table and column descriptions
 - Foreign keys, including composite keys
@@ -109,7 +109,7 @@ print(response.json())
 
 The loader reads from SQL Server system catalog views:
 
-- `sys.tables` / `sys.views` joined with `sys.schemas` — table list
+- `sys.tables` joined with `sys.schemas` — table list
 - `sys.columns` joined with `sys.types` — column metadata
 - `sys.indexes` / `sys.index_columns` — primary keys
 - `sys.foreign_keys` / `sys.foreign_key_columns` — foreign keys

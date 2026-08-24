@@ -1,6 +1,10 @@
 """Unit tests for SQL identifier quoting utilities."""
 
+import pytest
+
 from api.sql_utils import SQLIdentifierQuoter, DatabaseSpecificQuoter
+
+pytestmark = pytest.mark.unit
 
 
 class TestSQLIdentifierQuoter:

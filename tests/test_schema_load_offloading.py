@@ -15,6 +15,7 @@ import pytest
 
 from api.config import Config
 from api.core.pipeline import MySQLLoader, PostgresLoader
+from api.loaders.sqlserver_loader import SQLServerLoader
 
 STALL = 0.3
 TICK = 0.02
@@ -90,6 +91,34 @@ async def test_mysql_load_does_not_block_the_loop(mock_connect, mock_load_to_gra
 
     _steps, ticks = await _ticks_while_consuming(
         MySQLLoader.load("pfx", "mysql://u:p@h:3306/db")
+    )
+
+    assert len(ticks) > (STALL * 3 / TICK) * 0.3, (
+        f"event loop starved during schema load: {len(ticks)} ticks"
+    )
+    gaps = [b - a for a, b in zip(ticks, ticks[1:])]
+    assert max(gaps) < STALL, f"loop blocked for {max(gaps):.2f}s"
+
+
+@pytest.mark.unit
+@patch("api.loaders.sqlserver_loader.load_to_graph")
+@patch("api.loaders.sqlserver_loader.SQLServerLoader.extract_relationships", _slow)
+@patch("api.loaders.sqlserver_loader.SQLServerLoader.extract_tables_info", _slow)
+@patch("api.loaders.sqlserver_loader.pymssql.connect")
+async def test_sqlserver_load_does_not_block_the_loop(mock_connect, mock_load_to_graph):
+    def slow_connect(*_args, **_kwargs):
+        time.sleep(STALL)
+        return MagicMock()
+
+    mock_connect.side_effect = slow_connect
+
+    async def noop(*_args, **_kwargs):
+        return None
+
+    mock_load_to_graph.side_effect = noop
+
+    _steps, ticks = await _ticks_while_consuming(
+        SQLServerLoader.load("pfx", "sqlserver://u:p@h:1433/db")
     )
 
     assert len(ticks) > (STALL * 3 / TICK) * 0.3, (

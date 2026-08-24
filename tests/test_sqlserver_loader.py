@@ -8,6 +8,7 @@ indexing a ``as_dict=True`` row positionally are actually caught.
 
 import datetime
 import decimal
+import importlib
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -15,14 +16,18 @@ import pytest
 # ``api.core`` must be initialised before any loader module is imported.
 # ``api.core.__init__`` eagerly pulls in the pipeline, which imports the
 # loaders, so importing a loader first leaves ``graph_loader`` half-built.
-import api.core  # noqa: F401  pylint: disable=unused-import
+# Done through ``importlib`` so the side effect reads as deliberate rather than
+# as an unused import that a linter should strip.
+importlib.import_module("api.core")
 
-from api.loaders.sqlserver_loader import (
+from api.loaders.sqlserver_loader import (  # noqa: E402  pylint: disable=wrong-import-position
     SQLServerLoader,
     SQLServerQueryError,
     quote_ident,
     validate_ident,
 )
+
+pytestmark = pytest.mark.unit
 
 
 class FakeCursor:

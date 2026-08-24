@@ -12,6 +12,7 @@ import pymssql
 
 from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
+from api.loaders.introspection import run_introspection
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -274,6 +275,31 @@ class SQLServerLoader(BaseLoader):
         return params
 
     @staticmethod
+    def _introspect_schema(conn_params: Dict[str, Any], schema: str):
+        """Connect, introspect and close — all inside one worker thread.
+
+        Everything touching the driver lives here so the connection and cursor
+        are created, used and closed by the same thread. Closing them from the
+        event loop instead can run while an offloaded introspection is still
+        using them, because cancelling a ``to_thread`` call does not stop the
+        thread it is running in.
+
+        Mirrors ``PostgresLoader._introspect_schema``; see ``load`` for why the
+        work is offloaded at all.
+        """
+        conn = None
+        cursor = None
+        try:
+            conn = pymssql.connect(**conn_params)  # pylint: disable=no-member
+            cursor = conn.cursor(as_dict=True)
+
+            entities = SQLServerLoader.extract_tables_info(cursor, schema)
+            relationships = SQLServerLoader.extract_relationships(cursor, schema)
+            return entities, relationships
+        finally:
+            SQLServerLoader._close_quietly(cursor, conn)
+
+    @staticmethod
     async def load(  # pylint: disable=arguments-differ
         prefix: str,
         connection_url: str,
@@ -291,33 +317,21 @@ class SQLServerLoader(BaseLoader):
         Yields:
             Tuple[bool, str]: Success status and message
         """
-        conn = None
-        cursor = None
         try:
-            # Parse connection URL
+            # Parsed here rather than in the worker so a malformed URL is
+            # reported as a failure before any progress is announced.
             conn_params = SQLServerLoader._parse_sqlserver_url(connection_url)
             schema = SQLServerLoader.parse_schema_from_url(connection_url)
-
-            # Connect to SQL Server database
-            conn = pymssql.connect(**conn_params)  # pylint: disable=no-member
-            cursor = conn.cursor(as_dict=True)
-
-            # Get database name
             db_name = conn_params['database']
 
-            # Get all table information
+            # pymssql is a blocking driver, so every connect/execute/fetch would
+            # stall the event loop — and with it every other request and the
+            # stream keepalives. Offload to the shared introspection executor,
+            # the same way the PostgreSQL and MySQL loaders do.
             yield True, "Extracting table information..."
-            entities = SQLServerLoader.extract_tables_info(cursor, schema)
-
-            # Get all relationship information
-            yield True, "Extracting relationship information..."
-            relationships = SQLServerLoader.extract_relationships(cursor, schema)
-
-            # Close database connection
-            cursor.close()
-            cursor = None
-            conn.close()
-            conn = None
+            entities, relationships = await run_introspection(
+                SQLServerLoader._introspect_schema, conn_params, schema
+            )
 
             # Load data into graph
             yield True, "Loading data into graph..."
@@ -333,8 +347,6 @@ class SQLServerLoader(BaseLoader):
         except Exception as e:  # pylint: disable=broad-exception-caught
             logging.error("Error loading SQL Server schema: %s", e)
             yield False, "Failed to load SQL Server database schema"
-        finally:
-            SQLServerLoader._close_quietly(cursor, conn)
 
     @staticmethod
     def _close_quietly(cursor, conn) -> None:

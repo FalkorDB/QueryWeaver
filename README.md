@@ -256,6 +256,10 @@ pip install queryweaver[server]
 pip install queryweaver[dev]
 ```
 
+> **SQL Server and Snowflake need `queryweaver[server]`.** Their drivers
+> (`pymssql` and `snowflake-connector-python`) ship in the `server` extra, so the
+> minimal SDK install can only connect to PostgreSQL and MySQL.
+
 ### Quick Start
 
 ```python
@@ -310,7 +314,7 @@ async with QueryWeaver(falkordb_url="redis://host-a:6379", user_id="tenant_a") a
 
 | Method | Description |
 |--------|-------------|
-| `connect_database(db_url)` | Connect PostgreSQL/MySQL/SQL Server/Snowflake and load schema |
+| `connect_database(db_url)` | Connect PostgreSQL/MySQL/SQL Server/Snowflake and load schema (SQL Server and Snowflake require `queryweaver[server]`) |
 | `query(database, question)` | Convert natural language to SQL and execute |
 | `get_schema(database)` | Retrieve database schema (tables and relationships) |
 | `list_databases()` | List all connected databases |
@@ -356,7 +360,8 @@ if result.requires_confirmation:
 - Python 3.12+
 - FalkorDB instance (local or remote)
 - OpenAI or Azure OpenAI API key (for LLM)
-- Target SQL database (PostgreSQL, MySQL, SQL Server or Snowflake)
+- Target SQL database (PostgreSQL, MySQL, SQL Server or Snowflake — the last two
+  require the `queryweaver[server]` extra)
 
 ## Development
 
