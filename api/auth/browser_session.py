@@ -20,6 +20,7 @@ never secrets, password hashes or data-source credentials.
 """
 
 import logging
+import math
 import os
 import time
 from typing import Any, Dict, Optional
@@ -39,14 +40,23 @@ DEFAULT_TTL_HOURS = 24
 
 
 def session_ttl_seconds() -> int:
-    """Browser login lifetime, from ``BROWSER_SESSION_TTL_HOURS``."""
+    """Browser login lifetime, from ``BROWSER_SESSION_TTL_HOURS``.
+
+    Every rejected value falls back to the default rather than raising: this is
+    read while building ``SessionMiddleware`` at startup and again on every
+    login, so a typo in the environment must not take the app down.
+    """
     raw = os.getenv("BROWSER_SESSION_TTL_HOURS")
     if raw:
         try:
             hours = float(raw)
-            if hours > 0:
+            # ``float`` happily parses "inf" and "1e309"; both are > 0, and
+            # ``int(inf * 3600)`` raises OverflowError.
+            if math.isfinite(hours) and hours > 0:
                 return int(hours * 3600)
-            logging.warning("BROWSER_SESSION_TTL_HOURS must be positive, ignoring %r", raw)
+            logging.warning(
+                "BROWSER_SESSION_TTL_HOURS must be a positive finite number, ignoring %r", raw
+            )
         except ValueError:
             logging.warning("Invalid BROWSER_SESSION_TTL_HOURS value %r, ignoring", raw)
     return DEFAULT_TTL_HOURS * 3600

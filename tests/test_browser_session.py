@@ -203,7 +203,12 @@ class TestTtlConfiguration:
         remaining = request.session[SESSION_KEY]["exp"] - time.time()
         assert 3500 < remaining <= 3600
 
-    @pytest.mark.parametrize("value", ["0", "-3", "abc", ""])
+    # "inf" and "1e309" both parse to float('inf'), which is > 0 but overflows
+    # int(); "nan" compares false against everything. All must degrade to the
+    # default, because this runs at startup and on every login.
+    @pytest.mark.parametrize(
+        "value", ["0", "-3", "abc", "", "inf", "-inf", "1e309", "nan"]
+    )
     def test_invalid_overrides_fall_back_to_the_default(self, monkeypatch, value):
         monkeypatch.setenv("BROWSER_SESSION_TTL_HOURS", value)
 
