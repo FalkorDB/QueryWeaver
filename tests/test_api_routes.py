@@ -207,6 +207,7 @@ class TestGraphsRoutes:
             ("schema.JSON", 501),
             ("schema.txt", 415),
             ("schema", 415),
+            ("json", 415),
         ],
     )
     def test_load_graph_upload(self, client, filename, status):
@@ -221,7 +222,11 @@ class TestGraphsRoutes:
 
     def test_load_graph_multipart_without_file(self, client):
         """A multipart body with no ``file`` part is rejected."""
-        response = client.post("/graphs", headers=BEARER, data={"database": "testdb"})
+        response = client.post(
+            "/graphs",
+            headers=BEARER,
+            files={"attachment": ("schema.json", b"payload", "application/json")},
+        )
 
         assert response.status_code == 415
 

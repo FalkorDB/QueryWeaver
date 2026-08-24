@@ -144,8 +144,10 @@ async def _load_graph_from_upload(request: Request):
     if not isinstance(file, UploadFile) or not file.filename:
         raise HTTPException(status_code=415, detail="Missing file upload")
 
-    _, _, extension = file.filename.rpartition(".")
-    loader = _LOADER_BY_EXTENSION.get(f".{extension.lower()}")
+    # `rpartition` yields an empty separator for a dotless name, in which case
+    # the whole filename would otherwise be read as its own extension.
+    _, separator, extension = file.filename.rpartition(".")
+    loader = _LOADER_BY_EXTENSION.get(f".{extension.lower()}") if separator else None
     if loader is None:
         raise HTTPException(status_code=415, detail="Unsupported file type")
 
