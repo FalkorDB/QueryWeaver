@@ -2,7 +2,11 @@
 
 Every route is exercised through ``TestClient`` with the core layer mocked, so
 these tests cover the HTTP contract — status codes, response bodies and the
-streaming wire format — without a live database or LLM.
+streaming wire format — without reaching a real database or LLM.
+
+A FalkorDB instance must still be reachable to *import* the app: importing
+``api.index`` pulls in ``api/extensions.py``, which opens a connection at
+import time. CI provides one as a service container.
 
 Requests authenticate with a Bearer token: ``CSRFMiddleware`` exempts
 Bearer-authenticated requests, so the tests assert authorization behaviour

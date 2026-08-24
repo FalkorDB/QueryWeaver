@@ -1,5 +1,4 @@
-import { Locator } from "playwright";
-import { expect } from "@playwright/test";
+import { Locator, expect } from "@playwright/test";
 
 export function delay(ms: number) {
   return new Promise((resolve) => {
