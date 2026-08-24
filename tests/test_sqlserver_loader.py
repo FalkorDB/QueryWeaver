@@ -9,7 +9,7 @@ indexing a ``as_dict=True`` row positionally are actually caught.
 import datetime
 import decimal
 import importlib
-from unittest.mock import patch, MagicMock
+from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
 
@@ -21,6 +21,8 @@ import pytest
 importlib.import_module("api.core")
 
 from api.config import Config  # noqa: E402  pylint: disable=wrong-import-position
+from api.core.errors import InvalidArgumentError  # noqa: E402  pylint: disable=wrong-import-position
+from api.core.pipeline import get_database_type_and_loader  # noqa: E402  pylint: disable=wrong-import-position
 from api.loaders.sqlserver_loader import (  # noqa: E402  pylint: disable=wrong-import-position
     SQLServerLoader,
     SQLServerQueryError,
@@ -623,3 +625,182 @@ class TestLoad:
         kwargs = mock_connect.call_args.kwargs
         assert kwargs["login_timeout"] == Config.DB_CONNECT_TIMEOUT
         assert kwargs["timeout"] == max(Config.DB_SCHEMA_TIMEOUT, Config.DB_STATEMENT_TIMEOUT)
+
+
+class TestLoaderRouting:
+    """`sqlserver://` URLs must resolve to this loader, and only with the extra."""
+
+    def test_server_install_gets_the_loader(self):
+        db_type, loader = get_database_type_and_loader(
+            "sqlserver://sa:pw@localhost/testdb")
+        assert (db_type, loader) == ("sqlserver", SQLServerLoader)
+
+    def test_sdk_only_install_is_told_which_extra_to_add(self):
+        # A clean error beats a deferred ImportError on pymssql.
+        with pytest.raises(InvalidArgumentError, match=r"\[server\] extra"):
+            get_database_type_and_loader(
+                "sqlserver://sa:pw@localhost/testdb", sdk_only=True)
+
+
+class TestRefreshGraphSchema:
+    """Reloading the graph after a DDL statement."""
+
+    @staticmethod
+    def _graph_and_db():
+        graph = MagicMock()
+        graph.delete = AsyncMock()
+        db = MagicMock()
+        db.select_graph.return_value = graph
+        return graph, db
+
+    @pytest.mark.asyncio
+    async def test_reload_drops_the_graph_and_reports_success(self):
+        graph, db = self._graph_and_db()
+
+        async def _load(prefix, _url, db=None):  # pylint: disable=unused-argument
+            assert prefix == "user1"
+            yield True, "reloaded"
+
+        with patch("api.core.db_resolver.resolve_db", return_value=db), \
+             patch.object(SQLServerLoader, "load", _load):
+            ok, message = await SQLServerLoader.refresh_graph_schema(
+                "user1_testdb", "sqlserver://sa:pw@localhost/testdb", db=db)
+
+        graph.delete.assert_awaited_once()
+        assert (ok, message) == (True, "reloaded")
+
+    @pytest.mark.asyncio
+    async def test_a_failed_reload_is_reported(self):
+        _graph, db = self._graph_and_db()
+
+        async def _load(_prefix, _url, db=None):  # pylint: disable=unused-argument
+            yield False, "nope"
+
+        with patch("api.core.db_resolver.resolve_db", return_value=db), \
+             patch.object(SQLServerLoader, "load", _load):
+            ok, message = await SQLServerLoader.refresh_graph_schema(
+                "user1_testdb", "sqlserver://sa:pw@localhost/testdb", db=db)
+
+        assert ok is False
+        assert message == "Failed to reload schema"
+
+    @pytest.mark.asyncio
+    async def test_a_graph_id_without_a_prefix_is_used_whole(self):
+        _graph, db = self._graph_and_db()
+        seen = {}
+
+        async def _load(prefix, _url, db=None):  # pylint: disable=unused-argument
+            seen["prefix"] = prefix
+            yield True, "reloaded"
+
+        with patch("api.core.db_resolver.resolve_db", return_value=db), \
+             patch.object(SQLServerLoader, "load", _load):
+            await SQLServerLoader.refresh_graph_schema(
+                "testdb", "sqlserver://sa:pw@localhost/testdb", db=db)
+
+        assert seen["prefix"] == "testdb"
+
+    @pytest.mark.asyncio
+    async def test_an_unreachable_graph_is_reported_not_raised(self):
+        with patch("api.core.db_resolver.resolve_db", side_effect=ConnectionError("down")):
+            ok, message = await SQLServerLoader.refresh_graph_schema(
+                "user1_testdb", "sqlserver://sa:pw@localhost/testdb")
+
+        assert (ok, message) == (False, "Error refreshing graph schema")
+
+
+class TestConnectionCleanupIsQuiet:
+    """Cleanup runs on the error path, so it must not raise a second failure."""
+
+    def test_close_swallows_driver_errors(self):
+        cursor = MagicMock()
+        cursor.close.side_effect = RuntimeError("already gone")
+        conn = MagicMock()
+        conn.close.side_effect = RuntimeError("already gone")
+
+        SQLServerLoader._close_quietly(cursor, conn)  # must not raise
+
+    def test_rollback_swallows_driver_errors(self):
+        conn = MagicMock()
+        conn.rollback.side_effect = RuntimeError("no transaction")
+
+        SQLServerLoader._rollback_quietly(conn)  # must not raise
+
+
+class TestUrlEdgeCases:
+    """Malformed and opt-out variants of the connection URL."""
+
+    @pytest.mark.parametrize("url,message", [
+        ("sqlserver://sa:pw@/testdb", "must include a host"),
+        ("sqlserver://sa:pw@localhost/", "must include database name"),
+        ("sqlserver://localhost/testdb", "must include username"),
+        ("mysql://sa:pw@localhost/testdb", "Invalid SQL Server URL format"),
+    ])
+    def test_malformed_urls_are_rejected(self, url, message):
+        with pytest.raises(ValueError, match=message):
+            SQLServerLoader._parse_sqlserver_url(url)
+
+    @pytest.mark.parametrize("value,expected", [
+        ("true", "require"), ("1", "require"), ("yes", "require"), ("require", "require"),
+        ("false", "off"), ("0", "off"), ("no", "off"), ("off", "off"),
+    ])
+    def test_encryption_is_opt_in_both_ways(self, value, expected):
+        params = SQLServerLoader._parse_sqlserver_url(
+            f"sqlserver://sa:pw@localhost/testdb?encrypt={value}")
+        assert params["encryption"] == expected
+
+    def test_driver_defaults_are_left_alone_when_unspecified(self):
+        params = SQLServerLoader._parse_sqlserver_url("sqlserver://sa:pw@localhost/testdb")
+        assert "encryption" not in params
+
+    @pytest.mark.parametrize("url", [None, 12345])
+    def test_an_unparseable_url_falls_back_to_the_default_schema(self, url):
+        # urlparse raises AttributeError/ValueError rather than returning empty.
+        assert SQLServerLoader.parse_schema_from_url(url) == "dbo"
+
+
+class TestDdlResultShape:
+    """DDL reports no row count, because there is none to report."""
+
+    def test_ddl_reports_the_operation_only(self):
+        cursor = FakeCursor([[]])
+        cursor.description = None
+        conn = FakeConnection(cursor)
+
+        with patch("pymssql.connect", return_value=conn):
+            rows = SQLServerLoader.execute_sql_query(
+                "CREATE TABLE t (id INT)", "sqlserver://sa:pw@localhost/testdb")
+
+        assert rows == [{"operation": "CREATE", "status": "success"}]
+        assert conn.committed
+
+
+class TestDriverErrorsDuringLoad:
+    """A pymssql failure is reported as a load failure, not raised."""
+
+    @pytest.mark.asyncio
+    async def test_driver_error_is_reported(self):
+        import pymssql  # pylint: disable=import-outside-toplevel
+
+        results = []
+        with patch("pymssql.connect", side_effect=pymssql.OperationalError("refused")):
+            async for success, message in SQLServerLoader.load(
+                    "user1", "sqlserver://sa:pw@localhost/testdb"):
+                results.append((success, message))
+
+        assert results[-1][0] is False
+
+    @pytest.mark.asyncio
+    async def test_driver_error_during_a_query_is_wrapped(self):
+        import pymssql  # pylint: disable=import-outside-toplevel
+
+        cursor = FakeCursor()
+        cursor.execute = MagicMock(side_effect=pymssql.OperationalError("deadlock"))
+        conn = FakeConnection(cursor)
+
+        with patch("pymssql.connect", return_value=conn):
+            with pytest.raises(SQLServerQueryError):
+                SQLServerLoader.execute_sql_query(
+                    "SELECT 1", "sqlserver://sa:pw@localhost/testdb")
+
+        assert conn.rolled_back
