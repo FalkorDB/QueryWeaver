@@ -166,3 +166,24 @@ class TestEmailAccountExistsResultHandling:
         with patch("api.routes.auth.db.select_graph", return_value=graph):
             with pytest.raises(RuntimeError):
                 await _email_account_exists("err@example.com")
+
+
+class TestEmailSignupSessionFailure:
+    """A created account with no browser credential is not a successful signup."""
+
+    @pytest.mark.asyncio
+    @patch("api.routes.auth.establish_browser_session", return_value=False)
+    @patch("api.routes.auth.ensure_user_in_organizations", new_callable=AsyncMock)
+    @patch("api.routes.auth._set_mail_hash", new_callable=AsyncMock)
+    @patch("api.routes.auth._email_account_exists", new_callable=AsyncMock)
+    @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
+    async def test_unset_session_is_reported_as_a_failure(
+        self, _enabled, mock_exists, _set_hash, mock_ensure, _establish
+    ):
+        # Reporting 201 here would leave the user staring at a logged-out page.
+        mock_exists.return_value = False
+        mock_ensure.return_value = (True, {"new_identity": True})
+
+        response = await email_signup(_mock_request(), _signup_data("new@example.com"))
+
+        assert response.status_code == 500

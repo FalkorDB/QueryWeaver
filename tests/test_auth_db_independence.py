@@ -211,3 +211,82 @@ class TestTokenRequiredStatusCodes:
                 await self._route()(request)
 
         assert excinfo.value.status_code == 401
+
+
+class TestTokenLookup:
+    """`_get_user_info` must tell "unknown token" apart from "graph is down"."""
+
+    @staticmethod
+    def _result(rows):
+        return type("Result", (), {"result_set": rows})()
+
+    @pytest.mark.asyncio
+    async def test_valid_token_returns_its_owner(self):
+        graph = AsyncMock()
+        graph.query.return_value = self._result(
+            [["token-owner@example.com", "Token Owner", None, True]]
+        )
+
+        with patch.object(user_management.db, "select_graph", return_value=graph):
+            assert await user_management._get_user_info("good") == DB_USER
+
+    @pytest.mark.asyncio
+    async def test_expired_token_is_denied_and_cleaned_up(self):
+        graph = AsyncMock()
+        graph.query.return_value = self._result(
+            [["token-owner@example.com", "Token Owner", None, False]]
+        )
+
+        with patch.object(user_management.db, "select_graph", return_value=graph), \
+             patch.object(
+                 user_management, "delete_user_token", new_callable=AsyncMock
+             ) as delete:
+            assert await user_management._get_user_info("expired") is None
+
+        delete.assert_awaited_once_with("expired")
+
+    @pytest.mark.asyncio
+    async def test_unknown_token_is_denied_without_a_delete(self):
+        graph = AsyncMock()
+        graph.query.return_value = self._result([])
+
+        with patch.object(user_management.db, "select_graph", return_value=graph), \
+             patch.object(
+                 user_management, "delete_user_token", new_callable=AsyncMock
+             ) as delete:
+            assert await user_management._get_user_info("unknown") is None
+
+        delete.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_graph_failure_is_raised_not_reported_as_a_bad_token(self):
+        graph = AsyncMock()
+        graph.query.side_effect = ConnectionError("down")
+
+        with patch.object(user_management.db, "select_graph", return_value=graph):
+            with pytest.raises(AuthBackendUnavailableError):
+                await user_management._get_user_info("good")
+
+
+class TestIdentityPersistence:
+    """`api_token=None` persists the identity without minting a Token node."""
+
+    @staticmethod
+    async def _merge_query_for(api_token):
+        graph = AsyncMock()
+        graph.query.return_value = type("Result", (), {"result_set": []})()
+
+        with patch.object(user_management.db, "select_graph", return_value=graph):
+            await user_management.ensure_user_in_organizations(
+                "1", "user@example.com", "Example User", "google", api_token
+            )
+
+        return graph.query.await_args.args[0]
+
+    @pytest.mark.asyncio
+    async def test_a_token_is_merged_when_one_is_supplied(self):
+        assert "MERGE (token:Token" in await self._merge_query_for("tok")
+
+    @pytest.mark.asyncio
+    async def test_no_token_is_merged_for_a_browser_login(self):
+        assert "MERGE (token:Token" not in await self._merge_query_for(None)
