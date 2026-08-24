@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { ArrowLeft, Star, PanelLeft, Sparkles, Key, Cpu, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { ArrowLeft, Star, PanelLeft, Sparkles, Key, Cpu, Loader2, CheckCircle2, XCircle, X } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDatabase } from "@/contexts/DatabaseContext";
@@ -361,7 +361,6 @@ const Settings = () => {
         onSchemaClick={() => setShowSchemaViewer(!showSchemaViewer)}
         isSchemaOpen={showSchemaViewer}
         isCollapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
         onSettingsClick={() => {}}
       />
       
@@ -462,15 +461,16 @@ const Settings = () => {
             {/* Row 1: Hamburger (if collapsed) + Logo + User */}
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                {sidebarCollapsed && (
-                  <button
-                    onClick={() => setSidebarCollapsed(false)}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-all"
-                    data-testid="sidebar-toggle"
-                  >
-                    <PanelLeft className="h-5 w-5" />
-                  </button>
-                )}
+                {/* Single toggle for the mobile sidebar — see issue #238. */}
+                <button
+                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  aria-expanded={!sidebarCollapsed}
+                  aria-label={sidebarCollapsed ? 'Open menu' : 'Close menu'}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-all"
+                  data-testid="sidebar-toggle"
+                >
+                  {sidebarCollapsed ? <PanelLeft className="h-5 w-5" /> : <X className="h-5 w-5" />}
+                </button>
                 <img src="/icons/queryweaver.svg" alt="QueryWeaver" className="h-8" />
               </div>
               <div className="flex items-center gap-2">

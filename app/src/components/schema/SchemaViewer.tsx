@@ -54,6 +54,18 @@ const linkKey = (source: unknown, target: unknown): string =>
 // highlight framing is applied after the canvas' own initial fit.
 const HIGHLIGHT_ZOOM_DELAY_MS = 100;
 
+/** Panel width bounds, as a fraction of the viewport width. */
+const MIN_WIDTH_PERCENT = 0.2;
+const MAX_WIDTH_PERCENT = 0.6;
+const DEFAULT_WIDTH_PERCENT = 0.5;
+
+/** Keeps the panel width inside the viewport-relative bounds. */
+const clampPanelWidth = (candidate: number): number => {
+  const min = Math.floor(window.innerWidth * MIN_WIDTH_PERCENT);
+  const max = Math.floor(window.innerWidth * MAX_WIDTH_PERCENT);
+  return Math.min(Math.max(Math.floor(candidate), min), max);
+};
+
 const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: SchemaViewerProps) => {
   const canvasRef = useRef<FalkorDBCanvas>(null);
   const resizeRef = useRef<HTMLDivElement>(null);
@@ -177,16 +189,15 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
   }, []);
 
   const NODE_WIDTH = 160;
-  const MIN_WIDTH = 300;
-  const MAX_WIDTH_PERCENT = 0.6;
-  const DEFAULT_WIDTH_PERCENT = 0.5;
 
-  const [width, setWidth] = useState(() => {
-    const initialWidth = Math.floor(window.innerWidth * DEFAULT_WIDTH_PERCENT);
-    return initialWidth;
-  });
+  const [width, setWidth] = useState(() =>
+    clampPanelWidth(window.innerWidth * DEFAULT_WIDTH_PERCENT)
+  );
   const [isResizing, setIsResizing] = useState(false);
   const [canvasLoaded, setCanvasLoaded] = useState(false);
+  // Once the user drags the handle their width is theirs to keep; only an
+  // untouched panel falls back to the default on open.
+  const hasUserResized = useRef(false);
 
   // Notify parent of width changes
   useEffect(() => {
@@ -194,6 +205,22 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
       onWidthChange(width);
     }
   }, [width, onWidthChange]);
+
+  // The panel mounts with the app, so its initial width is derived from
+  // whatever the viewport was at startup. Recompute the default when it is
+  // actually opened, otherwise a window resize in between leaves it off.
+  useEffect(() => {
+    if (!isOpen || hasUserResized.current) return;
+    setWidth(clampPanelWidth(window.innerWidth * DEFAULT_WIDTH_PERCENT));
+  }, [isOpen]);
+
+  // The bounds are viewport-relative, so shrinking the window can leave the
+  // panel wider than its maximum. Re-clamp whenever the viewport changes.
+  useEffect(() => {
+    const handleResize = () => setWidth((current) => clampPanelWidth(current));
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Load falkordb-canvas dynamically
   useEffect(() => {
@@ -212,12 +239,10 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
 
-      const newWidth = e.clientX - sidebarWidth;
-      const maxWidth = Math.floor(window.innerWidth * MAX_WIDTH_PERCENT);
-
-      if (newWidth >= MIN_WIDTH && newWidth <= maxWidth) {
-        setWidth(newWidth);
-      }
+      // Clamp rather than ignore out-of-range values: a fast drag puts the
+      // pointer past the bound in a single event, and ignoring it froze the
+      // panel mid-drag instead of pinning it to the min or max.
+      setWidth(clampPanelWidth(e.clientX - sidebarWidth));
     };
 
     const handleMouseUp = () => {
@@ -546,7 +571,10 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
       {/* Schema Viewer */}
       <div
         data-testid="schema-panel"
-        className={`fixed top-0 h-full bg-background border-r border-border flex flex-col transition-all duration-300
+        // The width transition has to be off while dragging, otherwise every
+        // mousemove animates over 300ms and the panel lags behind the cursor.
+        className={`fixed top-0 h-full bg-background border-r border-border flex flex-col
+          ${isResizing ? '' : 'transition-all duration-300'}
           translate-x-0
           md:z-30 z-50
           w-[80vw] max-w-[400px] md:max-w-none
@@ -627,10 +655,15 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
         {/* Resize Handle */}
         <div
           ref={resizeRef}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize schema panel"
+          data-testid="schema-panel-resize-handle"
           className="absolute right-0 top-0 w-1 h-full cursor-ew-resize hover:bg-purple-500 transition-colors z-50"
           onMouseDown={(e) => {
             e.preventDefault();
             e.stopPropagation();
+            hasUserResized.current = true;
             setIsResizing(true);
           }}
         >

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Trash2, Star, RefreshCw, PanelLeft } from "lucide-react";
+import { Trash2, Star, RefreshCw, PanelLeft, X } from "lucide-react";
 import Sidebar from "@/components/layout/Sidebar";
 import ChatInterface from "@/components/chat/ChatInterface";
 import LoginModal from "@/components/modals/LoginModal";
@@ -368,9 +368,8 @@ const Index = () => {
         }}
         isSchemaOpen={showSchemaViewer}
         isCollapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
-      
+
       {/* Schema Viewer */}
       <SchemaViewer 
         isOpen={showSchemaViewer}
@@ -472,15 +471,18 @@ const Index = () => {
             {/* Row 1: Hamburger (if collapsed) + Logo + User */}
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                {sidebarCollapsed && (
-                  <button
-                    onClick={() => setSidebarCollapsed(false)}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-all"
-                    data-testid="sidebar-toggle"
-                  >
-                    <PanelLeft className="h-5 w-5" />
-                  </button>
-                )}
+                {/* Single toggle for the mobile sidebar. It stays mounted in
+                    both states and swaps its icon, so closing the sidebar no
+                    longer leaves an identical-looking icon behind (issue #238). */}
+                <button
+                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  aria-expanded={!sidebarCollapsed}
+                  aria-label={sidebarCollapsed ? 'Open menu' : 'Close menu'}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-all"
+                  data-testid="sidebar-toggle"
+                >
+                  {sidebarCollapsed ? <PanelLeft className="h-5 w-5" /> : <X className="h-5 w-5" />}
+                </button>
                 <img src="/icons/queryweaver.svg" alt="QueryWeaver" className="h-8" data-testid="logo" />
               </div>
               <div className="flex items-center gap-2">
