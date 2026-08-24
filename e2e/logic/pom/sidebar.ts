@@ -198,4 +198,23 @@ export class Sidebar extends HomePage {
     await this.page.mouse.move(targetX, startY, { steps: 10 });
     await this.page.mouse.up();
   }
+
+  /**
+   * Focuses the resize handle and presses `key` `times` times. The handle is
+   * a `role="separator"` with `tabIndex={0}`, so keyboard resizing is the only
+   * way to size the panel without a pointer.
+   */
+  async pressSchemaPanelResizeKey(key: string, times = 1): Promise<void> {
+    await this.schemaPanelResizeHandle.focus();
+    for (let i = 0; i < times; i += 1) {
+      await this.schemaPanelResizeHandle.press(key);
+    }
+  }
+
+  /** Reads `aria-valuenow` off the handle, which must track the real width. */
+  async getSchemaPanelAriaValueNow(): Promise<number> {
+    const value = await this.schemaPanelResizeHandle.getAttribute('aria-valuenow');
+    if (value === null) throw new Error('Schema panel resize handle has no aria-valuenow!');
+    return Number(value);
+  }
 }

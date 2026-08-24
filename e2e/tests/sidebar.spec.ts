@@ -146,6 +146,44 @@ test.describe('Left Sidebar Tests', () => {
         .poll(async () => Math.abs((await sidebar.getSchemaPanelWidth()) - viewportWidth * 0.6))
         .toBeLessThanOrEqual(2);
     });
+
+    // The handle is a focusable role="separator", so a pointer must not be the
+    // only way to size the panel. This also guards the ARIA values: a handle
+    // that reports a width it did not apply is worse than no handle at all.
+    test('resizes with the keyboard and keeps aria-valuenow in step', async () => {
+      const sidebar = await browser.createNewPage(Sidebar, getBaseUrl());
+      await browser.setPageToFullScreen();
+
+      await sidebar.clickOnSchemaButton();
+      await expect(sidebar.schemaPanelResizeHandle).toBeVisible();
+
+      const viewportWidth = await sidebar.getViewportWidth();
+      await expect
+        .poll(async () => Math.abs((await sidebar.getSchemaPanelWidth()) - viewportWidth * 0.5))
+        .toBeLessThanOrEqual(2);
+
+      // ArrowLeft moves in 24px steps.
+      const before = await sidebar.getSchemaPanelWidth();
+      await sidebar.pressSchemaPanelResizeKey('ArrowLeft', 2);
+      await expect
+        .poll(async () => Math.abs((await sidebar.getSchemaPanelWidth()) - (before - 48)))
+        .toBeLessThanOrEqual(2);
+
+      // Home and End jump to the same 20%/60% bounds the drag clamps to.
+      await sidebar.pressSchemaPanelResizeKey('Home');
+      await expect
+        .poll(async () => Math.abs((await sidebar.getSchemaPanelWidth()) - viewportWidth * 0.2))
+        .toBeLessThanOrEqual(2);
+
+      await sidebar.pressSchemaPanelResizeKey('End');
+      await expect
+        .poll(async () => Math.abs((await sidebar.getSchemaPanelWidth()) - viewportWidth * 0.6))
+        .toBeLessThanOrEqual(2);
+
+      // The announced value must match what the panel actually renders.
+      const width = await sidebar.getSchemaPanelWidth();
+      expect(Math.abs((await sidebar.getSchemaPanelAriaValueNow()) - width)).toBeLessThanOrEqual(2);
+    });
   });
 
   // Issue #238: the mobile burger used to be rendered twice with the same
