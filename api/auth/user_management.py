@@ -5,10 +5,9 @@ import logging
 import os
 import secrets
 from functools import wraps
-from typing import Tuple, Optional, Dict, Any
+from typing import Tuple, Optional, Dict, Any, TypedDict
 
 from fastapi import Request, HTTPException, status
-from pydantic import BaseModel
 from api.auth.browser_session import read_browser_session
 from api.config import ORGANIZATIONS_GRAPH
 from api.core.errors import AuthBackendUnavailableError
@@ -23,9 +22,12 @@ if not SECRET_KEY:
     )
 
 
-class IdentityInfo(BaseModel):
-    """
-    Data model for storing identity information.
+class IdentityInfo(TypedDict):
+    """The identity payload returned by the Organizations-graph writes.
+
+    A ``TypedDict`` rather than a model: these values come straight out of a
+    query result and are read with ``.get()`` by every caller, so describing the
+    dict is accurate where constructing a model would not be.
 
     Attributes:
         identity (Dict[str, Any]): Details about the identity provider and credentials.
@@ -235,13 +237,6 @@ def get_explicit_api_token(request: Request) -> Optional[str]:
 def get_cookie_api_token(request: Request) -> Optional[str]:
     """Extract the ambient ``api_token`` cookie, if any."""
     return request.cookies.get("api_token") or None
-
-
-def get_token(request: Request) -> Optional[str]:
-    """
-    Extract the API token from the request.
-    """
-    return get_cookie_api_token(request) or get_explicit_api_token(request)
 
 
 async def validate_user(request: Request) -> Tuple[Optional[Dict[str, Any]], bool]:
@@ -482,7 +477,7 @@ def _build_query_params(  # pylint: disable=too-many-arguments
 
 def _process_user_result(
     result, provider: str, provider_user_id: str, email: str, name: str
-):
+) -> tuple[bool, Optional[IdentityInfo]]:
     """Process the database result and return appropriate response."""
     if result.result_set:
         identity: dict[str, Any] = result.result_set[0][0]
