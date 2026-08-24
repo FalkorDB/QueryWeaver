@@ -35,9 +35,13 @@ test-unit: ## Run unit tests only (excludes SDK and E2E tests)
 
 
 # Playwright lives in the root package.json; without it `npx` would silently
-# fetch an unpinned version instead of the one in package-lock.json.
+# fetch an unpinned version instead of the one in package-lock.json. The
+# browser binaries live outside node_modules, so a fresh `npm ci` still leaves
+# them missing — locally the config uses the bundled Chromium, not `channel:
+# 'chrome'`, so the install is not optional.
 e2e-deps:
 	@[ -x node_modules/.bin/playwright ] || npm ci
+	@npx playwright install chromium
 
 test-e2e: build-dev e2e-deps ## Run E2E tests headless
 	npx playwright test --reporter=list

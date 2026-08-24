@@ -24,6 +24,8 @@ from api.core.errors import GraphNotFoundError, InternalError, InvalidArgumentEr
 from api.core.pipeline import MESSAGE_DELIMITER
 from api.index import app
 
+pytestmark = pytest.mark.unit
+
 USER_EMAIL = "tester@example.com"
 BEARER = {"Authorization": "Bearer test-token"}
 
@@ -46,6 +48,42 @@ PROTECTED_ROUTES = [
     ("DELETE", "/tokens/abcd", None),
     ("POST", "/settings/validate-api-key", {"api_key": "sk-test"}),
 ]
+
+
+_MISSING = object()
+
+
+@pytest.fixture(name="callback_handler")
+def _callback_handler():
+    """Install a stub OAuth callback handler and put back what was there.
+
+    ``app.state.callback_handler`` is registered during normal startup by
+    ``setup_oauth_handlers``; overwriting or deleting it without restoring
+    leaks into whatever test happens to run next.
+    """
+    previous = getattr(app.state, "callback_handler", _MISSING)
+    handler = AsyncMock()
+    app.state.callback_handler = handler
+    try:
+        yield handler
+    finally:
+        if previous is _MISSING:
+            del app.state.callback_handler
+        else:
+            app.state.callback_handler = previous
+
+
+@pytest.fixture(name="no_callback_handler")
+def _no_callback_handler():
+    """Remove the callback handler for one test, then put it back."""
+    previous = getattr(app.state, "callback_handler", _MISSING)
+    if previous is not _MISSING:
+        del app.state.callback_handler
+    try:
+        yield
+    finally:
+        if previous is not _MISSING:
+            app.state.callback_handler = previous
 
 
 async def _agen(*items):
@@ -496,19 +534,15 @@ class TestSettingsRoute:
 class TestTokensRoutes:
     """``api/routes/tokens.py``."""
 
-    def test_generate_token(self, client):
+    def test_generate_token(self, client, callback_handler):
         """A generated token is returned once, in full."""
-        handler = AsyncMock()
-        app.state.callback_handler = handler
-        try:
-            response = client.post("/tokens/generate", headers=BEARER)
-        finally:
-            del app.state.callback_handler
+        response = client.post("/tokens/generate", headers=BEARER)
 
         assert response.status_code == 200
         assert len(response.json()["token_id"]) > 20
-        assert handler.await_args.args[0] == "api"
+        assert callback_handler.await_args.args[0] == "api"
 
+    @pytest.mark.usefixtures("no_callback_handler")
     def test_generate_token_without_handler(self, client):
         """Without a registered callback handler generation fails cleanly."""
         response = client.post("/tokens/generate", headers=BEARER)

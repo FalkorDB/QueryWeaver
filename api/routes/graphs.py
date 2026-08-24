@@ -3,6 +3,7 @@
 import json
 import logging
 import uuid
+from typing import NoReturn
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ValidationError
@@ -137,7 +138,7 @@ _LOADER_BY_EXTENSION = {
 }
 
 
-async def _load_graph_from_upload(request: Request):
+async def _load_graph_from_upload(request: Request) -> NoReturn:
     """Dispatch a multipart upload to the loader matching the file extension."""
     form = await request.form()
     file = form.get("file")
@@ -154,9 +155,9 @@ async def _load_graph_from_upload(request: Request):
     raise HTTPException(status_code=501, detail=f"{loader} is not implemented yet")
 
 
-@graphs_router.post("", responses={401: UNAUTHORIZED_RESPONSE})
+@graphs_router.post("", response_model=None, responses={401: UNAUTHORIZED_RESPONSE})
 @token_required
-async def load_graph(request: Request):
+async def load_graph(request: Request) -> NoReturn:
     """
     This route is used to load the graph data into the database.
     It expects either:
@@ -182,7 +183,7 @@ async def load_graph(request: Request):
         raise HTTPException(status_code=501, detail="ODataLoader is not implemented yet")
 
     if content_type == "multipart/form-data":
-        return await _load_graph_from_upload(request)
+        await _load_graph_from_upload(request)
 
     raise HTTPException(status_code=415, detail="Unsupported Content-Type")
 
