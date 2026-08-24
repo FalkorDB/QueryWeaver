@@ -31,7 +31,7 @@ from api.auth.user_management import delete_user_token, ensure_user_in_organizat
 from api.config import ORGANIZATIONS_GRAPH
 from api.core.errors import AuthBackendUnavailableError
 from api.extensions import db
-from api.helpers.request_security import is_secure_request, should_mark_cookie_secure
+from api.helpers.request_security import is_secure_request
 
 # Import GENERAL_PREFIX from graphs route
 GENERAL_PREFIX = os.getenv("GENERAL_PREFIX")
@@ -244,13 +244,19 @@ async def _authenticate_email_user(email: str, password: str):
         raise AuthBackendUnavailableError(str(e)) from e
 
 
-async def _complete_login(request: Request, provider: str, user_data: dict) -> str:
-    """Finish a successful login and return the API token to hand to the browser.
+async def _complete_login(request: Request, provider: str, user_data: dict) -> None:
+    """Finish a successful login by establishing the browser session.
 
     Order matters: the signed session cookie *is* the browser's credential, so it
     is established regardless of whether the Organizations-graph write lands. A
     FalkorDB outage during login therefore costs the user their stored profile
     (retried later from ``/auth-status``), not their ability to log in.
+
+    An API token is still minted and persisted, because programmatic clients
+    need one, but it is deliberately never handed to the browser. Storing a
+    bearer credential in a cookie put it on disk in clear text for the whole of
+    its lifetime; the session cookie authenticates the browser instead, and a
+    token is fetched on demand from the tokens API.
     """
     email = user_data.get("email")
     if not email:
@@ -287,7 +293,6 @@ async def _complete_login(request: Request, provider: str, user_data: dict) -> s
         provider_user_id=user_data.get("id"),
         provisioned=provisioned,
     )
-    return api_token
 
 
 # ---- Email Authentication Routes ----
@@ -378,12 +383,6 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
         response = JSONResponse({
             "success": True,
         }, status_code=201)
-        response.set_cookie(
-            key="api_token",
-            value=api_token,
-            httponly=True,
-            secure=should_mark_cookie_secure(request)
-        )
         return response
 
     except Exception as e:
@@ -454,15 +453,8 @@ async def email_login(request: Request, login_data: EmailLoginRequest) -> JSONRe
                 'picture': identity_props.get('picture', ''),
             }
 
-            api_token = await _complete_login(request, 'email', user_data)
-            response = JSONResponse({"success": True}, status_code=200)
-            response.set_cookie(
-                key="api_token",
-                value=api_token,
-                httponly=True,
-                secure=should_mark_cookie_secure(request)
-            )
-            return response
+            await _complete_login(request, 'email', user_data)
+            return JSONResponse({"success": True}, status_code=200)
 
         return JSONResponse(
             {"success": False, "error": "Authentication failed"},
@@ -597,17 +589,9 @@ async def google_authorized(request: Request) -> RedirectResponse:
             }
 
             # Call the registered Google callback handler if it exists to store user data.
-            api_token = await _complete_login(request, 'google', user_data)
+            await _complete_login(request, 'google', user_data)
 
-            redirect = RedirectResponse(url="/", status_code=302)
-            redirect.set_cookie(
-                key="api_token",
-                value=api_token,
-                httponly=True,
-                secure=should_mark_cookie_secure(request)
-            )
-
-            return redirect
+            return RedirectResponse(url="/", status_code=302)
 
         # If we reach here, user_info was falsy
         logging.warning("No user info received from Google OAuth")
@@ -692,17 +676,9 @@ async def github_authorized(request: Request) -> RedirectResponse:
             }
 
             # Call the registered GitHub callback handler if it exists to store user data.
-            api_token = await _complete_login(request, 'github', user_data)
+            await _complete_login(request, 'github', user_data)
 
-            redirect = RedirectResponse(url="/", status_code=302)
-            redirect.set_cookie(
-                key="api_token",
-                value=api_token,
-                httponly=True,
-                secure=should_mark_cookie_secure(request)
-            )
-
-            return redirect
+            return RedirectResponse(url="/", status_code=302)
 
         # If we reach here, user_info was falsy
         logging.warning("No user info received from GitHub OAuth")

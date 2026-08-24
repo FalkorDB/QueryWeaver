@@ -17,9 +17,10 @@ pytestmark = [pytest.mark.unit, pytest.mark.auth]
 def _mock_request():
     """Build a minimal mock Request for the signup handler."""
     request = MagicMock()
-    # _is_request_secure reads these; default to a plain http request.
+    # The transport helpers read these; default to a plain http request.
     request.headers.get.return_value = None
     request.url.scheme = "http"
+    request.session = {}
     return request
 
 
@@ -74,23 +75,26 @@ class TestEmailSignupExistingAccount:
 
 
 class TestEmailSignupNewAccount:
-    """A genuinely new account should be created and issued a token."""
+    """A genuinely new account should be created and logged in."""
 
     @pytest.mark.asyncio
     @patch("api.routes.auth.ensure_user_in_organizations", new_callable=AsyncMock)
     @patch("api.routes.auth._set_mail_hash", new_callable=AsyncMock)
     @patch("api.routes.auth._email_account_exists", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
-    async def test_new_account_is_created_with_token(
+    async def test_new_account_is_created_and_logged_in(
         self, _enabled, mock_exists, mock_set_hash, mock_ensure
     ):
         mock_exists.return_value = False
         mock_ensure.return_value = (True, {"new_identity": True})
 
-        response = await email_signup(_mock_request(), _signup_data("new@example.com"))
+        request = _mock_request()
+        response = await email_signup(request, _signup_data("new@example.com"))
 
         assert response.status_code == 201
-        assert "api_token=" in _set_cookie_header(response)
+        # The signed session is the credential; the token never reaches the browser.
+        assert "api_token=" not in _set_cookie_header(response)
+        assert request.session, "signup must establish the browser session"
         mock_ensure.assert_awaited_once()
         mock_set_hash.assert_awaited_once()
 

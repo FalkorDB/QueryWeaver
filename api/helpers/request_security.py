@@ -5,8 +5,6 @@ implementation here avoids the two copies drifting apart and silently
 downgrading a cookie on a genuine HTTPS request.
 """
 
-import os
-
 from fastapi import Request
 
 
@@ -23,18 +21,3 @@ def is_secure_request(request: Request) -> bool:
         return forwarded_proto.split(",")[0].strip().lower() == "https"
 
     return request.url.scheme == "https"
-
-
-def should_mark_cookie_secure(request: Request) -> bool:
-    """Whether a credential cookie must carry the ``Secure`` flag.
-
-    Fail secure. Deriving the flag from the request alone downgrades the cookie
-    for anyone who can steer a single request over plain HTTP, so the transport
-    only gets a say in a local ``APP_ENV=development`` run - where a Secure
-    cookie would be dropped over the plain HTTP that run serves.
-    """
-    app_env = os.getenv("APP_ENV")
-    if app_env is not None and app_env.strip().lower() == "development":
-        return is_secure_request(request)
-
-    return True
