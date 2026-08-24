@@ -76,6 +76,9 @@ const Settings = () => {
   const [schemaViewerWidth, setSchemaViewerWidth] = useState(() =>
     typeof window !== "undefined" ? Math.floor(window.innerWidth * 0.4) : 0,
   );
+  // The panel reports drags so this wrapper can stop animating; otherwise it
+  // eases toward each mousemove and trails the handle.
+  const [isSchemaResizing, setIsSchemaResizing] = useState(false);
   const [useMemory, setUseMemory] = useState(() => {
     // Load from localStorage on init, default to true
     if (typeof window !== 'undefined') {
@@ -369,11 +372,15 @@ const Settings = () => {
         isOpen={showSchemaViewer}
         onClose={() => setShowSchemaViewer(false)}
         onWidthChange={setSchemaViewerWidth}
+        onResizingChange={setIsSchemaResizing}
         sidebarWidth={sidebarWidth}
       />
       
       {/* Main Content */}
-      <div className="flex flex-1 flex-col transition-all duration-300" style={getMainContentStyles()}>
+      <div
+        className={`flex flex-1 flex-col ${isSchemaResizing ? '' : 'transition-all duration-300'}`}
+        style={getMainContentStyles()}
+      >
         {/* Top Header Bar */}
         <header className="border-b border-border bg-background">
           {/* Desktop Header */}
