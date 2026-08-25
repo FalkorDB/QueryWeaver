@@ -309,12 +309,15 @@ async def validate_user(request: Request) -> Tuple[Optional[Dict[str, Any]], boo
             # Upgrade the legacy cookie to a browser session on first use, so
             # anyone already logged in when this deploys stops depending on the
             # database for their next outage instead of waiting for a re-login.
+            # 'api' rather than a bespoke label: the token hangs off the user's
+            # api Identity, and /auth-status hands provider to the frontend,
+            # whose union only admits the providers the backend really issues.
             establish_browser_session(
                 request,
                 email=db_info["email"],
                 name=db_info.get("name"),
                 picture=db_info.get("picture"),
-                provider="api_token_cookie",
+                provider="api",
                 provider_user_id=db_info["email"],
                 provisioned=True,
             )

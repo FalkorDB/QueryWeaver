@@ -1,5 +1,7 @@
 """Custom exceptions for the text2sql API."""
 
+import socket
+
 import redis.exceptions
 
 # Interal Error Exception
@@ -26,10 +28,14 @@ class AuthBackendUnavailableError(Exception):
 # Faults that are plausibly transient, so retrying makes sense. Deliberately
 # excludes redis.exceptions.ResponseError: a Cypher or schema fault is
 # deterministic, and reporting it as a transient outage tells clients to retry
-# something that will never succeed. ``OSError`` covers the builtin
-# ``ConnectionError``/``TimeoutError`` and socket resolution failures.
+# something that will never succeed. Equally deliberately these are the
+# reachability-related OSError subclasses rather than OSError itself, which
+# would sweep up FileNotFoundError and PermissionError and dress a real bug up
+# as an outage.
 TRANSIENT_BACKEND_ERRORS = (
-    OSError,
+    ConnectionError,
+    TimeoutError,
+    socket.gaierror,
     redis.exceptions.ConnectionError,
     redis.exceptions.TimeoutError,
 )

@@ -7,6 +7,8 @@ broken") or, worst of all, a 401 ("you are logged out"), which sends a perfectly
 valid session back to the sign-in screen.
 """
 
+import socket
+
 import redis.exceptions
 
 from fastapi import FastAPI, Request
@@ -49,7 +51,7 @@ def _app_with_handlers():
         redis.exceptions.TimeoutError("timed out"),
         redis.exceptions.BusyLoadingError("loading the dataset in memory"),
         ConnectionRefusedError("nothing listening"),
-        OSError("temporary failure in name resolution"),
+        socket.gaierror("temporary failure in name resolution"),
     ],
 )
 def test_transient_backend_faults_are_503(error):
@@ -99,3 +101,26 @@ def test_the_shared_tuple_excludes_deterministic_errors():
     assert isinstance(
         redis.exceptions.BusyLoadingError("loading"), TRANSIENT_BACKEND_ERRORS
     )
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        FileNotFoundError("missing template"),
+        PermissionError("cannot read the key file"),
+        IsADirectoryError("that is a directory"),
+    ],
+)
+def test_local_os_faults_are_bugs_not_outages(error):
+    # These are OSError subclasses too. Listing OSError itself would dress a
+    # missing file or a bad permission up as "try again later" and hide it.
+    assert not isinstance(error, TRANSIENT_BACKEND_ERRORS)
+
+    app = _app_with_handlers()
+
+    @app.get("/boom")
+    async def boom():  # pylint: disable=unused-variable
+        raise error
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        assert client.get("/boom").status_code == 500

@@ -6,7 +6,8 @@ export interface User {
   email: string;
   name?: string;
   picture?: string;
-  provider?: 'google' | 'github' | 'email';
+  /** 'api' identifies a session upgraded from a legacy API-token cookie. */
+  provider?: 'google' | 'github' | 'email' | 'api';
 }
 
 // Authentication types
