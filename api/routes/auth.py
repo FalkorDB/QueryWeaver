@@ -1,12 +1,12 @@
 """Authentication routes for the text2sql API."""
 # pylint: disable=all
 
+import asyncio
 import hashlib
 import hmac
 import logging
 import os
 import re
-import secrets
 
 from pathlib import Path
 from urllib.parse import urljoin
@@ -29,12 +29,15 @@ from api.auth.browser_session import (
 )
 from api.auth.user_management import delete_user_token, ensure_user_in_organizations, validate_user
 from api.config import ORGANIZATIONS_GRAPH
-from api.core.errors import AuthBackendUnavailableError
+from api.core.errors import AuthBackendUnavailableError, TRANSIENT_BACKEND_ERRORS
 from api.extensions import db
-from api.helpers.request_security import is_secure_request
 
 # Import GENERAL_PREFIX from graphs route
 GENERAL_PREFIX = os.getenv("GENERAL_PREFIX")
+
+# Keeps /auth-status responsive while FalkorDB is down: the repair is
+# best-effort and retried on the next poll.
+PROVISIONING_RETRY_TIMEOUT_SECONDS = 2.0
 
 # Router
 auth_router = APIRouter(tags=["Authentication"])
@@ -199,10 +202,6 @@ async def _email_account_exists(email: str) -> bool:
     result = await organizations_graph.query(query, {"email": email})
     return bool(result.result_set)
 
-def _is_request_secure(request: Request) -> bool:
-    """Determine if the request is secure (HTTPS)."""
-    return is_secure_request(request)
-
 async def _authenticate_email_user(email: str, password: str):
     """Authenticate an email user."""
     try:
@@ -237,8 +236,8 @@ async def _authenticate_email_user(email: str, password: str):
         logging.info("EMAIL USER AUTHENTICATED: email=%r", _sanitize_for_log(email))
         return True, {"identity": identity, "user": user}
 
-    except Exception as e:
-        logging.error("Error authenticating email user: %s", e)
+    except TRANSIENT_BACKEND_ERRORS as e:
+        logging.error("Auth store unreachable while authenticating email user: %s", e)
         # Not "wrong password" — we never got to check. Surfaced separately so the
         # caller can answer 503 instead of accusing the user of bad credentials.
         raise AuthBackendUnavailableError(str(e)) from e
@@ -399,6 +398,16 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
         }, status_code=201)
         return response
 
+    except TRANSIENT_BACKEND_ERRORS as e:
+        # Same reasoning as /login/email: an unreachable store is not a rejected
+        # registration, and answering 500 tells the caller to give up on
+        # something a retry would fix.
+        logging.error("Auth store unreachable during signup: %s", e)
+        return JSONResponse(
+            {"success": False,
+             "error": "Authentication service temporarily unavailable - please retry"},
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+        )
     except Exception as e:
         logging.error("Signup error: %s", e)
         return JSONResponse(
@@ -611,6 +620,10 @@ async def google_authorized(request: Request) -> RedirectResponse:
         logging.warning("No user info received from Google OAuth")
         raise HTTPException(status_code=400, detail="Failed to get user info from Google")
 
+    except HTTPException:
+        # _complete_login raises 500s for our own misconfiguration; re-labelling
+        # those as a 400 would blame the caller for a server-side fault.
+        raise
     except Exception as e:
         logging.error("Google OAuth authentication failed: %s", str(e))  # nosemgrep
         raise HTTPException(status_code=400, detail="Authentication failed") from e
@@ -698,6 +711,10 @@ async def github_authorized(request: Request) -> RedirectResponse:
         logging.warning("No user info received from GitHub OAuth")
         raise HTTPException(status_code=400, detail="Failed to get user info from Github")
 
+    except HTTPException:
+        # _complete_login raises 500s for our own misconfiguration; re-labelling
+        # those as a 400 would blame the caller for a server-side fault.
+        raise
     except Exception as e:
         logging.error("GitHub OAuth authentication failed: %s", str(e))  # nosemgrep
         raise HTTPException(status_code=400, detail="Authentication failed") from e
@@ -766,6 +783,10 @@ async def _retry_pending_provisioning(request: Request) -> None:
     Only the identity records are repaired - no API token is minted here. The
     browser login stands on its own, and a read-only status poll is the wrong
     place to hand out a fresh programmatic credential.
+
+    Bounded by a short timeout: this runs on every status poll for exactly the
+    users a continuing outage affects, and they must not wait on the connect
+    timeout to see a page.
     """
     if is_provisioned(request):
         return
@@ -780,14 +801,20 @@ async def _retry_pending_provisioning(request: Request) -> None:
         return
 
     try:
-        _, identity_info = await ensure_user_in_organizations(
-            session_user.get("id") or email,
-            email,
-            session_user.get("name"),
-            provider,
-            None,
-            session_user.get("picture"),
+        _, identity_info = await asyncio.wait_for(
+            ensure_user_in_organizations(
+                session_user.get("id") or email,
+                email,
+                session_user.get("name"),
+                provider,
+                None,
+                session_user.get("picture"),
+            ),
+            timeout=PROVISIONING_RETRY_TIMEOUT_SECONDS,
         )
+    except asyncio.TimeoutError:
+        logging.warning("Deferred user provisioning timed out; will retry on the next poll")
+        return
     except Exception as e:  # pylint: disable=broad-exception-caught
         logging.warning("Deferred user provisioning failed: %s", e)
         return
