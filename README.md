@@ -47,7 +47,7 @@ If you prefer to pass variables on the command line, use `-e` flags (less conven
 
 ```bash
 docker run -p 5000:5000 -it \
-  -e APP_ENV=production \
+  -e APP_ENV=development \
   -e FASTAPI_SECRET_KEY=your_super_secret_key_here \
   -e GOOGLE_CLIENT_ID=your_google_client_id \
   -e GOOGLE_CLIENT_SECRET=your_google_client_secret \
@@ -56,6 +56,11 @@ docker run -p 5000:5000 -it \
   -e AZURE_API_KEY=your_azure_api_key \
   falkordb/queryweaver
 ```
+
+> `APP_ENV=development` is what makes the login work on the plain-HTTP
+> `http://localhost:5000` this command serves. Drop it (or set anything else)
+> when you put QueryWeaver behind HTTPS, so the session cookie is marked
+> `Secure`. See [Application environment](#application-environment).
 
 > Note: QueryWeaver supports multiple AI providers. You can use `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, or `AZURE_API_KEY`. See the [AI/LLM configuration](#aillm-configuration) section for details.
 
@@ -147,15 +152,20 @@ failure in one never looks like a failure in another:
 
 | Credential | What it proves | Where it lives | Depends on FalkorDB? |
 | --- | --- | --- | --- |
-| Browser login | Who is using the app | Signed session cookie, established once by OAuth or a password | No |
+| Browser login | Who is using the app | Signed session cookie, established once by OAuth or a password | No, once the process is running |
 | API token | A script may act as a user | `Token` node in the Organizations graph, sent as `Authorization: Bearer …` | Yes |
 | Data-source connection | Access to *your* database | Supplied per request, never stored | No (it is your own database) |
 
 Because the browser login is a signed cookie, staying logged in costs no database
-round trip and survives a FalkorDB outage — you keep your session and only the
-operations that genuinely need the graph fail. Requests that supply an API token
-explicitly are always checked against the database and are answered with `503`
-(not `401`) when it cannot be reached, so clients retry instead of re-authenticating.
+round trip and survives a FalkorDB outage in an already-running process — you
+keep your session and only the operations that genuinely need the graph fail.
+Requests that supply an API token explicitly are always checked against the
+database and are answered with `503` (not `401`) when it cannot be reached, so
+clients retry instead of re-authenticating.
+
+Note the scope: this is about staying logged in, not about booting. QueryWeaver
+still connects to FalkorDB at startup and will not start without it, so a restart
+during an outage is not covered.
 
 A browser login lasts 24 hours by default; set `BROWSER_SESSION_TTL_HOURS` to
 change that. Logging out clears the session cookie. No API token is issued to
