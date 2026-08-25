@@ -19,6 +19,7 @@ from api.auth.browser_session import session_ttl_seconds
 from api.auth.oauth_handlers import setup_oauth_handlers
 from api.auth.user_management import SECRET_KEY
 from api.helpers.request_security import is_secure_request
+from api.core.errors import AuthBackendUnavailableError, TRANSIENT_BACKEND_ERRORS
 from api.analytics import report_error
 from api.routes.auth import auth_router, init_auth
 from api.routes.graphs import graphs_router
@@ -125,7 +126,9 @@ class CSRFMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-meth
         self._ensure_csrf_cookie(request, response)
         return response
 
-    # Match the session cookie lifetime (14 days in seconds)
+    # Deliberately outlives the session cookie: this is only the other half of a
+    # double-submit pair, so it carries no authority on its own, and letting it
+    # expire first would 403 an unsafe request from a still-valid login.
     CSRF_COOKIE_MAX_AGE = 60 * 60 * 24 * 14
 
     def _ensure_csrf_cookie(self, request: Request, response):
@@ -273,13 +276,24 @@ def create_app():  # pylint: disable=too-many-statements
 
     app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
+    session_https_only = _session_cookie_https_only()
+    if session_https_only:
+        # The single most common local-dev symptom is a login that silently
+        # never sticks, because the browser drops a Secure cookie over HTTP.
+        # Say so once at startup rather than leaving it to be guessed.
+        logging.info(
+            "Session cookie is Secure (HTTPS-only); set APP_ENV=development to serve over plain HTTP"
+        )
+    else:
+        logging.warning("APP_ENV=development: session cookie is NOT Secure - local use only")
+
     app.add_middleware(
         SessionMiddleware,
         secret_key=SECRET_KEY,
         same_site="lax",  # allow top-level OAuth GET redirects to send cookies
         # The session cookie now carries the browser login itself, so it must be
         # HTTPS-only everywhere except local HTTP development.
-        https_only=_session_cookie_https_only(),
+        https_only=session_https_only,
         max_age=session_ttl_seconds(),
     )
 
@@ -338,6 +352,40 @@ def create_app():  # pylint: disable=too-many-statements
             return FileResponse(favicon_path, media_type="image/x-icon")
         return JSONResponse({"error": "Favicon not found"}, status_code=404)
 
+    @app.exception_handler(AuthBackendUnavailableError)
+    async def handle_auth_backend_unavailable(
+        request: Request, exc: AuthBackendUnavailableError
+    ):  # pylint: disable=unused-argument
+        """Report an unreachable auth store as transient, wherever it surfaces."""
+        logging.warning("Auth store unreachable for %s %s", request.method, request.url.path)
+        return JSONResponse(
+            {"detail": "Authentication service temporarily unavailable - please retry"},
+            status_code=503,
+        )
+
+    async def handle_transient_backend_error(
+        request: Request, exc: Exception
+    ):  # pylint: disable=unused-argument
+        """A route that could not reach FalkorDB is a 503, not a 500.
+
+        The whole point of separating the browser login from the database is
+        that an outage stops looking like a broken login. That only holds if the
+        routes that genuinely need the graph say "retry" rather than "we are
+        broken" — or worse, "you are logged out".
+        """
+        report_error(request, exc)
+        logging.warning(
+            "Backend unreachable for %s %s: %s", request.method, request.url.path, exc
+        )
+        return JSONResponse(
+            {"detail": "Service temporarily unavailable - please retry"},
+            status_code=503,
+        )
+
+    # add_exception_handler keys on a single class, so register the tuple's
+    # members one at a time.
+    for _transient in TRANSIENT_BACKEND_ERRORS:
+        app.add_exception_handler(_transient, handle_transient_backend_error)
     @app.exception_handler(Exception)
     async def handle_oauth_error(
         request: Request, exc: Exception

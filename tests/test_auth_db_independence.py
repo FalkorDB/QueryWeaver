@@ -11,7 +11,11 @@ import pytest
 from fastapi import HTTPException
 
 from api.auth import user_management
-from api.auth.browser_session import clear_browser_session, establish_browser_session
+from api.auth.browser_session import (
+    clear_browser_session,
+    establish_browser_session,
+    read_browser_session,
+)
 from api.auth.user_management import (
     get_cookie_api_token,
     get_explicit_api_token,
@@ -155,15 +159,26 @@ class TestLegacyCookieToken:
         assert user_info["email"] == "token-owner@example.com"
 
     @pytest.mark.asyncio
-    async def test_unreachable_database_denies_quietly(self):
-        # Nothing else identifies this caller, so there is no verdict to give
-        # but "not authenticated" -- and it must not surface as a 503 storm.
+    async def test_a_resolved_cookie_is_upgraded_to_a_browser_session(self):
+        # Otherwise everyone already logged in when this ships keeps depending
+        # on the database until they happen to log in again.
+        request = FakeRequest(cookies={"api_token": "legacy"})
+
+        with _patch_user_info(return_value=DB_USER):
+            await validate_user(request)
+
+        assert read_browser_session(request)["email"] == "token-owner@example.com"
+
+    @pytest.mark.asyncio
+    async def test_unreachable_database_is_raised_not_silently_denied(self):
+        # A legacy cookie is a database-backed credential like any other, so an
+        # outage must read as 503. Denying instead would bounce the user to the
+        # login screen over a fault a retry fixes.
         request = FakeRequest(cookies={"api_token": "legacy"})
 
         with _patch_user_info(side_effect=AuthBackendUnavailableError("down")):
-            user_info, is_authenticated = await validate_user(request)
-
-        assert (user_info, is_authenticated) == (None, False)
+            with pytest.raises(AuthBackendUnavailableError):
+                await validate_user(request)
 
     @pytest.mark.asyncio
     async def test_no_credentials_at_all(self):
@@ -211,6 +226,20 @@ class TestTokenRequiredStatusCodes:
                 await self._route()(request)
 
         assert excinfo.value.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_a_failure_inside_the_route_is_not_relabelled_401(self):
+        # The route's own database error is not an authentication problem.
+        # Reporting it as 401 tells the browser its session expired and sends a
+        # perfectly good login back to the sign-in screen.
+        @token_required
+        async def handler(request):  # pylint: disable=unused-argument
+            raise RuntimeError("the route's own failure")
+
+        request = _logged_in(FakeRequest())
+
+        with pytest.raises(RuntimeError, match="the route's own failure"):
+            await handler(request)
 
 
 class TestTokenLookup:

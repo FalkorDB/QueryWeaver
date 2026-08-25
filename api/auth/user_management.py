@@ -8,9 +8,9 @@ from functools import wraps
 from typing import Tuple, Optional, Dict, Any, TypedDict
 
 from fastapi import Request, HTTPException, status
-from api.auth.browser_session import read_browser_session
+from api.auth.browser_session import establish_browser_session, read_browser_session
 from api.config import ORGANIZATIONS_GRAPH
-from api.core.errors import AuthBackendUnavailableError
+from api.core.errors import AuthBackendUnavailableError, TRANSIENT_BACKEND_ERRORS
 from api.extensions import db
 
 # Get secret key for sessions
@@ -63,8 +63,8 @@ async def _get_user_info(api_token: str) -> Optional[Dict[str, Any]]:
                 "api_token": api_token,
             },
         )
-    except Exception as e:  # pylint: disable=broad-exception-caught
-        logging.error("Error fetching user info: %s", e)
+    except TRANSIENT_BACKEND_ERRORS as e:
+        logging.error("Auth store unreachable while fetching user info: %s", e)
         raise AuthBackendUnavailableError(str(e)) from e
 
     if result.result_set:
@@ -81,6 +81,25 @@ async def _get_user_info(api_token: str) -> Optional[Dict[str, Any]]:
         await delete_user_token(api_token)
 
     return None
+
+
+async def identity_exists(email: str) -> bool:
+    """Whether a stored ``User`` record still backs this email.
+
+    Raises :class:`AuthBackendUnavailableError` when the graph is unreachable,
+    so callers can tell "this identity is gone" from "we could not check".
+    """
+    try:
+        organizations_graph = db.select_graph(ORGANIZATIONS_GRAPH)
+        result = await organizations_graph.query(
+            "MATCH (u:User {email: $email}) RETURN count(u) > 0",
+            {"email": email},
+        )
+    except TRANSIENT_BACKEND_ERRORS as e:
+        logging.error("Auth store unreachable while checking identity: %s", e)
+        raise AuthBackendUnavailableError(str(e)) from e
+
+    return bool(result.result_set and result.result_set[0][0])
 
 
 async def delete_user_token(api_token: str):
@@ -126,6 +145,11 @@ async def ensure_user_in_organizations(  # pylint: disable=too-many-arguments, d
     Returns (is_new_identity, user_info). ``user_info`` is ``None`` when the
     records could not be persisted, so callers should test that, not the flag.
     """
+    # GitHub returns a JSON number here while the session payload stores it as a
+    # string, so MERGE would key 12345 and "12345" to two separate Identity
+    # nodes. Normalise once, at the only boundary that writes them.
+    provider_user_id = str(provider_user_id) if provider_user_id is not None else provider_user_id
+
     # Input validation
 
     validation_result = _validate_user_input(provider_user_id, email, provider)
@@ -180,6 +204,9 @@ async def update_identity_last_login(provider, provider_user_id):
     if provider not in allowed_providers:
         logging.error("Invalid provider: %s", provider)
         return
+
+    # Match the normalisation ensure_user_in_organizations applies on write.
+    provider_user_id = str(provider_user_id)
 
     try:
         organizations_graph = db.select_graph(ORGANIZATIONS_GRAPH)
@@ -254,8 +281,11 @@ async def validate_user(request: Request) -> Tuple[Optional[Dict[str, Any]], boo
     3. The legacy ``api_token`` cookie, for sessions issued before browser
        logins became self-contained.
 
-    Raises :class:`AuthBackendUnavailableError` when an explicitly supplied API
-    token cannot be checked because the Organizations graph is unreachable.
+    Raises :class:`AuthBackendUnavailableError` when a supplied API token —
+    explicit or the legacy cookie — cannot be checked because the Organizations
+    graph is unreachable. Collapsing that into "not authenticated" would show
+    the login screen during an outage, which is the symptom this module exists
+    to remove.
     """
     explicit_token = get_explicit_api_token(request)
     if explicit_token:
@@ -272,12 +302,22 @@ async def validate_user(request: Request) -> Tuple[Optional[Dict[str, Any]], boo
 
     cookie_token = get_cookie_api_token(request)
     if cookie_token:
-        try:
-            db_info = await _get_user_info(cookie_token)
-        except AuthBackendUnavailableError:
-            logging.warning("Auth store unreachable while validating the api_token cookie")
-            return None, False
+        # Propagates AuthBackendUnavailableError so an outage reads as 503, the
+        # same as the explicit-token branch above.
+        db_info = await _get_user_info(cookie_token)
         if db_info:
+            # Upgrade the legacy cookie to a browser session on first use, so
+            # anyone already logged in when this deploys stops depending on the
+            # database for their next outage instead of waiting for a re-login.
+            establish_browser_session(
+                request,
+                email=db_info["email"],
+                name=db_info.get("name"),
+                picture=db_info.get("picture"),
+                provider="api_token_cookie",
+                provider_user_id=db_info["email"],
+                provisioned=True,
+            )
             return db_info, True
 
     return None, False
@@ -291,6 +331,9 @@ def token_required(func):
 
     @wraps(func)
     async def wrapper(request: Request, *args, **kwargs):
+        # Only the authentication work belongs in this try: a failure inside the
+        # route itself is not an authentication problem, and reporting it as 401
+        # tells the browser to re-login over what is usually a database outage.
         try:
             user_info, is_authenticated = await validate_user(request)
 
@@ -312,8 +355,6 @@ def token_required(func):
                     detail="Unauthorized - Invalid user",
                 )
 
-            return await func(request, *args, **kwargs)
-
         except HTTPException:
             raise
         except AuthBackendUnavailableError as e:
@@ -330,6 +371,8 @@ def token_required(func):
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Unauthorized - Authentication error",
             ) from e
+
+        return await func(request, *args, **kwargs)
 
     return wrapper
 
