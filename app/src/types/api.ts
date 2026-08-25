@@ -13,6 +13,11 @@ export interface User {
 export interface AuthStatus {
   authenticated: boolean;
   user?: User;
+  /**
+   * The backend could not check, rather than checking and saying no. Callers
+   * should offer a retry instead of sending the user back to the login screen.
+   */
+  unavailable?: boolean;
 }
 
 // Graph/Database types
