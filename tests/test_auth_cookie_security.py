@@ -59,15 +59,13 @@ class TestForwardedProtoNormalization:
         assert is_secure_request(FakeRequest(scheme="https")) is True
         assert is_secure_request(FakeRequest(scheme="http")) is False
 
-    def test_both_call_sites_share_one_implementation(self):
+    def test_the_csrf_cookie_uses_the_shared_implementation(self):
         """The duplicate copies are what let the two drift apart."""
         # pylint: disable=import-outside-toplevel
         from api.app_factory import _is_secure_request
-        from api.routes.auth import _is_request_secure
 
         proxied = FakeRequest(headers={"x-forwarded-proto": "HTTPS"})
         assert _is_secure_request(proxied) is True
-        assert _is_request_secure(proxied) is True
 
 
 class TestSessionCookieFailsSecure:

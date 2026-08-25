@@ -53,10 +53,19 @@ def session_ttl_seconds() -> int:
             # ``float`` happily parses "inf" and "1e309"; both are > 0, and
             # ``int(inf * 3600)`` raises OverflowError.
             if math.isfinite(hours) and hours > 0:
-                return int(hours * 3600)
-            logging.warning(
-                "BROWSER_SESSION_TTL_HOURS must be a positive finite number, ignoring %r", raw
-            )
+                # Guard the *computed* seconds, not the hours: 0.0002 hours
+                # truncates to 0, which itsdangerous reads as "always expired"
+                # and would lock every user out.
+                seconds = int(hours * 3600)
+                if seconds >= 1:
+                    return seconds
+                logging.warning(
+                    "BROWSER_SESSION_TTL_HOURS=%r is under one second, ignoring", raw
+                )
+            else:
+                logging.warning(
+                    "BROWSER_SESSION_TTL_HOURS must be a positive finite number, ignoring %r", raw
+                )
         except ValueError:
             logging.warning("Invalid BROWSER_SESSION_TTL_HOURS value %r, ignoring", raw)
     return DEFAULT_TTL_HOURS * 3600
@@ -66,11 +75,12 @@ def _session_store(request: Request) -> Optional[Dict[str, Any]]:
     """Return the Starlette session dict, or ``None`` when unavailable.
 
     ``request.session`` asserts when ``SessionMiddleware`` is not installed,
-    which happens for ASGI sub-apps and in unit tests.
+    which happens for ASGI sub-apps and in unit tests. Under ``python -O`` that
+    assert is stripped and the scope lookup raises ``KeyError`` instead.
     """
     try:
         return request.session
-    except (AssertionError, AttributeError):
+    except (AssertionError, AttributeError, KeyError):
         return None
 
 
@@ -113,7 +123,11 @@ def establish_browser_session(  # pylint: disable=too-many-arguments
 
 
 def read_browser_session(request: Request) -> Optional[Dict[str, Any]]:
-    """Return the logged-in user, or ``None``. Never touches the database."""
+    """Return the logged-in user, or ``None``.
+
+    Never touches the database. It does drop an expired payload from the session
+    so the stale cookie is not re-signed on every subsequent response.
+    """
     store = _session_store(request)
     if not store:
         return None

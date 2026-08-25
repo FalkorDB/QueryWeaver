@@ -213,3 +213,17 @@ class TestTtlConfiguration:
         monkeypatch.setenv("BROWSER_SESSION_TTL_HOURS", value)
 
         assert session_ttl_seconds() == DEFAULT_TTL_HOURS * 3600
+
+    # A positive TTL that truncates to zero seconds is the dangerous case:
+    # itsdangerous reads max_age=0 as "always expired", so every user is locked
+    # out by a value that looks valid.
+    @pytest.mark.parametrize("value", ["0.0002", "0.0000001"])
+    def test_sub_second_overrides_fall_back_to_the_default(self, monkeypatch, value):
+        monkeypatch.setenv("BROWSER_SESSION_TTL_HOURS", value)
+
+        assert session_ttl_seconds() == DEFAULT_TTL_HOURS * 3600
+
+    def test_the_smallest_usable_override_is_kept(self, monkeypatch):
+        monkeypatch.setenv("BROWSER_SESSION_TTL_HOURS", "0.001")
+
+        assert session_ttl_seconds() == 3
