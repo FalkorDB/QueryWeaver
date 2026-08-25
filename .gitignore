@@ -11,6 +11,11 @@ test-results/
 playwright-report/
 tests/e2e/screenshots/*.png
 .pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+coverage.json
+htmlcov/
 
 # Temporary test files
 *.tmp
