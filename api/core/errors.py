@@ -4,7 +4,7 @@ import socket
 
 import redis.exceptions
 
-# Interal Error Exception
+# Internal Error Exception
 class InternalError(Exception):
     """Custom exception for internal errors."""
 

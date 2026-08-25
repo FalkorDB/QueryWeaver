@@ -170,6 +170,19 @@ class TestLegacyCookieToken:
         assert read_browser_session(request)["email"] == "token-owner@example.com"
 
     @pytest.mark.asyncio
+    async def test_the_upgraded_session_is_what_gets_returned(self):
+        # db_info carries no provider or id, so returning it would have
+        # /auth-status answer provider null for the session just established.
+        request = FakeRequest(cookies={"api_token": "legacy"})
+
+        with _patch_user_info(return_value=DB_USER):
+            user_info, is_authenticated = await validate_user(request)
+
+        assert is_authenticated is True
+        assert user_info["provider"] == "api"
+        assert user_info["email"] == "token-owner@example.com"
+
+    @pytest.mark.asyncio
     async def test_unreachable_database_is_raised_not_silently_denied(self):
         # A legacy cookie is a database-backed credential like any other, so an
         # outage must read as 503. Denying instead would bounce the user to the

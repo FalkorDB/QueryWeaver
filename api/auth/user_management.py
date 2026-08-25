@@ -312,7 +312,7 @@ async def validate_user(request: Request) -> Tuple[Optional[Dict[str, Any]], boo
             # 'api' rather than a bespoke label: the token hangs off the user's
             # api Identity, and /auth-status hands provider to the frontend,
             # whose union only admits the providers the backend really issues.
-            establish_browser_session(
+            if establish_browser_session(
                 request,
                 email=db_info["email"],
                 name=db_info.get("name"),
@@ -320,7 +320,13 @@ async def validate_user(request: Request) -> Tuple[Optional[Dict[str, Any]], boo
                 provider="api",
                 provider_user_id=db_info["email"],
                 provisioned=True,
-            )
+            ):
+                # Prefer the session payload: db_info carries no provider or id,
+                # so returning it would have /auth-status report provider null
+                # for the session we just established.
+                session_user = read_browser_session(request)
+                if session_user:
+                    return session_user, True
             return db_info, True
 
     return None, False
