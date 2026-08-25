@@ -26,22 +26,30 @@ class SQLIdentifierQuoter:
 
     @staticmethod
     def _is_already_quoted(identifier: str, quote_char: str = '"') -> bool:
-        """Check if an identifier is already quoted for the active dialect.
+        """Check if an identifier is already *validly* quoted for the dialect.
 
         The pair is scoped to *quote_char* so that a bracketed identifier is
         only treated as pre-quoted for SQL Server; on PostgreSQL/MySQL a name
         such as ``[weird]`` is data, not a delimiter, and must still be quoted.
+
+        Matching delimiters at the ends are not sufficient: every closing
+        delimiter *inside* the pair must be doubled, or the first stray one
+        ends the identifier early and the rest of the string is parsed as SQL.
+        ``[name] DROP TABLE users]`` must therefore not count as quoted.
 
         Args:
             identifier: The identifier to inspect.
             quote_char: Opening delimiter of the active dialect.
 
         Returns:
-            True if *identifier* is already delimited.
+            True if *identifier* is already delimited and internally escaped.
         """
-        if quote_char == '[':
-            return identifier.startswith('[') and identifier.endswith(']')
-        return identifier.startswith(quote_char) and identifier.endswith(quote_char)
+        close_char = ']' if quote_char == '[' else quote_char
+        if len(identifier) < 2:
+            return False
+        if not (identifier.startswith(quote_char) and identifier.endswith(close_char)):
+            return False
+        return close_char not in identifier[1:-1].replace(close_char * 2, '')
 
     @classmethod
     def needs_quoting(cls, identifier: str, quote_char: str = '"') -> bool:
@@ -85,14 +93,13 @@ class SQLIdentifierQuoter:
         if SQLIdentifierQuoter._is_already_quoted(identifier, quote_char):
             return identifier
 
-        # SQL Server uses bracket pairs: [identifier]. A literal ``]`` inside the
-        # name is escaped by doubling it, otherwise it would close the delimiter
-        # early and change the meaning of the statement.
-        if quote_char == '[':
-            escaped = identifier.replace(']', ']]')
-            return f'[{escaped}]'
-
-        return f'{quote_char}{identifier}{quote_char}'
+        # Every dialect here escapes its closing delimiter by doubling it --
+        # ``]`` for SQL Server brackets, otherwise the quote character itself.
+        # Without this a name carrying a delimiter closes the identifier early
+        # and turns the remainder of the name into executable SQL.
+        close_char = ']' if quote_char == '[' else quote_char
+        escaped = identifier.replace(close_char, close_char * 2)
+        return f'{quote_char}{escaped}{close_char}'
 
     @classmethod
     def extract_table_names_from_query(cls, sql_query: str) -> Set[str]:

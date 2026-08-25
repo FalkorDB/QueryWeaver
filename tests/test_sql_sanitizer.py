@@ -284,3 +284,45 @@ class TestSQLServerQuoting:
     def test_bracketed_name_treated_as_quoted_for_sqlserver(self):
         """The same identifier is already delimited on SQL Server."""
         assert SQLIdentifierQuoter.needs_quoting('[weird]', '[') is False
+
+    @pytest.mark.parametrize(
+        "identifier, quote_char",
+        [
+            ('[name] DROP TABLE users]', '['),
+            ('"a" ; DROP TABLE users --"', '"'),
+            ('`a` ; DROP TABLE users --`', '`'),
+        ],
+    )
+    def test_a_broken_out_delimiter_is_not_mistaken_for_quoting(self, identifier, quote_char):
+        """Matching outer delimiters are not enough to call a name quoted.
+
+        ``[name] DROP TABLE users]`` opens and closes with a bracket pair, but
+        the ``]`` after ``name`` ends the identifier early and leaves the rest
+        to be parsed as SQL. Treating it as pre-quoted skipped the escaping and
+        emitted the payload verbatim.
+        """
+        assert SQLIdentifierQuoter._is_already_quoted(identifier, quote_char) is False
+
+        quoted = SQLIdentifierQuoter.quote_identifier(identifier, quote_char)
+        close_char = ']' if quote_char == '[' else quote_char
+
+        # Nothing but the outer pair may act as a delimiter: strip the ends and
+        # every remaining closing delimiter has to be doubled.
+        assert quoted.startswith(quote_char) and quoted.endswith(close_char)
+        assert close_char not in quoted[1:-1].replace(close_char * 2, '')
+
+    def test_quoting_escapes_the_delimiter_for_every_dialect(self):
+        """Doubling is how all three dialects escape their closing delimiter."""
+        assert SQLIdentifierQuoter.quote_identifier('a"b', '"') == '"a""b"'
+        assert SQLIdentifierQuoter.quote_identifier('a`b', '`') == '`a``b`'
+        assert SQLIdentifierQuoter.quote_identifier('a]b', '[') == '[a]]b]'
+
+    def test_a_lone_delimiter_is_not_a_quoted_identifier(self):
+        """One character cannot be an opening and closing pair at once."""
+        assert SQLIdentifierQuoter._is_already_quoted('"', '"') is False
+        assert SQLIdentifierQuoter._is_already_quoted('[', '[') is False
+
+    def test_a_properly_escaped_name_is_left_alone(self):
+        """``[a]] ; SELECT 1]`` is the escaped name ``a] ; SELECT 1``, not a breakout."""
+        assert SQLIdentifierQuoter._is_already_quoted('[a]] ; SELECT 1]', '[') is True
+        assert SQLIdentifierQuoter.quote_identifier('[a]] ; SELECT 1]', '[') == '[a]] ; SELECT 1]'

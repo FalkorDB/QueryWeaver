@@ -121,6 +121,26 @@ Connections are opened with `as_dict=True`, so `pymssql` returns rows as
 dictionaries keyed by column name. Positional access (`row[0]`) raises `KeyError`
 with this setting and is never used.
 
+### Timeouts
+
+`DB_CONNECT_TIMEOUT` maps to `login_timeout` and bounds the connection and login
+handshake.
+
+Query time is bounded by `pymssql`'s `timeout`, which is set to the **larger** of
+`DB_SCHEMA_TIMEOUT` and `DB_STATEMENT_TIMEOUT` for every connection this loader
+opens. That is a deliberate divergence from the PostgreSQL and Snowflake loaders,
+which apply `DB_STATEMENT_TIMEOUT` to query execution on its own:
+
+> `pymssql` documents that `timeout` and `login_timeout` have a *process-wide*
+> effect, because the underlying db-lib API functions used to implement them are
+> global. Giving introspection and query execution different budgets would let
+> concurrent operations overwrite each other's, leaving both nondeterministic.
+
+So with the defaults (`DB_SCHEMA_TIMEOUT=300`, `DB_STATEMENT_TIMEOUT=60`), a user
+query against SQL Server may run for up to 300s rather than 60s. Lower
+`DB_SCHEMA_TIMEOUT` if you need a tighter ceiling; there is no way to bound the
+two independently while the driver's timeout stays global.
+
 ## Testing
 
 `tests/test_sqlserver_loader.py` covers:
@@ -142,3 +162,4 @@ uv run --extra server --extra dev pytest tests/test_sqlserver_loader.py -v
 - One schema per connection (defaults to `dbo`); connect again to load another
 - Requires permission to read the `sys.*` catalog views
 - Windows/Azure AD integrated authentication is not supported; use SQL logins
+- `DB_STATEMENT_TIMEOUT` is not applied on its own; see [Timeouts](#timeouts)
