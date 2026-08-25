@@ -5,7 +5,7 @@ callbacks can invoke them when processing OAuth responses.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from fastapi import FastAPI
 from authlib.integrations.starlette_client import OAuth
@@ -19,8 +19,15 @@ def setup_oauth_handlers(app: FastAPI, oauth: OAuth):
     # Store oauth in app state for access in routes
     app.state.oauth = oauth
 
-    async def handle_callback(provider: str, user_info: Dict[str, Any], api_token: str):
-        """Handle Provider OAuth callback processing"""
+    async def handle_callback(
+        provider: str, user_info: Dict[str, Any], api_token: Optional[str]
+    ):
+        """Handle Provider OAuth callback processing.
+
+        ``api_token`` is ``None`` for browser logins, which are authenticated by
+        the signed session cookie and never receive a token; the tokens API
+        passes a real one.
+        """
         try:
             user_id = user_info.get("id")
             email = user_info.get("email")
@@ -31,8 +38,10 @@ def setup_oauth_handlers(app: FastAPI, oauth: OAuth):
                 logging.error("Missing required fields from %s OAuth response", provider)
                 return False
 
-            # Check if identity exists in Organizations graph, create if new
-            _, _ = await ensure_user_in_organizations(
+            # Check if identity exists in Organizations graph, create if new.
+            # The first element is "is new identity", not a success flag, so the
+            # returned info is what tells us the records were actually persisted.
+            _, identity_info = await ensure_user_in_organizations(
                 user_id,
                 email,
                 name,
@@ -40,6 +49,13 @@ def setup_oauth_handlers(app: FastAPI, oauth: OAuth):
                 api_token,
                 user_info.get("picture"),
             )
+            if identity_info is None:
+                logging.error(
+                    "Could not persist %s identity for %s - deferring provisioning",
+                    provider,
+                    email,
+                )
+                return False
 
             return True
         except Exception as exc:  # capture exception for logging, pylint: disable=broad-exception-caught

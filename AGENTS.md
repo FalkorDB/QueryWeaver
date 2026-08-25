@@ -127,7 +127,9 @@ Required:
 
 LLM provider (set one): `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `COHERE_API_KEY`, `AZURE_API_KEY`, or `OLLAMA_MODEL`
 
-Optional overrides: `COMPLETION_MODEL`, `EMBEDDING_MODEL` (must match provider)
+Optional overrides: `COMPLETION_MODEL`, `EMBEDDING_MODEL` (must match provider), `APP_ENV` (anything that does not read as `development` once trimmed and lower-cased marks the session cookie Secure, so a missing value fails secure), `BROWSER_SESSION_TTL_HOURS` (browser login lifetime, default 24)
+
+Authentication is deliberately split three ways — a signed session cookie for the browser login (no FalkorDB dependency, see `api/auth/browser_session.py`), FalkorDB-backed API tokens for programmatic clients, and per-request data-source credentials. `validate_user` in `api/auth/user_management.py` owns the precedence between them.
 
 See `.env.example` for the full list.
 
