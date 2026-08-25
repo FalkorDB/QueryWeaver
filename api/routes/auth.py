@@ -398,7 +398,7 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
         }, status_code=201)
         return response
 
-    except TRANSIENT_BACKEND_ERRORS as e:
+    except (AuthBackendUnavailableError, *TRANSIENT_BACKEND_ERRORS) as e:
         # Same reasoning as /login/email: an unreachable store is not a rejected
         # registration, and answering 500 tells the caller to give up on
         # something a retry would fix.

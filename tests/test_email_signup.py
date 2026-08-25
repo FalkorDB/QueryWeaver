@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from api.core.errors import AuthBackendUnavailableError
 from api.routes.auth import EmailSignupRequest, _email_account_exists, email_signup
 
 pytestmark = [pytest.mark.unit, pytest.mark.auth]
@@ -71,6 +72,23 @@ class TestEmailSignupExistingAccount:
         response = await email_signup(_mock_request(), _signup_data())
 
         assert response.status_code == 500
+        assert "api_token=" not in _set_cookie_header(response)
+
+    @pytest.mark.asyncio
+    @patch("api.routes.auth.ensure_user_in_organizations", new_callable=AsyncMock)
+    @patch("api.routes.auth._email_account_exists", new_callable=AsyncMock)
+    @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
+    async def test_an_outage_during_creation_is_retryable_not_a_bug(
+        self, _enabled, mock_exists, mock_ensure
+    ):
+        # 500 would tell the caller the registration is broken, when in fact
+        # nothing was decided and retrying is the right move.
+        mock_exists.return_value = False
+        mock_ensure.side_effect = AuthBackendUnavailableError("down")
+
+        response = await email_signup(_mock_request(), _signup_data("new@example.com"))
+
+        assert response.status_code == 503
         assert "api_token=" not in _set_cookie_header(response)
 
 

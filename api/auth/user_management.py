@@ -144,6 +144,8 @@ async def ensure_user_in_organizations(  # pylint: disable=too-many-arguments, d
 
     Returns (is_new_identity, user_info). ``user_info`` is ``None`` when the
     records could not be persisted, so callers should test that, not the flag.
+    Raises :class:`AuthBackendUnavailableError` when the graph is unreachable,
+    which is a retryable outage rather than a failure to persist.
     """
     # GitHub returns a JSON number here while the session payload stores it as a
     # string, so MERGE would key 12345 and "12345" to two separate Identity
@@ -178,11 +180,15 @@ async def ensure_user_in_organizations(  # pylint: disable=too-many-arguments, d
     except (AttributeError, ValueError, KeyError) as e:
         logging.error("Error managing user in Organizations graph: %s", e)
         return False, None
-    except (ConnectionError, TimeoutError) as e:
+    except TRANSIENT_BACKEND_ERRORS as e:
+        # Not "could not persist": we never got to try. Collapsing this into
+        # (False, None) makes an outage indistinguishable from a validation
+        # failure or a concurrent-signup race, so callers answer 500 and tell
+        # the caller to give up on something a retry would fix.
         logging.error(
-            "Database connection error managing user in Organizations graph: %s", e
+            "Auth store unreachable managing user in Organizations graph: %s", e
         )
-        return False, None
+        raise AuthBackendUnavailableError(str(e)) from e
     except Exception as e:  # pylint: disable=broad-exception-caught
         logging.error("Unexpected error managing user in Organizations graph: %s", e)
         return False, None

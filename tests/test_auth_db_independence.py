@@ -332,3 +332,17 @@ class TestIdentityPersistence:
     @pytest.mark.asyncio
     async def test_no_token_is_merged_for_a_browser_login(self):
         assert "MERGE (token:Token" not in await self._merge_query_for(None)
+
+    @pytest.mark.asyncio
+    async def test_an_outage_is_raised_not_reported_as_a_failure_to_persist(self):
+        # (False, None) also means "validation failed" or "lost a signup race",
+        # both deterministic, so an outage collapsed into it reads as a 500 for
+        # something a retry would fix.
+        graph = AsyncMock()
+        graph.query.side_effect = ConnectionError("down")
+
+        with patch.object(user_management.db, "select_graph", return_value=graph):
+            with pytest.raises(AuthBackendUnavailableError):
+                await user_management.ensure_user_in_organizations(
+                    "1", "user@example.com", "Example User", "google", None
+                )
