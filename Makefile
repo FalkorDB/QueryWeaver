@@ -1,4 +1,4 @@
-.PHONY: help install test test-unit test-e2e test-e2e-headed lint format clean setup-dev build lint-frontend test-sdk docker-test-services docker-test-stop build-package
+.PHONY: help install test test-unit test-e2e test-e2e-no-ai test-e2e-headed e2e-deps lint format clean setup-dev build lint-frontend test-sdk docker-test-services docker-test-stop build-package
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -8,11 +8,12 @@ help: ## Show this help message
 
 install: ## Install dependencies
 	uv sync
+	npm ci
 	npm ci --prefix ./app
 
 
 setup-dev: install ## Set up development environment
-	uv run playwright install chromium
+	uv run playwright install chromium firefox
 	uv run playwright install-deps
 	@echo "Development environment setup complete!"
 	@echo "Don't forget to copy .env.example to .env and configure your settings"
@@ -33,16 +34,31 @@ test-unit: ## Run unit tests only (excludes SDK and E2E tests)
 	uv run python -m pytest tests/ -k "not e2e and not test_sdk" --ignore=tests/test_sdk --verbose
 
 
-test-e2e: build-dev ## Run E2E tests headless
-	uv run python -m pytest tests/e2e/ --browser chromium --video=on --screenshot=on
+# Playwright lives in the root package.json; without it `npx` would silently
+# fetch an unpinned version instead of the one in package-lock.json. The
+# browser binaries live outside node_modules, so a fresh `npm ci` still leaves
+# them missing — locally the config uses the bundled Chromium, not `channel:
+# 'chrome'`, so the install is not optional. Firefox is included because
+# playwright.config.ts adds a firefox project whenever CI is unset, which is
+# exactly the case for every one of the targets below.
+e2e-deps:
+	@[ -x node_modules/.bin/playwright ] || npm ci
+	@npx playwright install chromium firefox
+
+test-e2e: build-dev e2e-deps ## Run E2E tests headless
+	npx playwright test --reporter=list
 
 
-test-e2e-headed: build-dev ## Run E2E tests with browser visible
-	uv run python -m pytest tests/e2e/ --browser chromium --headed
+test-e2e-no-ai: build-dev e2e-deps ## Run E2E tests that do not need LLM secrets
+	npx playwright test --grep-invert @requires-ai --reporter=list
 
 
-test-e2e-debug: build-dev ## Run E2E tests with debugging enabled
-	uv run python -m pytest tests/e2e/ --browser chromium --slowmo=1000
+test-e2e-headed: build-dev e2e-deps ## Run E2E tests with browser visible
+	npx playwright test --headed --reporter=list
+
+
+test-e2e-debug: build-dev e2e-deps ## Run E2E tests with debugging enabled
+	npx playwright test --debug
 
 lint: ## Run linting (backend + frontend)
 	@echo "Running backend lint (pylint)"
@@ -59,7 +75,7 @@ format: ## Format code (placeholder - add black/autopep8 if needed)
 clean: ## Clean up test artifacts
 	rm -rf test-results/
 	rm -rf playwright-report/
-	rm -rf tests/e2e/screenshots/
+	rm -rf e2e/.auth/
 	rm -rf __pycache__/
 	rm -rf dist/
 	rm -rf *.egg-info/

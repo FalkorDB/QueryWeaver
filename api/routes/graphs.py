@@ -3,9 +3,11 @@
 import json
 import logging
 import uuid
-from fastapi import APIRouter, Request, HTTPException, UploadFile, File
+from typing import NoReturn
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
+from starlette.datastructures import UploadFile
 
 from api.core.schema_loader import list_databases
 from api.core.text2sql import (
@@ -73,11 +75,7 @@ async def _serialize_pipeline(  # pylint: disable=too-many-arguments
 
 
 class GraphData(BaseModel):
-    """Graph data model.
-
-    Args:
-        BaseModel (_type_): _description_
-    """
+    """JSON body for loading a schema: the database to load it into."""
 
     database: str
 
@@ -129,11 +127,71 @@ async def get_graph_data(
         )
 
 
-@graphs_router.post("", responses={401: UNAUTHORIZED_RESPONSE})
+_LOADER_BY_EXTENSION = {
+    ".json": "JSONLoader",
+    ".xml": "ODataLoader",
+    ".csv": "CSVLoader",
+}
+
+
+async def _load_graph_from_upload(request: Request) -> NoReturn:
+    """Dispatch a multipart upload to the loader matching the file extension."""
+    # `async with` is what FastAPI itself does via the request's exit stack.
+    # Parsing the form by hand skips that, and an upload past Starlette's 1 MB
+    # spool threshold becomes a SpooledTemporaryFile that stays open until GC
+    # even though the request is rejected here without reading the body.
+    async with request.form() as form:
+        file = form.get("file")
+        if not isinstance(file, UploadFile) or not file.filename:
+            raise HTTPException(status_code=415, detail="Missing file upload")
+
+        # `rpartition` yields an empty separator for a dotless name, in which
+        # case the whole filename would otherwise be read as its own extension.
+        _, separator, extension = file.filename.rpartition(".")
+        loader = (
+            _LOADER_BY_EXTENSION.get(f".{extension.lower()}") if separator else None
+        )
+        if loader is None:
+            raise HTTPException(status_code=415, detail="Unsupported file type")
+
+    raise HTTPException(status_code=501, detail=f"{loader} is not implemented yet")
+
+
+# Content-Type is dispatched by hand in the handler, so neither body is a
+# declared parameter and FastAPI would advertise this route as taking no body
+# at all. Describe the accepted payloads explicitly so `/docs` and generated
+# clients stay accurate.
+_LOAD_GRAPH_REQUEST_BODY = {
+    "required": True,
+    "content": {
+        "application/json": {"schema": GraphData.model_json_schema()},
+        "application/xml": {"schema": {"type": "string"}},
+        "text/xml": {"schema": {"type": "string"}},
+        "multipart/form-data": {
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "file": {
+                        "type": "string",
+                        "format": "binary",
+                        "description": "A .json, .xml or .csv schema file.",
+                    }
+                },
+                "required": ["file"],
+            }
+        },
+    },
+}
+
+
+@graphs_router.post(
+    "",
+    response_model=None,
+    responses={401: UNAUTHORIZED_RESPONSE},
+    openapi_extra={"requestBody": _LOAD_GRAPH_REQUEST_BODY},
+)
 @token_required
-async def load_graph(
-    request: Request, data: GraphData = None, file: UploadFile = File(None)
-):  # pylint: disable=unused-argument
+async def load_graph(request: Request) -> NoReturn:
     """
     This route is used to load the graph data into the database.
     It expects either:
@@ -141,35 +199,27 @@ async def load_graph(
     - A File upload (multipart/form-data)
     - An XML payload (application/xml or text/xml)
     """
+    # Dispatch on Content-Type by hand: declaring both a JSON body model and an
+    # `UploadFile` parameter makes FastAPI parse every request as multipart, so
+    # the JSON and XML branches would be unreachable.
+    content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
 
-    # ✅ Handle JSON Payload
-    if data:  # pylint: disable=no-else-raise
+    if content_type == "application/json":
+        try:
+            GraphData(**await request.json())
+        except (ValueError, TypeError, ValidationError) as exc:
+            raise HTTPException(
+                status_code=422, detail="Invalid JSON payload"
+            ) from exc
         raise HTTPException(status_code=501, detail="JSONLoader is not implemented yet")
-    # ✅ Handle File Upload
-    elif file:
-        filename = file.filename
 
-        # ✅ Check if file is JSON
-        if filename.endswith(".json"):  # pylint: disable=no-else-raise
-            raise HTTPException(
-                status_code=501, detail="JSONLoader is not implemented yet"
-            )
+    if content_type in ("application/xml", "text/xml"):
+        raise HTTPException(status_code=501, detail="ODataLoader is not implemented yet")
 
-        # ✅ Check if file is XML
-        elif filename.endswith(".xml"):
-            raise HTTPException(
-                status_code=501, detail="ODataLoader is not implemented yet"
-            )
+    if content_type == "multipart/form-data":
+        await _load_graph_from_upload(request)
 
-        # ✅ Check if file is csv
-        elif filename.endswith(".csv"):
-            raise HTTPException(
-                status_code=501, detail="CSVLoader is not implemented yet"
-            )
-        else:
-            raise HTTPException(status_code=415, detail="Unsupported file type")
-    else:
-        raise HTTPException(status_code=415, detail="Unsupported Content-Type")
+    raise HTTPException(status_code=415, detail="Unsupported Content-Type")
 
 
 @graphs_router.post(
