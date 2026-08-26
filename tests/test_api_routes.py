@@ -297,6 +297,22 @@ class TestGraphsRoutes:
 
         assert response.status_code == 415
 
+    def test_load_graph_documents_its_accepted_bodies(self, client):
+        """Content-Type is dispatched by hand, so the body is documented by hand."""
+        schema = client.app.openapi()
+        body = schema["paths"]["/graphs"]["post"]["requestBody"]
+
+        assert body["required"] is True
+        assert set(body["content"]) == {
+            "application/json",
+            "application/xml",
+            "text/xml",
+            "multipart/form-data",
+        }
+        assert body["content"]["application/json"]["schema"]["required"] == ["database"]
+        multipart = body["content"]["multipart/form-data"]["schema"]
+        assert multipart["properties"]["file"]["format"] == "binary"
+
     @pytest.mark.usefixtures("no_usage_tracking")
     def test_query_graph_streams_events(self, client):
         """Pipeline events are streamed delimiter-separated, minus the sentinel."""

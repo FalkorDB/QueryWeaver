@@ -77,6 +77,11 @@ export class UserProfile extends BasePage {
     return this.page.getByTestId(`token-row-${tokenId}`);
   }
 
+  /** Public accessor: waiting on a specific row is the only proof it rendered. */
+  tokenRowLocator(tokenId: string): Locator {
+    return this.getTokenRow(tokenId);
+  }
+
   private getTokenValue(tokenId: string): Locator {
     return this.page.getByTestId(`token-value-${tokenId}`);
   }

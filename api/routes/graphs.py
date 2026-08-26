@@ -75,11 +75,7 @@ async def _serialize_pipeline(  # pylint: disable=too-many-arguments
 
 
 class GraphData(BaseModel):
-    """Graph data model.
-
-    Args:
-        BaseModel (_type_): _description_
-    """
+    """JSON body for loading a schema: the database to load it into."""
 
     database: str
 
@@ -140,22 +136,60 @@ _LOADER_BY_EXTENSION = {
 
 async def _load_graph_from_upload(request: Request) -> NoReturn:
     """Dispatch a multipart upload to the loader matching the file extension."""
-    form = await request.form()
-    file = form.get("file")
-    if not isinstance(file, UploadFile) or not file.filename:
-        raise HTTPException(status_code=415, detail="Missing file upload")
+    # `async with` is what FastAPI itself does via the request's exit stack.
+    # Parsing the form by hand skips that, and an upload past Starlette's 1 MB
+    # spool threshold becomes a SpooledTemporaryFile that stays open until GC
+    # even though the request is rejected here without reading the body.
+    async with request.form() as form:
+        file = form.get("file")
+        if not isinstance(file, UploadFile) or not file.filename:
+            raise HTTPException(status_code=415, detail="Missing file upload")
 
-    # `rpartition` yields an empty separator for a dotless name, in which case
-    # the whole filename would otherwise be read as its own extension.
-    _, separator, extension = file.filename.rpartition(".")
-    loader = _LOADER_BY_EXTENSION.get(f".{extension.lower()}") if separator else None
-    if loader is None:
-        raise HTTPException(status_code=415, detail="Unsupported file type")
+        # `rpartition` yields an empty separator for a dotless name, in which
+        # case the whole filename would otherwise be read as its own extension.
+        _, separator, extension = file.filename.rpartition(".")
+        loader = (
+            _LOADER_BY_EXTENSION.get(f".{extension.lower()}") if separator else None
+        )
+        if loader is None:
+            raise HTTPException(status_code=415, detail="Unsupported file type")
 
     raise HTTPException(status_code=501, detail=f"{loader} is not implemented yet")
 
 
-@graphs_router.post("", response_model=None, responses={401: UNAUTHORIZED_RESPONSE})
+# Content-Type is dispatched by hand in the handler, so neither body is a
+# declared parameter and FastAPI would advertise this route as taking no body
+# at all. Describe the accepted payloads explicitly so `/docs` and generated
+# clients stay accurate.
+_LOAD_GRAPH_REQUEST_BODY = {
+    "required": True,
+    "content": {
+        "application/json": {"schema": GraphData.model_json_schema()},
+        "application/xml": {"schema": {"type": "string"}},
+        "text/xml": {"schema": {"type": "string"}},
+        "multipart/form-data": {
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "file": {
+                        "type": "string",
+                        "format": "binary",
+                        "description": "A .json, .xml or .csv schema file.",
+                    }
+                },
+                "required": ["file"],
+            }
+        },
+    },
+}
+
+
+@graphs_router.post(
+    "",
+    response_model=None,
+    responses={401: UNAUTHORIZED_RESPONSE},
+    openapi_extra={"requestBody": _LOAD_GRAPH_REQUEST_BODY},
+)
 @token_required
 async def load_graph(request: Request) -> NoReturn:
     """

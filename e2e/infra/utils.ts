@@ -7,7 +7,10 @@ export function delay(ms: number) {
 }
 
 // `time` and `retry` are kept for call-site compatibility: they define the total budget.
-const budget = (time: number, retry: number) => time * retry;
+// Floored at 1ms because Playwright reads `timeout: 0` as "no timeout", which
+// would turn a zero argument into a wait for the whole test rather than an
+// immediate `false`.
+const budget = (time: number, retry: number) => Math.max(1, time * retry);
 
 export const waitForElementToBeVisible = async (
   locator: Locator,
