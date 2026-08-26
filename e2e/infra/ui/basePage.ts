@@ -27,4 +27,8 @@ export default class BasePage {
   async waitForUrl(url: string) {
     return this.page.waitForURL(url);
   }
+
+  async getPageContent(): Promise<string> {
+    return (await this.page.locator("body").textContent()) || "";
+  }
 }

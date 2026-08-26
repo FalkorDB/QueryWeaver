@@ -6,11 +6,11 @@ import logging
 from itertools import combinations
 from typing import Any, Dict, List
 
-from litellm import completion
 from pydantic import BaseModel
 
+from api.agents.utils import run_completion
 from api.config import Config
-from api.extensions import db
+from api.core.db_resolver import resolve_db
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 # pylint: disable=broad-exception-caught
@@ -36,9 +36,9 @@ class Descriptions(BaseModel):
     columns_descriptions: list[ColumnDescription]
 
 
-async def get_db_description(graph_id: str) -> tuple[str, str]:
+async def get_db_description(graph_id: str, db=None) -> tuple[str, str]:
     """Get the database description from the graph."""
-    graph = db.select_graph(graph_id)
+    graph = resolve_db(db).select_graph(graph_id)
     query_result = await graph.query(
         """
         MATCH (d:Database)
@@ -54,9 +54,9 @@ async def get_db_description(graph_id: str) -> tuple[str, str]:
             query_result.result_set[0][1])  # Return the first result's description
 
 
-async def get_user_rules(graph_id: str) -> str:
+async def get_user_rules(graph_id: str, db=None) -> str:
     """Get the user rules from the graph."""
-    graph = db.select_graph(graph_id)
+    graph = resolve_db(db).select_graph(graph_id)
     query_result = await graph.query(
         """
         MATCH (d:Database)
@@ -70,9 +70,9 @@ async def get_user_rules(graph_id: str) -> str:
     return query_result.result_set[0][0]
 
 
-async def set_user_rules(graph_id: str, user_rules: str) -> None:
+async def set_user_rules(graph_id: str, user_rules: str, db=None) -> None:
     """Set the user rules in the graph."""
-    graph = db.select_graph(graph_id)
+    graph = resolve_db(db).select_graph(graph_id)
     await graph.query(
         """
         MERGE (d:Database)
@@ -279,7 +279,8 @@ async def _find_connecting_tables(
 async def find( # pylint: disable=too-many-locals
     graph_id: str,
     queries_history: List[str],
-    db_description: str = None
+    db_description: str = None,
+    db=None,
 ) -> List[List[Any]]:
     """
     Find the tables and columns relevant to the user's query.
@@ -288,20 +289,25 @@ async def find( # pylint: disable=too-many-locals
         graph_id: The identifier for the graph database.
         queries_history: List of previous queries, with the last one being current.
         db_description: Optional description of the database.
+        db: Optional FalkorDB handle; falls back to the server singleton.
 
     Returns:
         Combined list of relevant tables.
     """
-    graph = db.select_graph(graph_id)
+    graph = resolve_db(db).select_graph(graph_id)
     user_query = queries_history[-1]
     previous_queries = queries_history[:-1]
 
     logging.info("Calling LLM to find relevant tables/columns for query")
 
-    completion_result = completion(
-        model=Config.COMPLETION_MODEL,
-        response_format=Descriptions,
-        messages=[
+    # Both this LLM call and the embedding call below are synchronous network
+    # calls, and this coroutine is launched with ``asyncio.create_task``. Run
+    # directly they would block the event loop before the first await, which
+    # makes that "concurrency" illusory and prevents any stream from flushing
+    # keepalives — the exact point where the 2026-07-29 demo queries stalled.
+    completion_content = await asyncio.to_thread(
+        run_completion,
+        [
             {
                 "role": "system",
                 "content": Config.FIND_SYSTEM_PROMPT.format(
@@ -316,17 +322,21 @@ async def find( # pylint: disable=too-many-locals
                 })
             },
         ],
+        label="find.tables",
+        response_format=Descriptions,
         temperature=0,
     )
 
-    json_data = json.loads(completion_result.choices[0].message.content)
+    json_data = json.loads(completion_content)
     descriptions = Descriptions(**json_data)
     descriptions_text = ([desc.description for desc in descriptions.tables_descriptions] +
                          [desc.description for desc in descriptions.columns_descriptions])
     if not descriptions_text:
         return []
 
-    embedding_results = Config.EMBEDDING_MODEL.embed(descriptions_text)
+    embedding_results = await asyncio.to_thread(
+        Config.EMBEDDING_MODEL.embed, descriptions_text,
+    )
 
     # Split embeddings back into table and column embeddings
     table_embeddings = embedding_results[:len(descriptions.tables_descriptions)]

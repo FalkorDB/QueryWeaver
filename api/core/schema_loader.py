@@ -4,18 +4,16 @@ import logging
 import json
 import time
 from typing import AsyncGenerator, Optional
+from urllib.parse import urlparse
 
 from pydantic import BaseModel
+from redis import RedisError
 
-from api.extensions import db
-
+from api.core.db_resolver import resolve_db
 from api.core.errors import InvalidArgumentError
+from api.core.pipeline import MESSAGE_DELIMITER, get_database_type_and_loader
 from api.loaders.base_loader import BaseLoader
-from api.loaders.postgres_loader import PostgresLoader
-from api.loaders.mysql_loader import MySQLLoader
-
-# Use the same delimiter as in the JavaScript frontend for streaming chunks
-MESSAGE_DELIMITER = "|||FALKORDB_MESSAGE_BOUNDARY|||"
+from api.core.result_models import DatabaseConnection
 
 
 class DatabaseConnectionRequest(BaseModel):
@@ -34,17 +32,22 @@ def _step_start(steps_counter: int) -> dict[str, str]:
         "message": f"Step {steps_counter}: Starting database connection",
     }
 
+_KNOWN_DB_SCHEMES = ("postgresql://", "postgres://", "mysql://", "snowflake://")
+
+
 def _step_detect_db_type(steps_counter: int, url: str) -> tuple[type[BaseLoader], dict[str, str]]:
-    """Yield the database type detection step message."""
-    db_type = None
-    loader: type[BaseLoader] = BaseLoader  # type: ignore
-    if url.startswith("postgres://") or url.startswith("postgresql://"):
-        db_type = "postgresql"
-        loader = PostgresLoader
-    elif url.startswith("mysql://"):
-        db_type = "mysql"
-        loader = MySQLLoader
-    else:
+    """Yield the database type detection step message.
+
+    Strictly validates the URL scheme — unlike ``get_database_type_and_loader``'s
+    server-path default-to-PostgreSQL fallback, schema loading must reject
+    ``sqlite://``/``invalid://``/etc. with a clean ``InvalidArgumentError``
+    rather than misclassifying them.
+    """
+    if not url or not any(url.lower().startswith(s) for s in _KNOWN_DB_SCHEMES):
+        raise InvalidArgumentError("Invalid database URL format")
+
+    db_type, loader = get_database_type_and_loader(url)
+    if loader is None or db_type is None:
         raise InvalidArgumentError("Invalid database URL format")
 
     return loader, {
@@ -55,13 +58,13 @@ def _step_detect_db_type(steps_counter: int, url: str) -> tuple[type[BaseLoader]
 
 
 async def _step_attempt_load(
-    steps_counter: int, loader: type[BaseLoader], user_id: str, url: str
+    steps_counter: int, loader: type[BaseLoader], user_id: str, url: str, db=None,
 ) -> AsyncGenerator[dict[str, str | bool], None]:
     """Yield the attempt to load schema step message."""
     success, result = [False, ""]
     try:
         load_start = time.perf_counter()
-        async for progress in loader.load(user_id, url):
+        async for progress in loader.load(user_id, url, db=db):
             success, result = progress
             if success:
                 steps_counter += 1
@@ -95,7 +98,7 @@ def _step_result(result) -> str:
     return json.dumps(result) + MESSAGE_DELIMITER
 
 
-async def load_database(url: str, user_id: str):
+async def load_database(url: str, user_id: str, db=None):
     """
     Accepts a JSON payload with a database URL and attempts to connect.
     Supports both PostgreSQL and MySQL databases.
@@ -122,7 +125,7 @@ async def load_database(url: str, user_id: str):
 
             # Step 3: Attempt to load schema using the loader
             async for progress in _step_attempt_load(
-                steps_counter, loader, user_id, url
+                steps_counter, loader, user_id, url, db=db,
             ):
                 yield _step_result(progress)
 
@@ -142,11 +145,11 @@ async def load_database(url: str, user_id: str):
     return generate()
 
 
-async def list_databases(user_id: str, general_prefix: Optional[str] = None) -> list[str]:
+async def list_databases(user_id: str, general_prefix: Optional[str] = None, db=None) -> list[str]:
     """
     This route is used to list all the graphs (databases names) that are available in the database.
     """
-    user_graphs = await db.list_graphs()
+    user_graphs = await resolve_db(db).list_graphs()
 
     # Only include graphs that start with user_id + '_', and strip the prefix
     filtered_graphs = [
@@ -162,3 +165,70 @@ async def list_databases(user_id: str, general_prefix: Optional[str] = None) -> 
         filtered_graphs = filtered_graphs + demo_graphs
 
     return filtered_graphs
+
+
+# =============================================================================
+# SDK Non-Streaming Functions
+# =============================================================================
+
+async def load_database_sync(url: str, user_id: str, db=None):
+    """
+    Load a database schema and return structured result (non-streaming).
+
+    SDK-friendly version that returns DatabaseConnection instead of streaming.
+
+    Args:
+        url: Database connection URL (PostgreSQL or MySQL).
+        user_id: User identifier for namespacing.
+        db: Optional FalkorDB handle; falls back to the server singleton.
+
+    Returns:
+        DatabaseConnection with connection status.
+    """
+    # Validate URL format
+    if not url or len(url.strip()) == 0:
+        raise InvalidArgumentError("Invalid URL format")
+
+    # Determine database type and loader. ``sdk_only=True`` rejects snowflake
+    # and unknown schemes with a clean InvalidArgumentError instead of letting
+    # an ImportError surface when the snowflake extra isn't installed.
+    _, loader = get_database_type_and_loader(url, sdk_only=True)
+    if loader is None:
+        raise InvalidArgumentError("Invalid database URL format. Must be PostgreSQL or MySQL.")
+
+    success = False
+
+    try:
+        async for progress_success, _progress_message in loader.load(user_id, url, db=db):
+            success = progress_success
+
+        if success:
+            # SDK callers pass the un-prefixed database_id back into query/delete/etc.,
+            # where graph_name(user_id, db_name) re-applies the user_id prefix.
+            # urlparse.path may carry trailing slashes or schema/path separators
+            # (e.g. ``/mydb/``), and the query string is already stripped from .path
+            # by urlparse — but a malformed URL may yield an empty .path, so we fall
+            # back to splitting the raw URL.
+            db_name = urlparse(url).path.strip("/").split("/")[0]
+            if not db_name:
+                db_name = url.rsplit("/", 1)[-1].split("?")[0].split("#")[0]
+
+            return DatabaseConnection(
+                database_id=db_name,
+                success=True,
+                message="Database connected and schema loaded successfully",
+            )
+
+        return DatabaseConnection(
+            database_id="",
+            success=False,
+            message="Failed to load database schema",
+        )
+
+    except (RedisError, ConnectionError, OSError) as e:
+        logging.exception("Error loading database: %s", str(e))
+        return DatabaseConnection(
+            database_id="",
+            success=False,
+            message="Error connecting to database",
+        )

@@ -1,12 +1,12 @@
 """Authentication routes for the text2sql API."""
 # pylint: disable=all
 
+import asyncio
 import hashlib
 import hmac
 import logging
 import os
 import re
-import secrets
 
 from pathlib import Path
 from urllib.parse import urljoin
@@ -20,11 +20,24 @@ from jinja2 import Environment, FileSystemLoader, FileSystemBytecodeCache, selec
 from starlette.config import Config
 from pydantic import BaseModel
 
+from api.auth.browser_session import (
+    clear_browser_session,
+    establish_browser_session,
+    is_provisioned,
+    mark_provisioned,
+    read_browser_session,
+)
 from api.auth.user_management import delete_user_token, ensure_user_in_organizations, validate_user
+from api.config import ORGANIZATIONS_GRAPH
+from api.core.errors import AuthBackendUnavailableError, TRANSIENT_BACKEND_ERRORS
 from api.extensions import db
 
 # Import GENERAL_PREFIX from graphs route
 GENERAL_PREFIX = os.getenv("GENERAL_PREFIX")
+
+# Keeps /auth-status responsive while FalkorDB is down: the repair is
+# best-effort and retried on the next poll.
+PROVISIONING_RETRY_TIMEOUT_SECONDS = 2.0
 
 # Router
 auth_router = APIRouter(tags=["Authentication"])
@@ -116,8 +129,17 @@ def _verify_password(password: str, stored_password_hex: str) -> bool:
 def _sanitize_for_log(value: str) -> str:
     """Sanitize user input for logging by removing newlines and carriage returns."""
     if not isinstance(value, str):
-        return str(value)
-    return value.replace('\r\n', '').replace('\n', '').replace('\r', '')
+        try:
+            value = str(value)
+        except Exception:  # pylint: disable=broad-exception-caught
+            # Defensive: a custom __str__ may raise. Log sanitisation must never
+            # be fatal to the auth flow, so fall back to a safe placeholder.
+            return '<unprintable>'
+    # Strip carriage returns first, then newlines. The final ``.replace('\n', '')``
+    # must be the outermost (returned) call so that CodeQL's log-injection sanitizer
+    # (ReplaceLineBreaksSanitizer, which only recognises a first argument of "\n" or
+    # "\r\n") treats the returned value as sanitised.
+    return value.replace('\r', '').replace('\n', '')
 
 def _validate_email(email: str) -> bool:
     """Basic email validation."""
@@ -126,11 +148,10 @@ def _validate_email(email: str) -> bool:
 
 async def _set_mail_hash(email: str, password_hash: str) -> bool:
     """Set email hash for the user in the database."""
+    # Sanitized up front so the error path below can log it too.
+    safe_email = _sanitize_for_log(email)
     try:
-        organizations_graph = db.select_graph("Organizations")
-
-        # Sanitize inputs for logging
-        safe_email = _sanitize_for_log(email)
+        organizations_graph = db.select_graph(ORGANIZATIONS_GRAPH)
 
         # Create new email identity and user
         create_query = """
@@ -162,22 +183,29 @@ async def _set_mail_hash(email: str, password_hash: str) -> bool:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail="Internal server error"
         )
-        
-def _is_request_secure(request: Request) -> bool:
-    """Determine if the request is secure (HTTPS)."""
-    
-    # Check X-Forwarded-Proto first (proxy-aware)
-    forwarded_proto = request.headers.get("x-forwarded-proto")
-    if forwarded_proto:
-        return forwarded_proto == "https"
-    
-    # Fallback to request URL scheme
-    return request.url.scheme == "https"
+
+async def _email_account_exists(email: str) -> bool:
+    """Return True if an account already exists for the given email (any provider).
+
+    Exceptions are intentionally not swallowed so callers fail closed (treat the
+    account as existing / abort the signup) rather than issuing a session token.
+    """
+    organizations_graph = db.select_graph(ORGANIZATIONS_GRAPH)
+    # Use a UNION of two label-scoped lookups so each side hits the (label, email)
+    # index and short-circuits with LIMIT 1. This avoids both a full-graph scan and
+    # the Cartesian product that two chained OPTIONAL MATCH clauses would produce.
+    query = """
+    MATCH (u:User {email: $email}) RETURN u AS account_node LIMIT 1
+    UNION
+    MATCH (i:Identity {email: $email}) RETURN i AS account_node LIMIT 1
+    """
+    result = await organizations_graph.query(query, {"email": email})
+    return bool(result.result_set)
 
 async def _authenticate_email_user(email: str, password: str):
     """Authenticate an email user."""
     try:
-        organizations_graph = db.select_graph("Organizations")
+        organizations_graph = db.select_graph(ORGANIZATIONS_GRAPH)
 
         # Find user by email
         query = """
@@ -208,9 +236,71 @@ async def _authenticate_email_user(email: str, password: str):
         logging.info("EMAIL USER AUTHENTICATED: email=%r", _sanitize_for_log(email))
         return True, {"identity": identity, "user": user}
 
-    except Exception as e:
-        logging.error("Error authenticating email user: %s", e)
-        return False, "Internal error"
+    except TRANSIENT_BACKEND_ERRORS as e:
+        logging.error("Auth store unreachable while authenticating email user: %s", e)
+        # Not "wrong password" — we never got to check. Surfaced separately so the
+        # caller can answer 503 instead of accusing the user of bad credentials.
+        raise AuthBackendUnavailableError(str(e)) from e
+
+
+async def _complete_login(request: Request, provider: str, user_data: dict) -> None:
+    """Finish a successful login by establishing the browser session.
+
+    Order matters: the signed session cookie *is* the browser's credential, so it
+    is established regardless of whether the Organizations-graph write lands. A
+    FalkorDB outage during login therefore costs the user their stored profile
+    (retried later from ``/auth-status``), not their ability to log in.
+
+    No API token is minted here. The browser never receives one — storing a
+    bearer credential in a cookie put it on disk in clear text for the whole of
+    its lifetime — so a token minted at login would be an orphan `Token` node
+    that nothing can present and logout cannot revoke. `ensure_user_in_organizations`
+    accepts `api_token=None` and persists the User/Identity records without one;
+    programmatic clients mint theirs on demand from the tokens API.
+    """
+    email = user_data.get("email")
+    if not email:
+        # Every identity in the system is keyed by email; without one there is
+        # nothing to log the user in as. Fail loudly instead of half-succeeding.
+        logging.warning("No email address available from %s", provider)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No email address available from {provider}",
+        )
+
+    handler = getattr(request.app.state, "callback_handler", None)
+    if handler is None:
+        logging.error("OAuth callback handler not registered in app state")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Authentication handler not configured",
+        )
+
+    provisioned = bool(await handler(provider, user_data, None))
+    if not provisioned:
+        logging.warning(
+            "Logged in via %s from the session cookie alone; the user store write did not land",
+            provider,
+        )
+
+    if not establish_browser_session(
+        request,
+        email=email,
+        name=user_data.get("name"),
+        picture=user_data.get("picture"),
+        provider=provider,
+        provider_user_id=user_data.get("id"),
+        provisioned=provisioned,
+    ):
+        # The session cookie is the only browser credential now, so a failure
+        # here means the redirect would land the user back on a logged-out page
+        # with no way to tell why. Fail the login instead.
+        logging.error("Could not establish a browser session for the %s login", provider)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not establish a login session",
+        )
+
 
 # ---- Email Authentication Routes ----
 @auth_router.post("/signup/email")
@@ -251,36 +341,73 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
-        api_token = secrets.token_urlsafe(32)
-        # Create organization association
-        success, user_info = await ensure_user_in_organizations(email, email,
-                                            f"{first_name} {last_name}", "email", api_token)
+        # Reject signup when an account already exists for this email (under ANY
+        # provider). Issuing a session token for an existing account here would let
+        # an attacker take over that account without knowing its password
+        # (CVE-2026-10130, authentication bypass via signup token issuance).
+        if await _email_account_exists(email):
+            logging.info("Signup attempt for existing account: %s", _sanitize_for_log(email))
+            return JSONResponse(
+                {"success": False, "error": "An account with this email already exists"},
+                status_code=status.HTTP_409_CONFLICT
+            )
 
-        if success and user_info and user_info["new_identity"]:
-            logging.info("New user created: %s", _sanitize_for_log(email))
+        # ``api_token=None``: signup logs the browser in with the session cookie
+        # and never returns a token, so minting one here would only leave an
+        # orphan Token node behind.
+        is_new_identity, user_info = await ensure_user_in_organizations(email, email,
+                                            f"{first_name} {last_name}", "email", None)
 
-            # Hash password
-            password_hash = _hash_password(password)
+        if not (is_new_identity and user_info and user_info.get("new_identity")):
+            # Creation failed (e.g. DB error) or raced with a concurrent signup.
+            logging.error("Failed to create new user during signup: %s",
+                          _sanitize_for_log(email))
+            return JSONResponse(
+                {"success": False, "error": "Registration failed"},
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
-            # Set email hash
-            await _set_mail_hash(email, password_hash)
+        logging.info("New user created: %s", _sanitize_for_log(email))
 
-        else:
-            logging.info("User already exists: %s", _sanitize_for_log(email))
+        # Hash password
+        password_hash = _hash_password(password)
+
+        # Set email hash
+        await _set_mail_hash(email, password_hash)
 
         logging.info("User registration successful: %s", _sanitize_for_log(email))
+
+        if not establish_browser_session(
+            request,
+            email=email,
+            name=f"{first_name} {last_name}",
+            provider="email",
+            provider_user_id=email,
+            provisioned=True,
+        ):
+            # The account exists but the browser has no credential, so reporting
+            # success would leave the user staring at a logged-out page.
+            logging.error("Could not establish a browser session after email signup")
+            return JSONResponse(
+                {"success": False, "error": "Registration failed"},
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
         response = JSONResponse({
             "success": True,
         }, status_code=201)
-        response.set_cookie(
-            key="api_token",
-            value=api_token,
-            httponly=True,
-            secure=_is_request_secure(request)
-        )
         return response
 
+    except (AuthBackendUnavailableError, *TRANSIENT_BACKEND_ERRORS) as e:
+        # Same reasoning as /login/email: an unreachable store is not a rejected
+        # registration, and answering 500 tells the caller to give up on
+        # something a retry would fix.
+        logging.error("Auth store unreachable during signup: %s", e)
+        return JSONResponse(
+            {"success": False,
+             "error": "Authentication service temporarily unavailable - please retry"},
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+        )
     except Exception as e:
         logging.error("Signup error: %s", e)
         return JSONResponse(
@@ -317,7 +444,14 @@ async def email_login(request: Request, login_data: EmailLoginRequest) -> JSONRe
             )
 
         # Authenticate user
-        success, result = await _authenticate_email_user(email, password)
+        try:
+            success, result = await _authenticate_email_user(email, password)
+        except AuthBackendUnavailableError:
+            return JSONResponse(
+                {"success": False,
+                 "error": "Authentication service temporarily unavailable - please retry"},
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
 
         if not success:
             return JSONResponse(
@@ -334,7 +468,7 @@ async def email_login(request: Request, login_data: EmailLoginRequest) -> JSONRe
                 if identity_node and hasattr(identity_node, "properties")
                 else {}
             )
-            
+
             user_data = {
                 'id': identity_props.get("provider_user_id", email),
                 'email': identity_props.get('email', email),
@@ -342,23 +476,9 @@ async def email_login(request: Request, login_data: EmailLoginRequest) -> JSONRe
                 'picture': identity_props.get('picture', ''),
             }
 
-            # Call the registered Google callback handler if it exists to store user data.
-            handler = getattr(request.app.state, "callback_handler", None)
-            if handler:
-                api_token = secrets.token_urlsafe(32)  # ~43 chars, hard to guess
+            await _complete_login(request, 'email', user_data)
+            return JSONResponse({"success": True}, status_code=200)
 
-                # Call the registered handler (await if async)
-                await handler('email', user_data, api_token)
-                response = JSONResponse({"success": True}, status_code=200)
-                
-                response.set_cookie(
-                    key="api_token",
-                    value=api_token,
-                    httponly=True,
-                    secure=_is_request_secure(request)
-                )
-                return response
-            
         return JSONResponse(
             {"success": False, "error": "Authentication failed"},
             status_code=status.HTTP_401_UNAUTHORIZED
@@ -492,31 +612,18 @@ async def google_authorized(request: Request) -> RedirectResponse:
             }
 
             # Call the registered Google callback handler if it exists to store user data.
-            handler = getattr(request.app.state, "callback_handler", None)
-            if handler:
-                api_token = secrets.token_urlsafe(32)  # ~43 chars, hard to guess
+            await _complete_login(request, 'google', user_data)
 
-                # Call the registered handler (await if async)
-                await handler('google', user_data, api_token)
-
-                redirect = RedirectResponse(url="/", status_code=302)
-                redirect.set_cookie(
-                    key="api_token",
-                    value=api_token,
-                    httponly=True,
-                    secure=True
-                )
-
-                return redirect
-
-            # Handler not set - log and raise error to prevent silent failure
-            logging.error("Google OAuth callback handler not registered in app state")
-            raise HTTPException(status_code=500, detail="Authentication handler not configured")
+            return RedirectResponse(url="/", status_code=302)
 
         # If we reach here, user_info was falsy
         logging.warning("No user info received from Google OAuth")
         raise HTTPException(status_code=400, detail="Failed to get user info from Google")
 
+    except HTTPException:
+        # _complete_login raises 500s for our own misconfiguration; re-labelling
+        # those as a 400 would blame the caller for a server-side fault.
+        raise
     except Exception as e:
         logging.error("Google OAuth authentication failed: %s", str(e))  # nosemgrep
         raise HTTPException(status_code=400, detail="Authentication failed") from e
@@ -596,31 +703,18 @@ async def github_authorized(request: Request) -> RedirectResponse:
             }
 
             # Call the registered GitHub callback handler if it exists to store user data.
-            handler = getattr(request.app.state, "callback_handler", None)
-            if handler:
-                api_token = secrets.token_urlsafe(32)  # ~43 chars, hard to guess
+            await _complete_login(request, 'github', user_data)
 
-                # Call the registered handler (await if async)
-                await handler('github', user_data, api_token)
-
-                redirect = RedirectResponse(url="/", status_code=302)
-                redirect.set_cookie(
-                    key="api_token",
-                    value=api_token,
-                    httponly=True,
-                    secure=True
-                )
-
-                return redirect
-
-            # Handler not set - log and raise error to prevent silent failure
-            logging.error("GitHub OAuth callback handler not registered in app state")
-            raise HTTPException(status_code=500, detail="Authentication handler not configured")
+            return RedirectResponse(url="/", status_code=302)
 
         # If we reach here, user_info was falsy
         logging.warning("No user info received from GitHub OAuth")
         raise HTTPException(status_code=400, detail="Failed to get user info from Github")
 
+    except HTTPException:
+        # _complete_login raises 500s for our own misconfiguration; re-labelling
+        # those as a 400 would blame the caller for a server-side fault.
+        raise
     except Exception as e:
         logging.error("GitHub OAuth authentication failed: %s", str(e))  # nosemgrep
         raise HTTPException(status_code=400, detail="Authentication failed") from e
@@ -637,18 +731,29 @@ async def github_callback_compat(request: Request) -> RedirectResponse:
 @auth_router.get("/auth-status")
 async def auth_status(request: Request) -> JSONResponse:
     """Check authentication status for the React app.
-    
+
     Returns:
         JSONResponse: Authentication status with user info if authenticated
     """
-    user_info, is_authenticated = await validate_user(request)
-    
-    if is_authenticated and user_info:
+    try:
+        user_info, is_authenticated = await validate_user(request)
+    except AuthBackendUnavailableError:
+        # Only reachable for an explicitly supplied API token; a browser login
+        # never consults the database.
         return JSONResponse(
+            content={"authenticated": False,
+                     "error": "Authentication service temporarily unavailable"},
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+
+    if is_authenticated and user_info:
+        response = JSONResponse(
             content={
                 "authenticated": True,
                 "user": {
-                    "id": str(user_info.get("id")),
+                    # Falls back to the email so the id is always a usable string
+                    # for clients, even for database-backed API tokens.
+                    "id": str(user_info.get("id") or user_info.get("email")),
                     "email": user_info.get("email"),
                     "name": user_info.get("name"),
                     "picture": user_info.get("picture"),
@@ -656,13 +761,66 @@ async def auth_status(request: Request) -> JSONResponse:
                 }
             }
         )
-    
+        await _retry_pending_provisioning(request)
+        return response
+
     # Not authenticated - return 200 with authenticated: false
     # This is NOT an error - unauthenticated users can still use the app
     return JSONResponse(
         content={"authenticated": False},
         status_code=200
     )
+
+
+async def _retry_pending_provisioning(request: Request) -> None:
+    """Finish a login whose Organizations-graph write failed at the time.
+
+    Logging in no longer needs FalkorDB, so a user can be signed in without a
+    stored ``User``/``Identity`` record. This retries that write on the next
+    status poll and is strictly best-effort: it must never change the
+    authentication verdict.
+
+    Only the identity records are repaired - no API token is minted here. The
+    browser login stands on its own, and a read-only status poll is the wrong
+    place to hand out a fresh programmatic credential.
+
+    Bounded by a short timeout: this runs on every status poll for exactly the
+    users a continuing outage affects, and they must not wait on the connect
+    timeout to see a page.
+    """
+    if is_provisioned(request):
+        return
+
+    session_user = read_browser_session(request)
+    if not session_user:
+        return
+
+    email = session_user.get("email")
+    provider = session_user.get("provider")
+    if not email or not provider:
+        return
+
+    try:
+        _, identity_info = await asyncio.wait_for(
+            ensure_user_in_organizations(
+                session_user.get("id") or email,
+                email,
+                session_user.get("name"),
+                provider,
+                None,
+                session_user.get("picture"),
+            ),
+            timeout=PROVISIONING_RETRY_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logging.warning("Deferred user provisioning timed out; will retry on the next poll")
+        return
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logging.warning("Deferred user provisioning failed: %s", e)
+        return
+
+    if identity_info is not None:
+        mark_provisioned(request)
 
 
 @auth_router.get("/logout")
@@ -674,6 +832,10 @@ async def logout(request: Request):
     - GET: For direct navigation (bookmarks, links, old clients)
     - POST: For programmatic logout from the app
     """
+    # The browser session is the primary credential, so it must go first --
+    # otherwise deleting the api_token cookie would leave the user logged in.
+    clear_browser_session(request)
+
     # For GET requests, redirect to home page
     if request.method == "GET":
         response = RedirectResponse(url="/", status_code=302)

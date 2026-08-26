@@ -18,8 +18,8 @@ from openai import AsyncAzureOpenAI
 # Import Graphiti components
 from graphiti_core.driver.falkordb_driver import FalkorDriver
 from graphiti_core import Graphiti
-from api.extensions import db
 from api.config import Config
+from api.core.db_resolver import resolve_db
 from graphiti_core.nodes import EpisodeType
 from graphiti_core.llm_client import LLMConfig, OpenAIClient
 from graphiti_core.embedder import OpenAIEmbedder, OpenAIEmbedderConfig
@@ -27,7 +27,11 @@ from graphiti_core.cross_encoder import OpenAIRerankerClient
 from graphiti_core.search.search_config_recipes import NODE_HYBRID_SEARCH_RRF
 
 
-from litellm import completion
+from api.agents.utils import run_completion
+from api.embeddings import (
+    embed_one_off_loop,
+    vector_size_off_loop,
+)
 
 
 def extract_embedding_model_name(full_model_name: str) -> str:
@@ -57,14 +61,16 @@ class MemoryTool:
         else None
     )
 
-    def __init__(self, user_id: str, graph_id: str):
+    def __init__(self, user_id: str, graph_id: str, db=None):
         # Create FalkorDB driver with user-specific database
         self.memory_db_name = f"{user_id}-memory"
-        falkor_driver = FalkorDriver(falkor_db=db, database=self.memory_db_name)
+        self._db = resolve_db(db)
+        falkor_driver = FalkorDriver(falkor_db=self._db, database=self.memory_db_name)
 
        
         # Create Graphiti client with Azure OpenAI configuration
         self.graphiti_client = create_graphiti_client(falkor_driver)
+        self.memory_enabled = self.graphiti_client is not None
 
         self.user_id = user_id
         self.graph_id = graph_id
@@ -73,19 +79,28 @@ class MemoryTool:
     async def _refresh_ttl(self) -> None:
         """Set a TTL on the memory graph key using Redis EXPIRE."""
         try:
-            await db.execute_command("EXPIRE", self.memory_db_name, self.MEMORY_TTL_SECONDS)
+            await self._db.execute_command("EXPIRE", self.memory_db_name, self.MEMORY_TTL_SECONDS)
         except RedisError as e:
             logging.warning("Failed to refresh TTL for %s: %s", self.memory_db_name, e)
 
     @classmethod
-    async def create(cls, user_id: str, graph_id: str, use_direct_entities: bool = True) -> "MemoryTool":
+    async def create(
+        cls,
+        user_id: str,
+        graph_id: str,
+        use_direct_entities: bool = True,
+        db=None,
+    ) -> "MemoryTool":
         """Async factory to construct and initialize the tool."""
-        self = cls(user_id, graph_id)
+        self = cls(user_id, graph_id, db=db)
+
+        if not self.memory_enabled:
+            return self
 
         await self._ensure_entity_nodes_direct(user_id, graph_id)
 
 
-        vector_size = Config.EMBEDDING_MODEL.get_vector_size()
+        vector_size = await vector_size_off_loop()
         driver = self.graphiti_client.driver
         await driver.execute_query(f"CREATE VECTOR INDEX FOR (p:Query) ON (p.embeddings) OPTIONS {{dimension:{vector_size}, similarityFunction:'euclidean'}}")
 
@@ -113,7 +128,7 @@ class MemoryTool:
             
             if not user_check_result[0]:  # If no records found, create user node
                 user_uuid = str(uuid.uuid4())
-                user_name_embedding = Config.EMBEDDING_MODEL.embed(user_node_name)[0]
+                user_name_embedding = await embed_one_off_loop(user_node_name)
                 
                 user_node_data = {
                     'uuid': user_uuid,
@@ -150,7 +165,7 @@ class MemoryTool:
             
             if not database_check_result[0]:  # If no records found, create database node
                 database_uuid = str(uuid.uuid4())
-                database_name_embedding = Config.EMBEDDING_MODEL.embed(database_node_name)[0]
+                database_name_embedding = await embed_one_off_loop(database_node_name)
                 
                 database_node_data = {
                     'uuid': database_uuid,
@@ -242,7 +257,7 @@ class MemoryTool:
                 """
         try:
 
-            if len(history[1]) == 0:
+            if not history[1]:
                 messages = [{"role": "user", "content": prompt}]
             else:
                 messages = []
@@ -250,14 +265,14 @@ class MemoryTool:
                     messages.append({"role": "user", "content": query})
                     messages.append({"role": "assistant", "content": result})
             messages.append({"role": "user", "content": prompt})
-            response = completion(
-                model=Config.COMPLETION_MODEL,
-                messages=messages,
-                temperature=0.1
-            )
-            
-            # Parse the direct text response (no JSON parsing needed)
-            content = response.choices[0].message.content.strip()
+            # Synchronous LLM call inside an async method that runs as a
+            # detached task: calling it directly would block the event loop
+            # and stall unrelated streaming responses. ``run_completion`` also
+            # applies the shared timeout and retry bounds.
+            content = (await asyncio.to_thread(
+                run_completion, messages, label="memory.user_summary",
+                temperature=0.1,
+            )).strip()
             query = """
             MATCH (u:Entity {name: $user_id})
             SET u.summary = $summary
@@ -266,6 +281,9 @@ class MemoryTool:
             await driver.execute_query(query, user_id=self.user_id, summary=content)
             return True
         except Exception as e:
+            # Previously swallowed silently, which hid a recurring failure on
+            # this path entirely (incident 2026-07-29).
+            logging.error("Error updating user information: %s", e)
             return False
 
     async def add_new_memory(self, conversation: Dict[str, Any], history: Tuple[List[str], List[str]]) -> bool:
@@ -301,16 +319,18 @@ class MemoryTool:
     async def save_query_memory(self, query: str, sql_query: str, success: bool, error: Optional[str] = None) -> bool:
         """
         Save individual query memory directly to the database node.
-        
+
         Args:
             query: The user's natural language query
             sql_query: The generated SQL query
             success: Whether the query execution was successful
             error: Error message if the query failed
-            
+
         Returns:
             bool: True if memory was saved successfully, False otherwise
         """
+        if not self.memory_enabled:
+            return False
         try:
             database_name = self.graph_id
             database_node_name = f"Database {database_name}"
@@ -339,7 +359,7 @@ class MemoryTool:
             escaped_query = query.replace("'", "\\'").replace('"', '\\"')
             escaped_sql = sql_query.replace("'", "\\'").replace('"', '\\"')
             escaped_error = error.replace("'", "\\'").replace('"', '\\"') if error else ""
-            embeddings = Config.EMBEDDING_MODEL.embed(escaped_query)[0]
+            embeddings = await embed_one_off_loop(escaped_query)
 
             # First check if a Query node with the same user_query and sql_query already exists
             check_query = f"""
@@ -375,7 +395,7 @@ class MemoryTool:
 
             # Execute the Cypher query through Graphiti's graph driver
             try:
-                result = await graph_driver.execute_query(cypher_query, embedding=embeddings)
+                await graph_driver.execute_query(cypher_query, embedding=embeddings)
                 return True
             except Exception as cypher_error:
                 logging.error("Error executing Cypher query: %s", cypher_error)
@@ -396,6 +416,8 @@ class MemoryTool:
         Returns:
             A list of similar query metadata.
         """
+        if not self.memory_enabled:
+            return []
         try:
             database_name = self.graph_id
             
@@ -420,7 +442,7 @@ class MemoryTool:
             if not database_node_exists:
                 return []
 
-            query_embedding = Config.EMBEDDING_MODEL.embed(query)[0]
+            query_embedding = await embed_one_off_loop(query)
             cypher_query = f"""
                     CALL db.idx.vector.queryNodes('Query', 'embeddings', 10, vecf32($embedding))
                         YIELD node, score
@@ -457,10 +479,12 @@ class MemoryTool:
         Args:
             query: Natural language query to search for
             limit: Maximum number of results to return
-            
+
         Returns:
             List of user node summaries with metadata
         """
+        if not self.memory_enabled:
+            return ""
         try:
             driver = self.graphiti_client.driver
             query = """
@@ -508,14 +532,16 @@ class MemoryTool:
     async def search_database_facts(self, query: str, limit: int = 5, episode_limit: int = 3) -> str:
         """
         Search for database-specific facts and interaction history using database node as center.
-        
+
         Args:
             query: Natural language query to search for database facts
             limit: Maximum number of results to return
-            
+
         Returns:
             String containing all relevant database facts with time relevancy information
         """
+        if not self.memory_enabled:
+            return ""
         try:
             driver = self.graphiti_client.driver
             query = """
@@ -568,15 +594,18 @@ class MemoryTool:
         """
         Run both user summary and database facts searches concurrently for better performance.
         Also builds a comprehensive memory context string for the analysis agent.
-        
+
         Args:
             query: Natural language query to search for database facts
             user_limit: Maximum number of results for user summary search
             database_limit: Maximum number of results for database facts search
-            
+
         Returns:
-            Dict containing user_summary, database_facts, similar_queries, and memory_context
+            A formatted memory context string combining user summary, database facts,
+            and similar query history, or empty string if memory is disabled.
         """
+        if not self.memory_enabled:
+            return ""
         try:
             # Run both searches concurrently using asyncio.gather
             user_summary_task = self.search_user_summary(limit=user_limit)
@@ -711,7 +740,7 @@ class MemoryTool:
         
         try:
 
-            if len(history[1]) == 0:
+            if not history[1]:
                 messages = [{"role": "user", "content": prompt}]
             else:
                 messages = []
@@ -719,14 +748,12 @@ class MemoryTool:
                     messages.append({"role": "user", "content": query})
                     messages.append({"role": "assistant", "content": result})
             messages.append({"role": "user", "content": prompt})
-            response = completion(
-                model=Config.COMPLETION_MODEL,
-                messages=messages,
-                temperature=0.1
-            )
-            
-            # Parse the direct text response (no JSON parsing needed)
-            content = response.choices[0].message.content.strip()
+            # Same reasoning as ``update_user_information`` above: off-loop,
+            # with the shared timeout and retry bounds.
+            content = (await asyncio.to_thread(
+                run_completion, messages, label="memory.conversation_summary",
+                temperature=0.1,
+            )).strip()
             return {
                 "database_summary": content
             }
@@ -747,7 +774,10 @@ class AzureOpenAIConfig:
         
         self.api_key = os.getenv('AZURE_API_KEY')
         self.endpoint = os.getenv('AZURE_API_BASE') 
-        self.api_version = os.getenv('AZURE_API_VERSION', '2024-02-01')
+        # Graphiti's OpenAI client uses the Responses API, which requires
+        # api-version 2025-03-01-preview or later. Older values make every
+        # episode write fail with HTTP 400 (incident 2026-07-29).
+        self.api_version = os.getenv('AZURE_API_VERSION', '2025-03-01-preview')
         self.model_choice = "gpt-4.1"  # Use the model name directly
         
         # Extract just the model name without provider prefix for Graphiti
@@ -835,10 +865,13 @@ def create_graphiti_client(falkor_driver: FalkorDriver) -> Graphiti:
     else:
         # Non-OpenAI/Azure providers (Gemini, Anthropic, Ollama, Cohere):
         # Graphiti memory requires OpenAI-compatible embeddings.
-        # Use LiteLLM embeddings via Config instead.
-        graphiti_client = Graphiti(
-            graph_driver=falkor_driver,
+        # Memory is not supported for these providers.
+        logging.warning(
+            "Memory is only supported with Azure or OpenAI providers. "
+            "Current provider: %s. Memory will be disabled.",
+            getattr(Config, 'LLM_PROVIDER', 'unknown')
         )
+        return None
 
     return graphiti_client
 

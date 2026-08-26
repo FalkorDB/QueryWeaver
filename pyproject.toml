@@ -1,33 +1,92 @@
 [project]
 name = "queryweaver"
-version = "0.1.0"
-description = "QueryWeaver - Text2SQL using graph-powered schema understanding"
+dynamic = ["version"]
+description = "Text2SQL tool that transforms natural language into SQL using graph-powered schema understanding"
 readme = "README.md"
+license = "AGPL-3.0-or-later"
 requires-python = ">=3.12"
-dependencies = [
-    "fastapi~=0.135.1",
-    "uvicorn~=0.41.0",
-    "litellm~=1.82.0",
-    "falkordb~=1.6.0",
-    "psycopg2-binary~=2.9.11",
-    "pymysql~=1.1.0",
-    "authlib~=1.6.4",
-    "itsdangerous~=2.2.0",
-    "jsonschema~=4.26.0",
-    "tqdm~=4.67.3",
-    "python-multipart~=0.0.10",
-    "jinja2~=3.1.4",
-    "graphiti-core>=0.28.1",
-    "fastmcp>=2.13.1",
+authors = [
+    { name = "FalkorDB", email = "support@falkordb.com" }
 ]
+keywords = ["text2sql", "sql", "nlp", "llm", "database", "falkordb"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# Core dependencies required for SDK (minimal).
+# These are imported at SDK import time (api.config loads dotenv at module
+# level; schema_loader/text2sql/graph use pydantic), so they must be core,
+# not optional. redis is provided transitively by falkordb.
+dependencies = [
+    "litellm>=1.83.0",
+    "falkordb~=1.6.1",
+    "psycopg2-binary~=2.9.12",
+    "pymysql~=1.2.0",
+    "jsonschema~=4.26.0",
+    "tqdm>=4.67.3,<4.71.0",
+    "pydantic>=2.0",
+    "python-dotenv~=1.2.2",
+    "sqlglot>=30.12.0",
+]
+
+[project.optional-dependencies]
+# Memory extra: enables the graphiti-backed conversation memory used when
+# queries are run with use_memory=True. Lazily imported by the SDK.
+memory = [
+    "openai>=2.41.0",
+    "graphiti-core>=0.29.1",
+]
+
+# Server dependencies (FastAPI, auth, etc.). Used to run the full app from a
+# repo/Docker checkout; the published SDK wheel does not include the server.
+server = [
+    "fastapi>=0.136.1,<0.141.0",
+    "uvicorn>=0.46,<0.52",
+    "authlib~=1.7.0",
+    "itsdangerous~=2.2.0",
+    "python-multipart~=0.0.32",
+    "jinja2~=3.1.4",
+    "fastmcp>=3.4.4,<4.0.0",
+    "graphiti-core>=0.29.1",
+    "snowflake-connector-python>=4.6,<4.8",
+    "aiohttp>=3.14.0",
+]
+
+# Development dependencies
+dev = [
+    "pytest>=9.0.3,<9.2.0",
+    "pytest-asyncio~=1.4.0",
+    "pylint~=4.0.3",
+    "playwright~=1.60.0",
+    "pytest-playwright~=0.8.0",
+]
+
+# All dependencies (server + dev)
+all = [
+    "queryweaver[server]",
+    "queryweaver[dev]",
+]
+
+[project.urls]
+Homepage = "https://github.com/FalkorDB/QueryWeaver"
+Documentation = "https://github.com/FalkorDB/QueryWeaver#readme"
+Repository = "https://github.com/FalkorDB/QueryWeaver"
+Issues = "https://github.com/FalkorDB/QueryWeaver/issues"
 
 [dependency-groups]
 dev = [
-    "pytest~=8.4.2",
+    "pytest>=9.0.3,<9.2.0",
     "pylint~=4.0.3",
-    "playwright~=1.58.0",
-    "pytest-playwright~=0.7.1",
-    "pytest-asyncio~=1.2.0",
+    "playwright~=1.60.0",
+    "pytest-playwright~=0.8.0",
+    "pytest-asyncio~=1.4.0",
 ]
 
 [build-system]
@@ -37,8 +96,40 @@ build-backend = "hatchling.build"
 [tool.hatch.metadata]
 allow-direct-references = true
 
+[tool.hatch.version]
+path = "queryweaver/__init__.py"
+
+# Ship the SDK plus only the api/ code it transitively imports. The server
+# HTTP layer (routes/auth/app_factory/index) is excluded from the published
+# package — the full app runs from a repo/Docker checkout, not from the wheel.
+# api/extensions.py is kept: api/core/db_resolver.py lazily imports it as the
+# default FalkorDB handle when callers pass db=None.
 [tool.hatch.build.targets.wheel]
-packages = ["api"]
+packages = ["queryweaver", "api"]
+exclude = [
+    "api/routes",
+    "api/auth",
+    "api/analyzers",
+    "api/entities",
+    "api/app_factory.py",
+    "api/index.py",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/queryweaver",
+    "/api",
+    "/README.md",
+    "/LICENSE",
+]
+exclude = [
+    "api/routes",
+    "api/auth",
+    "api/analyzers",
+    "api/entities",
+    "api/app_factory.py",
+    "api/index.py",
+]
 
 [tool.uv]
 package = true
@@ -49,6 +140,8 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "--verbose --tb=short --strict-markers --disable-warnings"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 markers = [
     "e2e: End-to-end tests using Playwright",
     "slow: Tests that take a long time to run",
@@ -63,8 +156,15 @@ filterwarnings = [
 
 [tool.pylint.main]
 max-line-length = 120
+ignore-patterns = ["test_.*\\.py", "conftest\\.py"]
+
+[tool.pylint.messages_control]
 disable = [
     "C0114",  # missing-module-docstring
     "C0115",  # missing-class-docstring
     "C0116",  # missing-function-docstring
+    "R0903",  # too-few-public-methods
 ]
+
+[tool.pylint.format]
+max-line-length = 120

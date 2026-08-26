@@ -1,5 +1,6 @@
 """MySQL loader for loading database schemas into FalkorDB graphs."""
 
+import contextlib
 import datetime
 import decimal
 import logging
@@ -11,8 +12,10 @@ import pymysql
 from pymysql.cursors import DictCursor
 
 
+from api.config import Config
 from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
+from api.loaders.introspection import run_introspection
 
 
 class MySQLQueryError(Exception):
@@ -152,13 +155,54 @@ class MySQLLoader(BaseLoader):
         }
 
     @staticmethod
-    async def load(prefix: str, connection_url: str) -> AsyncGenerator[tuple[bool, str], None]:
+    def _introspect_schema(conn_params: Dict[str, Any], db_name: str):
+        """Connect, introspect and close — all inside one worker thread.
+
+        Cleanup lives in the same thread that owns the connection. Cancelling a
+        ``to_thread`` call does not stop the thread, so closing from the event
+        loop could run alongside an in-flight introspection; and without a
+        ``finally`` here a client disconnect leaked the connection outright,
+        which exhausts database sessions under repeated disconnects.
+
+        Only the connect is time-bounded: introspecting a very large schema can
+        legitimately outlast DB_STATEMENT_TIMEOUT, which is sized for user
+        queries.
+        """
+        conn = None
+        cursor = None
+        try:
+            # Socket deadlines for the introspection itself, larger than the
+            # user-query ceiling but still bounded: cancelling the awaiting
+            # task cannot stop this thread.
+            conn = pymysql.connect(
+                connect_timeout=Config.DB_CONNECT_TIMEOUT,
+                read_timeout=Config.DB_SCHEMA_TIMEOUT,
+                write_timeout=Config.DB_SCHEMA_TIMEOUT,
+                **conn_params,
+            )
+            cursor = conn.cursor(DictCursor)
+            entities = MySQLLoader.extract_tables_info(cursor, db_name)
+            relationships = MySQLLoader.extract_relationships(cursor, db_name)
+            return entities, relationships
+        finally:
+            if cursor is not None:
+                cursor.close()
+            if conn is not None:
+                conn.close()
+
+    @staticmethod
+    async def load(  # pylint: disable=arguments-differ
+        prefix: str,
+        connection_url: str,
+        db=None,
+    ) -> AsyncGenerator[tuple[bool, str], None]:
         """
         Load the graph data from a MySQL database into the graph database.
 
         Args:
             connection_url: MySQL connection URL in format:
                           mysql://username:password@host:port/database
+            db: Optional FalkorDB handle; falls back to the server singleton.
 
         Returns:
             Tuple[bool, str]: Success status and message
@@ -166,30 +210,17 @@ class MySQLLoader(BaseLoader):
         try:
             # Parse connection URL
             conn_params = MySQLLoader._parse_mysql_url(connection_url)
-
-            # Connect to MySQL database
-            conn = pymysql.connect(**conn_params)
-            cursor = conn.cursor(DictCursor)
-
-            # Get database name
             db_name = conn_params['database']
 
-            # Get all table information
             yield True, "Extracting table information..."
-            entities = MySQLLoader.extract_tables_info(cursor, db_name)
-
-            # Get all relationship information
-            yield True, "Extracting relationship information..."
-            relationships = MySQLLoader.extract_relationships(cursor, db_name)
-
-            # Close database connection
-            cursor.close()
-            conn.close()
+            entities, relationships = await run_introspection(
+                MySQLLoader._introspect_schema, conn_params, db_name
+            )
 
             # Load data into graph
             yield True, "Loading data into graph..."
             await load_to_graph(f"{prefix}_{db_name}", entities, relationships,
-                         db_name=db_name, db_url=connection_url)
+                         db_name=db_name, db_url=connection_url, db=db)
 
             yield True, (f"MySQL schema loaded successfully. "
                          f"Found {len(entities)} tables.")
@@ -442,13 +473,14 @@ class MySQLLoader(BaseLoader):
         return False, ""
 
     @staticmethod
-    async def refresh_graph_schema(graph_id: str, db_url: str) -> Tuple[bool, str]:
+    async def refresh_graph_schema(graph_id: str, db_url: str, db=None) -> Tuple[bool, str]:
         """
         Refresh the graph schema by clearing existing data and reloading from the database.
 
         Args:
             graph_id: The graph ID to refresh
             db_url: Database connection URL
+            db: Optional FalkorDB handle; falls back to the server singleton.
 
         Returns:
             Tuple of (success, message)
@@ -456,12 +488,11 @@ class MySQLLoader(BaseLoader):
         try:
             logging.info("Schema modification detected. Refreshing graph schema.")
 
-            # Import here to avoid circular imports
-            from api.extensions import db  # pylint: disable=import-error,import-outside-toplevel
+            from api.core.db_resolver import resolve_db  # pylint: disable=import-outside-toplevel
 
             # Clear existing graph data
             # Drop current graph before reloading
-            graph = db.select_graph(graph_id)
+            graph = resolve_db(db).select_graph(graph_id)
             await graph.delete()
 
             # Extract prefix from graph_id (remove database name part)
@@ -474,7 +505,7 @@ class MySQLLoader(BaseLoader):
                 prefix = graph_id
 
             # Reuse the existing load method to reload the schema
-            success, message = await MySQLLoader.load(prefix, db_url)
+            success, message = await MySQLLoader.load(prefix, db_url, db=db)
 
             if success:
                 logging.info("Graph schema refreshed successfully.")
@@ -503,9 +534,19 @@ class MySQLLoader(BaseLoader):
         Returns:
             List of dictionaries containing the query results
         """
+        conn = None
+        cursor = None
         try:
             # Parse connection URL
             conn_params = MySQLLoader._parse_mysql_url(db_url)
+
+            # Bound connect and socket waits so a hung server cannot pin this
+            # worker thread indefinitely. ``_parse_mysql_url`` discards the
+            # URL's query string, so there is no URL-supplied value to preserve
+            # here — these are the only timeouts in play.
+            conn_params["connect_timeout"] = Config.DB_CONNECT_TIMEOUT
+            conn_params["read_timeout"] = Config.DB_STATEMENT_TIMEOUT
+            conn_params["write_timeout"] = Config.DB_STATEMENT_TIMEOUT
 
             # Connect to MySQL database
             conn = pymysql.connect(**conn_params)
@@ -548,25 +589,26 @@ class MySQLLoader(BaseLoader):
             # Commit the transaction for write operations
             conn.commit()
 
-            # Close database connection
-            cursor.close()
-            conn.close()
-
             return result_list
 
         except pymysql.MySQLError as e:
-            # Rollback in case of error
-            if 'conn' in locals():
-                conn.rollback()
-                cursor.close()
-                conn.close()
+            # Bounded by the socket timeouts above, and suppressed so a
+            # rollback failure cannot mask the error that got us here.
+            if conn is not None:
+                with contextlib.suppress(Exception):
+                    conn.rollback()
             logging.error("MySQL query execution error: %s", e)
             raise MySQLQueryError(f"MySQL query execution error: {str(e)}") from e
         except Exception as e:
-            # Rollback in case of error
-            if 'conn' in locals():
-                conn.rollback()
-                cursor.close()
-                conn.close()
+            if conn is not None:
+                with contextlib.suppress(Exception):
+                    conn.rollback()
             logging.error("Error executing SQL query: %s", e)
             raise MySQLQueryError(f"Error executing SQL query: {str(e)}") from e
+        finally:
+            if cursor is not None:
+                with contextlib.suppress(Exception):
+                    cursor.close()
+            if conn is not None:
+                with contextlib.suppress(Exception):
+                    conn.close()

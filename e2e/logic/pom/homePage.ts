@@ -1,4 +1,4 @@
-import { Locator, Page } from "@playwright/test";
+import { Locator } from "@playwright/test";
 import { waitForElementToBeVisible, waitForElementToBeEnabled } from "../../infra/utils";
 import BasePage from "../../infra/ui/basePage";
 import ApiCalls from "../api/apiCalls";
@@ -102,6 +102,24 @@ export class HomePage extends BasePage {
 
   private get confirmationMessage(): Locator {
     return this.page.getByTestId("confirmation-message");
+  }
+
+  /**
+   * Public accessor for the confirmation-dialog locator, so tests can make
+   * strict web-first assertions (e.g. expect(...).toBeHidden()) that surface
+   * unexpected locator errors instead of swallowing them.
+   */
+  get confirmationDialog(): Locator {
+    return this.confirmationMessage;
+  }
+
+  /**
+   * Public accessor for the SQL-card locator, so tests can make strict
+   * web-first assertions instead of relying on the boolean helpers, which
+   * swallow locator errors and would pass on a broken selector.
+   */
+  get sqlQueryCard(): Locator {
+    return this.sqlQueryMessage;
   }
 
   private get confirmationConfirmBtn(): Locator {

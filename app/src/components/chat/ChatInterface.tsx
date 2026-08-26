@@ -5,6 +5,7 @@ import { useDatabase } from "@/contexts/DatabaseContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useChat } from "@/contexts/ChatContext";
+import { useQueryHighlight } from "@/contexts/QueryHighlightContext";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import ChatMessage from "./ChatMessage";
@@ -58,6 +59,7 @@ const ChatInterface = ({
   const { selectedGraph } = useDatabase();
   const { vendor, apiKey, modelName, isApiKeyValid } = useSettings();
   const { messages, setMessages, conversationHistory, isProcessing, setIsProcessing } = useChat();
+  const { selectedQueryId, toggleQueryHighlight } = useQueryHighlight();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -201,13 +203,15 @@ const ChatInterface = ({
           const followupContent = (message.message || message.content || '').trim();
           finalContent = followupContent;
         } else if (message.type === 'error') {
-          // Handle error
+          // Handle error. Backend error events carry the text in `message`;
+          // some client-side errors use `content`. Fall back across both.
+          const errorContent = message.message || message.content || 'Something went wrong';
           toast({
             title: "Query Failed",
-            description: message.content,
+            description: errorContent,
             variant: "destructive",
           });
-          finalContent = `Error: ${message.content}`;
+          finalContent = `Error: ${errorContent}`;
         } else if (message.type === 'confirmation' || message.type === 'destructive_confirmation') {
           // Handle destructive operation confirmation - add inline confirmation message
           const confirmationMessage: ChatMessageData = {
@@ -234,12 +238,23 @@ const ChatInterface = ({
         setTimeout(() => scrollToBottom(), 50);
       }
 
-      // Add SQL query message with analysis info (even if SQL is empty)
-      if (sqlQuery !== undefined || Object.keys(analysisInfo).length > 0) {
+      // Render the SQL card only when there is genuinely something to show.
+      // Two traps here, both of which produced the empty "Query Analysis"
+      // card seen in the 2026-07-29 incident:
+      //   - sqlQuery is initialized to "" and never undefined, so the original
+      //     `sqlQuery !== undefined` guard was always true.
+      //   - analysisInfo is built with all five keys defined unconditionally,
+      //     so counting keys is always > 0 once any sql_query event arrives,
+      //     even when every value is undefined.
+      const trimmedSqlQuery = sqlQuery.trim();
+      const hasAnalysisInfo = Object.values(analysisInfo).some(
+        value => value !== undefined && value !== null && value !== ''
+      );
+      if (trimmedSqlQuery || hasAnalysisInfo) {
         const sqlMessage: ChatMessageData = {
           id: (Date.now() + 2).toString(),
           type: "sql-query",
-          content: sqlQuery,
+          content: trimmedSqlQuery,
           analysisInfo: analysisInfo,
           timestamp: new Date(),
         };
@@ -508,6 +523,8 @@ const ChatInterface = ({
               analysisInfo={msg.analysisInfo}
               confirmationData={msg.confirmationData}
               user={user}
+              isQueryHighlighted={msg.type === 'sql-query' && selectedQueryId === msg.id}
+              onToggleQueryHighlight={msg.type === 'sql-query' ? () => toggleQueryHighlight(msg.id, msg.content) : undefined}
               onConfirm={msg.type === 'confirmation' ? () => handleConfirmDestructive(msg.id) : undefined}
               onCancel={msg.type === 'confirmation' ? () => handleCancelDestructive(msg.id) : undefined}
             />

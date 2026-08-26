@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import type { Data, FalkorDBCanvas, GraphNode } from '@falkordb/canvas';
-import { ZoomIn, ZoomOut, Locate, X, GripVertical } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import type { Data, FalkorDBCanvas, GraphNode, GraphLink } from '@falkordb/canvas';
+import { X, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDatabase } from '@/contexts/DatabaseContext';
+import { useQueryHighlight } from '@/contexts/QueryHighlightContext';
 import { DatabaseService } from '@/services/database';
 import { useToast } from '@/components/ui/use-toast';
+import SchemaCanvasControls, { type SchemaTableOption } from './SchemaCanvasControls';
 
 interface SchemaNode {
   id: number;
@@ -31,13 +33,124 @@ interface SchemaViewerProps {
   sidebarWidth?: number;
 }
 
+/** Accent used for tables/relations referenced by the selected SQL query. */
+const HIGHLIGHT_COLOR = '#8b5cf6';
+/** Opacity applied to schema elements the selected query does not touch. */
+const DIMMED_OPACITY = 0.25;
+
+/** Link endpoints are ids before the layout runs and node objects afterwards. */
+const endpointId = (endpoint: unknown): string => {
+  if (endpoint && typeof endpoint === 'object' && 'id' in endpoint) {
+    return String((endpoint as { id: unknown }).id);
+  }
+  return String(endpoint);
+};
+
+/** Direction-agnostic key so a relation matches however the canvas orders it. */
+const linkKey = (source: unknown, target: unknown): string =>
+  [endpointId(source), endpointId(target)].sort().join('|');
+
+// Must stay above the canvas' `interaction.zoomToFitDelay` (50ms default) so the
+// highlight framing is applied after the canvas' own initial fit.
+const HIGHLIGHT_ZOOM_DELAY_MS = 100;
+
 const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: SchemaViewerProps) => {
   const canvasRef = useRef<FalkorDBCanvas>(null);
   const resizeRef = useRef<HTMLDivElement>(null);
+  // Schema snapshot currently seeded into the canvas, used to avoid re-seeding
+  // (and losing node positions) when only the highlight changed.
+  const renderedSchemaRef = useRef<SchemaData | null>(null);
   const [schemaData, setSchemaData] = useState<SchemaData | null>(null);
   const [loading, setLoading] = useState(false);
+  // Focus mode dims everything that is not connected to the hovered/selected table.
+  const [focusMode, setFocusMode] = useState(false);
+  const [hoveredNodeId, setHoveredNodeId] = useState<number | null>(null);
+  const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const { selectedGraph } = useDatabase();
+  const { highlightedTables, clearQueryHighlight } = useQueryHighlight();
   const { toast } = useToast();
+
+  // Tables referenced by the currently selected SQL query, and the relations
+  // between them. Empty sets mean "no highlight" — everything renders normally.
+  const { highlightedNodeIds, highlightedLinkKeys } = useMemo(() => {
+    const nodeIds = new Set<number>();
+    const linkKeys = new Set<string>();
+
+    if (!schemaData || highlightedTables.length === 0) {
+      return { highlightedNodeIds: nodeIds, highlightedLinkKeys: linkKeys };
+    }
+
+    const wanted = new Set(highlightedTables.map((table) => table.toLowerCase()));
+    schemaData.nodes.forEach((node) => {
+      if (node.name && wanted.has(String(node.name).toLowerCase())) {
+        nodeIds.add(node.id);
+      }
+    });
+
+    schemaData.links.forEach((link) => {
+      if (nodeIds.has(link.source) && nodeIds.has(link.target)) {
+        linkKeys.add(linkKey(link.source, link.target));
+      }
+    });
+
+    return { highlightedNodeIds: nodeIds, highlightedLinkKeys: linkKeys };
+  }, [schemaData, highlightedTables]);
+
+  const hasHighlight = highlightedNodeIds.size > 0;
+
+  // Table the user is pointing at (hover wins over the searched/clicked table).
+  const focusTargetId = hoveredNodeId ?? selectedTableId;
+
+  // Elements rendered with the accent colour. A selected SQL query wins; otherwise
+  // the hovered/selected table together with its direct relations is emphasised.
+  const { emphasisNodeIds, emphasisLinkKeys } = useMemo(() => {
+    if (hasHighlight) {
+      return { emphasisNodeIds: highlightedNodeIds, emphasisLinkKeys: highlightedLinkKeys };
+    }
+
+    const nodeIds = new Set<number>();
+    const linkKeys = new Set<string>();
+
+    if (schemaData && focusTargetId !== null) {
+      nodeIds.add(focusTargetId);
+      schemaData.links.forEach((link) => {
+        if (link.source === focusTargetId || link.target === focusTargetId) {
+          nodeIds.add(link.source);
+          nodeIds.add(link.target);
+          linkKeys.add(linkKey(link.source, link.target));
+        }
+      });
+    }
+
+    return { emphasisNodeIds: nodeIds, emphasisLinkKeys: linkKeys };
+  }, [hasHighlight, highlightedNodeIds, highlightedLinkKeys, schemaData, focusTargetId]);
+
+  // A query highlight always dims the rest; hover only dims in focus mode.
+  const dimInactive = hasHighlight || (focusMode && emphasisNodeIds.size > 0);
+
+  // Hover/selection emphasis is hidden while a query highlight is active, so
+  // drop it when the highlight clears instead of letting it reappear.
+  const hadHighlightRef = useRef(false);
+  useEffect(() => {
+    if (hadHighlightRef.current && !hasHighlight) {
+      setHoveredNodeId(null);
+      setSelectedTableId(null);
+    }
+    hadHighlightRef.current = hasHighlight;
+  }, [hasHighlight]);
+
+  // Search options for the canvas controls.
+  const tableOptions = useMemo<SchemaTableOption[]>(() => {
+    if (!schemaData) return [];
+
+    return schemaData.nodes.map((node) => ({
+      id: node.id,
+      name: String(node.name ?? ''),
+      columns: (node.columns || []).map((column) =>
+        typeof column === 'object' ? String(column.name ?? '') : String(column)
+      ),
+    }));
+  }, [schemaData]);
 
   // Track current theme for canvas colors
   const [theme, setTheme] = useState<string>(() => {
@@ -156,6 +269,8 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
 
       const nodesMap = new Map<number, SchemaNode>(data.nodes.map((node) => [node.id, node]));
 
+      setHoveredNodeId(null);
+      setSelectedTableId(null);
       setSchemaData({ ...data, nodesMap });
     } catch (error) {
       console.error('Failed to load schema:', error);
@@ -170,31 +285,10 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
     }
   };
 
-  const handleZoomIn = () => {
-    const canvas = canvasRef.current
-
-    if (canvas) {
-      canvas.zoom(canvas.getZoom() * 1.1);
-    }
-  };
-
-  const handleZoomOut = () => {
-    const canvas = canvasRef.current;
-
-    if (canvas) {
-      canvas.zoom(canvas.getZoom() * 0.9);
-    }
-  };
-
-  const handleCenter = useCallback(() => {
-    console.log("Stop");
-
-    const canvas = canvasRef.current;
-
-    if (canvas) {
-      canvas.zoomToFit();
-    }
-  }, []);
+  const linkColorFor = useCallback((sourceId: number, targetId: number) => {
+    if (hasHighlight && highlightedLinkKeys.has(linkKey(sourceId, targetId))) return HIGHLIGHT_COLOR;
+    return theme === 'light' ? '#9ca3af' : '#4b5563';
+  }, [theme, hasHighlight, highlightedLinkKeys]);
 
   // Convert schema data to canvas format
   const convertToCanvasData = useCallback((data: SchemaData): Data => {
@@ -226,7 +320,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
       return {
         id: index + 1,
         relationship: 'REFERENCES',
-        color: theme === 'light' ? '#9ca3af' : '#4b5563',
+        color: linkColorFor(link.source, link.target),
         visible: true,
         source: link.source,
         target: link.target,
@@ -235,9 +329,11 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
     });
 
     return { nodes, links };
-  }, [theme]);
+  }, [theme, linkColorFor]);
 
-  // Set up canvas configuration and data - MUST be in single effect to ensure proper order
+  // Canvas configuration: custom table rendering, focus/dim predicates and
+  // interaction handlers. Kept separate from the data effect so hovering never
+  // re-seeds the graph.
   useEffect(() => {
     const canvas = canvasRef.current;
 
@@ -262,13 +358,22 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
 
       if (!schemaNode) return;
 
+      const isEmphasized = emphasisNodeIds.has(node.id);
+      const isDimmed = dimInactive && !isEmphasized;
+      const isActive = node.id === hoveredNodeId || node.id === selectedTableId;
+
       const columns = schemaNode.columns || [];
 
       const nodeHeight = headerHeight + columns.length * lineHeight + padding * 2;
 
+      const previousAlpha = ctx.globalAlpha;
+      if (isDimmed) {
+        ctx.globalAlpha = previousAlpha * DIMMED_OPACITY;
+      }
+
       ctx.fillStyle = fillColor;
-      ctx.strokeStyle = strokeColor;
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = isEmphasized || isActive ? HIGHLIGHT_COLOR : strokeColor;
+      ctx.lineWidth = isActive ? 3 : isEmphasized ? 2.5 : 1;
       ctx.fillRect(
         (node.x || 0) - NODE_WIDTH / 2,
         (node.y || 0) - nodeHeight / 2,
@@ -282,7 +387,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
         nodeHeight
       );
 
-      ctx.fillStyle = textColor;
+      ctx.fillStyle = isEmphasized || isActive ? HIGHLIGHT_COLOR : textColor;
       ctx.font = `bold ${fontSize}px Arial`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -333,6 +438,8 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
 
         colY += lineHeight;
       });
+
+      ctx.globalAlpha = previousAlpha;
     };
 
     const nodePointerAreaPaint = (node: GraphNode, color: string, ctx: CanvasRenderingContext2D) => {
@@ -357,20 +464,74 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
     };
 
 
-    const canvasData = convertToCanvasData(schemaData);
+    const linkKeyOf = (link: GraphLink) => linkKey(link.source, link.target);
 
     canvas.setConfig({
-      autoStopOnSettle: false,
+      dimmed: dimInactive,
+      dimOpacity: DIMMED_OPACITY,
+      // Nodes are drawn by `nodeCanvasObject`, which replaces the canvas' own
+      // node renderer — so node dimming is applied manually there and this
+      // predicate only keeps the config coherent. Links still dim natively.
+      isNodeDimmed: (node: GraphNode) => !emphasisNodeIds.has(node.id),
+      isLinkDimmed: (link: GraphLink) => !emphasisLinkKeys.has(linkKeyOf(link)),
+      isNodeSelected: (node: GraphNode) =>
+        node.id === hoveredNodeId || node.id === selectedTableId,
+      isLinkSelected: (link: GraphLink) => emphasisLinkKeys.has(linkKeyOf(link)),
       node: {
         nodeCanvasObject,
         nodePointerAreaPaint,
-      }
+      },
+      eventHandlers: {
+        onNodeHover: (node: GraphNode | null) => setHoveredNodeId(node ? node.id : null),
+        onNodeClick: (node: GraphNode) =>
+          setSelectedTableId((current) => (current === node.id ? null : node.id)),
+        onBackgroundClick: () => setSelectedTableId(null),
+      },
     });
-    
+
     canvas.setBackgroundColor(theme === 'light' ? '#ffffff' : '#191919');
     canvas.setForegroundColor(theme === 'light' ? '#111' : '#f5f5f5');
-    canvas.setData(canvasData);
-  }, [schemaData, theme, canvasLoaded, convertToCanvasData]);
+  }, [
+    schemaData,
+    theme,
+    canvasLoaded,
+    dimInactive,
+    emphasisNodeIds,
+    emphasisLinkKeys,
+    hoveredNodeId,
+    selectedTableId,
+  ]);
+
+  // Seed the canvas with the schema. `setData` recomputes the layout, so it only
+  // runs for a new schema; later updates reuse the existing node positions.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+
+    if (!canvas || !canvasLoaded || !schemaData) return;
+
+    const canvasData = convertToCanvasData(schemaData);
+
+    if (renderedSchemaRef.current !== schemaData) {
+      renderedSchemaRef.current = schemaData;
+      canvas.setData(canvasData);
+      return;
+    }
+
+    canvas.setGraphData(canvasData);
+  }, [schemaData, canvasLoaded, convertToCanvasData]);
+
+  // Bring the highlighted tables into view when a query is selected
+  useEffect(() => {
+    const canvas = canvasRef.current;
+
+    if (!canvas || !canvasLoaded || !hasHighlight) return;
+
+    const timer = setTimeout(() => {
+      canvas.zoomToFit(1.5, (node: GraphNode) => highlightedNodeIds.has(node.id));
+    }, HIGHLIGHT_ZOOM_DELAY_MS);
+
+    return () => clearTimeout(timer);
+  }, [canvasLoaded, hasHighlight, highlightedNodeIds]);
 
   if (!isOpen) return null;
 
@@ -386,7 +547,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
       <div
         data-testid="schema-panel"
         className={`fixed top-0 h-full bg-background border-r border-border flex flex-col transition-all duration-300
-          ${isOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'}
+          translate-x-0
           md:z-30 z-50
           w-[80vw] max-w-[400px] md:max-w-none
         `}
@@ -411,38 +572,38 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
         </div>
 
         {/* Controls */}
-        <div className="flex gap-2 p-2 border-b border-border">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleZoomIn}
-            className="h-8 w-8 p-0 bg-card border-border text-muted-foreground hover:bg-foreground"
-            title="Zoom In"
+        <SchemaCanvasControls
+          canvasRef={canvasRef}
+          tables={tableOptions}
+          disabled={loading || tableOptions.length === 0}
+          focusMode={focusMode}
+          onFocusModeChange={setFocusMode}
+          selectedTableId={selectedTableId}
+          onSelectTable={setSelectedTableId}
+        />
+
+        {/* Highlight status */}
+        {hasHighlight && (
+          <div
+            className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border bg-primary/5"
+            data-testid="schema-highlight-bar"
           >
-            <ZoomIn className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleZoomOut}
-            className="h-8 w-8 p-0 bg-card border-border text-muted-foreground hover:bg-foreground"
-            title="Zoom Out"
-          >
-            <ZoomOut className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleCenter}
-            className="h-8 w-8 p-0 bg-card border-border text-muted-foreground hover:bg-foreground"
-            title="Center"
-          >
-            <Locate className="h-4 w-4" />
-          </Button>
-        </div>
+            <span className="text-xs text-muted-foreground truncate">
+              Highlighting {highlightedNodeIds.size} table{highlightedNodeIds.size === 1 ? '' : 's'} used by the selected query
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearQueryHighlight}
+              className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+            >
+              Clear
+            </Button>
+          </div>
+        )}
 
         {/* Graph Container */}
-        <div className="h-[calc(100%-8rem)] w-full bg-background relative">
+        <div className="flex-1 min-h-0 w-full bg-background relative">
           {loading && (
             <div className="flex items-center justify-center h-full">
               <div className="text-muted-foreground">Loading schema...</div>

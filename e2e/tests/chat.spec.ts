@@ -87,11 +87,18 @@ test.describe('Chat Feature Tests', () => {
     const processingComplete = await homePage.waitForProcessingToComplete();
     expect(processingComplete).toBeTruthy();
 
-    // Verify Query Analysis message appears (but without actual SQL)
-    const sqlMessageVisible = await homePage.isSQLQueryMessageVisible();
-    expect(sqlMessageVisible).toBeTruthy();
+    // Verify NO SQL card at all. An off-topic query never reaches SQL
+    // generation, so there is no SQL and no analysis to show — the card would
+    // render as a bare "Query Analysis" header with nothing under it. The
+    // off-topic explanation reaches the user as a normal AI message instead
+    // (asserted below). This previously asserted the empty card was visible,
+    // which masked the phantom card seen in the 2026-07-29 incident.
+    // Strict web-first assertion: toHaveCount(0) waits for the final DOM
+    // state and fails on a broken selector, unlike the boolean helper which
+    // catches locator errors and returns false.
+    await expect(homePage.sqlQueryCard).toHaveCount(0);
 
-    // Verify NO actual SQL content (should say "Query Analysis" or "Off topic")
+    // And therefore no SQL content anywhere.
     const hasSQLContent = await homePage.verifySQLQueryContains("SELECT");
     expect(hasSQLContent).toBeFalsy();
 
@@ -99,12 +106,25 @@ test.describe('Chat Feature Tests', () => {
     const resultsVisible = await homePage.isQueryResultsMessageVisible();
     expect(resultsVisible).toBeFalsy();
 
+    // Verify the response contains no write SQL either: an off-topic query must
+    // never be translated into an INSERT/UPDATE/DELETE operation.
+    for (const dmlKeyword of ['INSERT', 'UPDATE', 'DELETE']) {
+      const hasDml = await homePage.verifySQLQueryContains(dmlKeyword);
+      expect(hasDml, `off-topic query should not produce ${dmlKeyword} SQL`).toBeFalsy();
+    }
+
+    // Verify NO destructive-operation confirmation dialog. Use a strict
+    // web-first assertion so a broken selector surfaces as a failure instead
+    // of silently passing (toBeHidden passes only when truly hidden/absent).
+    await expect(homePage.confirmationDialog).toBeHidden();
+
     // Verify AI response has content explaining it's off-topic
     const aiText = await homePage.getLastAIMessageText();
     expect(aiText.length).toBeGreaterThan(0);
   });
 
   test('multiple sequential queries maintain conversation history', async () => {
+    test.slow(); // Two sequential LLM round-trips need extra time in CI
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
@@ -171,6 +191,7 @@ test.describe('Chat Feature Tests', () => {
   });
 
   test('switching databases clears chat history', async () => {
+    test.slow(); // Two database connections plus LLM round-trip need extra time in CI
     // Connect two databases via API
     const { postgres: postgresUrl } = getTestDatabases();
 
@@ -266,6 +287,7 @@ test.describe('Chat Feature Tests', () => {
   });
 
   test('duplicate record shows user-friendly error message', async () => {
+    test.slow(); // Two LLM round-trips with confirmation dialogs need extra time in CI
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 

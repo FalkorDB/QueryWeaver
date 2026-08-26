@@ -2,8 +2,7 @@
 import json
 from typing import Dict, List, Optional, TypedDict
 
-from litellm import completion, batch_completion
-
+from api.agents.utils import run_batch_completion, run_completion
 from api.config import Config
 
 
@@ -83,11 +82,16 @@ def create_combined_description(  # pylint: disable=too-many-locals
 
     for batch_start in range(0, len(messages_list), batch_size):
         batch_messages = messages_list[batch_start : batch_start + batch_size]
-        response = batch_completion(
+        # Bounded and retried like every other provider call: one LLM_TIMEOUT
+        # budget for the batch, transient failures retried with what remains.
+        # (The raw litellm knobs are a trap here: it treats ``num_retries`` as
+        # overriding ``max_retries``, so passing the pair retried nothing.)
+        response = run_batch_completion(
+            batch_messages,
             model=Config.COMPLETION_MODEL,
-            messages=batch_messages,
             temperature=0,
             max_tokens=50,
+            label="table-descriptions",
         )
 
         for offset, batch_response in enumerate(response):
@@ -98,7 +102,8 @@ def create_combined_description(  # pylint: disable=too-many-locals
             if isinstance(batch_response, Exception):
                 table_info[table_name]["description"] = table_name
             else:
-                content = batch_response.choices[0].message["content"].strip()
+                msg_content = batch_response.choices[0].message["content"]
+                content = msg_content.strip() if msg_content else table_name
                 table_info[table_name]["description"] = content
 
     return table_info
@@ -148,16 +153,16 @@ def generate_db_description(
         f"{tables_formatted}.\n\nDescription:"
     )
 
-    response = completion(
-        model=Config.COMPLETION_MODEL,
-        messages=[
+    # Via run_completion for the shared timeout, retry budget and duration
+    # logging. Blocking: async callers must offload it (see graph_loader).
+    return run_completion(
+        [
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": prompt},
         ],
+        label="db_description",
         temperature=temperature,
         max_tokens=max_tokens,
         n=1,
         stop=None,
     )
-    description = response.choices[0].message["content"]
-    return description

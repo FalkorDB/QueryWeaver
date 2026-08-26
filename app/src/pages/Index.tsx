@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -13,6 +13,7 @@ import SchemaViewer from "@/components/schema";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDatabase } from "@/contexts/DatabaseContext";
+import { useQueryHighlight } from "@/contexts/QueryHighlightContext";
 import { DatabaseService } from "@/services/database";
 import { useToast } from "@/components/ui/use-toast";
 import { csrfHeaders } from "@/lib/csrf";
@@ -25,8 +26,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const Index = () => {
-  const { isAuthenticated, isLoading: authLoading, logout, user } = useAuth();
+  const { isAuthenticated, isUnavailable, isLoading: authLoading, logout, user } = useAuth();
   const { selectedGraph, graphs, selectGraph, uploadSchema } = useDatabase();
+  const { selectedQueryId, clearQueryHighlight } = useQueryHighlight();
   const { toast } = useToast();
   const [showDatabaseModal, setShowDatabaseModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -34,7 +36,7 @@ const Index = () => {
   const [showSchemaViewer, setShowSchemaViewer] = useState(false);
   const [showTokensModal, setShowTokensModal] = useState(false);
   // userRulesSpec is now fetched from the graph database per query
-  const [useMemory, setUseMemory] = useState(() => {
+  const [useMemory] = useState(() => {
     // Load from localStorage on init, default to true
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('queryweaver_use_memory');
@@ -42,7 +44,7 @@ const Index = () => {
     }
     return true;
   });
-  const [useRulesFromDatabase, setUseRulesFromDatabase] = useState(() => {
+  const [useRulesFromDatabase] = useState(() => {
     // Load from localStorage on init, default to false
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('queryweaver_use_rules_from_database');
@@ -131,26 +133,41 @@ const Index = () => {
 
   // No need to fetch rules - we just pass the toggle state to backend
 
+  // Reveal the schema panel when a SQL query is selected in the chat, but only
+  // when a database is connected — otherwise the panel has nothing to render.
+  useEffect(() => {
+    if (selectedQueryId && selectedGraph) {
+      setShowSchemaViewer(true);
+    }
+  }, [selectedQueryId, selectedGraph]);
+
+  // Closing the panel also drops the highlight, so the chat toggle does not stay
+  // marked as active while nothing is highlighted.
+  const closeSchemaViewer = useCallback(() => {
+    setShowSchemaViewer(false);
+    clearQueryHighlight();
+  }, [clearQueryHighlight]);
+
   // Show login modal when not authenticated after loading completes
   useEffect(() => {
     // Only auto-open the login modal once per user/session to avoid locking
     // the SPA when the backend is down or in demo mode. Allow users to
     // dismiss it and remember that choice in sessionStorage.
-    if (!authLoading && !isAuthenticated) {
+    //
+    // isUnavailable means the backend could not check, not that the user is
+    // logged out: prompting for a login here would throw away a session that
+    // is still perfectly valid.
+    if (!authLoading && !isAuthenticated && !isUnavailable) {
       const dismissed = sessionStorage.getItem('loginModalDismissed');
       if (!dismissed) {
         setShowLoginModal(true);
       }
     }
-  }, [authLoading, isAuthenticated]);
+  }, [authLoading, isAuthenticated, isUnavailable]);
 
   const handleConnectDatabase = () => {
     if (isRefreshingSchema || isChatProcessing) return;
     setShowDatabaseModal(true);
-  };
-
-  const handleUploadSchema = () => {
-    fileInputRef.current?.click();
   };
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -348,7 +365,11 @@ const Index = () => {
       
       {/* Left Sidebar */}
       <Sidebar 
-        onSchemaClick={() => { if (!isRefreshingSchema) setShowSchemaViewer(!showSchemaViewer); }}
+        onSchemaClick={() => {
+          if (isRefreshingSchema) return;
+          if (showSchemaViewer) closeSchemaViewer();
+          else setShowSchemaViewer(true);
+        }}
         isSchemaOpen={showSchemaViewer}
         isCollapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -357,7 +378,7 @@ const Index = () => {
       {/* Schema Viewer */}
       <SchemaViewer 
         isOpen={showSchemaViewer}
-        onClose={() => setShowSchemaViewer(false)}
+        onClose={closeSchemaViewer}
         onWidthChange={setSchemaViewerWidth}
         sidebarWidth={sidebarWidth}
       />

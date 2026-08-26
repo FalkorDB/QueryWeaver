@@ -29,21 +29,24 @@ jobs:
           --health-retries 5
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        persist-credentials: false
 
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
         python-version: '3.12'
 
     - name: Install uv
-      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
       with:
-        version: "latest"
+        version: "0.7.12"
+        prune-cache: true
 
     - name: Install dependencies
       run: |
-        uv sync
+        uv sync --locked --all-extras
 
     - name: Install frontend dependencies
       run: |
@@ -63,8 +66,84 @@ jobs:
 
     - name: Run unit tests
       run: |
-        uv run python -m pytest tests/ -k "not e2e" --verbose
+        uv run python -m pytest tests/ -k "not e2e and not test_sdk" --verbose
 
     - name: Run lint
       run: |
         make lint
+
+  sdk-tests:
+    runs-on: ubuntu-latest
+
+    services:
+      falkordb:
+        image: falkordb/falkordb:latest
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: testdb
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        persist-credentials: false
+
+    - name: Set up Python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: '3.12'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
+      with:
+        version: "latest"
+        prune-cache: true
+
+    - name: Install dependencies
+      run: |
+        uv sync --locked --all-extras
+
+    - name: Create test environment file
+      run: |
+        cp .env.example .env
+        echo "FASTAPI_SECRET_KEY=test-secret-key" >> .env
+        echo "FALKORDB_URL=redis://localhost:6379" >> .env
+
+    - name: Run SDK tests
+      env:
+        FALKORDB_URL: redis://localhost:6379
+        TEST_POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/testdb
+        TEST_MYSQL_URL: mysql://root:root@localhost:3306/testdb
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: |
+        uv run python -m pytest tests/test_sdk/ -v

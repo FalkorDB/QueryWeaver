@@ -3,10 +3,9 @@
     "queryweaver-app": "file:app"
   },
   "devDependencies": {
-    "@playwright/test": "^1.57.0",
+    "@playwright/test": "^1.56.1",
     "@types/node": "^22.10.2",
-    "playwright": "^1.57.0",
-    "tailwindcss-animate": "^1.0.7"
+    "playwright": "^1.56.1"
   },
   "scripts": {}
 }

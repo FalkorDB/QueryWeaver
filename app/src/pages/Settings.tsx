@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import { useDatabase } from "@/contexts/DatabaseContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import type { AIVendor } from "@/contexts/SettingsContext";
 import { databaseService } from "@/services/database";
+import { MetaService } from "@/services/meta";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AI_VENDORS, getVendorConfig, DEFAULT_MODEL } from "@/utils/vendorConfig";
 import { useApiKeyValidation } from "@/hooks/useApiKeyValidation";
@@ -58,8 +59,9 @@ const Settings = () => {
   const { message: validationMessage, status: validationStatus, isValidating, validateApiKey, clearValidation } = useApiKeyValidation();
 
   const [githubStars, setGithubStars] = useState<string>('-');
+  const [appVersion, setAppVersion] = useState<string | null>(null);
   const [rules, setRules] = useState('');
-  const [isLoadingRules, setIsLoadingRules] = useState(true);
+  const [, setIsLoadingRules] = useState(true);
   const [initialRulesLoaded, setInitialRulesLoaded] = useState(false);
   const loadedRulesRef = useRef<string>(''); // Track the originally loaded rules
   const currentRulesRef = useRef<string>(''); // Track the current rules value
@@ -117,6 +119,15 @@ const Settings = () => {
       .catch(error => {
         console.log('Failed to fetch GitHub stars:', error);
       });
+  }, []);
+
+  // Fetch the running backend version for display
+  useEffect(() => {
+    MetaService.getVersion().then(info => {
+      if (info?.version) {
+        setAppVersion(info.version);
+      }
+    });
   }, []);
 
   // Handle window resize to update layout
@@ -792,6 +803,11 @@ const Settings = () => {
               </div>
               </div>
             )}
+
+            {/* Version footer */}
+            <div className="pt-2 text-center text-xs text-muted-foreground">
+              QueryWeaver {appVersion ? `v${appVersion}` : ''}
+            </div>
           </div>
         </div>
       </div>

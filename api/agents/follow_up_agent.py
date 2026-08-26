@@ -70,7 +70,8 @@ class FollowUpAgent(BaseAgent):  # pylint: disable=too-few-public-methods
         try:
             response = run_completion(
                 [{"role": "user", "content": prompt}],
-                self.custom_model, self.custom_api_key, temperature=0.9
+                self.custom_model, self.custom_api_key,
+                label="followup", temperature=0.9,
             )
             return response.strip()
 

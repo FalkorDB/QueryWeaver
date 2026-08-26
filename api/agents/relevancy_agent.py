@@ -1,5 +1,6 @@
 """Relevancy agent for determining relevancy of queries to database schema."""
 
+import asyncio
 import json
 from .utils import BaseAgent, parse_response, run_completion
 
@@ -17,13 +18,14 @@ Guidelines:
    - If earlier in the chat the system asked for missing information (e.g., "What's your name or ID?") and the user provided it, then the current question should be treated as valid and on-topic.
    - Consider whether ambiguities have already been resolved in prior turns.
 
-2. **Focus on actionable intent for database querying.**
-   - Ask yourself: "Can this request, given the conversation so far, be answered by querying the database?"
+2. **Focus on actionable intent for database operations.**
+   - Ask yourself: "Can this request, given the conversation so far, be fulfilled by reading from OR modifying the database?" Both data retrieval (SELECT) and data modification (INSERT/UPDATE/DELETE) are supported and on-topic.
    - Personal pronouns ("I", "my", "me") are on-topic if the user has identified themselves or if the intent clearly maps to database data.
    - Conversational or casual phrasing is fine as long as the underlying request is for data.
 
 3. **On-topic cases include:**
    - Questions that can be translated into database queries (directly or with previously provided clarifications).
+   - Requests to add, insert, update, or delete data (data-modification / write operations that map to the schema). The system supports both reading and modifying data, so these are on-topic, not off-topic.
    - Personal queries where the user provided their identity after being asked.
    - Questions about data, database structure, reports, metrics, or insights.
 
@@ -81,8 +83,14 @@ class RelevancyAgent(BaseAgent):
             }
         )
 
-        answer = run_completion(
-            self.messages, self.custom_model, self.custom_api_key, temperature=0
+        # ``run_completion`` is synchronous. Awaiting it off-loop matters even
+        # though this method is already ``async``: the caller runs it as a task
+        # alongside table-finding, and a blocking call here would stall that
+        # task — and every other request — rather than overlap with it.
+        answer = await asyncio.to_thread(
+            run_completion,
+            self.messages, self.custom_model, self.custom_api_key,
+            label="relevancy", temperature=0,
         )
         self.messages.append({"role": "assistant", "content": answer})
         return parse_response(answer)

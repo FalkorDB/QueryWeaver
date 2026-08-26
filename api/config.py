@@ -4,10 +4,22 @@ This module contains the configuration for the text2sql module.
 """
 
 import os
+import time
 import logging
+import math
 import dataclasses
 from typing import Union
+
+from dotenv import load_dotenv
 from litellm import embedding
+
+# Ensure .env is loaded before Config reads os.getenv() at class definition time
+load_dotenv()
+
+# Central user-management graph holding User/Identity/Token (and UsageEvent)
+# nodes. Single source of truth for the name used across auth, tokens, and
+# usage tracking — override with the ORGANIZATIONS_GRAPH env var.
+ORGANIZATIONS_GRAPH = os.getenv("ORGANIZATIONS_GRAPH") or "Organizations"
 
 # Configure litellm logging to prevent sensitive data leakage
 def configure_litellm_logging():
@@ -30,9 +42,20 @@ class EmbeddingsModel:
         self.model_name = model_name
         self.config = config
 
+    def _embedding_kwargs(self) -> dict:
+        """Timeout and retry bounds, matching the completion path.
+
+        These are blocking network calls, so an unbounded one pins whichever
+        thread runs it. ``timeout`` is per attempt, so the retry budget is
+        pinned too or the effective ceiling becomes a multiple of it.
+        """
+        return Config.llm_call_bounds()
+
     def embed(self, text: Union[str, list]) -> list:
         """
         Get the embeddings of the text
+
+        Blocking: call via ``api.embeddings.embed_off_loop`` from async code.
 
         Args:
             text (str|list): The text(s) to embed
@@ -41,7 +64,21 @@ class EmbeddingsModel:
             list: The embeddings of the text
 
         """
-        embeddings = embedding(model=self.model_name, input=text)
+        started = time.monotonic()
+        try:
+            embeddings = embedding(
+                model=self.model_name, input=text, **self._embedding_kwargs()
+            )
+        except Exception:
+            logging.warning(
+                "embed_call model=%s duration=%.2fs outcome=error",
+                self.model_name, time.monotonic() - started,
+            )
+            raise
+        logging.info(
+            "embed_call model=%s duration=%.2fs outcome=ok",
+            self.model_name, time.monotonic() - started,
+        )
         embeddings = [embedding["embedding"] for embedding in embeddings.data]
         return embeddings
 
@@ -49,11 +86,16 @@ class EmbeddingsModel:
         """
         Get the size of the vector
 
+        Blocking: call via ``api.embeddings.vector_size_off_loop`` from async
+        code.
+
         Returns:
             int: The size of the vector
 
         """
-        response = embedding(input=["Hello World"], model=self.model_name)
+        response = embedding(
+            input=["Hello World"], model=self.model_name, **self._embedding_kwargs()
+        )
         size = len(response.data[0]["embedding"])
         return size
 
@@ -64,15 +106,44 @@ def _with_prefix(model: str, provider: str) -> str:
     return prefix + model.removeprefix(prefix)
 
 
+SUPPORTED_VENDORS = ("openai", "anthropic", "gemini", "azure", "ollama", "cohere")
+
+
+def _positive_env(name: str, default: str, cast=int):
+    """Read a timeout-style env var, rejecting values that disable the bound.
+
+    Zero is not a harmless "unset" here: PostgreSQL treats a 0 timeout as
+    "no limit", which removes the safeguard entirely, and PyMySQL raises at
+    query time on a 0 socket timeout. Fail at startup with a clear message
+    rather than silently losing the protection.
+    """
+    raw = os.getenv(name, default)
+    try:
+        value = cast(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"{name} must be a positive number (got {raw!r})"
+        ) from exc
+    # ``nan`` and ``inf`` are floats that pass a ``<= 0`` test: nan compares
+    # False against everything, and inf is a deadline that never expires.
+    if not math.isfinite(value):
+        raise ValueError(
+            f"{name} must be a finite number (got {raw!r}); nan and inf are not "
+            "usable deadlines"
+        )
+    if value <= 0:
+        raise ValueError(
+            f"{name} must be greater than 0 (got {raw!r}); a zero or negative "
+            "timeout disables the safeguard it exists to provide"
+        )
+    return value
+
+
 @dataclasses.dataclass
-class Config:
+class Config:  # pylint: disable=too-many-instance-attributes
     """
     Configuration class for the text2sql module.
     """
-
-    # Provider flag: "azure", "openai", "gemini", "anthropic", "ollama", "cohere"
-    LLM_PROVIDER = "azure"
-    AZURE_FLAG = True
 
     # User-provided overrides via env vars
     _user_completion = os.getenv("COMPLETION_MODEL", "")
@@ -107,7 +178,7 @@ class Config:
             EMBEDDING_MODEL_NAME = "voyage/voyage-3"
         else:
             raise ValueError(
-                "Anthropic has no native embeddings. "
+                "ANTHROPIC_API_KEY is set, but Anthropic has no native embeddings. "
                 "Set EMBEDDING_MODEL or VOYAGE_API_KEY for embeddings."
             )
     elif os.getenv("COHERE_API_KEY"):
@@ -123,6 +194,80 @@ class Config:
         AZURE_FLAG = True
         COMPLETION_MODEL = _user_completion or "azure/gpt-4.1"
         EMBEDDING_MODEL_NAME = _user_embedding or "azure/text-embedding-ada-002"
+
+    # Wall-clock ceiling for a single agent LLM call, in seconds. Passed
+    # through to litellm, which aborts the underlying HTTP request — so a
+    # hung provider surfaces as a clean error instead of stalling the
+    # response stream indefinitely (incident 2026-07-29).
+    LLM_TIMEOUT: float = _positive_env("LLM_TIMEOUT", "90", float)  # pylint: disable=invalid-name
+
+    # A call slower than this is logged at WARNING. Normal analysis calls
+    # completed in ~6s during the incident window, so this flags outliers
+    # well before they reach the timeout.
+    # pylint: disable-next=invalid-name
+    LLM_SLOW_CALL_THRESHOLD: float = _positive_env(
+        "LLM_SLOW_CALL_THRESHOLD", "20", float
+    )
+
+    # Retry budget for a single agent LLM call. Kept explicit because the
+    # provider SDK and litellm each have their own retry loop, and leaving
+    # both at their defaults multiplies the effective ceiling (measured: a
+    # 3s timeout took 10.8s to fail). Applied as the SDK-level retry count
+    # with litellm's outer loop disabled, so the worst case stays close to
+    # LLM_TIMEOUT rather than a multiple of it.
+    # Zero is valid here (it means "no retry", a strict ceiling); negative is
+    # not.
+    # pylint: disable-next=invalid-name
+    LLM_MAX_RETRIES: int = max(0, int(os.getenv("LLM_MAX_RETRIES", "1")))
+
+    @classmethod
+    def llm_attempts(cls) -> int:
+        """How many provider requests one logical call may make."""
+        return cls.LLM_MAX_RETRIES + 1
+
+    @classmethod
+    def llm_call_bounds(cls, timeout: float | None = None) -> dict:
+        """Provider kwargs for a single attempt.
+
+        Both library retry mechanisms are disabled. litellm treats
+        ``num_retries`` as overriding ``max_retries``, so the pair
+        ``{max_retries: 1, num_retries: 0}`` made exactly one request while the
+        budget was divided as though two would happen — losing the retry and
+        halving the effective deadline at once. Retries are therefore driven by
+        ``run_completion`` against the remaining budget, where the attempt count
+        and elapsed time are observable.
+
+        ``timeout`` defaults to the whole budget, which is right for
+        single-attempt callers such as embeddings.
+        """
+        return {
+            "timeout": cls.LLM_TIMEOUT if timeout is None else timeout,
+            "max_retries": 0,
+            "num_retries": 0,
+        }
+
+    # Bounds for user-query execution against the target database. Offloading
+    # execution to a thread stops a slow query from blocking other requests,
+    # but nothing bounds how long the query itself runs without these.
+    # pylint: disable-next=invalid-name
+    DB_CONNECT_TIMEOUT: int = _positive_env("DB_CONNECT_TIMEOUT", "10")
+    # pylint: disable-next=invalid-name
+    DB_STATEMENT_TIMEOUT: int = _positive_env("DB_STATEMENT_TIMEOUT", "60")
+
+    # Schema introspection gets its own, larger deadline: it is metadata work
+    # over a whole database, so the user-query ceiling is too tight, but it
+    # still needs a bound. Cancelling the awaiting task does not stop the
+    # driver call, so without this a stalled database holds both a session and
+    # a worker thread until it decides to answer.
+    # pylint: disable-next=invalid-name
+    DB_SCHEMA_TIMEOUT: int = _positive_env("DB_SCHEMA_TIMEOUT", "300")
+
+    # How many schema introspections may occupy worker threads at once. The
+    # default executor is shared with every other offloaded call (LLM,
+    # embedding, user SQL), so unbounded schema work on a stalled database
+    # could starve all of it.
+    # pylint: disable-next=invalid-name
+    DB_SCHEMA_CONCURRENCY: int = _positive_env("DB_SCHEMA_CONCURRENCY", "2")
 
     DB_MAX_DISTINCT: int = 100  # pylint: disable=invalid-name
     DB_UNIQUENESS_THRESHOLD: float = 0.5  # pylint: disable=invalid-name
