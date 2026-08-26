@@ -19,10 +19,6 @@ env:
 
 jobs:
   test:
-    # Skip for Dependabot PRs — the LLM-dependent E2E tests require Azure OpenAI
-    # secrets that are not available in Dependabot PR runs. Full E2E coverage runs
-    # on the merge-to-staging/main push event where secrets are accessible.
-    if: github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]'
     timeout-minutes: 60
     runs-on: ubuntu-latest
     
@@ -30,6 +26,22 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       with:
         persist-credentials: false
+
+    # Detect whether AI secrets are available (not available for Dependabot / fork PRs)
+    - name: Check for AI secrets
+      id: check-secrets
+      run: |
+        if [ -n "$AZURE_API_KEY" ] && [ -n "$AZURE_API_BASE" ] && [ -n "$AZURE_API_VERSION" ]; then
+          echo "has-ai-secrets=true" >> "$GITHUB_OUTPUT"
+          echo "AI secrets are available — full E2E suite will run"
+        else
+          echo "has-ai-secrets=false" >> "$GITHUB_OUTPUT"
+          echo "AI secrets are NOT available — only non-AI E2E tests will run"
+        fi
+      env:
+        AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
+        AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
+        AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
     
     # Setup Python
     - name: Set up Python
@@ -78,8 +90,9 @@ jobs:
       run: npm run build
       working-directory: ./app
     
-    # Start Docker Compose services (test databases)
+    # Start Docker Compose services (test databases) — only needed for AI tests
     - name: Start test databases
+      if: steps.check-secrets.outputs.has-ai-secrets == 'true'
       run: |
         docker compose -f e2e/docker-compose.test.yml up -d --wait --wait-timeout 120
         docker ps -a
@@ -165,18 +178,38 @@ jobs:
     - name: Create auth directory
       run: mkdir -p e2e/.auth
     
-    # Run Playwright tests
-    - name: Run Playwright tests
-      run: npx playwright test --reporter=list
+    # Run non-AI Playwright tests (always — no LLM secrets needed).
+    # Each run gets its own report/output directory: Playwright clears both at
+    # the start of a run, so sharing them let the AI run wipe the failing
+    # non-AI run's HTML report, traces and screenshots before they were uploaded.
+    # `list` alone would replace the configured `html` reporter and leave the
+    # uploaded report directories empty, so both are named explicitly.
+    - name: Run Playwright tests (no AI)
+      run: npx playwright test --grep-invert @requires-ai --reporter=list,html --output=test-results-no-ai
       env:
         CI: true
+        PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-no-ai
+
+    # Run AI-dependent Playwright tests (only when secrets are available).
+    # `!cancelled()` keeps them running after a non-AI failure, but they are
+    # also gated on the server having started: without that they would run
+    # against a dead stack after any earlier setup failure, burning the job
+    # budget on retries for zero signal.
+    - name: Run Playwright tests (AI)
+      if: "!cancelled() && steps.start-server.outcome == 'success' && steps.check-secrets.outputs.has-ai-secrets == 'true'"
+      run: npx playwright test --grep @requires-ai --reporter=list,html --output=test-results-ai
+      env:
+        CI: true
+        PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-ai
     
     # Upload test results on failure
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       if: failure()
       with:
         name: playwright-report
-        path: playwright-report/
+        path: |
+          playwright-report-no-ai/
+          playwright-report-ai/
         retention-days: 30
     
     # Upload test screenshots on failure
@@ -184,7 +217,9 @@ jobs:
       if: failure()
       with:
         name: test-results
-        path: test-results/
+        path: |
+          test-results-no-ai/
+          test-results-ai/
         retention-days: 30
     
     # Cleanup - Stop all containers and background processes

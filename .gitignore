@@ -8,7 +8,9 @@
 
 # Test artifacts
 test-results/
+test-results-*/
 playwright-report/
+playwright-report-*/
 tests/e2e/screenshots/*.png
 .pytest_cache/
 .coverage
