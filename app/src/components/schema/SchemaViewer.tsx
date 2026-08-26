@@ -408,6 +408,9 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
     let previous: Bounds | null = null;
 
     const attempt = () => {
+      // The viewer can close mid-wait, which unmounts the canvas.
+      if (!canvasRef.current) return;
+
       const bounds = nodeBounds(match);
 
       if ((bounds && previous && boundsSettled(bounds, previous)) || Date.now() >= deadline) {
