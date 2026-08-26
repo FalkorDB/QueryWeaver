@@ -236,6 +236,24 @@ test.describe('Left Sidebar Tests', () => {
         .toBeLessThanOrEqual(2);
     });
 
+    // `preventDefault` on pointerdown is needed to stop the drag selecting
+    // text, but it also cancels the click's focus, which would leave the
+    // arrow-key resize unreachable for anyone who used the mouse first.
+    test('clicking the handle leaves it focused for keyboard resizing', async () => {
+      const sidebar = await browser.createNewPage(Sidebar, getBaseUrl());
+      await browser.setPageToFullScreen();
+
+      await sidebar.clickOnSchemaButton();
+      await expect(sidebar.schemaPanelResizeHandle).toBeVisible();
+      await sidebar.clickSchemaPanelResizeHandle();
+
+      await expect(sidebar.schemaPanelResizeHandle).toBeFocused();
+
+      // The widest the panel goes at 1920px is 60% == 1152px.
+      await sidebar.pressKey('End');
+      await expect.poll(async () => await sidebar.getSchemaPanelWidth()).toBeGreaterThan(1100);
+    });
+
     // 20% of a small desktop window is ~150-200px, where the heading wraps and
     // the canvas controls stack into three rows. A pixel floor keeps the panel
     // usable; the 60% maximum still wins over it.

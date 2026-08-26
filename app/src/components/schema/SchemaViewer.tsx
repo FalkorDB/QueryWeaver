@@ -735,6 +735,9 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, onResizingChange, sideba
             if (e.button !== 0) return;
             e.preventDefault();
             e.stopPropagation();
+            // `preventDefault` also suppresses the click's focus, which would
+            // leave the arrow-key resize unreachable for a mouse user.
+            e.currentTarget.focus({ preventScroll: true });
             // Capture keeps the drag glued to the handle, so a release outside
             // the window still ends it. A document-level `mouseup` never fires
             // there, which left the panel latched in resize mode.

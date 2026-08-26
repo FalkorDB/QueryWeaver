@@ -236,4 +236,13 @@ export class Sidebar extends HomePage {
     if (value === null) throw new Error('Schema panel resize handle has no aria-valuenow!');
     return Number(value);
   }
+
+  /**
+   * Presses a key at whatever holds focus. Unlike `pressSchemaPanelResizeKey`
+   * this does not focus the handle first, so it can prove a click left it
+   * focused.
+   */
+  async pressKey(key: string): Promise<void> {
+    await this.page.keyboard.press(key);
+  }
 }
