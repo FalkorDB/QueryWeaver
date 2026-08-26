@@ -1,8 +1,9 @@
 """
-Test for security header presence in responses.
+Tests for the security headers applied to every response.
 """
 import pytest
 from fastapi.testclient import TestClient
+from api.app_factory import SecurityMiddleware
 from api.index import app
 
 
@@ -207,6 +208,47 @@ class TestSecurityHeaders:
         assert response.status_code == 403
         for header in COMMON_SECURITY_HEADERS:
             assert header in response.headers, header
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/static/..%2fetc%2fpasswd",
+            "/static/assets%2f..%2f..%2fetc",
+            "/static/..\\windows",
+        ],
+    )
+    def test_traversal_is_blocked_over_http(self, client, path):
+        """Test that a traversal attempt reaching the middleware is refused."""
+        response = client.get(path)
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Forbidden"
+
+    @pytest.mark.parametrize(
+        "filename, is_traversal",
+        [
+            ("..", True),
+            ("../etc/passwd", True),
+            ("assets/..", True),
+            ("assets/../../etc/passwd", True),
+            ("..\\windows", True),
+            ("app.js", False),
+            ("assets/index-abc123.js", False),
+            ("..dotfile", False),
+            ("file..name", False),
+        ],
+    )
+    def test_traversal_segment_detection(self, filename, is_traversal):
+        """Test that a bare ".." segment counts, not just the "../" substring.
+
+        These cannot all be driven over HTTP: httpx normalises
+        "/static/../etc/passwd" down to "/etc/passwd" before the request is
+        sent, so the request never reaches this middleware. A raw client is
+        under no such obligation, so the guard is exercised directly.
+        """
+        # pylint: disable=protected-access
+        assert (
+            SecurityMiddleware._has_traversal_segment(filename) is is_traversal
+        )
 
     def test_security_headers_on_csrf_rejection(self, client):
         """Test that CSRFMiddleware's own 403 still carries the headers.

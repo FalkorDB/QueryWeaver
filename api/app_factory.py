@@ -104,6 +104,15 @@ class SecurityMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-
                 SecurityMiddleware.DEFAULT_CSP
             )
 
+    @staticmethod
+    def _has_traversal_segment(filename: str) -> bool:
+        """True if any segment of the path is a parent-directory marker.
+
+        Substring-matching "../" misses a bare trailing ".." and the
+        backslash-separated form, so the path is split into segments instead.
+        """
+        return ".." in filename.replace("\\", "/").split("/")
+
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
@@ -112,7 +121,11 @@ class SecurityMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-
         # Block directory access in static files
         if path.startswith(self.STATIC_PREFIX):
             filename = path[len(self.STATIC_PREFIX) :]
-            if not filename or "../" in filename or filename.endswith("/"):
+            if (
+                not filename
+                or filename.endswith("/")
+                or self._has_traversal_segment(filename)
+            ):
                 response = JSONResponse(
                     status_code=403, content={"detail": "Forbidden"}
                 )
