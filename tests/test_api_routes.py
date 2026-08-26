@@ -115,6 +115,20 @@ def authed_fixture():
         yield
 
 
+@pytest.fixture(name="stored_identity")
+def stored_identity_fixture():
+    """Confirm the caller's identity without reaching for the graph.
+
+    Minting a token checks the identity really is stored, so an unpatched call
+    here would talk to FalkorDB on whatever event loop the test client happens
+    to be using.
+    """
+    with patch(
+        "api.routes.tokens.identity_exists", new=AsyncMock(return_value=True)
+    ):
+        yield
+
+
 @pytest.fixture(name="no_usage_tracking")
 def no_usage_tracking_fixture():
     """Stop streaming routes from recording usage against the graph DB."""
@@ -546,7 +560,7 @@ class TestSettingsRoute:
         assert "sk-test" not in response.text
 
 
-@pytest.mark.usefixtures("authed")
+@pytest.mark.usefixtures("authed", "stored_identity")
 class TestTokensRoutes:
     """``api/routes/tokens.py``."""
 
