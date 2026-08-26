@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from api.core.errors import AuthBackendUnavailableError
 from api.routes.auth import EmailSignupRequest, _email_account_exists, email_signup
 
 pytestmark = [pytest.mark.unit, pytest.mark.auth]
@@ -17,9 +18,10 @@ pytestmark = [pytest.mark.unit, pytest.mark.auth]
 def _mock_request():
     """Build a minimal mock Request for the signup handler."""
     request = MagicMock()
-    # _is_request_secure reads these; default to a plain http request.
+    # The transport helpers read these; default to a plain http request.
     request.headers.get.return_value = None
     request.url.scheme = "http"
+    request.session = {}
     return request
 
 
@@ -72,25 +74,45 @@ class TestEmailSignupExistingAccount:
         assert response.status_code == 500
         assert "api_token=" not in _set_cookie_header(response)
 
+    @pytest.mark.asyncio
+    @patch("api.routes.auth.ensure_user_in_organizations", new_callable=AsyncMock)
+    @patch("api.routes.auth._email_account_exists", new_callable=AsyncMock)
+    @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
+    async def test_an_outage_during_creation_is_retryable_not_a_bug(
+        self, _enabled, mock_exists, mock_ensure
+    ):
+        # 500 would tell the caller the registration is broken, when in fact
+        # nothing was decided and retrying is the right move.
+        mock_exists.return_value = False
+        mock_ensure.side_effect = AuthBackendUnavailableError("down")
+
+        response = await email_signup(_mock_request(), _signup_data("new@example.com"))
+
+        assert response.status_code == 503
+        assert "api_token=" not in _set_cookie_header(response)
+
 
 class TestEmailSignupNewAccount:
-    """A genuinely new account should be created and issued a token."""
+    """A genuinely new account should be created and logged in."""
 
     @pytest.mark.asyncio
     @patch("api.routes.auth.ensure_user_in_organizations", new_callable=AsyncMock)
     @patch("api.routes.auth._set_mail_hash", new_callable=AsyncMock)
     @patch("api.routes.auth._email_account_exists", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
-    async def test_new_account_is_created_with_token(
+    async def test_new_account_is_created_and_logged_in(
         self, _enabled, mock_exists, mock_set_hash, mock_ensure
     ):
         mock_exists.return_value = False
         mock_ensure.return_value = (True, {"new_identity": True})
 
-        response = await email_signup(_mock_request(), _signup_data("new@example.com"))
+        request = _mock_request()
+        response = await email_signup(request, _signup_data("new@example.com"))
 
         assert response.status_code == 201
-        assert "api_token=" in _set_cookie_header(response)
+        # The signed session is the credential; the token never reaches the browser.
+        assert "api_token=" not in _set_cookie_header(response)
+        assert request.session, "signup must establish the browser session"
         mock_ensure.assert_awaited_once()
         mock_set_hash.assert_awaited_once()
 
@@ -104,7 +126,7 @@ class TestEmailSignupCreationFailure:
     @patch("api.routes.auth._set_mail_hash", new_callable=AsyncMock)
     @patch("api.routes.auth._email_account_exists", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
-    async def test_non_new_identity_is_rejected_and_token_cleaned_up(
+    async def test_non_new_identity_is_rejected_and_no_token_minted(
         self, _enabled, mock_exists, mock_set_hash, mock_ensure, mock_delete
     ):
         # Passes the pre-check, but creation reports the identity already existed
@@ -117,7 +139,10 @@ class TestEmailSignupCreationFailure:
         assert response.status_code == 500
         assert "api_token=" not in _set_cookie_header(response)
         mock_set_hash.assert_not_called()
-        mock_delete.assert_awaited_once()
+        # Signup asks for the records without a token, so there is nothing to
+        # revoke on the failure path.
+        assert mock_ensure.await_args.args[-1] is None
+        mock_delete.assert_not_awaited()
 
 
 class TestEmailAccountExistsResultHandling:
@@ -159,3 +184,24 @@ class TestEmailAccountExistsResultHandling:
         with patch("api.routes.auth.db.select_graph", return_value=graph):
             with pytest.raises(RuntimeError):
                 await _email_account_exists("err@example.com")
+
+
+class TestEmailSignupSessionFailure:
+    """A created account with no browser credential is not a successful signup."""
+
+    @pytest.mark.asyncio
+    @patch("api.routes.auth.establish_browser_session", return_value=False)
+    @patch("api.routes.auth.ensure_user_in_organizations", new_callable=AsyncMock)
+    @patch("api.routes.auth._set_mail_hash", new_callable=AsyncMock)
+    @patch("api.routes.auth._email_account_exists", new_callable=AsyncMock)
+    @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
+    async def test_unset_session_is_reported_as_a_failure(
+        self, _enabled, mock_exists, _set_hash, mock_ensure, _establish
+    ):
+        # Reporting 201 here would leave the user staring at a logged-out page.
+        mock_exists.return_value = False
+        mock_ensure.return_value = (True, {"new_identity": True})
+
+        response = await email_signup(_mock_request(), _signup_data("new@example.com"))
+
+        assert response.status_code == 500
