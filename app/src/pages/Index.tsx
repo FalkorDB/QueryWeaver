@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const Index = () => {
-  const { isAuthenticated, isLoading: authLoading, logout, user } = useAuth();
+  const { isAuthenticated, isUnavailable, isLoading: authLoading, logout, user } = useAuth();
   const { selectedGraph, graphs, selectGraph, uploadSchema } = useDatabase();
   const { selectedQueryId, clearQueryHighlight } = useQueryHighlight();
   const { toast } = useToast();
@@ -156,13 +156,17 @@ const Index = () => {
     // Only auto-open the login modal once per user/session to avoid locking
     // the SPA when the backend is down or in demo mode. Allow users to
     // dismiss it and remember that choice in sessionStorage.
-    if (!authLoading && !isAuthenticated) {
+    //
+    // isUnavailable means the backend could not check, not that the user is
+    // logged out: prompting for a login here would throw away a session that
+    // is still perfectly valid.
+    if (!authLoading && !isAuthenticated && !isUnavailable) {
       const dismissed = sessionStorage.getItem('loginModalDismissed');
       if (!dismissed) {
         setShowLoginModal(true);
       }
     }
-  }, [authLoading, isAuthenticated]);
+  }, [authLoading, isAuthenticated, isUnavailable]);
 
   const handleConnectDatabase = () => {
     if (isRefreshingSchema || isChatProcessing) return;

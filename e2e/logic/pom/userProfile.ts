@@ -1,4 +1,4 @@
-import { Locator } from "@playwright/test";
+import { Locator, expect } from "@playwright/test";
 import { waitForElementToBeVisible } from "../../infra/utils";
 import BasePage from "../../infra/ui/basePage";
 
@@ -75,6 +75,11 @@ export class UserProfile extends BasePage {
 
   private getTokenRow(tokenId: string): Locator {
     return this.page.getByTestId(`token-row-${tokenId}`);
+  }
+
+  /** Public accessor: waiting on a specific row is the only proof it rendered. */
+  tokenRowLocator(tokenId: string): Locator {
+    return this.getTokenRow(tokenId);
   }
 
   private getTokenValue(tokenId: string): Locator {
@@ -320,15 +325,29 @@ export class UserProfile extends BasePage {
     return await waitForElementToBeVisible(this.deleteTokenConfirmDialog);
   }
 
+  private get tokenRows(): Locator {
+    return this.page.locator('[data-testid^="token-row-"]');
+  }
+
+  /**
+   * Waits until at least `minCount` token rows are rendered. The tokens table
+   * re-renders after each generate call, so callers that just created tokens
+   * must wait for them instead of snapshotting whatever is on screen.
+   */
+  async waitForTokenRows(minCount: number, timeout: number = 10000): Promise<void> {
+    await expect
+      .poll(async () => await this.tokenRows.count(), { timeout })
+      .toBeGreaterThanOrEqual(minCount);
+  }
+
   async getAllTokenRows(): Promise<Locator[]> {
-    // Try to wait for token rows, but don't fail if none exist
+    // Wait for the table to settle, but don't fail if it is legitimately empty.
     try {
-      await this.page.waitForSelector('[data-testid^="token-row-"]', { timeout: 5000 });
+      await this.waitForTokenRows(1, 5000);
     } catch {
-      // No token rows found, return empty array
       return [];
     }
-    return await this.page.locator('[data-testid^="token-row-"]').all();
+    return await this.tokenRows.all();
   }
 
   async getTokenCount(): Promise<number> {

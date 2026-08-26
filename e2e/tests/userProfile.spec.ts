@@ -255,7 +255,10 @@ test.describe('User Profile Tests', () => {
     const secondTokenValue = await userProfile.getNewTokenValue();
     const secondTokenId = userProfile.extractTokenId(secondTokenValue || '');
 
-    // Verify both tokens exist in the list by their IDs
+    // Wait on the two rows themselves: earlier tests in this file leave rows
+    // behind, so a "at least 2 rows" poll passes before either new row exists.
+    await expect(userProfile.tokenRowLocator(firstTokenId)).toBeVisible();
+    await expect(userProfile.tokenRowLocator(secondTokenId)).toBeVisible();
     const tokenIds = await userProfile.getTokenIdsFromRows();
     expect(tokenIds).toContain(firstTokenId);
     expect(tokenIds).toContain(secondTokenId);
