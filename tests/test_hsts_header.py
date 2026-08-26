@@ -22,7 +22,12 @@ EXPECTED_DEFAULT_CSP = {
     "default-src": ["'self'"],
     "script-src": ["'self'"],
     "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-    "img-src": ["'self'", "data:"],
+    "img-src": [
+        "'self'",
+        "data:",
+        "https://*.googleusercontent.com",
+        "https://avatars.githubusercontent.com",
+    ],
     "font-src": ["'self'", "https://fonts.gstatic.com"],
     "connect-src": ["'self'", "https://api.github.com"],
     "frame-ancestors": ["'none'"],
@@ -45,15 +50,33 @@ EXPECTED_DOCS_CSP = {
         "https://cdn.jsdelivr.net",
         "https://fonts.googleapis.com",
     ],
-    "img-src": ["'self'", "data:", "https://cdn.jsdelivr.net"],
+    "img-src": [
+        "'self'",
+        "data:",
+        "https://cdn.jsdelivr.net",
+        "https://fastapi.tiangolo.com",
+    ],
     "font-src": ["'self'", "https://fonts.gstatic.com", "data:"],
     "connect-src": ["'self'"],
+    "worker-src": ["'self'", "blob:"],
     "frame-ancestors": ["'none'"],
     "object-src": ["'none'"],
     "base-uri": ["'self'"],
 }
 
+# Every header SecurityMiddleware is contracted to set, so a response that
+# skips the middleware cannot pass by asserting only a subset.
+COMMON_SECURITY_HEADERS = (
+    "strict-transport-security",
+    "x-content-type-options",
+    "x-frame-options",
+    "referrer-policy",
+    "permissions-policy",
+    "content-security-policy",
+)
 
+
+@pytest.mark.unit
 class TestSecurityHeaders:
     """Test security headers."""
 
@@ -140,6 +163,18 @@ class TestSecurityHeaders:
         ]
         assert directives["font-src"] == ["'self'", "https://fonts.gstatic.com"]
 
+    def test_csp_allows_the_avatars_the_spa_renders(self, client):
+        """Test that img-src covers the identity providers' avatar hosts.
+
+        /auth-status passes the provider's picture URL through verbatim and
+        the SPA renders it in <AvatarImage>, so a self-only img-src silently
+        degrades every logged-in avatar to the initials fallback.
+        """
+        response = client.get("/")
+        directives = parse_csp(response.headers["content-security-policy"])
+        assert "https://*.googleusercontent.com" in directives["img-src"]
+        assert "https://avatars.githubusercontent.com" in directives["img-src"]
+
     def test_csp_docs_allows_cdn(self, client):
         """Test that /docs gets the permissive CSP needed for CDN assets."""
         response = client.get("/docs")
@@ -147,10 +182,37 @@ class TestSecurityHeaders:
         assert csp is not None
         assert parse_csp(csp) == EXPECTED_DOCS_CSP
 
+    @pytest.mark.parametrize(
+        "path", ["/docs-preview", "/redoc-x", "/openapi-foo", "/docsanything"]
+    )
+    def test_docs_csp_is_not_handed_to_lookalike_paths(self, client, path):
+        """Test that only the exact docs endpoints get the permissive CSP.
+
+        The SPA catch-all serves index.html for any unmatched path, so a
+        prefix match would let an attacker pick a URL that turns on
+        'unsafe-inline', 'unsafe-eval' and two CDN script sources.
+        """
+        response = client.get(path)
+        assert parse_csp(response.headers["content-security-policy"]) == (
+            EXPECTED_DEFAULT_CSP
+        )
+
     def test_security_headers_on_forbidden_static(self, client):
         """Test that early-return 403 responses also include security headers."""
         response = client.get("/static/")
         assert response.status_code == 403
-        assert "strict-transport-security" in response.headers
-        assert "x-content-type-options" in response.headers
-        assert "content-security-policy" in response.headers
+        for header in COMMON_SECURITY_HEADERS:
+            assert header in response.headers, header
+
+    def test_security_headers_on_csrf_rejection(self, client):
+        """Test that CSRFMiddleware's own 403 still carries the headers.
+
+        CSRFMiddleware returns before call_next, so SecurityMiddleware only
+        covers it while it is registered as the outer layer.  This body is
+        attacker-reachable JSON, which makes the nosniff header matter.
+        """
+        response = client.post("/tokens/generate")
+        assert response.status_code == 403
+        assert response.json()["detail"] == "CSRF token missing or invalid"
+        for header in COMMON_SECURITY_HEADERS:
+            assert header in response.headers, header
