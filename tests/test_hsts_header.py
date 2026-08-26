@@ -172,8 +172,12 @@ class TestSecurityHeaders:
         """
         response = client.get("/")
         directives = parse_csp(response.headers["content-security-policy"])
-        assert "https://*.googleusercontent.com" in directives["img-src"]
-        assert "https://avatars.githubusercontent.com" in directives["img-src"]
+        assert directives["img-src"] == [
+            "'self'",
+            "data:",
+            "https://*.googleusercontent.com",
+            "https://avatars.githubusercontent.com",
+        ]
 
     def test_csp_docs_allows_cdn(self, client):
         """Test that /docs gets the permissive CSP needed for CDN assets."""
