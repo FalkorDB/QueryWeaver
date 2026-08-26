@@ -178,26 +178,36 @@ jobs:
     - name: Create auth directory
       run: mkdir -p e2e/.auth
     
-    # Run non-AI Playwright tests (always — no LLM secrets needed)
+    # Run non-AI Playwright tests (always — no LLM secrets needed).
+    # Each run gets its own report/output directory: Playwright clears both at
+    # the start of a run, so sharing them let the AI run wipe the failing
+    # non-AI run's HTML report, traces and screenshots before they were uploaded.
     - name: Run Playwright tests (no AI)
-      run: npx playwright test --grep-invert @requires-ai --reporter=list
+      run: npx playwright test --grep-invert @requires-ai --reporter=list --output=test-results-no-ai
       env:
         CI: true
+        PLAYWRIGHT_HTML_REPORT: playwright-report-no-ai
 
-    # Run AI-dependent Playwright tests (only when secrets are available)
-    # Use !cancelled() so AI tests still run even if non-AI tests fail
+    # Run AI-dependent Playwright tests (only when secrets are available).
+    # `!cancelled()` keeps them running after a non-AI failure, but they are
+    # also gated on the server having started: without that they would run
+    # against a dead stack after any earlier setup failure, burning the job
+    # budget on retries for zero signal.
     - name: Run Playwright tests (AI)
-      if: "!cancelled() && steps.check-secrets.outputs.has-ai-secrets == 'true'"
-      run: npx playwright test --grep @requires-ai --reporter=list
+      if: "!cancelled() && steps.start-server.outcome == 'success' && steps.check-secrets.outputs.has-ai-secrets == 'true'"
+      run: npx playwright test --grep @requires-ai --reporter=list --output=test-results-ai
       env:
         CI: true
+        PLAYWRIGHT_HTML_REPORT: playwright-report-ai
     
     # Upload test results on failure
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       if: failure()
       with:
         name: playwright-report
-        path: playwright-report/
+        path: |
+          playwright-report-no-ai/
+          playwright-report-ai/
         retention-days: 30
     
     # Upload test screenshots on failure
@@ -205,7 +215,9 @@ jobs:
       if: failure()
       with:
         name: test-results
-        path: test-results/
+        path: |
+          test-results-no-ai/
+          test-results-ai/
         retention-days: 30
     
     # Cleanup - Stop all containers and background processes

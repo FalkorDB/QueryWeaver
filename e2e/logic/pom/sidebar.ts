@@ -183,6 +183,25 @@ export class Sidebar extends HomePage {
     return await this.page.evaluate(() => window.innerWidth);
   }
 
+  /** Resizes the browser viewport, which re-derives the panel's width bounds. */
+  async setViewportWidth(width: number, height = 1080): Promise<void> {
+    await this.page.setViewportSize({ width, height });
+  }
+
+  /**
+   * Presses and releases the handle without moving the pointer. A bare click is
+   * how a keyboard user focuses the separator, so it must not count as a
+   * user-chosen width.
+   */
+  async clickSchemaPanelResizeHandle(): Promise<void> {
+    const box = await this.schemaPanelResizeHandle.boundingBox();
+    if (!box) throw new Error("Schema panel resize handle is not rendered!");
+
+    await this.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await this.page.mouse.down();
+    await this.page.mouse.up();
+  }
+
   /**
    * Drags the schema panel's resize handle so the panel's right edge lands on
    * `targetX`. Overshooting the min/max is intentional in tests: the panel is

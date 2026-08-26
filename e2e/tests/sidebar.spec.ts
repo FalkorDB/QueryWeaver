@@ -184,6 +184,73 @@ test.describe('Left Sidebar Tests', () => {
       const width = await sidebar.getSchemaPanelWidth();
       expect(Math.abs((await sidebar.getSchemaPanelAriaValueNow()) - width)).toBeLessThanOrEqual(2);
     });
+
+    // The bounds are viewport-relative, so re-clamping the *current* width on
+    // every window resize threw the user's choice away: narrowing pinned it to
+    // the minimum and widening never brought it back.
+    test('restores the chosen width after a transient narrowing', async () => {
+      const sidebar = await browser.createNewPage(Sidebar, getBaseUrl());
+      await browser.setPageToFullScreen();
+
+      await sidebar.clickOnSchemaButton();
+      await expect(sidebar.schemaPanelResizeHandle).toBeVisible();
+
+      // Widest the panel goes at 1920px: 60% == 1152px.
+      await sidebar.pressSchemaPanelResizeKey('End');
+      await expect.poll(async () => await sidebar.getSchemaPanelWidth()).toBeGreaterThan(1100);
+
+      // Dock devtools / tile the window: the panel has to clamp down to the
+      // new 60% maximum... (staying above the 768px mobile breakpoint, below
+      // which the panel is sized by a CSS class and ignores `width`).
+      await sidebar.setViewportWidth(1000);
+      await expect
+        .poll(async () => Math.abs((await sidebar.getSchemaPanelWidth()) - 1000 * 0.6))
+        .toBeLessThanOrEqual(2);
+
+      // ...and come back to the chosen width once there is room again.
+      await sidebar.setViewportWidth(1920);
+      await expect
+        .poll(async () => Math.abs((await sidebar.getSchemaPanelWidth()) - 1920 * 0.6))
+        .toBeLessThanOrEqual(2);
+    });
+
+    // The "recompute 50% of the current viewport on open" fix for issue #179
+    // is skipped once the user picks a width. Focusing the separator with a
+    // click is not picking a width.
+    test('a bare click on the handle does not count as a resize', async () => {
+      const sidebar = await browser.createNewPage(Sidebar, getBaseUrl());
+      await browser.setPageToFullScreen();
+
+      await sidebar.clickOnSchemaButton();
+      await expect(sidebar.schemaPanelResizeHandle).toBeVisible();
+      await sidebar.clickSchemaPanelResizeHandle();
+
+      // Close, resize the window, reopen: the panel must still track 50%.
+      await sidebar.clickOnSchemaButton();
+      await expect(sidebar.schemaPanelLocator).toBeHidden();
+      await sidebar.setViewportWidth(1200);
+      await sidebar.clickOnSchemaButton();
+
+      await expect
+        .poll(async () => Math.abs((await sidebar.getSchemaPanelWidth()) - 1200 * 0.5))
+        .toBeLessThanOrEqual(2);
+    });
+
+    // 20% of a small desktop window is ~150-200px, where the heading wraps and
+    // the canvas controls stack into three rows. A pixel floor keeps the panel
+    // usable; the 60% maximum still wins over it.
+    test('keeps a usable minimum width on a narrow desktop window', async () => {
+      const sidebar = await browser.createNewPage(Sidebar, getBaseUrl());
+      await sidebar.setViewportWidth(900);
+
+      await sidebar.clickOnSchemaButton();
+      await expect(sidebar.schemaPanelResizeHandle).toBeVisible();
+
+      await sidebar.pressSchemaPanelResizeKey('Home');
+      await expect
+        .poll(async () => Math.abs((await sidebar.getSchemaPanelWidth()) - 300))
+        .toBeLessThanOrEqual(2);
+    });
   });
 
   // Issue #238: the mobile burger used to be rendered twice with the same
