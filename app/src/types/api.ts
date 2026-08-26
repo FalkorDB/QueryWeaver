@@ -6,13 +6,19 @@ export interface User {
   email: string;
   name?: string;
   picture?: string;
-  provider?: 'google' | 'github';
+  /** 'api' identifies a session upgraded from a legacy API-token cookie. */
+  provider?: 'google' | 'github' | 'email' | 'api';
 }
 
 // Authentication types
 export interface AuthStatus {
   authenticated: boolean;
   user?: User;
+  /**
+   * The backend could not check, rather than checking and saying no. Callers
+   * should offer a retry instead of sending the user back to the login screen.
+   */
+  unavailable?: boolean;
 }
 
 // Graph/Database types

@@ -8,8 +8,9 @@ from fastapi import APIRouter, Request, HTTPException, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from api.auth.user_management import token_required
+from api.auth.user_management import identity_exists, token_required
 from api.config import ORGANIZATIONS_GRAPH
+from api.core.errors import AuthBackendUnavailableError
 from api.extensions import db
 
 UNAUTHORIZED_RESPONSE = {"description": "Unauthorized - Please log in or provide a valid API token"}
@@ -35,6 +36,16 @@ async def generate_token(request: Request) -> TokenListItem:
     try:
         user_email = request.state.user_email
 
+        # Minting a durable credential is the one place a signed session cookie
+        # is not enough on its own: the token outlives both the session TTL and
+        # a signing-key rotation, so it must not be issuable from a cookie whose
+        # identity has since been removed. Minting needs the graph anyway.
+        if not await identity_exists(user_email):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No stored identity for this login - sign in again before minting a token"
+            )
+
         # Call the registered Google callback handler if it exists to store user data.
         handler = getattr(request.app.state, "callback_handler", None)
         if handler:
@@ -47,8 +58,14 @@ async def generate_token(request: Request) -> TokenListItem:
                 "picture": ""
             }
 
-            # Call the registered handler (await if async)
-            await handler('api', user_data, api_token)
+            # A falsy result means the graph write did not land. Returning the
+            # token anyway would hand the user a credential that 401s on every
+            # request and never shows up in /tokens/list.
+            if not await handler('api', user_data, api_token):
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Could not store the new token - please retry"
+                )
 
             logging.info("Token generated for user: %s", user_email)  # nosemgrep
 
@@ -64,6 +81,12 @@ async def generate_token(request: Request) -> TokenListItem:
 
     except HTTPException:
         raise
+    except AuthBackendUnavailableError as e:
+        logging.warning("Auth store unreachable while generating a token: %s", e)  # nosemgrep
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Token service temporarily unavailable - please retry"
+        ) from e
     except Exception as e:
         logging.error("Error generating token: %s", e)  # nosemgrep
         raise HTTPException(

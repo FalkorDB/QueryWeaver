@@ -47,7 +47,7 @@ memory = [
 # Server dependencies (FastAPI, auth, etc.). Used to run the full app from a
 # repo/Docker checkout; the published SDK wheel does not include the server.
 server = [
-    "fastapi>=0.136.1,<0.141.0",
+    "fastapi>=0.136.1,<0.142.0",
     "uvicorn>=0.46,<0.52",
     "authlib~=1.7.0",
     "itsdangerous~=2.2.0",
@@ -66,7 +66,7 @@ dev = [
     "pytest-asyncio~=1.4.0",
     "pylint~=4.0.3",
     "playwright~=1.60.0",
-    "pytest-playwright~=0.8.0",
+    "pytest-playwright>=0.8,<0.10",
 ]
 
 # All dependencies (server + dev)
@@ -86,7 +86,7 @@ dev = [
     "pytest>=9.0.3,<9.2.0",
     "pylint~=4.0.3",
     "playwright~=1.60.0",
-    "pytest-playwright~=0.8.0",
+    "pytest-playwright>=0.8,<0.10",
     "pytest-asyncio~=1.4.0",
 ]
 
