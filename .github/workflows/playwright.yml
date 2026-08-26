@@ -182,8 +182,10 @@ jobs:
     # Each run gets its own report/output directory: Playwright clears both at
     # the start of a run, so sharing them let the AI run wipe the failing
     # non-AI run's HTML report, traces and screenshots before they were uploaded.
+    # `list` alone would replace the configured `html` reporter and leave the
+    # uploaded report directories empty, so both are named explicitly.
     - name: Run Playwright tests (no AI)
-      run: npx playwright test --grep-invert @requires-ai --reporter=list --output=test-results-no-ai
+      run: npx playwright test --grep-invert @requires-ai --reporter=list,html --output=test-results-no-ai
       env:
         CI: true
         PLAYWRIGHT_HTML_REPORT: playwright-report-no-ai
@@ -195,7 +197,7 @@ jobs:
     # budget on retries for zero signal.
     - name: Run Playwright tests (AI)
       if: "!cancelled() && steps.start-server.outcome == 'success' && steps.check-secrets.outputs.has-ai-secrets == 'true'"
-      run: npx playwright test --grep @requires-ai --reporter=list --output=test-results-ai
+      run: npx playwright test --grep @requires-ai --reporter=list,html --output=test-results-ai
       env:
         CI: true
         PLAYWRIGHT_HTML_REPORT: playwright-report-ai
