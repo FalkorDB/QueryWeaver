@@ -23,6 +23,14 @@ export class AuthService {
         return { authenticated: false };
       }
 
+      // 503 = the backend could not check, not a verdict that you are logged
+      // out. Keep the two apart so the UI can offer a retry rather than
+      // bouncing a still-valid login to the sign-in screen.
+      if (response.status === 503) {
+        console.log('Authentication service temporarily unavailable');
+        return { authenticated: false, unavailable: true };
+      }
+
       if (!response.ok) {
         return { authenticated: false };
       }
@@ -32,7 +40,7 @@ export class AuthService {
     } catch (error) {
       // Backend not available - return unauthenticated for demo mode
       console.log('Backend not available for auth - using demo mode');
-      return { authenticated: false };
+      return { authenticated: false, unavailable: true };
     }
   }
 
