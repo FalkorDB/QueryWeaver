@@ -188,7 +188,7 @@ jobs:
       run: npx playwright test --grep-invert @requires-ai --reporter=list,html --output=test-results-no-ai
       env:
         CI: true
-        PLAYWRIGHT_HTML_REPORT: playwright-report-no-ai
+        PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-no-ai
 
     # Run AI-dependent Playwright tests (only when secrets are available).
     # `!cancelled()` keeps them running after a non-AI failure, but they are
@@ -200,7 +200,7 @@ jobs:
       run: npx playwright test --grep @requires-ai --reporter=list,html --output=test-results-ai
       env:
         CI: true
-        PLAYWRIGHT_HTML_REPORT: playwright-report-ai
+        PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-ai
     
     # Upload test results on failure
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
