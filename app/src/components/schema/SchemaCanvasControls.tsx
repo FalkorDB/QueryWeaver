@@ -77,6 +77,12 @@ interface SchemaCanvasControlsProps {
   onSelectTable: (tableId: number | null) => void;
   /** Frames the matching tables (all of them when no predicate is given). */
   onFrameNodes: (match?: (nodeId: number) => boolean) => void;
+  /**
+   * Re-frames the current view once the new layout has settled. The canvas runs
+   * its own centre-based fit after a layout change, which clips tall cards and
+   * discards any highlight framing.
+   */
+  onLayoutChanged: () => void;
 }
 
 const SchemaCanvasControls = ({
@@ -88,6 +94,7 @@ const SchemaCanvasControls = ({
   selectedTableId,
   onSelectTable,
   onFrameNodes,
+  onLayoutChanged,
 }: SchemaCanvasControlsProps) => {
   const [layout, setLayout] = useState<LayoutMode>('force');
   const [direction, setDirection] = useState<string>('');
@@ -216,12 +223,15 @@ const SchemaCanvasControls = ({
       setAnimation(false);
       canvasRef.current?.setAnimation(false);
     }
+
+    onLayoutChanged();
   };
 
   const handleDirectionChange = (value: string, targetLayout: LayoutMode) => {
     directionsRef.current = { ...directionsRef.current, [targetLayout]: value };
     setDirection(value);
     applyDirection(targetLayout, value);
+    onLayoutChanged();
   };
 
   const handleAnimationToggle = (checked: boolean) => {
