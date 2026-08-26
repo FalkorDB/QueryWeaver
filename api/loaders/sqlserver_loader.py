@@ -29,7 +29,9 @@ class SQLServerConnectionError(Exception):
     """Exception raised for SQL Server connection errors."""
 
 
-def validate_ident(identifier: str, identifier_type: str = "identifier") -> str:
+def validate_ident(
+    identifier: str, identifier_type: str = "identifier", allow_dot: bool = True
+) -> str:
     """Validate that an identifier is safe to interpolate into T-SQL.
 
     T-SQL cannot bind identifiers as parameters, so table, schema and column
@@ -41,6 +43,11 @@ def validate_ident(identifier: str, identifier_type: str = "identifier") -> str:
     Args:
         identifier: Raw identifier, typically read from the system catalog.
         identifier_type: Label used in the error message.
+        allow_dot: Whether ``.`` is accepted. A dot is legal inside a
+            bracket-quoted SQL Server name, but callers that recover a schema
+            and a table from one dotted string cannot tell the two apart, so
+            they pass ``False`` and get a clear error instead of a query
+            against the wrong object.
 
     Returns:
         The identifier, unchanged, once validated.
@@ -54,10 +61,12 @@ def validate_ident(identifier: str, identifier_type: str = "identifier") -> str:
             f"Invalid {identifier_type}: {identifier!r}. "
             "Must be between 1 and 128 characters."
         )
-    if not re.fullmatch(r'[A-Za-z0-9_$#@ .\-]+', identifier):
+    allowed = r'[A-Za-z0-9_$#@ .\-]+' if allow_dot else r'[A-Za-z0-9_$#@ \-]+'
+    if not re.fullmatch(allowed, identifier):
+        dot = "dot, " if allow_dot else ""
         raise ValueError(
             f"Invalid {identifier_type}: {identifier!r}. Only letters, digits, "
-            "underscore, dollar, hash, at-sign, space, dot and dash are allowed."
+            f"underscore, dollar, hash, at-sign, space, {dot}and dash are allowed."
         )
     return identifier
 
@@ -148,12 +157,20 @@ class SQLServerLoader(BaseLoader):
         SQL Server implementation using TOP with NEWID() for random sampling.
 
         ``table_name`` may be schema-qualified (``schema.table``); each part is
-        bracket-quoted separately so the schema prefix survives.
+        bracket-quoted separately so the schema prefix survives. A dot is legal
+        inside a bracket-quoted name, but a single dotted string cannot say
+        which dot is the separator, so neither part may contain one: a
+        dot-bearing name is rejected rather than sampled from the wrong object.
         """
         schema, _, bare_table = table_name.rpartition('.')
-        qualified = quote_ident(validate_ident(bare_table, "table name"))
+        qualified = quote_ident(
+            validate_ident(bare_table, "table name", allow_dot=False)
+        )
         if schema:
-            qualified = f"{quote_ident(validate_ident(schema, 'schema name'))}.{qualified}"
+            qualified = (
+                f"{quote_ident(validate_ident(schema, 'schema name', allow_dot=False))}"
+                f".{qualified}"
+            )
 
         col = quote_ident(validate_ident(col_name, "column name"))
         if not isinstance(sample_size, int) or sample_size <= 0:

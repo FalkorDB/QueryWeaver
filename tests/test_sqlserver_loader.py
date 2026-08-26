@@ -152,6 +152,18 @@ class TestValidateIdent:
         with pytest.raises(ValueError, match="schema name"):
             validate_ident("bad;name", "schema name")
 
+    def test_dot_can_be_disallowed(self):
+        """Callers that split a dotted string opt out of accepting dots."""
+        assert validate_ident("a.b") == "a.b"
+        with pytest.raises(ValueError, match="table name"):
+            validate_ident("a.b", "table name", allow_dot=False)
+
+    def test_message_drops_dot_when_it_is_disallowed(self):
+        """The allow-list in the message matches the one actually applied."""
+        with pytest.raises(ValueError) as excinfo:
+            validate_ident("a.b", allow_dot=False)
+        assert "dot" not in str(excinfo.value)
+
 
 class TestSampleQueryValidation:
     """The sample query refuses hostile identifiers outright."""
@@ -174,6 +186,19 @@ class TestSampleQueryValidation:
         cursor = FakeCursor([[]])
         with pytest.raises(ValueError):
             SQLServerLoader._execute_sample_query(cursor, "dbo.T", "c", sample_size=size)
+        assert cursor.executed == []
+
+    @pytest.mark.parametrize("table", ["dbo.my.table", "my.table.T"])
+    def test_ambiguous_dotted_name_is_refused(self, table):
+        """A dot is legal in a bracket-quoted name but not recoverable here.
+
+        ``rpartition`` has to guess which dot separates the schema from the
+        table, so ``dbo.my.table`` would otherwise be sampled as ``[dbo.my]``
+        dot ``[table]`` -- a different object, silently.
+        """
+        cursor = FakeCursor([[]])
+        with pytest.raises(ValueError):
+            SQLServerLoader._execute_sample_query(cursor, table, "c")
         assert cursor.executed == []
 
 
