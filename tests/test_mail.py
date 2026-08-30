@@ -2,7 +2,7 @@
 
 The transport is deliberately thin, so the only things worth pinning are the
 ones that would be silently wrong: that a failed send is reported rather than
-raised, that a failure does not leak the verification link into the logs, and
+raised, that a failure does not leak the confirmation code into the logs, and
 that a recipient address cannot smuggle extra headers into the message.
 """
 
@@ -58,18 +58,18 @@ class TestTransportSelection:
     @pytest.mark.asyncio
     async def test_console_transport_logs_the_body(self, caplog):
         # Local development has no mail server, so the log is where the
-        # verification link has to be readable from.
+        # confirmation code has to be readable from.
         with caplog.at_level("INFO"):
             sent = await mail.send_mail(
-                to="new@example.com", subject="Confirm", text_body="http://link"
+                to="new@example.com", subject="Confirm", text_body="code 123456"
             )
 
         assert sent is True
-        assert "http://link" in caplog.text
+        assert "code 123456" in caplog.text
 
 
 class TestFileTransport:
-    """The outbox the end-to-end suite reads the verification link out of."""
+    """The outbox the end-to-end suite reads the confirmation code out of."""
 
     @pytest.mark.asyncio
     async def test_message_is_written_as_a_readable_file(self, monkeypatch, tmp_path):
@@ -77,7 +77,7 @@ class TestFileTransport:
         monkeypatch.setenv("MAIL_OUTBOX_DIR", str(outbox))
 
         sent = await mail.send_mail(
-            to="new@example.com", subject="Confirm", text_body="http://link"
+            to="new@example.com", subject="Confirm", text_body="code 123456"
         )
 
         assert sent is True
@@ -85,7 +85,7 @@ class TestFileTransport:
         assert len(files) == 1
         contents = files[0].read_text()
         assert "new@example.com" in contents
-        assert "http://link" in contents
+        assert "code 123456" in contents
 
     @pytest.mark.asyncio
     async def test_an_unwritable_outbox_is_reported_not_raised(self, monkeypatch, tmp_path):
@@ -112,13 +112,13 @@ class TestSmtpTransport:
             sent = await mail.send_mail(
                 to="new@example.com",
                 subject="Confirm",
-                text_body="http://link-that-must-not-leak",
+                text_body="code-that-must-not-leak",
             )
 
         assert sent is False
-        # The body carries a live verification link; logging it on failure would
+        # The body carries a live confirmation code; logging it on failure would
         # put a credential in the log file.
-        assert "link-that-must-not-leak" not in caplog.text
+        assert "code-that-must-not-leak" not in caplog.text
 
     @pytest.mark.asyncio
     async def test_an_smtp_error_is_reported_not_raised(self, monkeypatch):

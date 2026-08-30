@@ -390,7 +390,7 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
         # (CVE-2026-10130, authentication bypass via signup token issuance).
         if await _email_account_exists(email):
             logging.info("Signup attempt for existing account: %s", _sanitize_for_log(email))
-            # An account exists, so any link still outstanding for this address
+            # An account exists, so any code still outstanding for this address
             # must not stay redeemable against it.
             await discard_pending_signup(email)
             return JSONResponse(
@@ -399,8 +399,8 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
             )
 
         # Nothing is created yet. The details are parked on a PendingSignup node
-        # and only become a User when the emailed link is opened, so an address
-        # the registrant does not control never turns into an account at all.
+        # and only become a User when the mailed code is typed back in, so an
+        # address the registrant does not control never turns into an account.
         password_hash = _hash_password(password)
         issue = await start_pending_signup(email, first_name, last_name, password_hash)
 

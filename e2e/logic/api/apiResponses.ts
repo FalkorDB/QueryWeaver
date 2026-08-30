@@ -25,7 +25,7 @@ export interface LoginResponse {
   error?: string;
 }
 
-/** Signup creates nothing: it mails a link and reports that it is waiting. */
+/** Signup creates nothing: it mails a code and reports that it is waiting. */
 export interface SignupResponse {
   success: boolean;
   pending?: boolean;

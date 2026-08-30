@@ -1,6 +1,6 @@
 """Outbound mail.
 
-QueryWeaver sends one kind of message today -- the signup verification link --
+QueryWeaver sends one kind of message today -- the signup confirmation code --
 so this module stays small: pick a transport from the environment, hand it a
 built message, and report whether it left the process.
 
@@ -9,7 +9,7 @@ Three transports:
 * ``console`` (the default) writes the message to the log instead of sending
   it, so local development completes the signup flow without a mail server.
 * ``file`` writes each message to ``MAIL_OUTBOX_DIR`` as an ``.eml``. The
-  Playwright suite reads the verification link back out of it, which is what
+  Playwright suite reads the confirmation code back out of it, which is what
   keeps the end-to-end signup test exercising the real flow instead of a
   test-only shortcut through the backend. It takes precedence over a configured
   relay: nobody sets this variable by accident, and a test run that quietly
@@ -161,7 +161,7 @@ def _sanitize_for_log(value: str) -> str:
     # ``.replace('\n', ...)`` must be the outermost call for CodeQL's
     # log-injection sanitizer to recognise it. The body is deliberately
     # rendered on one line rather than dropped: the console transport exists so
-    # a developer can copy the verification link out of the log.
+    # a developer can copy the confirmation code out of the log.
     return str(value).replace("\r", " ").replace("\n", " ")
 
 
@@ -225,6 +225,6 @@ async def send_mail(
         return True
     except (smtplib.SMTPException, OSError, ssl.SSLError) as e:
         # Deliberately does not log the message body: it carries the
-        # verification link, which is a credential.
+        # confirmation code, which is a credential.
         logging.error("Could not send mail via SMTP: %s", e)
         return False
