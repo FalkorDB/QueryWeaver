@@ -6,8 +6,13 @@ built message, and report whether it left the process.
 
 Three transports:
 
-* ``console`` (the default) writes the message to the log instead of sending
-  it, so local development completes the signup flow without a mail server.
+* ``console`` writes the message to the log instead of sending it, so local
+  development completes the signup flow without a mail server. It is what an
+  unconfigured process falls back to, which is why it is confined to
+  ``APP_ENV=development``: reached by omission anywhere else, it would turn a
+  deployment that forgot ``MAIL_SERVER`` into one that logs every confirmation
+  code and tells the user it sent them. Outside development the send simply
+  fails, which the signup routes surface and roll back.
 * ``file`` writes each message to ``MAIL_OUTBOX_DIR`` as an ``.eml``. The
   Playwright suite reads the confirmation code back out of it, which is what
   keeps the end-to-end signup test exercising the real flow instead of a
@@ -95,11 +100,28 @@ def outbox_dir() -> str:
     return os.getenv("MAIL_OUTBOX_DIR", "").strip()
 
 
+def console_transport_allowed() -> bool:
+    """Whether mail may be logged instead of sent.
+
+    Fail secure, the same way the session cookie's ``Secure`` flag does: the
+    console transport is what a laptop with no relay falls back to, and it
+    writes the confirmation code -- a credential -- into the log. Since it is
+    reached by *omitting* configuration rather than choosing it, a deployment
+    that forgets ``MAIL_SERVER`` would otherwise swallow every code silently and
+    tell the user their mail was on its way. Only an explicit
+    ``APP_ENV=development`` opts in.
+    """
+    app_env = os.getenv("APP_ENV")
+    return app_env is not None and app_env.strip().lower() == "development"
+
+
 def transport_name() -> str:
     """Name of the active transport, for logs and diagnostics."""
     if outbox_dir():
         return "file"
-    return "smtp" if is_smtp_configured() else "console"
+    if is_smtp_configured():
+        return "smtp"
+    return "console" if console_transport_allowed() else "none"
 
 
 def default_sender() -> str:
@@ -217,6 +239,15 @@ async def send_mail(
         return _write_to_outbox(message, directory)
 
     if not is_smtp_configured():
+        if not console_transport_allowed():
+            # No relay, and not a development run. Refusing is the honest
+            # answer: the caller rolls the signup back and tells the user to
+            # retry, instead of the code being logged and never delivered.
+            logging.error(
+                "No MAIL_SERVER is configured, so this message cannot be sent. "
+                "Set MAIL_SERVER, or APP_ENV=development to log mail instead."
+            )
+            return False
         _log_to_console(message, text_body)
         return True
 

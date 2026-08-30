@@ -23,9 +23,12 @@ from pydantic import BaseModel
 from api.auth.browser_session import (
     clear_browser_session,
     establish_browser_session,
+    forget_signup_ticket,
     is_provisioned,
     mark_provisioned,
     read_browser_session,
+    read_signup_ticket,
+    remember_signup_ticket,
 )
 from api.auth.email_verification import (
     RESULT_OK,
@@ -287,24 +290,25 @@ async def _complete_login(request: Request, provider: str, user_data: dict) -> N
         )
 
 
-def _refuse_verification_send(issue) -> JSONResponse:
-    """Turn a refused code request into a response."""
-    if issue.exhausted:
-        return JSONResponse(
-            {"success": False,
-             "error": "Too many verification emails have been sent to this address. "
-                      "Please try again later."},
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        )
-    wait = resend_interval_seconds()
-    return JSONResponse(
-        {"success": False,
-         "error": "A verification email was just sent. Please wait a moment before "
-                  "requesting another.",
-         "retryAfterSeconds": wait},
-        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        headers={"Retry-After": str(wait)},
-    )
+def _signup_accepted(email: str) -> JSONResponse:
+    """The one answer ``/signup/email`` gives once the form itself is valid.
+
+    202, not 201: the account does not exist yet, and will not until the code
+    comes back. It reads the same whether a code went out or the address was
+    refused one for being asked too often -- a 429 here would say that a signup
+    for this address is already in flight, which is the same question
+    ``/signup/email/resend`` deliberately refuses to answer.
+    """
+    return JSONResponse({
+        "success": True,
+        "pending": True,
+        "email": email,
+        "message": "Check your inbox for the confirmation code.",
+        "codeTtlSeconds": code_ttl_seconds(),
+        # So the resend button comes back exactly when another request
+        # would be honoured, whatever the deployment configured.
+        "retryAfterSeconds": resend_interval_seconds(),
+    }, status_code=status.HTTP_202_ACCEPTED)
 
 
 # ---- Email Authentication Routes ----
@@ -367,12 +371,22 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
         issue = await start_pending_signup(email, first_name, last_name, password_hash)
 
         if not issue.issued:
-            return _refuse_verification_send(issue)
+            # Refused for asking too often. Answered exactly like a success so
+            # the state of a stranger's signup stays private; the caller can
+            # still use the code they were sent a moment ago.
+            logging.info("Verification code not issued for %s", _sanitize_for_log(email))
+            return _signup_accepted(email)
 
         if not await send_verification_code(email, first_name, issue.code):
-            # The code never left the building, so the pending record is dead
-            # weight that would only burn the rate limit on the retry.
-            await discard_pending_signup(email)
+            if issue.previous_code_hash:
+                # This address already had a live code before the failed send.
+                # Put it back rather than deleting the record: the user may be
+                # holding that code, and it is the only one that ever arrived.
+                await revert_verification_send(email, issue)
+            else:
+                # Nothing was displaced, so the record is dead weight that would
+                # only burn the rate limit on the retry.
+                await discard_pending_signup(email)
             logging.error("Could not send the verification email for %s",
                           _sanitize_for_log(email))
             return JSONResponse(
@@ -381,21 +395,15 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE
             )
 
+        # The other half of the code. It stays in this browser's session, so the
+        # code is only redeemable here -- someone else re-submitting this
+        # address cannot have their password confirmed by its owner.
+        remember_signup_ticket(request, email=email, ticket=issue.ticket)
+
         logging.info("Verification code sent for pending signup: %s",
                      _sanitize_for_log(email))
 
-        # 202, not 201: the account does not exist yet, and will not until the
-        # code comes back. No session is established here for the same reason.
-        return JSONResponse({
-            "success": True,
-            "pending": True,
-            "email": email,
-            "message": "Check your inbox for the confirmation code.",
-            "codeTtlSeconds": code_ttl_seconds(),
-            # So the resend button comes back exactly when another request
-            # would be honoured, whatever the deployment configured.
-            "retryAfterSeconds": resend_interval_seconds(),
-        }, status_code=status.HTTP_202_ACCEPTED)
+        return _signup_accepted(email)
 
     except (AuthBackendUnavailableError, *TRANSIENT_BACKEND_ERRORS) as e:
         # Same reasoning as /login/email: an unreachable store is not a rejected
@@ -429,6 +437,12 @@ async def verify_email(request: Request, verify_data: EmailVerifyRequest) -> JSO
     create the account, and the stranger would know the password to it. The
     person who fills in the form is the only one who sees both halves.
 
+    Both halves are checked. The ticket held in this browser's session is the
+    other one, and without it the same attack survives the change to codes:
+    re-submit a stranger's pending signup with a password of your own, and the
+    code that reaches them redeems *your* password. A code is only good in the
+    browser it was issued to.
+
     Every refusal reads the same. Whether the address has a signup pending, a
     wrong code, an expired one or nothing at all is not something an
     unauthenticated caller gets to learn by guessing.
@@ -452,12 +466,25 @@ async def verify_email(request: Request, verify_data: EmailVerifyRequest) -> JSO
     if not _validate_email(email) or not code:
         return rejected
 
+    ticket = read_signup_ticket(request, email=email)
+    if not ticket:
+        # No signup was started in this browser for this address, so there is
+        # nothing here to confirm -- whatever code the caller has, it belongs to
+        # somebody else's session.
+        logging.info("Verification without a signup ticket for %s",
+                     _sanitize_for_log(email))
+        return rejected
+
     try:
-        pending, result = await consume_pending_signup(email, code)
+        pending, result = await consume_pending_signup(email, code, ticket)
         if result != RESULT_OK or pending is None:
             logging.info("Verification refused for %s: %s",
                          _sanitize_for_log(email), result)
             return rejected
+
+        # The code is spent from here on, whatever happens next, so the ticket
+        # that went with it has nothing left to unlock.
+        forget_signup_ticket(request)
 
         # The address may have acquired an account by another route (Google,
         # GitHub) while the code sat unused. The code is spent either way.
@@ -573,7 +600,8 @@ async def resend_verification_email(
 
     if not issue.issued:
         # Unknown address, throttled and exhausted are indistinguishable here by
-        # design; only the log tells them apart.
+        # design, and are not told apart anywhere else either: knowing which one
+        # it was is the answer this endpoint exists to withhold.
         logging.info("Verification resend not issued for %s", _sanitize_for_log(email))
         return accepted
 

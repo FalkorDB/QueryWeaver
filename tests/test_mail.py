@@ -18,17 +18,46 @@ pytestmark = [pytest.mark.unit]
 
 @pytest.fixture(autouse=True)
 def _clean_mail_env(monkeypatch):
-    """Start every test from the default (console) transport."""
+    """Start every test from an unconfigured development process."""
     monkeypatch.delenv("MAIL_SERVER", raising=False)
     monkeypatch.delenv("MAIL_OUTBOX_DIR", raising=False)
+    monkeypatch.setenv("APP_ENV", "development")
 
 
 class TestTransportSelection:
     """Which transport is used, and how that is reported."""
 
-    def test_console_is_the_default(self):
+    def test_console_is_the_development_fallback(self):
         assert mail.is_smtp_configured() is False
         assert mail.transport_name() == "console"
+
+    def test_there_is_no_fallback_outside_development(self, monkeypatch):
+        # Console is reached by omitting configuration, so a deployment that
+        # forgets MAIL_SERVER would otherwise log every confirmation code and
+        # report the mail as sent. Fail secure, like the session cookie.
+        for app_env in ("production", "staging", "Development ", ""):
+            monkeypatch.setenv("APP_ENV", app_env)
+            assert mail.console_transport_allowed() is (
+                app_env.strip().lower() == "development"
+            )
+
+        monkeypatch.delenv("APP_ENV", raising=False)
+        assert mail.console_transport_allowed() is False
+        assert mail.transport_name() == "none"
+
+    @pytest.mark.asyncio
+    async def test_an_unconfigured_deployment_fails_the_send(self, monkeypatch, caplog):
+        # Reporting success would leave the user waiting for a mail nobody sent
+        # while its code sat in the log. The signup route rolls back on False.
+        monkeypatch.setenv("APP_ENV", "production")
+
+        with caplog.at_level("INFO"):
+            sent = await mail.send_mail(
+                to="new@example.com", subject="Confirm", text_body="code 123456"
+            )
+
+        assert sent is False
+        assert "123456" not in caplog.text
 
     def test_configuring_a_server_switches_to_smtp(self, monkeypatch):
         monkeypatch.setenv("MAIL_SERVER", "smtp.example.com")
@@ -57,7 +86,7 @@ class TestTransportSelection:
 
     @pytest.mark.asyncio
     async def test_console_transport_logs_the_body(self, caplog):
-        # Local development has no mail server, so the log is where the
+        # A development run has no mail server, so the log is where the
         # confirmation code has to be readable from.
         with caplog.at_level("INFO"):
             sent = await mail.send_mail(

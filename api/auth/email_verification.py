@@ -19,6 +19,16 @@ account they do not control the password to. A code has to be carried back to
 the session that submitted the form, and the person who submitted it never sees
 the mail. It also means no URL for a mail scanner to fetch and silently burn.
 
+The code alone is not quite enough, because two people can submit the same
+address. Whoever writes last owns the stored password, and the code that goes
+out is mailed to the address, not to the submitter -- so a stranger could
+re-submit someone else's pending signup with a password of their own and let the
+owner redeem it for them. Each submission therefore also mints a ticket that
+stays in the submitting browser's session, and a code is only redeemable by the
+browser holding the ticket that was issued with it. Re-submission then costs the
+first submitter their pending signup, which is a nuisance they can undo by
+signing up again, rather than an account under someone else's password.
+
 The code is short, so its secrecy cannot rest on entropy -- a million
 possibilities is nothing to a script. What bounds it is the attempt limit: a
 handful of wrong guesses destroys the pending signup outright, and the code
@@ -86,22 +96,24 @@ class PendingSignup:
 
 
 @dataclass(frozen=True)
-class CodeIssue:  # pylint: disable=too-many-instance-attributes
+class CodeIssue:
     """The result of asking for a verification code.
 
-    ``code`` is the only time the raw value exists outside the mail; the graph
-    keeps just its hash. ``throttled`` and ``exhausted`` are separated so the
-    caller can tell "come back in a minute" from "stop asking".
+    ``code`` is the only time the raw value exists outside the mail, and
+    ``ticket`` the only time that value exists outside the caller's session; the
+    graph keeps just their hashes. Nothing here says *why* a code was refused:
+    the routes answer refusals and successes identically, so the reason would
+    only be a way to ask the graph questions about other people's addresses.
 
     The ``previous_*`` fields are the code this one displaced, so
     ``revert_verification_send`` can put it back if the mail never goes out.
+    They also say whether there was a pending signup here at all: a code hash
+    means the record pre-dated this call.
     """
 
     code: Optional[str] = None
     first_name: Optional[str] = None
-    throttled: bool = False
-    exhausted: bool = False
-    missing: bool = False
+    ticket: Optional[str] = None
     previous_code_hash: Optional[str] = None
     previous_expires_at: Optional[int] = None
     previous_attempts: Optional[int] = None
@@ -159,6 +171,16 @@ def generate_code() -> str:
     return f"{secrets.randbelow(10 ** CODE_DIGITS):0{CODE_DIGITS}d}"
 
 
+def generate_ticket() -> str:
+    """A fresh signup ticket.
+
+    Unlike the code this one is never typed by anybody, so it is as long as it
+    wants to be -- and it has to be, because it is the half of the pair that
+    never leaves the browser and therefore has no attempt limit behind it.
+    """
+    return secrets.token_urlsafe(32)
+
+
 def hash_code(code: str) -> str:
     """Hash a raw code for storage and lookup."""
     return hashlib.sha256(code.encode("utf-8")).hexdigest()
@@ -169,64 +191,70 @@ def _graph():
     return db.select_graph(ORGANIZATIONS_GRAPH)
 
 
-async def _read_send_state(email: str) -> Tuple[Optional[int], int, Optional[str]]:
-    """Return ``(last_sent_at, send_count, first_name)`` for a pending signup."""
-    result = await _graph().query(
-        """
-        MATCH (p:PendingSignup {email: $email})
-        RETURN p.last_sent_at AS last_sent_at,
-               p.send_count AS send_count,
-               p.first_name AS first_name
-        """,
-        {"email": email},
-    )
-    if not result.result_set:
-        return None, 0, None
-    last_sent_at, send_count, first_name = result.result_set[0]
-    return last_sent_at, int(send_count or 0), first_name
-
-
 # The guard the two issuing queries share. It rides along in the write itself
 # rather than being checked first: a single Cypher query is atomic and writes to
 # one graph are serialised, so checking separately would let two concurrent
 # requests both pass the check and both send while the counter advanced once.
-_SEND_ALLOWED = """
-        WHERE p.send_count < $max_sends
+#
+# ``stale`` is what keeps the send budget from turning into a permanent lock on
+# an address. Nothing deletes a pending signup that is simply never confirmed,
+# so without it a stranger could spend an address's five sends, leave the
+# counter pinned at its limit for good, and the real owner would never be able
+# to sign up. Once the code the counter was rationing has expired the record is
+# spent anyway, and the next submission starts a fresh budget on it.
+_SEND_GUARD = """
+        WITH p, (p.expires_at IS NULL OR p.expires_at < $now) AS stale
+        WHERE (stale OR p.send_count < $max_sends)
           AND (p.last_sent_at IS NULL OR $now - p.last_sent_at >= $interval_ms)
 """
 
+# Counts this send, starting over when the record it lands on had expired. The
+# interval still applies on that path, so an expired record is not a way to send
+# faster -- only a way to keep sending at all.
+_COUNT_SEND = "p.send_count = CASE WHEN stale THEN 1 ELSE p.send_count + 1 END"
+
 # Creates the pending signup if it is new, then replaces its details and issues
 # a code -- but only for a node the guard lets through. A node created by this
-# very query starts at zero sends, so it always passes.
+# very query has no code and no expiry, so it counts as stale and always passes.
 _START_SIGNUP = (
     """
         MERGE (p:PendingSignup {email: $email})
         ON CREATE SET p.created_at = $now, p.send_count = 0
-        WITH p
 """
-    + _SEND_ALLOWED
+    + _SEND_GUARD
     + """
+        WITH p, stale,
+             p.code_hash AS previous_code_hash,
+             p.expires_at AS previous_expires_at,
+             p.attempts AS previous_attempts
         SET p.code_hash = $code_hash,
+            p.ticket_hash = $ticket_hash,
             p.first_name = $first_name,
             p.last_name = $last_name,
             p.password_hash = $password_hash,
             p.expires_at = $expires_at,
             p.attempts = 0,
             p.last_sent_at = $now,
-            p.send_count = p.send_count + 1
-        RETURN p.send_count AS send_count
+            """
+    + _COUNT_SEND
+    + """
+        RETURN previous_code_hash,
+               previous_expires_at,
+               previous_attempts
 """
 )
 
 # Refresh only: never MERGE, so the resend endpoint cannot conjure a pending
-# signup for an address nobody submitted.
+# signup for an address nobody submitted. The ticket is deliberately left alone
+# -- a resend is another copy of the same signup, not a new one, and rotating it
+# would lock out the browser that is waiting for the code.
 _REFRESH_SIGNUP = (
     """
         MATCH (p:PendingSignup {email: $email})
 """
-    + _SEND_ALLOWED
+    + _SEND_GUARD
     + """
-        WITH p,
+        WITH p, stale,
              p.code_hash AS previous_code_hash,
              p.expires_at AS previous_expires_at,
              p.attempts AS previous_attempts
@@ -234,7 +262,9 @@ _REFRESH_SIGNUP = (
             p.expires_at = $expires_at,
             p.attempts = 0,
             p.last_sent_at = $now,
-            p.send_count = p.send_count + 1
+            """
+    + _COUNT_SEND
+    + """
         RETURN p.first_name AS first_name,
                previous_code_hash,
                previous_expires_at,
@@ -255,7 +285,7 @@ _REVERT_SEND = """
 
 
 def _throttle_params(now: int) -> dict:
-    """The parameters ``_SEND_ALLOWED`` reads."""
+    """The parameters ``_SEND_GUARD`` reads."""
     return {
         "now": now,
         "max_sends": max_sends(),
@@ -263,33 +293,26 @@ def _throttle_params(now: int) -> dict:
     }
 
 
-async def _classify_refusal(email: str) -> CodeIssue:
-    """Say why the guard rejected a send. Only ever reports, never decides."""
-    last_sent_at, send_count, first_name = await _read_send_state(email)
-    if last_sent_at is None and send_count == 0 and first_name is None:
-        return CodeIssue(missing=True)
-    if send_count >= max_sends():
-        return CodeIssue(exhausted=True)
-    return CodeIssue(throttled=True)
-
-
 async def start_pending_signup(
     email: str, first_name: str, last_name: str, password_hash: str
 ) -> CodeIssue:
-    """Record a signup awaiting verification and return its code.
+    """Record a signup awaiting verification and return its code and ticket.
 
     Re-submitting the form for an address that is already pending replaces the
-    stored details and invalidates the previous code, so the most recent attempt
-    is the one that works. The send counter deliberately survives that replace:
-    otherwise resubmitting would reset the rate limit and defeat it.
+    stored details and invalidates the previous code *and* ticket, so only the
+    browser behind the most recent attempt can complete it. The send counter
+    deliberately survives that replace: otherwise resubmitting would reset the
+    rate limit and defeat it.
     """
     now = _now_ms()
     code = generate_code()
+    ticket = generate_ticket()
     result = await _graph().query(
         _START_SIGNUP,
         {
             "email": email,
             "code_hash": hash_code(code),
+            "ticket_hash": hash_code(ticket),
             "first_name": first_name,
             "last_name": last_name,
             "password_hash": password_hash,
@@ -298,9 +321,21 @@ async def start_pending_signup(
         },
     )
     if not result.result_set:
-        return await _classify_refusal(email)
+        # Sent to a moment ago, or out of sends while the current code is still
+        # live. Which one is not reported: the route answers a refusal exactly
+        # like a success, so telling them apart here would only be a way to ask
+        # whether a stranger's address has a signup in flight.
+        return CodeIssue()
 
-    return CodeIssue(code=code, first_name=first_name)
+    previous_code_hash, previous_expires_at, previous_attempts = result.result_set[0]
+    return CodeIssue(
+        code=code,
+        first_name=first_name,
+        ticket=ticket,
+        previous_code_hash=previous_code_hash,
+        previous_expires_at=previous_expires_at,
+        previous_attempts=previous_attempts,
+    )
 
 
 async def refresh_pending_signup(email: str) -> CodeIssue:
@@ -325,8 +360,8 @@ async def refresh_pending_signup(email: str) -> CodeIssue:
     if not result.result_set:
         # No pending signup, one that has used up its sends, or one that was
         # sent to a moment ago. Also covers losing a race with a verification
-        # that just consumed the record.
-        return await _classify_refusal(email)
+        # that just consumed the record. Indistinguishable on purpose.
+        return CodeIssue()
 
     first_name, previous_code_hash, previous_expires_at, previous_attempts = (
         result.result_set[0]
@@ -371,7 +406,9 @@ async def revert_verification_send(email: str, issue: CodeIssue) -> None:
 # check that only one increment ever answered for.
 _CONSUME_CODE = """
         MATCH (p:PendingSignup {email: $email})
-        WHERE p.code_hash = $code_hash AND p.attempts < $max_attempts
+        WHERE p.code_hash = $code_hash
+          AND p.ticket_hash = $ticket_hash
+          AND p.attempts < $max_attempts
         WITH p,
              p.first_name AS first_name,
              p.last_name AS last_name,
@@ -394,13 +431,19 @@ _CHARGE_ATTEMPT = """
 
 
 async def consume_pending_signup(
-    email: str, code: str
+    email: str, code: str, ticket: str
 ) -> Tuple[Optional[PendingSignup], str]:
     """Redeem a verification code exactly once.
 
     Returns ``(pending, RESULT_OK)`` when the code was live. The node is deleted
     in the same query that reads it, so a replayed code finds nothing -- that,
     not a flag, is what makes it single-use.
+
+    Both halves are required. The code proves the caller reads the address's
+    mail; the ticket proves they are the browser that submitted the password
+    being redeemed. Without the ticket, anyone could re-submit a stranger's
+    pending signup under a password of their own and let the address's owner
+    confirm it into an account the submitter can log into.
 
     A wrong guess is charged against the record's attempt budget, and running
     that budget out deletes the pending signup. That, rather than the length of
@@ -409,7 +452,7 @@ async def consume_pending_signup(
     Lookup is by code *hash*, an exact match on a stored value, so there is no
     secret-dependent comparison here for timing to leak.
     """
-    if not email or not code:
+    if not email or not code or not ticket:
         return None, RESULT_INVALID
 
     result = await _graph().query(
@@ -417,6 +460,7 @@ async def consume_pending_signup(
         {
             "email": email,
             "code_hash": hash_code(code),
+            "ticket_hash": hash_code(ticket),
             "max_attempts": max_attempts(),
         },
     )

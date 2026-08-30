@@ -191,14 +191,20 @@ only one who ever holds both halves.
 
 The code is single-use, expires after 15 minutes and tolerates only a handful of
 wrong guesses before the pending signup is discarded — a short code is only safe
-while the number of attempts is small. Entering it signs the browser in
-directly: the password was chosen minutes earlier, and asking for it again would
-prove nothing. A code can be re-sent from the same screen, subject to a
-per-address rate limit.
+while the number of attempts is small. It is also only redeemable in the browser
+that submitted the form: each submission mints a ticket that stays in that
+browser's session, and a code presented without its ticket is refused. Entering
+it signs the browser in directly: the password was chosen minutes earlier, and
+asking for it again would prove nothing. A code can be re-sent from the same
+screen, subject to a per-address rate limit; the send budget is per pending
+signup, so it starts over once the pending signup expires and an address can
+always be signed up again later.
 
-Without a mail server configured the message is written to the application log
-instead of being sent, so local development can complete the flow by copying the
-code out of the log. Set `MAIL_SERVER` (plus `MAIL_PORT`, `MAIL_USERNAME`,
+In development, a message with no mail server configured is written to the
+application log instead of being sent, so the flow can be completed by copying
+the code out of the log. This needs `APP_ENV=development` — anywhere else an
+unconfigured process refuses the send rather than logging the code and
+reporting success. Set `MAIL_SERVER` (plus `MAIL_PORT`, `MAIL_USERNAME`,
 `MAIL_PASSWORD`, `MAIL_DEFAULT_SENDER`) to send for real; any provider with an
 SMTP endpoint works. `EMAIL_VERIFICATION_TTL_MINUTES`,
 `EMAIL_VERIFICATION_MAX_ATTEMPTS`, `EMAIL_VERIFICATION_RESEND_SECONDS` and

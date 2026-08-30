@@ -39,9 +39,14 @@ def _patch_graph(graph):
 class TestStartPendingSignup:
     """Parking a signup, and the limits on how much mail it can generate."""
 
+    @staticmethod
+    def _issued(previous_code_hash=None, previous_expires_at=None, previous_attempts=None):
+        """The row the issuing query returns: the code this one displaced."""
+        return _result([[previous_code_hash, previous_expires_at, previous_attempts]])
+
     @pytest.mark.asyncio
     async def test_only_the_code_hash_is_stored(self):
-        graph = _FakeGraph([_result([[1]])])
+        graph = _FakeGraph([self._issued()])
         with _patch_graph(graph):
             issue = await ev.start_pending_signup(
                 "new@example.com", "Ada", "Lovelace", "hash"
@@ -54,8 +59,38 @@ class TestStartPendingSignup:
         assert issue.code not in params.values()
 
     @pytest.mark.asyncio
+    async def test_only_the_ticket_hash_is_stored(self):
+        # Same reasoning as the code: the ticket is the other half of the pair,
+        # so a reader of the graph must not be able to lift a usable one.
+        graph = _FakeGraph([self._issued()])
+        with _patch_graph(graph):
+            issue = await ev.start_pending_signup(
+                "new@example.com", "Ada", "Lovelace", "hash"
+            )
+
+        _, params = graph.calls[-1]
+        assert params["ticket_hash"] == ev.hash_code(issue.ticket)
+        assert issue.ticket not in params.values()
+
+    @pytest.mark.asyncio
+    async def test_every_signup_gets_its_own_ticket(self):
+        # The ticket is what stops a second submission for the same address
+        # from having its password confirmed by the address's owner.
+        graph = _FakeGraph([self._issued(), self._issued("old-hash", 4242, 0)])
+        with _patch_graph(graph):
+            first = await ev.start_pending_signup(
+                "new@example.com", "Ada", "Lovelace", "hash"
+            )
+            second = await ev.start_pending_signup(
+                "new@example.com", "Mal", "Lory", "other-hash"
+            )
+
+        assert first.ticket and second.ticket
+        assert first.ticket != second.ticket
+
+    @pytest.mark.asyncio
     async def test_the_code_is_six_digits(self):
-        graph = _FakeGraph([_result([[1]])])
+        graph = _FakeGraph([self._issued()])
         with _patch_graph(graph):
             issue = await ev.start_pending_signup(
                 "new@example.com", "Ada", "Lovelace", "hash"
@@ -70,7 +105,7 @@ class TestStartPendingSignup:
     async def test_the_limit_is_enforced_inside_the_write(self):
         # Checking first and writing after would let two concurrent requests
         # both pass the check and both send while the counter advanced once.
-        graph = _FakeGraph([_result([[1]])])
+        graph = _FakeGraph([self._issued()])
         with _patch_graph(graph):
             await ev.start_pending_signup("new@example.com", "Ada", "Lovelace", "hash")
 
@@ -83,7 +118,7 @@ class TestStartPendingSignup:
     async def test_resubmitting_cannot_reset_the_send_limit(self):
         # Otherwise the rate limit is decorative: re-post the form and the
         # counter starts over. Only a record this query creates starts at zero.
-        graph = _FakeGraph([_result([[4]])])
+        graph = _FakeGraph([self._issued("old-hash", 4242, 1)])
         with _patch_graph(graph):
             issue = await ev.start_pending_signup(
                 "new@example.com", "Ada", "Lovelace", "hash"
@@ -91,35 +126,78 @@ class TestStartPendingSignup:
 
         assert issue.issued
         cypher, params = graph.calls[-1]
-        assert "p.send_count = p.send_count + 1" in cypher
+        assert "ELSE p.send_count + 1" in cypher
         assert "ON CREATE SET p.created_at = $now, p.send_count = 0" in cypher
         assert "send_count" not in params
 
     @pytest.mark.asyncio
-    async def test_a_recent_send_is_throttled_rather_than_repeated(self, monkeypatch):
+    async def test_an_expired_record_starts_a_fresh_budget(self):
+        # Nothing deletes a signup that is never confirmed, so a spent send
+        # budget would otherwise lock an address out of the product for good --
+        # five submissions by a stranger and the real owner can never sign up.
+        graph = _FakeGraph([self._issued("old-hash", 1, 0)])
+        with _patch_graph(graph):
+            await ev.start_pending_signup("new@example.com", "Ada", "Lovelace", "hash")
+
+        cypher, _ = graph.calls[-1]
+        assert "(p.expires_at IS NULL OR p.expires_at < $now) AS stale" in cypher
+        assert "WHERE (stale OR p.send_count < $max_sends)" in cypher
+        assert "p.send_count = CASE WHEN stale THEN 1" in cypher
+
+    @pytest.mark.asyncio
+    async def test_expiry_does_not_lift_the_interval(self):
+        # An expired record is a way to keep sending, not a way to send faster.
+        graph = _FakeGraph([self._issued()])
+        with _patch_graph(graph):
+            await ev.start_pending_signup("new@example.com", "Ada", "Lovelace", "hash")
+
+        cypher, _ = graph.calls[-1]
+        interval = "AND (p.last_sent_at IS NULL OR $now - p.last_sent_at >= $interval_ms)"
+        assert interval in cypher
+        assert "stale OR p.last_sent_at" not in cypher
+
+    @pytest.mark.asyncio
+    async def test_the_displaced_code_comes_back_for_reverting(self):
+        # The caller needs it to tell "this address already had a live code"
+        # from "this record is one I just created", and to put it back.
+        graph = _FakeGraph([self._issued("old-hash", 4242, 3)])
+        with _patch_graph(graph):
+            issue = await ev.start_pending_signup(
+                "new@example.com", "Ada", "Lovelace", "hash"
+            )
+
+        assert issue.previous_code_hash == "old-hash"
+        assert issue.previous_expires_at == 4242
+        assert issue.previous_attempts == 3
+
+    @pytest.mark.asyncio
+    async def test_a_refused_send_says_nothing_about_why(self, monkeypatch):
+        # The route answers a refusal exactly like a success, so asking the
+        # graph why would only be a way to probe for a stranger's signup.
         monkeypatch.setenv("EMAIL_VERIFICATION_RESEND_SECONDS", "60")
-        # The guard rejects the write; the follow-up read only explains why.
-        graph = _FakeGraph([_result([]), _result([[ev._now_ms(), 1, "Ada"]])])
+        graph = _FakeGraph([_result([])])
         with _patch_graph(graph):
             issue = await ev.start_pending_signup(
                 "new@example.com", "Ada", "Lovelace", "hash"
             )
 
         assert not issue.issued
-        assert issue.throttled
+        assert issue == ev.CodeIssue()
+        assert len(graph.calls) == 1
 
     @pytest.mark.asyncio
     async def test_send_budget_is_finite(self, monkeypatch):
         # Bounds how much mail one submitted address can aim at a third party.
         monkeypatch.setenv("EMAIL_VERIFICATION_MAX_SENDS", "2")
-        graph = _FakeGraph([_result([]), _result([[None, 2, "Ada"]])])
+        graph = _FakeGraph([_result([])])
         with _patch_graph(graph):
             issue = await ev.start_pending_signup(
                 "new@example.com", "Ada", "Lovelace", "hash"
             )
 
-        assert issue.exhausted
         assert not issue.issued
+        _, params = graph.calls[-1]
+        assert params["max_sends"] == 2
 
 
 class TestRefreshPendingSignup:
@@ -129,13 +207,25 @@ class TestRefreshPendingSignup:
     async def test_unknown_address_is_not_created(self):
         # A MERGE here would turn the resend endpoint into a way to mail an
         # address nobody ever submitted.
-        graph = _FakeGraph([_result([]), _result([])])
+        graph = _FakeGraph([_result([])])
         with _patch_graph(graph):
             issue = await ev.refresh_pending_signup("nobody@example.com")
 
-        assert issue.missing
         assert not issue.issued
         assert all("MERGE" not in cypher for cypher, _ in graph.calls)
+
+    @pytest.mark.asyncio
+    async def test_a_resend_keeps_the_ticket(self):
+        # A resend is another copy of the same signup. Minting a new ticket
+        # would lock out the browser that is sitting on the code entry screen.
+        graph = _FakeGraph([_result([["Ada", "old-hash", 4242, 3]])])
+        with _patch_graph(graph):
+            issue = await ev.refresh_pending_signup("pending@example.com")
+
+        cypher, params = graph.calls[-1]
+        assert "ticket_hash" not in cypher
+        assert "ticket_hash" not in params
+        assert issue.ticket is None
 
     @pytest.mark.asyncio
     async def test_refresh_replaces_the_previous_code(self):
@@ -148,7 +238,7 @@ class TestRefreshPendingSignup:
         write_cypher, params = graph.calls[-1]
         assert "MATCH" in write_cypher and "MERGE" not in write_cypher
         assert params["code_hash"] == ev.hash_code(issue.code)
-        assert "p.send_count = p.send_count + 1" in write_cypher
+        assert "ELSE p.send_count + 1" in write_cypher
         # A fresh code deserves a fresh budget of guesses.
         assert "p.attempts = 0" in write_cypher
         # Kept so a send that never reaches a transport can be undone.
@@ -158,13 +248,11 @@ class TestRefreshPendingSignup:
 
     @pytest.mark.asyncio
     async def test_losing_a_race_with_verification_is_not_an_error(self):
-        # The record was consumed between the write and the read that explains
-        # why the write matched nothing.
-        graph = _FakeGraph([_result([]), _result([])])
+        # The record was consumed between the write and this call.
+        graph = _FakeGraph([_result([])])
         with _patch_graph(graph):
             issue = await ev.refresh_pending_signup("pending@example.com")
 
-        assert issue.missing
         assert not issue.issued
 
 
@@ -232,7 +320,7 @@ class TestRevertVerificationSend:
         graph = _FakeGraph([])
         with _patch_graph(graph):
             await ev.revert_verification_send(
-                "pending@example.com", ev.CodeIssue(throttled=True)
+                "pending@example.com", ev.CodeIssue()
             )
 
         assert graph.calls == []
@@ -257,7 +345,23 @@ class TestConsumePendingSignup:
     async def test_empty_code_never_reaches_the_database(self):
         graph = _FakeGraph([])
         with _patch_graph(graph):
-            pending, result = await ev.consume_pending_signup("new@example.com", "")
+            pending, result = await ev.consume_pending_signup(
+                "new@example.com", "", "ticket"
+            )
+
+        assert pending is None
+        assert result == ev.RESULT_INVALID
+        assert not graph.calls
+
+    @pytest.mark.asyncio
+    async def test_a_code_without_a_ticket_never_reaches_the_database(self):
+        # The pair is the credential. Half of it is not a partial answer, it is
+        # a request from a browser that never submitted this signup.
+        graph = _FakeGraph([])
+        with _patch_graph(graph):
+            pending, result = await ev.consume_pending_signup(
+                "new@example.com", "123456", ""
+            )
 
         assert pending is None
         assert result == ev.RESULT_INVALID
@@ -269,7 +373,7 @@ class TestConsumePendingSignup:
         graph = _FakeGraph([_result(self._row(future))])
         with _patch_graph(graph):
             pending, result = await ev.consume_pending_signup(
-                "new@example.com", "123456"
+                "new@example.com", "123456", "ticket"
             )
 
         assert result == ev.RESULT_OK
@@ -282,13 +386,38 @@ class TestConsumePendingSignup:
         assert params["code_hash"] == ev.hash_code("123456")
 
     @pytest.mark.asyncio
+    async def test_the_ticket_is_matched_in_the_same_query(self):
+        # Otherwise re-submitting a stranger's pending signup with a password
+        # of your own gets it confirmed by the address's owner.
+        future = ev._now_ms() + 60_000
+        graph = _FakeGraph([_result(self._row(future))])
+        with _patch_graph(graph):
+            await ev.consume_pending_signup("new@example.com", "123456", "ticket")
+
+        cypher, params = graph.calls[0]
+        assert "p.ticket_hash = $ticket_hash" in cypher
+        assert params["ticket_hash"] == ev.hash_code("ticket")
+
+    @pytest.mark.asyncio
+    async def test_the_right_code_with_the_wrong_ticket_is_refused(self):
+        # The graph matches nothing, exactly as it would for a wrong code.
+        graph = _FakeGraph([_result([]), _result([])])
+        with _patch_graph(graph):
+            pending, result = await ev.consume_pending_signup(
+                "new@example.com", "123456", "someone-elses-ticket"
+            )
+
+        assert pending is None
+        assert result == ev.RESULT_INVALID
+
+    @pytest.mark.asyncio
     async def test_the_attempt_limit_is_enforced_inside_the_write(self):
         # Reading the counter first would let a burst of concurrent guesses all
         # pass a check that only one increment ever answered for.
         future = ev._now_ms() + 60_000
         graph = _FakeGraph([_result(self._row(future))])
         with _patch_graph(graph):
-            await ev.consume_pending_signup("new@example.com", "123456")
+            await ev.consume_pending_signup("new@example.com", "123456", "ticket")
 
         cypher, params = graph.calls[0]
         assert "p.attempts < $max_attempts" in cypher
@@ -300,7 +429,7 @@ class TestConsumePendingSignup:
         graph = _FakeGraph([_result([]), _result([])])
         with _patch_graph(graph):
             pending, result = await ev.consume_pending_signup(
-                "new@example.com", "000000"
+                "new@example.com", "000000", "ticket"
             )
 
         assert pending is None
@@ -314,7 +443,7 @@ class TestConsumePendingSignup:
         # costs the attacker their target while the user just signs up again.
         graph = _FakeGraph([_result([]), _result([[5]])])
         with _patch_graph(graph):
-            await ev.consume_pending_signup("new@example.com", "000000")
+            await ev.consume_pending_signup("new@example.com", "000000", "ticket")
 
         charge_cypher, params = graph.calls[-1]
         assert "attempts >= $max_attempts" in charge_cypher
@@ -330,7 +459,7 @@ class TestConsumePendingSignup:
         )
         with _patch_graph(graph):
             pending, result = await ev.consume_pending_signup(
-                "new@example.com", "000000"
+                "new@example.com", "000000", "ticket"
             )
 
         assert pending is None
@@ -341,7 +470,7 @@ class TestConsumePendingSignup:
         graph = _FakeGraph([_result([]), _result([])])
         with _patch_graph(graph):
             pending, result = await ev.consume_pending_signup(
-                "new@example.com", "123456"
+                "new@example.com", "123456", "ticket"
             )
 
         assert pending is None
@@ -353,7 +482,7 @@ class TestConsumePendingSignup:
         graph = _FakeGraph([_result(self._row(past))])
         with _patch_graph(graph):
             pending, result = await ev.consume_pending_signup(
-                "new@example.com", "123456"
+                "new@example.com", "123456", "ticket"
             )
 
         assert pending is None
@@ -365,7 +494,7 @@ class TestConsumePendingSignup:
         graph = _FakeGraph([_result(self._row(None))])
         with _patch_graph(graph):
             pending, result = await ev.consume_pending_signup(
-                "new@example.com", "123456"
+                "new@example.com", "123456", "ticket"
             )
 
         assert pending is None
@@ -377,7 +506,7 @@ class TestConsumePendingSignup:
         graph = _FakeGraph([_result([["Ada", "Lovelace", None, future]])])
         with _patch_graph(graph):
             pending, result = await ev.consume_pending_signup(
-                "new@example.com", "123456"
+                "new@example.com", "123456", "ticket"
             )
 
         assert pending is None
