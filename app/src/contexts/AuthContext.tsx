@@ -40,9 +40,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setIsLoading(true);
       const status = await AuthService.checkAuthStatus();
-      setUser(status.user || null);
-      // Keep the last known providers when the backend cannot answer, so the
-      // sign-in form does not vanish mid-outage.
+      // A backend that could not answer has not said the session ended, so an
+      // outage must not log the user out. Same reasoning for the providers:
+      // keep the last known ones so the sign-in form does not vanish mid-outage.
+      if (!status.unavailable) {
+        setUser(status.user || null);
+      }
       if (status.providers) {
         setProviders(status.providers);
       }

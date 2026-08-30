@@ -41,7 +41,7 @@ class TestStartPendingSignup:
 
     @pytest.mark.asyncio
     async def test_only_the_token_hash_is_stored(self):
-        graph = _FakeGraph([_result([])])  # no existing pending record
+        graph = _FakeGraph([_result([[1]])])
         with _patch_graph(graph):
             issue = await ev.start_pending_signup(
                 "new@example.com", "Ada", "Lovelace", "hash"
@@ -54,23 +54,39 @@ class TestStartPendingSignup:
         assert issue.token not in params.values()
 
     @pytest.mark.asyncio
+    async def test_the_limit_is_enforced_inside_the_write(self):
+        # Checking first and writing after would let two concurrent requests
+        # both pass the check and both send while the counter advanced once.
+        graph = _FakeGraph([_result([[1]])])
+        with _patch_graph(graph):
+            await ev.start_pending_signup("new@example.com", "Ada", "Lovelace", "hash")
+
+        assert len(graph.calls) == 1
+        cypher, params = graph.calls[0]
+        assert "$max_sends" in cypher and "$interval_ms" in cypher
+        assert params["max_sends"] == ev.max_sends()
+
+    @pytest.mark.asyncio
     async def test_resubmitting_cannot_reset_the_send_limit(self):
         # Otherwise the rate limit is decorative: re-post the form and the
-        # counter starts over.
-        graph = _FakeGraph([_result([[None, 3, "Ada"]])])
+        # counter starts over. Only a record this query creates starts at zero.
+        graph = _FakeGraph([_result([[4]])])
         with _patch_graph(graph):
             issue = await ev.start_pending_signup(
                 "new@example.com", "Ada", "Lovelace", "hash"
             )
 
         assert issue.issued
-        _, params = graph.calls[-1]
-        assert params["send_count"] == 4
+        cypher, params = graph.calls[-1]
+        assert "p.send_count = p.send_count + 1" in cypher
+        assert "ON CREATE SET p.created_at = $now, p.send_count = 0" in cypher
+        assert "send_count" not in params
 
     @pytest.mark.asyncio
     async def test_a_recent_send_is_throttled_rather_than_repeated(self, monkeypatch):
         monkeypatch.setenv("EMAIL_VERIFICATION_RESEND_SECONDS", "60")
-        graph = _FakeGraph([_result([[ev._now_ms(), 1, "Ada"]])])
+        # The guard rejects the write; the follow-up read only explains why.
+        graph = _FakeGraph([_result([]), _result([[ev._now_ms(), 1, "Ada"]])])
         with _patch_graph(graph):
             issue = await ev.start_pending_signup(
                 "new@example.com", "Ada", "Lovelace", "hash"
@@ -78,14 +94,12 @@ class TestStartPendingSignup:
 
         assert not issue.issued
         assert issue.throttled
-        # Only the read ran; nothing was written.
-        assert len(graph.calls) == 1
 
     @pytest.mark.asyncio
     async def test_send_budget_is_finite(self, monkeypatch):
         # Bounds how much mail one submitted address can aim at a third party.
         monkeypatch.setenv("EMAIL_VERIFICATION_MAX_SENDS", "2")
-        graph = _FakeGraph([_result([[None, 2, "Ada"]])])
+        graph = _FakeGraph([_result([]), _result([[None, 2, "Ada"]])])
         with _patch_graph(graph):
             issue = await ev.start_pending_signup(
                 "new@example.com", "Ada", "Lovelace", "hash"
@@ -102,18 +116,17 @@ class TestRefreshPendingSignup:
     async def test_unknown_address_is_not_created(self):
         # A MERGE here would turn the resend endpoint into a way to mail an
         # address nobody ever submitted.
-        graph = _FakeGraph([_result([])])
+        graph = _FakeGraph([_result([]), _result([])])
         with _patch_graph(graph):
             issue = await ev.refresh_pending_signup("nobody@example.com")
 
         assert issue.missing
         assert not issue.issued
-        assert len(graph.calls) == 1
-        assert "MERGE" not in graph.calls[0][0]
+        assert all("MERGE" not in cypher for cypher, _ in graph.calls)
 
     @pytest.mark.asyncio
     async def test_refresh_replaces_the_previous_link(self):
-        graph = _FakeGraph([_result([[None, 1, "Ada"]]), _result([["Ada"]])])
+        graph = _FakeGraph([_result([["Ada"]])])
         with _patch_graph(graph):
             issue = await ev.refresh_pending_signup("pending@example.com")
 
@@ -122,12 +135,13 @@ class TestRefreshPendingSignup:
         write_cypher, params = graph.calls[-1]
         assert "MATCH" in write_cypher and "MERGE" not in write_cypher
         assert params["token_hash"] == ev.hash_token(issue.token)
-        assert params["send_count"] == 2
+        assert "p.send_count = p.send_count + 1" in write_cypher
 
     @pytest.mark.asyncio
     async def test_losing_a_race_with_verification_is_not_an_error(self):
-        # The record was consumed between the read and the write.
-        graph = _FakeGraph([_result([[None, 1, "Ada"]]), _result([])])
+        # The record was consumed between the write and the read that explains
+        # why the write matched nothing.
+        graph = _FakeGraph([_result([]), _result([])])
         with _patch_graph(graph):
             issue = await ev.refresh_pending_signup("pending@example.com")
 

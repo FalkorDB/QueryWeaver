@@ -443,6 +443,9 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
             "pending": True,
             "email": email,
             "message": "Check your inbox for a link to confirm your email address.",
+            # So the resend button comes back exactly when another request
+            # would be honoured, whatever the deployment configured.
+            "retryAfterSeconds": resend_interval_seconds(),
         }, status_code=status.HTTP_202_ACCEPTED)
 
     except (AuthBackendUnavailableError, *TRANSIENT_BACKEND_ERRORS) as e:
@@ -563,7 +566,8 @@ async def resend_verification_email(
 
     accepted = JSONResponse(
         {"success": True,
-         "message": "If that address is waiting to be confirmed, a new link is on its way."},
+         "message": "If that address is waiting to be confirmed, a new link is on its way.",
+         "retryAfterSeconds": resend_interval_seconds()},
         status_code=status.HTTP_202_ACCEPTED
     )
 

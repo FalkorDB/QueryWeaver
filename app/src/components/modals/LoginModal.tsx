@@ -16,8 +16,8 @@ interface LoginModalProps {
 
 const MIN_PASSWORD_LENGTH = 8;
 
-// Mirrors the backend's own resend interval, so the button comes back at
-// roughly the moment another request would actually be honoured.
+// Only a fallback: the backend reports its own resend interval, and that is
+// what the button waits for whenever it is available.
 const RESEND_COOLDOWN_SECONDS = 60;
 
 const emptyForm = { firstName: "", lastName: "", email: "", password: "" };
@@ -35,6 +35,7 @@ const LoginModal = ({ open, onOpenChange, canClose = true }: LoginModalProps) =>
   // account yet, so there is nothing else to offer.
   const [awaitingEmail, setAwaitingEmail] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
+  const [resending, setResending] = useState(false);
 
   const emailEnabled = providers?.email_auth_enabled ?? false;
   // Default to showing the OAuth buttons: a backend that does not report
@@ -114,7 +115,7 @@ const LoginModal = ({ open, onOpenChange, canClose = true }: LoginModalProps) =>
       // account is created when the emailed link is opened, and opening it is
       // what establishes the session.
       setAwaitingEmail(result.email ?? form.email.trim());
-      setCooldown(RESEND_COOLDOWN_SECONDS);
+      setCooldown(result.retryAfterSeconds ?? RESEND_COOLDOWN_SECONDS);
       setForm(emptyForm);
     } catch {
       setError("Could not reach the server. Please try again.");
@@ -124,16 +125,32 @@ const LoginModal = ({ open, onOpenChange, canClose = true }: LoginModalProps) =>
   };
 
   const handleResend = async () => {
-    if (!awaitingEmail || cooldown > 0) return;
-    setCooldown(RESEND_COOLDOWN_SECONDS);
-    const result = await AuthService.resendVerification(awaitingEmail);
-    toast({
-      title: result.success ? "Email sent" : "Could not send the email",
-      description: result.success
-        ? result.message ?? "Check your inbox for the confirmation link."
-        : result.error,
-      variant: result.success ? undefined : "destructive",
-    });
+    if (!awaitingEmail || cooldown > 0 || resending) return;
+    setResending(true);
+    try {
+      const result = await AuthService.resendVerification(awaitingEmail);
+      // Only a request the backend actually took starts the clock. Refusing to
+      // retry after a failed one would lock the user out over an email that
+      // was never sent.
+      if (result.success) {
+        setCooldown(result.retryAfterSeconds ?? RESEND_COOLDOWN_SECONDS);
+      }
+      toast({
+        title: result.success ? "Email sent" : "Could not send the email",
+        description: result.success
+          ? result.message ?? "Check your inbox for the confirmation link."
+          : result.error,
+        variant: result.success ? undefined : "destructive",
+      });
+    } catch {
+      toast({
+        title: "Could not send the email",
+        description: "Could not reach the server. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setResending(false);
+    }
   };
 
   const backToSignIn = () => {
@@ -156,10 +173,10 @@ const LoginModal = ({ open, onOpenChange, canClose = true }: LoginModalProps) =>
         onClick={handleResend}
         variant="outline"
         className="w-full"
-        disabled={cooldown > 0}
+        disabled={cooldown > 0 || resending}
         data-testid="resend-verification-btn"
       >
-        {cooldown > 0 ? `Resend email in ${cooldown}s` : "Resend email"}
+        {cooldown > 0 ? `Resend email in ${cooldown}s` : resending ? "Sending..." : "Resend email"}
       </Button>
       <Button onClick={backToSignIn} variant="ghost" className="w-full">
         Back to sign in

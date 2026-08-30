@@ -92,14 +92,15 @@ class TokenIssue:
 def _positive_int_env(name: str, default: int) -> int:
     """Read a positive integer setting, falling back on anything unusable."""
     raw = os.getenv(name)
-    if raw:
-        try:
-            value = int(raw)
-            if value > 0:
-                return value
-        except ValueError:
-            pass
-        logging.warning("Invalid %s value %r, using %s", name, raw, default)
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        value = 0
+    if value > 0:
+        return value
+    logging.warning("Invalid %s value %r, using %s", name, raw, default)
     return default
 
 
@@ -152,13 +153,71 @@ async def _read_send_state(email: str) -> Tuple[Optional[int], int, Optional[str
     return last_sent_at, int(send_count or 0), first_name
 
 
-def _throttle(last_sent_at: Optional[int], send_count: int, now: int) -> Optional[TokenIssue]:
-    """Decide whether another send is allowed, or why it is not."""
+# The guard the two issuing queries share. It rides along in the write itself
+# rather than being checked first: a single Cypher query is atomic and writes to
+# one graph are serialised, so checking separately would let two concurrent
+# requests both pass the check and both send while the counter advanced once.
+_SEND_ALLOWED = """
+        WHERE p.send_count < $max_sends
+          AND (p.last_sent_at IS NULL OR $now - p.last_sent_at >= $interval_ms)
+"""
+
+# Creates the pending signup if it is new, then replaces its details and issues
+# a link -- but only for a node the guard lets through. A node created by this
+# very query starts at zero sends, so it always passes.
+_START_SIGNUP = (
+    """
+        MERGE (p:PendingSignup {email: $email})
+        ON CREATE SET p.created_at = $now, p.send_count = 0
+        WITH p
+"""
+    + _SEND_ALLOWED
+    + """
+        SET p.token_hash = $token_hash,
+            p.first_name = $first_name,
+            p.last_name = $last_name,
+            p.password_hash = $password_hash,
+            p.expires_at = $expires_at,
+            p.last_sent_at = $now,
+            p.send_count = p.send_count + 1
+        RETURN p.send_count AS send_count
+"""
+)
+
+# Refresh only: never MERGE, so the resend endpoint cannot conjure a pending
+# signup for an address nobody submitted.
+_REFRESH_SIGNUP = (
+    """
+        MATCH (p:PendingSignup {email: $email})
+"""
+    + _SEND_ALLOWED
+    + """
+        SET p.token_hash = $token_hash,
+            p.expires_at = $expires_at,
+            p.last_sent_at = $now,
+            p.send_count = p.send_count + 1
+        RETURN p.first_name AS first_name
+"""
+)
+
+
+def _throttle_params(now: int) -> dict:
+    """The parameters ``_SEND_ALLOWED`` reads."""
+    return {
+        "now": now,
+        "max_sends": max_sends(),
+        "interval_ms": resend_interval_seconds() * 1000,
+    }
+
+
+async def _classify_refusal(email: str) -> TokenIssue:
+    """Say why the guard rejected a send. Only ever reports, never decides."""
+    last_sent_at, send_count, first_name = await _read_send_state(email)
+    if last_sent_at is None and send_count == 0 and first_name is None:
+        return TokenIssue(missing=True)
     if send_count >= max_sends():
         return TokenIssue(exhausted=True)
-    if last_sent_at is not None and now - last_sent_at < resend_interval_seconds() * 1000:
-        return TokenIssue(throttled=True)
-    return None
+    return TokenIssue(throttled=True)
 
 
 async def start_pending_signup(
@@ -172,25 +231,9 @@ async def start_pending_signup(
     otherwise resubmitting would reset the rate limit and defeat it.
     """
     now = _now_ms()
-    last_sent_at, send_count, _ = await _read_send_state(email)
-
-    refusal = _throttle(last_sent_at, send_count, now)
-    if refusal is not None:
-        return refusal
-
     token = secrets.token_urlsafe(32)
-    await _graph().query(
-        """
-        MERGE (p:PendingSignup {email: $email})
-        ON CREATE SET p.created_at = $now
-        SET p.token_hash = $token_hash,
-            p.first_name = $first_name,
-            p.last_name = $last_name,
-            p.password_hash = $password_hash,
-            p.expires_at = $expires_at,
-            p.last_sent_at = $now,
-            p.send_count = $send_count
-        """,
+    result = await _graph().query(
+        _START_SIGNUP,
         {
             "email": email,
             "token_hash": hash_token(token),
@@ -198,10 +241,12 @@ async def start_pending_signup(
             "last_name": last_name,
             "password_hash": password_hash,
             "expires_at": now + token_ttl_seconds() * 1000,
-            "now": now,
-            "send_count": send_count + 1,
+            **_throttle_params(now),
         },
     )
+    if not result.result_set:
+        return await _classify_refusal(email)
+
     return TokenIssue(token=token, first_name=first_name)
 
 
@@ -212,35 +257,21 @@ async def refresh_pending_signup(email: str) -> TokenIssue:
     endpoint cannot be used to send mail to an address nobody submitted.
     """
     now = _now_ms()
-    last_sent_at, send_count, first_name = await _read_send_state(email)
-    if send_count == 0 and last_sent_at is None and first_name is None:
-        return TokenIssue(missing=True)
-
-    refusal = _throttle(last_sent_at, send_count, now)
-    if refusal is not None:
-        return refusal
-
     token = secrets.token_urlsafe(32)
     result = await _graph().query(
-        """
-        MATCH (p:PendingSignup {email: $email})
-        SET p.token_hash = $token_hash,
-            p.expires_at = $expires_at,
-            p.last_sent_at = $now,
-            p.send_count = $send_count
-        RETURN p.first_name AS first_name
-        """,
+        _REFRESH_SIGNUP,
         {
             "email": email,
             "token_hash": hash_token(token),
             "expires_at": now + token_ttl_seconds() * 1000,
-            "now": now,
-            "send_count": send_count + 1,
+            **_throttle_params(now),
         },
     )
     if not result.result_set:
-        # Lost a race with a verification that just consumed the record.
-        return TokenIssue(missing=True)
+        # No pending signup, one that has used up its sends, or one that was
+        # sent to a moment ago. Also covers losing a race with a verification
+        # that just consumed the record.
+        return await _classify_refusal(email)
 
     return TokenIssue(token=token, first_name=result.result_set[0][0])
 

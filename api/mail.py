@@ -62,14 +62,15 @@ def _env_flag(name: str, default: bool) -> bool:
 def _smtp_timeout() -> float:
     """Socket timeout for the relay, from ``MAIL_TIMEOUT_SECONDS``."""
     raw = os.getenv("MAIL_TIMEOUT_SECONDS")
-    if raw:
-        try:
-            timeout = float(raw)
-            if timeout > 0:
-                return timeout
-        except ValueError:
-            pass
-        logging.warning("Invalid MAIL_TIMEOUT_SECONDS value %r, ignoring", raw)
+    if not raw:
+        return DEFAULT_TIMEOUT_SECONDS
+    try:
+        timeout = float(raw)
+    except ValueError:
+        timeout = 0.0
+    if timeout > 0:
+        return timeout
+    logging.warning("Invalid MAIL_TIMEOUT_SECONDS value %r, ignoring", raw)
     return DEFAULT_TIMEOUT_SECONDS
 
 
@@ -155,14 +156,23 @@ def _send_via_smtp(message: EmailMessage) -> None:
         client.send_message(message)
 
 
+def _sanitize_for_log(value: str) -> str:
+    """Flatten a value so it cannot forge log entries of its own."""
+    # ``.replace('\n', ...)`` must be the outermost call for CodeQL's
+    # log-injection sanitizer to recognise it. The body is deliberately
+    # rendered on one line rather than dropped: the console transport exists so
+    # a developer can copy the verification link out of the log.
+    return str(value).replace("\r", " ").replace("\n", " ")
+
+
 def _log_to_console(message: EmailMessage, text_body: str) -> None:
     """Write the message to the log in place of sending it."""
     logging.info(
-        "[mail:console] No MAIL_SERVER configured, so this message was not sent.\n"
-        "To: %s\nSubject: %s\n\n%s",
-        message["To"],
-        message["Subject"],
-        text_body,
+        "[mail:console] No MAIL_SERVER configured, so this message was not sent. "
+        "To: %s | Subject: %s | %s",
+        _sanitize_for_log(message["To"]),
+        _sanitize_for_log(message["Subject"]),
+        _sanitize_for_log(text_body),
     )
 
 

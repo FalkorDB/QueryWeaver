@@ -150,7 +150,9 @@ export class AuthService {
    * confirmed, so the caller cannot use this to probe for accounts -- and
    * neither can the UI report anything more specific than "sent".
    */
-  static async resendVerification(email: string): Promise<{ success: boolean; message?: string; error?: string }> {
+  static async resendVerification(
+    email: string
+  ): Promise<{ success: boolean; message?: string; error?: string; retryAfterSeconds?: number }> {
     const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.RESEND_VERIFICATION), {
       method: 'POST',
       credentials: 'include',
@@ -160,9 +162,13 @@ export class AuthService {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      return { success: false, error: data.error || 'Could not send the email. Please try again.' };
+      return {
+        success: false,
+        error: data.error || 'Could not send the email. Please try again.',
+        retryAfterSeconds: data.retryAfterSeconds,
+      };
     }
-    return { success: true, message: data.message };
+    return { success: true, message: data.message, retryAfterSeconds: data.retryAfterSeconds };
   }
 
   /**

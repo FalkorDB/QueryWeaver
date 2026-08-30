@@ -81,12 +81,15 @@ test.describe('User Profile Tests', () => {
     const isUserMenuVisible = await userProfile.isUserMenuVisible();
     expect(isUserMenuVisible).toBeFalsy();
 
-    // Verify welcome screen with login options is shown
+    // Verify welcome screen with login options is shown. Which options appear
+    // depends on what the deployment configured, so any one of them counts.
+    // Checked first because it waits, giving the modal time to render.
+    const isEmailFormVisible = await userProfile.isEmailAuthFormVisible();
     const isGoogleLoginVisible = await userProfile.isGoogleLoginBtnVisible();
     const isGithubLoginVisible = await userProfile.isGithubLoginBtnVisible();
 
     // At least one login option should be visible
-    expect(isGoogleLoginVisible || isGithubLoginVisible).toBeTruthy();
+    expect(isEmailFormVisible || isGoogleLoginVisible || isGithubLoginVisible).toBeTruthy();
   });
 
   test('generate token and copy token', async () => {

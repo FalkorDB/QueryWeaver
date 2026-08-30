@@ -47,6 +47,10 @@ export class UserProfile extends BasePage {
     return this.page.getByTestId("github-login-btn");
   }
 
+  private get emailAuthForm(): Locator {
+    return this.page.getByTestId("email-auth-form");
+  }
+
   // ==================== TOKENS MODAL LOCATORS ====================
 
   private get generateTokenBtn(): Locator {
@@ -275,6 +279,10 @@ export class UserProfile extends BasePage {
     } catch {
       return false;
     }
+  }
+
+  async isEmailAuthFormVisible(): Promise<boolean> {
+    return await waitForElementToBeVisible(this.emailAuthForm);
   }
 
   async isGenerateTokenBtnVisible(): Promise<boolean> {
