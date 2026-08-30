@@ -45,6 +45,23 @@ const HIGHLIGHT_COLOR = '#8b5cf6';
 /** Opacity applied to schema elements the selected query does not touch. */
 const DIMMED_OPACITY = 0.25;
 
+// Geometry of a rendered table card, shared by the drawing code and the
+// viewport framing below.
+const NODE_WIDTH = 160;
+const NODE_LINE_HEIGHT = 14;
+const NODE_PADDING = 8;
+const NODE_HEADER_HEIGHT = 20;
+
+const tableNodeHeight = (columnCount: number): number =>
+  NODE_HEADER_HEIGHT + columnCount * NODE_LINE_HEIGHT + NODE_PADDING * 2;
+
+/** Gap in pixels kept between the framed tables and the canvas edges. */
+const FIT_PADDING_PX = 32;
+/** Upper bound on the framing zoom, so a single small table is not blown up. */
+const FIT_MAX_ZOOM = 1.5;
+const FIT_MIN_ZOOM = 0.05;
+const FIT_ANIMATION_MS = 300;
+
 /** Link endpoints are ids before the layout runs and node objects afterwards. */
 const endpointId = (endpoint: unknown): string => {
   if (endpoint && typeof endpoint === 'object' && 'id' in endpoint) {
@@ -57,9 +74,26 @@ const endpointId = (endpoint: unknown): string => {
 const linkKey = (source: unknown, target: unknown): string =>
   [endpointId(source), endpointId(target)].sort().join('|');
 
-// Must stay above the canvas' `interaction.zoomToFitDelay` (50ms default) so the
-// highlight framing is applied after the canvas' own initial fit.
-const HIGHLIGHT_ZOOM_DELAY_MS = 100;
+// Must stay above the canvas' `interaction.zoomToFitDelay` (50ms default) so our
+// framing is always applied after the canvas' own centre-based fit.
+const CANVAS_FIT_DELAY_MS = 100;
+/** How long to keep waiting for the layout to settle before framing anyway. */
+const SETTLE_TIMEOUT_MS = 2000;
+/** World-unit movement below which the layout counts as settled. */
+const SETTLE_EPSILON = 0.5;
+
+interface Bounds {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+const boundsSettled = (a: Bounds, b: Bounds): boolean =>
+  Math.abs(a.minX - b.minX) < SETTLE_EPSILON &&
+  Math.abs(a.maxX - b.maxX) < SETTLE_EPSILON &&
+  Math.abs(a.minY - b.minY) < SETTLE_EPSILON &&
+  Math.abs(a.maxY - b.maxY) < SETTLE_EPSILON;
 
 /** Panel width bounds, as a fraction of the viewport width. */
 const MIN_WIDTH_PERCENT = 0.2;
@@ -95,6 +129,9 @@ const clampPanelWidth = (candidate: number): number => {
 const SchemaViewer = ({ isOpen, onClose, onWidthChange, onResizingChange, sidebarWidth = 64 }: SchemaViewerProps) => {
   const canvasRef = useRef<FalkorDBCanvas>(null);
   const resizeRef = useRef<HTMLDivElement>(null);
+  // Handle of the in-flight "wait for the layout to settle" loop, so a new
+  // framing request cancels the previous one instead of racing it.
+  const settleFrameRef = useRef(0);
   // Schema snapshot currently seeded into the canvas, used to avoid re-seeding
   // (and losing node positions) when only the highlight changed.
   const renderedSchemaRef = useRef<SchemaData | null>(null);
@@ -213,8 +250,6 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, onResizingChange, sideba
 
     return () => observer.disconnect();
   }, []);
-
-  const NODE_WIDTH = 160;
 
   const [width, setWidth] = useState(() =>
     clampPanelWidth(window.innerWidth * DEFAULT_WIDTH_PERCENT)
@@ -379,15 +414,123 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, onResizingChange, sideba
     return theme === 'light' ? '#9ca3af' : '#4b5563';
   }, [theme, hasHighlight, highlightedLinkKeys]);
 
+  // Bounding box of the matching table cards in world units, or null when the
+  // layout has not produced coordinates for any of them yet.
+  const nodeBounds = useCallback((match?: (nodeId: number) => boolean): Bounds | null => {
+    const canvas = canvasRef.current;
+
+    if (!canvas || !schemaData) return null;
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    canvas.getGraphData()?.nodes.forEach((node) => {
+      if (node.x === undefined || node.y === undefined) return;
+      if (match && !match(Number(node.id))) return;
+
+      const columns = schemaData.nodesMap.get(Number(node.id))?.columns ?? [];
+      const halfHeight = tableNodeHeight(columns.length) / 2;
+
+      minX = Math.min(minX, node.x - NODE_WIDTH / 2);
+      maxX = Math.max(maxX, node.x + NODE_WIDTH / 2);
+      minY = Math.min(minY, node.y - halfHeight);
+      maxY = Math.max(maxY, node.y + halfHeight);
+    });
+
+    // Nothing matched, or the layout has not produced coordinates yet.
+    if (!Number.isFinite(minX)) return null;
+
+    return { minX, maxX, minY, maxY };
+  }, [schemaData]);
+
+  // The canvas' own zoomToFit frames node centres, so a tall table gets clipped
+  // and a single table is zoomed to the configured maximum whatever its size.
+  // Frame the rendered cards instead.
+  const frameNodes = useCallback((match?: (nodeId: number) => boolean): boolean => {
+    const canvas = canvasRef.current;
+
+    if (!canvas) return false;
+
+    const rect = canvas.getBoundingClientRect();
+
+    if (!rect.width || !rect.height) return false;
+
+    const bounds = nodeBounds(match);
+
+    if (!bounds) return false;
+
+    const { minX, maxX, minY, maxY } = bounds;
+
+    // A panel narrower than the padding would otherwise ask for a negative area.
+    const fitZoom = Math.min(
+      Math.max(rect.width - FIT_PADDING_PX * 2, 1) / (maxX - minX),
+      Math.max(rect.height - FIT_PADDING_PX * 2, 1) / (maxY - minY)
+    );
+
+    canvas.centerAt((minX + maxX) / 2, (minY + maxY) / 2, FIT_ANIMATION_MS);
+
+    const zoom = Math.min(Math.max(fitZoom, FIT_MIN_ZOOM), FIT_MAX_ZOOM);
+    // The canvas' own zoom() is instant, so go through force-graph to keep the
+    // pan and the zoom on the same animation.
+    const graph = canvas.getGraph();
+
+    if (graph) {
+      graph.zoom(zoom, FIT_ANIMATION_MS);
+    } else {
+      canvas.zoom(zoom);
+    }
+
+    return true;
+  }, [nodeBounds]);
+
+  // A running layout keeps moving after it has produced its first coordinates,
+  // so framing them aims at an already-stale target. Wait for the bounds to stop
+  // changing. Only one wait runs at a time: a later request supersedes an
+  // earlier one rather than racing it.
+  const frameWhenSettled = useCallback((match?: (nodeId: number) => boolean) => {
+    cancelAnimationFrame(settleFrameRef.current);
+
+    const start = Date.now();
+    // Bounds can settle within a couple of frames, well before the canvas runs
+    // its own delayed fit, which would then undo our framing. Never frame first.
+    const earliest = start + CANVAS_FIT_DELAY_MS;
+    const deadline = start + SETTLE_TIMEOUT_MS;
+    let previous: Bounds | null = null;
+
+    const attempt = () => {
+      // The viewer can close mid-wait, which unmounts the canvas.
+      if (!canvasRef.current) return;
+
+      const bounds = nodeBounds(match);
+      const settled = Boolean(bounds && previous && boundsSettled(bounds, previous));
+      const now = Date.now();
+
+      if (now >= earliest && (settled || now >= deadline)) {
+        frameNodes(match);
+        return;
+      }
+
+      previous = bounds;
+      settleFrameRef.current = requestAnimationFrame(attempt);
+    };
+
+    settleFrameRef.current = requestAnimationFrame(attempt);
+  }, [nodeBounds, frameNodes]);
+
+  // Switching layout or direction re-runs the canvas' own centre-based fit,
+  // which clips tall cards and discards any highlight framing.
+  const frameCurrentTarget = useCallback(() => {
+    frameWhenSettled(
+      hasHighlight ? (nodeId: number) => highlightedNodeIds.has(nodeId) : undefined
+    );
+  }, [frameWhenSettled, hasHighlight, highlightedNodeIds]);
+
   // Convert schema data to canvas format
   const convertToCanvasData = useCallback((data: SchemaData): Data => {
     const nodes = data.nodes.map((node) => {
-      // Calculate node size based on height (same calculation as in nodeCanvasObject)
-      const columns = node.columns || [];
-      const lineHeight = 14;
-      const padding = 8;
-      const headerHeight = 20;
-      const nodeHeight = headerHeight + columns.length * lineHeight + padding * 2;
+      const nodeHeight = tableNodeHeight((node.columns || []).length);
 
       // Use the larger dimension as collision radius (in pixels)
       const size = Math.max(NODE_WIDTH / 2, nodeHeight / 2);
@@ -429,9 +572,9 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, onResizingChange, sideba
     if (!canvas || !canvasLoaded || !schemaData) return;
 
     const nodeCanvasObject = (node: GraphNode, ctx: CanvasRenderingContext2D) => {
-      const lineHeight = 14;
-      const padding = 8;
-      const headerHeight = 20;
+      const lineHeight = NODE_LINE_HEIGHT;
+      const padding = NODE_PADDING;
+      const headerHeight = NODE_HEADER_HEIGHT;
       const fontSize = 12;
 
       // Theme-aware colors
@@ -453,7 +596,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, onResizingChange, sideba
 
       const columns = schemaNode.columns || [];
 
-      const nodeHeight = headerHeight + columns.length * lineHeight + padding * 2;
+      const nodeHeight = tableNodeHeight(columns.length);
 
       const previousAlpha = ctx.globalAlpha;
       if (isDimmed) {
@@ -537,10 +680,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, onResizingChange, sideba
       if (!schemaNode) return;
 
       const columns = schemaNode.columns || [];
-      const lineHeight = 14;
-      const padding = 8;
-      const headerHeight = 20;
-      const nodeHeight = headerHeight + columns.length * lineHeight + padding * 2;
+      const nodeHeight = tableNodeHeight(columns.length);
 
       ctx.fillStyle = color;
       const areaPadding = 5;
@@ -609,18 +749,16 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, onResizingChange, sideba
     canvas.setGraphData(canvasData);
   }, [schemaData, canvasLoaded, convertToCanvasData]);
 
-  // Bring the highlighted tables into view when a query is selected
+  // Bring the highlighted tables into view when a query is selected. The layout
+  // may still be moving, so frame it once it has stopped.
+  // Reopening the viewer re-runs this, since the canvas is unmounted while closed.
   useEffect(() => {
-    const canvas = canvasRef.current;
+    if (!isOpen || !canvasLoaded || !hasHighlight) return;
 
-    if (!canvas || !canvasLoaded || !hasHighlight) return;
+    frameWhenSettled((nodeId) => highlightedNodeIds.has(nodeId));
 
-    const timer = setTimeout(() => {
-      canvas.zoomToFit(1.5, (node: GraphNode) => highlightedNodeIds.has(node.id));
-    }, HIGHLIGHT_ZOOM_DELAY_MS);
-
-    return () => clearTimeout(timer);
-  }, [canvasLoaded, hasHighlight, highlightedNodeIds]);
+    return () => cancelAnimationFrame(settleFrameRef.current);
+  }, [isOpen, canvasLoaded, hasHighlight, highlightedNodeIds, frameWhenSettled]);
 
   if (!isOpen) return null;
 
@@ -672,6 +810,8 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, onResizingChange, sideba
           onFocusModeChange={setFocusMode}
           selectedTableId={selectedTableId}
           onSelectTable={setSelectedTableId}
+          onFrameNodes={frameNodes}
+          onLayoutChanged={frameCurrentTarget}
         />
 
         {/* Highlight status */}

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, RefObject } from 'react';
 import type {
   FalkorDBCanvas,
-  GraphNode,
   HierarchyDirection,
   LayoutMode,
   RadialDirection,
@@ -76,6 +75,14 @@ interface SchemaCanvasControlsProps {
   onFocusModeChange: (enabled: boolean) => void;
   selectedTableId: number | null;
   onSelectTable: (tableId: number | null) => void;
+  /** Frames the matching tables (all of them when no predicate is given). */
+  onFrameNodes: (match?: (nodeId: number) => boolean) => void;
+  /**
+   * Re-frames the current view once the new layout has settled. The canvas runs
+   * its own centre-based fit after a layout change, which clips tall cards and
+   * discards any highlight framing.
+   */
+  onLayoutChanged: () => void;
 }
 
 const SchemaCanvasControls = ({
@@ -86,6 +93,8 @@ const SchemaCanvasControls = ({
   onFocusModeChange,
   selectedTableId,
   onSelectTable,
+  onFrameNodes,
+  onLayoutChanged,
 }: SchemaCanvasControlsProps) => {
   const [layout, setLayout] = useState<LayoutMode>('force');
   const [direction, setDirection] = useState<string>('');
@@ -124,9 +133,9 @@ const SchemaCanvasControls = ({
       onSelectTable(table.id);
       setSearch(table.name);
       setSuggestionsOpen(false);
-      canvasRef.current?.zoomToFit(4, (node: GraphNode) => node.id === table.id);
+      onFrameNodes((nodeId) => nodeId === table.id);
     },
-    [canvasRef, onSelectTable]
+    [onFrameNodes, onSelectTable]
   );
 
   const clearSearch = useCallback(() => {
@@ -177,7 +186,7 @@ const SchemaCanvasControls = ({
   };
 
   const handleCenter = () => {
-    canvasRef.current?.zoomToFit();
+    onFrameNodes();
   };
 
   const applyDirection = (mode: LayoutMode, value: string) => {
@@ -214,12 +223,15 @@ const SchemaCanvasControls = ({
       setAnimation(false);
       canvasRef.current?.setAnimation(false);
     }
+
+    onLayoutChanged();
   };
 
   const handleDirectionChange = (value: string, targetLayout: LayoutMode) => {
     directionsRef.current = { ...directionsRef.current, [targetLayout]: value };
     setDirection(value);
     applyDirection(targetLayout, value);
+    onLayoutChanged();
   };
 
   const handleAnimationToggle = (checked: boolean) => {
