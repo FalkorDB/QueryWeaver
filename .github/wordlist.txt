@@ -124,3 +124,7 @@ SDK
 Dependabot
 PyPI
 pypi
+signup
+SMTP
+outbox
+PendingSignup

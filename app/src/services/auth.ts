@@ -1,6 +1,6 @@
 import { API_CONFIG, buildApiUrl } from '@/config/api';
 import { csrfHeaders } from '@/lib/csrf';
-import type { AuthStatus, User } from '@/types/api';
+import type { AuthStatus, SignupResult, User } from '@/types/api';
 
 /**
  * Authentication Service
@@ -92,6 +92,77 @@ export class AuthService {
       console.error('Failed to initiate GitHub login:', error);
       throw new Error('Failed to connect to authentication service. Please ensure the backend is running and OAuth is configured.');
     }
+  }
+
+  /**
+   * Sign up with an email address and password.
+   *
+   * A successful call creates nothing: the backend holds the details and mails
+   * a confirmation link, and the account comes into existence when that link is
+   * opened. So there is no session to refresh here.
+   */
+  static async signupWithEmail(details: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    password: string;
+  }): Promise<SignupResult> {
+    const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.SIGNUP_EMAIL), {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
+      body: JSON.stringify(details),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.error || 'Could not create your account. Please try again.',
+        retryAfterSeconds: data.retryAfterSeconds,
+      };
+    }
+    return data as SignupResult;
+  }
+
+  /**
+   * Log in with an email address and password.
+   */
+  static async loginWithEmail(email: string, password: string): Promise<{ success: boolean; error?: string }> {
+    const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.LOGIN_EMAIL), {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return { success: false, error: data.error || 'Could not sign you in. Please try again.' };
+    }
+    return { success: true };
+  }
+
+  /**
+   * Ask for another copy of the signup confirmation link.
+   *
+   * The backend answers identically whether or not the address is waiting to be
+   * confirmed, so the caller cannot use this to probe for accounts -- and
+   * neither can the UI report anything more specific than "sent".
+   */
+  static async resendVerification(email: string): Promise<{ success: boolean; message?: string; error?: string }> {
+    const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.RESEND_VERIFICATION), {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
+      body: JSON.stringify({ email }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return { success: false, error: data.error || 'Could not send the email. Please try again.' };
+    }
+    return { success: true, message: data.message };
   }
 
   /**

@@ -13,6 +13,11 @@ export interface User {
 export interface AuthStatusResponse {
   authenticated: boolean;
   user?: User;
+  providers?: {
+    email_auth_enabled: boolean;
+    google_auth_enabled: boolean;
+    github_auth_enabled: boolean;
+  };
 }
 
 export interface LoginResponse {
@@ -20,8 +25,12 @@ export interface LoginResponse {
   error?: string;
 }
 
+/** Signup creates nothing: it mails a link and reports that it is waiting. */
 export interface SignupResponse {
   success: boolean;
+  pending?: boolean;
+  email?: string;
+  message?: string;
   error?: string;
 }
 

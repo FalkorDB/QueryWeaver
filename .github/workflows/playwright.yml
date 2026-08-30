@@ -135,6 +135,7 @@ jobs:
         FASTAPI_DEBUG=False
         FALKORDB_URL=redis://localhost:6379
         DISABLE_MCP=true
+        MAIL_OUTBOX_DIR=e2e/.mail
         EOF
 
     # Start the FastAPI application
@@ -169,6 +170,9 @@ jobs:
         FASTAPI_DEBUG: False
         FALKORDB_URL: redis://localhost:6379
         DISABLE_MCP: true
+        # Signup mails a confirmation link and the account is only created when
+        # it is opened, so the suite has to be able to read the message back.
+        MAIL_OUTBOX_DIR: e2e/.mail
         # Azure OpenAI API keys - required for database schema analysis
         AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
         AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}

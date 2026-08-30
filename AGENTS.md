@@ -132,6 +132,8 @@ Optional overrides: `COMPLETION_MODEL`, `EMBEDDING_MODEL` (must match provider),
 
 Authentication is deliberately split three ways — a signed session cookie for the browser login (no FalkorDB dependency, see `api/auth/browser_session.py`), FalkorDB-backed API tokens for programmatic clients, and per-request data-source credentials. `validate_user` in `api/auth/user_management.py` owns the precedence between them.
 
+Email/password signup is verified before the account exists: `POST /signup/email` parks the details on a `PendingSignup` node (`api/auth/email_verification.py`) and mails a link, and `GET /verify/email` is what creates the `User` and establishes the session. There is therefore no `email_verified` flag anywhere — an unconfirmed address is simply absent from the account graph. Mail goes through `api/mail.py`, which picks a transport from the environment: console (default), a file outbox (`MAIL_OUTBOX_DIR`, used by the Playwright suite to read the link back) or SMTP (`MAIL_SERVER`).
+
 See `.env.example` for the full list.
 
 ## CI/CD

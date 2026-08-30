@@ -11,14 +11,33 @@ export interface User {
 }
 
 // Authentication types
+
+/** Which sign-in methods the backend has configured. */
+export interface AuthProviders {
+  email_auth_enabled: boolean;
+  google_auth_enabled: boolean;
+  github_auth_enabled: boolean;
+}
+
 export interface AuthStatus {
   authenticated: boolean;
   user?: User;
+  providers?: AuthProviders;
   /**
    * The backend could not check, rather than checking and saying no. Callers
    * should offer a retry instead of sending the user back to the login screen.
    */
   unavailable?: boolean;
+}
+
+/** Reply to a signup: no account exists yet, only a mailed link. */
+export interface SignupResult {
+  success: boolean;
+  pending?: boolean;
+  email?: string;
+  message?: string;
+  error?: string;
+  retryAfterSeconds?: number;
 }
 
 // Graph/Database types

@@ -82,7 +82,15 @@ class TestStatusReporting:
             response = await auth_status(FakeRequest())
 
         assert response.status_code == 200
-        assert _body(response) == {"authenticated": False}
+        body = _body(response)
+        assert body["authenticated"] is False
+        # The sign-in screen is rendered from this, so an anonymous visitor is
+        # exactly who needs to know which methods are on offer.
+        assert set(body["providers"]) == {
+            "email_auth_enabled",
+            "google_auth_enabled",
+            "github_auth_enabled",
+        }
 
     @pytest.mark.asyncio
     async def test_unreachable_auth_store_yields_503(self):
