@@ -126,7 +126,7 @@ class TestRefreshPendingSignup:
 
     @pytest.mark.asyncio
     async def test_refresh_replaces_the_previous_link(self):
-        graph = _FakeGraph([_result([["Ada"]])])
+        graph = _FakeGraph([_result([["Ada", "old-hash", 4242]])])
         with _patch_graph(graph):
             issue = await ev.refresh_pending_signup("pending@example.com")
 
@@ -136,6 +136,9 @@ class TestRefreshPendingSignup:
         assert "MATCH" in write_cypher and "MERGE" not in write_cypher
         assert params["token_hash"] == ev.hash_token(issue.token)
         assert "p.send_count = p.send_count + 1" in write_cypher
+        # Kept so a send that never reaches a transport can be undone.
+        assert issue.previous_token_hash == "old-hash"
+        assert issue.previous_expires_at == 4242
 
     @pytest.mark.asyncio
     async def test_losing_a_race_with_verification_is_not_an_error(self):
@@ -147,6 +150,71 @@ class TestRefreshPendingSignup:
 
         assert issue.missing
         assert not issue.issued
+
+
+class TestRevertVerificationSend:
+    """Undoing a send whose mail never reached a transport."""
+
+    @staticmethod
+    def _issued():
+        return ev.TokenIssue(
+            token="raw-token",
+            first_name="Ada",
+            previous_token_hash="old-hash",
+            previous_expires_at=4242,
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_send_is_refunded_and_the_old_link_restored(self):
+        # A transport failure must cost the user neither their send budget nor
+        # the link they may already be holding.
+        graph = _FakeGraph([])
+        with _patch_graph(graph):
+            await ev.revert_verification_send("pending@example.com", self._issued())
+
+        cypher, params = graph.calls[-1]
+        assert "p.send_count = p.send_count - 1" in cypher
+        assert params["previous_token_hash"] == "old-hash"
+        assert params["previous_expires_at"] == 4242
+
+    @pytest.mark.asyncio
+    async def test_a_link_issued_since_is_left_alone(self):
+        # The revert only matches the hash it wrote, so it cannot clobber a
+        # send that succeeded in the meantime.
+        graph = _FakeGraph([])
+        with _patch_graph(graph):
+            await ev.revert_verification_send("pending@example.com", self._issued())
+
+        cypher, params = graph.calls[-1]
+        assert "WHERE p.token_hash = $token_hash" in cypher
+        assert params["token_hash"] == ev.hash_token("raw-token")
+
+    @pytest.mark.asyncio
+    async def test_the_clock_is_not_rolled_back(self):
+        # Otherwise a broken transport could be retried without limit.
+        graph = _FakeGraph([])
+        with _patch_graph(graph):
+            await ev.revert_verification_send("pending@example.com", self._issued())
+
+        assert "last_sent_at" not in graph.calls[-1][0]
+
+    @pytest.mark.asyncio
+    async def test_nothing_to_undo_when_nothing_was_issued(self):
+        graph = _FakeGraph([])
+        with _patch_graph(graph):
+            await ev.revert_verification_send(
+                "pending@example.com", ev.TokenIssue(throttled=True)
+            )
+
+        assert graph.calls == []
+
+    @pytest.mark.asyncio
+    async def test_a_failing_revert_is_swallowed(self):
+        # Best-effort: the caller is already on its error path.
+        graph = _FakeGraph([])
+        graph.query = AsyncMock(side_effect=RuntimeError("down"))
+        with _patch_graph(graph):
+            await ev.revert_verification_send("pending@example.com", self._issued())
 
 
 class TestConsumePendingSignup:

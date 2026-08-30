@@ -75,6 +75,9 @@ class TokenIssue:
     ``token`` is the only time the raw value exists outside the mail; the graph
     keeps just its hash. ``throttled`` and ``exhausted`` are separated so the
     caller can tell "come back in a minute" from "stop asking".
+
+    The ``previous_*`` fields are what the link this one displaced looked like,
+    so ``revert_verification_send`` can put it back if the mail never goes out.
     """
 
     token: Optional[str] = None
@@ -82,6 +85,8 @@ class TokenIssue:
     throttled: bool = False
     exhausted: bool = False
     missing: bool = False
+    previous_token_hash: Optional[str] = None
+    previous_expires_at: Optional[int] = None
 
     @property
     def issued(self) -> bool:
@@ -192,13 +197,28 @@ _REFRESH_SIGNUP = (
 """
     + _SEND_ALLOWED
     + """
+        WITH p,
+             p.token_hash AS previous_token_hash,
+             p.expires_at AS previous_expires_at
         SET p.token_hash = $token_hash,
             p.expires_at = $expires_at,
             p.last_sent_at = $now,
             p.send_count = p.send_count + 1
-        RETURN p.first_name AS first_name
+        RETURN p.first_name AS first_name,
+               previous_token_hash,
+               previous_expires_at
 """
 )
+
+# Undoes one send. Matching on the hash this send wrote makes it a no-op if
+# another request has since issued a link of its own.
+_REVERT_SEND = """
+        MATCH (p:PendingSignup {email: $email})
+        WHERE p.token_hash = $token_hash
+        SET p.token_hash = $previous_token_hash,
+            p.expires_at = $previous_expires_at,
+            p.send_count = p.send_count - 1
+"""
 
 
 def _throttle_params(now: int) -> dict:
@@ -273,7 +293,38 @@ async def refresh_pending_signup(email: str) -> TokenIssue:
         # that just consumed the record.
         return await _classify_refusal(email)
 
-    return TokenIssue(token=token, first_name=result.result_set[0][0])
+    first_name, previous_token_hash, previous_expires_at = result.result_set[0]
+    return TokenIssue(
+        token=token,
+        first_name=first_name,
+        previous_token_hash=previous_token_hash,
+        previous_expires_at=previous_expires_at,
+    )
+
+
+async def revert_verification_send(email: str, issue: TokenIssue) -> None:
+    """Give back a send whose mail never left. Best-effort; never fatal.
+
+    Refunds the counter and puts the displaced link back in force, so a
+    transport failure costs the user neither their send budget nor the link
+    they may already be holding. ``last_sent_at`` is deliberately left where
+    the failed attempt put it: retries stay one per interval even when they
+    fail, which is what stops a broken transport from being hammered.
+    """
+    if not issue.issued:
+        return
+    try:
+        await _graph().query(
+            _REVERT_SEND,
+            {
+                "email": email,
+                "token_hash": hash_token(issue.token),
+                "previous_token_hash": issue.previous_token_hash,
+                "previous_expires_at": issue.previous_expires_at,
+            },
+        )
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logging.warning("Could not revert a failed verification send: %s", e)
 
 
 async def consume_pending_signup(token: str) -> Tuple[Optional[PendingSignup], str]:

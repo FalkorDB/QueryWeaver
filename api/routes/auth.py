@@ -33,6 +33,7 @@ from api.auth.email_verification import (
     discard_pending_signup,
     refresh_pending_signup,
     resend_interval_seconds,
+    revert_verification_send,
     send_verification_link,
     start_pending_signup,
 )
@@ -591,6 +592,9 @@ async def resend_verification_email(
         request, "verify/email?" + urlencode({"token": issue.token})
     )
     if not await send_verification_link(email, issue.first_name, verify_url):
+        # Nothing left the building, so hand the send back and put the link the
+        # user may already be holding back in force.
+        await revert_verification_send(email, issue)
         logging.error("Could not re-send the verification email for %s",
                       _sanitize_for_log(email))
 
