@@ -10,9 +10,9 @@ const authFile3 = 'e2e/.auth/user3.json';
 /**
  * Sign the context in as one test user, creating the account if it is missing.
  *
- * Signup does not log anybody in any more: it mails a confirmation link, and
- * opening that link is what creates the account and starts the session. So the
- * create path goes through the mail outbox rather than trusting the signup
+ * Signup does not log anybody in any more: it mails a confirmation code, and
+ * handing that code back is what creates the account and starts the session. So
+ * the create path goes through the mail outbox rather than trusting the signup
  * response, which is also what keeps this setup honest about the real flow.
  */
 async function authenticateUser(

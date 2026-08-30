@@ -20,6 +20,11 @@ const MIN_PASSWORD_LENGTH = 8;
 // what the button waits for whenever it is available.
 const RESEND_COOLDOWN_SECONDS = 60;
 
+// Likewise a fallback for the code lifetime the backend reports.
+const CODE_TTL_MINUTES = 15;
+
+const CODE_LENGTH = 6;
+
 const emptyForm = { firstName: "", lastName: "", email: "", password: "" };
 
 const LoginModal = ({ open, onOpenChange, canClose = true }: LoginModalProps) => {
@@ -31,9 +36,12 @@ const LoginModal = ({ open, onOpenChange, canClose = true }: LoginModalProps) =>
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // Set once a signup has been accepted. While it holds an address the modal
-  // shows the "check your inbox" state instead of the form -- there is no
+  // asks for the mailed code instead of showing the form -- there is no
   // account yet, so there is nothing else to offer.
   const [awaitingEmail, setAwaitingEmail] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [codeTtlMinutes, setCodeTtlMinutes] = useState(CODE_TTL_MINUTES);
   const [cooldown, setCooldown] = useState(0);
   const [resending, setResending] = useState(false);
 
@@ -112,10 +120,14 @@ const LoginModal = ({ open, onOpenChange, canClose = true }: LoginModalProps) =>
       }
 
       // Deliberately no refreshAuth(): signing up does not sign you in. The
-      // account is created when the emailed link is opened, and opening it is
+      // account is created when the mailed code is handed back, and that is
       // what establishes the session.
       setAwaitingEmail(result.email ?? form.email.trim());
       setCooldown(result.retryAfterSeconds ?? RESEND_COOLDOWN_SECONDS);
+      if (result.codeTtlSeconds) {
+        setCodeTtlMinutes(Math.max(1, Math.round(result.codeTtlSeconds / 60)));
+      }
+      setCode("");
       setForm(emptyForm);
     } catch {
       setError("Could not reach the server. Please try again.");
@@ -124,9 +136,39 @@ const LoginModal = ({ open, onOpenChange, canClose = true }: LoginModalProps) =>
     }
   };
 
+  const handleVerify = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!awaitingEmail || verifying) return;
+    setError(null);
+    setVerifying(true);
+    try {
+      const result = await AuthService.verifyEmail(awaitingEmail, code.trim());
+      if (!result.success) {
+        setError(result.error ?? "Could not confirm your email address.");
+        setCode("");
+        return;
+      }
+      // Confirming is what created the account and signed the browser in.
+      await refreshAuth();
+      setAwaitingEmail(null);
+      setCode("");
+      setMode("login");
+      onOpenChange(false);
+      toast({
+        title: "Email confirmed",
+        description: "Your account is ready and you are signed in.",
+      });
+    } catch {
+      setError("Could not reach the server. Please try again.");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   const handleResend = async () => {
     if (!awaitingEmail || cooldown > 0 || resending) return;
     setResending(true);
+    setError(null);
     try {
       const result = await AuthService.resendVerification(awaitingEmail);
       // Only a request the backend actually took starts the clock. Refusing to
@@ -134,11 +176,12 @@ const LoginModal = ({ open, onOpenChange, canClose = true }: LoginModalProps) =>
       // was never sent.
       if (result.success) {
         setCooldown(result.retryAfterSeconds ?? RESEND_COOLDOWN_SECONDS);
+        setCode("");
       }
       toast({
         title: result.success ? "Email sent" : "Could not send the email",
         description: result.success
-          ? result.message ?? "Check your inbox for the confirmation link."
+          ? result.message ?? "Check your inbox for the confirmation code."
           : result.error,
         variant: result.success ? undefined : "destructive",
       });
@@ -155,33 +198,70 @@ const LoginModal = ({ open, onOpenChange, canClose = true }: LoginModalProps) =>
 
   const backToSignIn = () => {
     setAwaitingEmail(null);
+    setCode("");
     setMode("login");
     setError(null);
   };
 
   const renderAwaitingVerification = () => (
-    <div className="space-y-4 py-4" data-testid="verify-email-notice">
+    <form onSubmit={handleVerify} className="space-y-4 py-4" data-testid="verify-email-notice">
       <p className="text-sm text-muted-foreground">
-        We sent a confirmation link to{" "}
-        <span className="font-medium text-card-foreground">{awaitingEmail}</span>. Open it to
-        finish creating your account &mdash; you will be signed in straight away.
+        We sent a {CODE_LENGTH}-digit confirmation code to{" "}
+        <span className="font-medium text-card-foreground">{awaitingEmail}</span>. Enter it
+        below to finish creating your account &mdash; you will be signed in straight away.
       </p>
       <p className="text-sm text-muted-foreground">
-        The link works once and expires after 24 hours. Until you open it, no account exists.
+        The code works once and expires after {codeTtlMinutes} minutes. Until you enter it, no
+        account exists.
       </p>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="verification-code">Confirmation code</Label>
+        <Input
+          id="verification-code"
+          value={code}
+          onChange={(event) =>
+            setCode(event.target.value.replace(/\D/g, "").slice(0, CODE_LENGTH))
+          }
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          pattern={`\\d{${CODE_LENGTH}}`}
+          placeholder={"0".repeat(CODE_LENGTH)}
+          className="text-center text-lg tracking-[0.4em]"
+          required
+          autoFocus
+          data-testid="verification-code"
+        />
+      </div>
+
+      {error && (
+        <p className="text-sm text-destructive" role="alert" data-testid="auth-error">
+          {error}
+        </p>
+      )}
+
       <Button
+        type="submit"
+        className="w-full"
+        disabled={verifying || code.length !== CODE_LENGTH}
+        data-testid="verify-code-btn"
+      >
+        {verifying ? "Confirming..." : "Confirm email"}
+      </Button>
+      <Button
+        type="button"
         onClick={handleResend}
         variant="outline"
         className="w-full"
         disabled={cooldown > 0 || resending}
         data-testid="resend-verification-btn"
       >
-        {cooldown > 0 ? `Resend email in ${cooldown}s` : resending ? "Sending..." : "Resend email"}
+        {cooldown > 0 ? `Resend code in ${cooldown}s` : resending ? "Sending..." : "Resend code"}
       </Button>
-      <Button onClick={backToSignIn} variant="ghost" className="w-full">
+      <Button type="button" onClick={backToSignIn} variant="ghost" className="w-full">
         Back to sign in
       </Button>
-    </div>
+    </form>
   );
 
   const renderEmailForm = () => (
@@ -316,7 +396,7 @@ const LoginModal = ({ open, onOpenChange, canClose = true }: LoginModalProps) =>
           </DialogTitle>
           <DialogDescription className="text-center text-muted-foreground pt-2">
             {awaitingEmail
-              ? "One more step before your account exists"
+              ? "Enter the code we emailed you to create your account"
               : "Sign in to access your databases and start querying"}
           </DialogDescription>
         </DialogHeader>

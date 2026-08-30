@@ -98,8 +98,8 @@ export class AuthService {
    * Sign up with an email address and password.
    *
    * A successful call creates nothing: the backend holds the details and mails
-   * a confirmation link, and the account comes into existence when that link is
-   * opened. So there is no session to refresh here.
+   * a confirmation code, and the account comes into existence when that code is
+   * typed back in here. So there is no session to refresh yet.
    */
   static async signupWithEmail(details: {
     firstName: string;
@@ -144,7 +144,7 @@ export class AuthService {
   }
 
   /**
-   * Ask for another copy of the signup confirmation link.
+   * Ask for another copy of the signup confirmation code.
    *
    * The backend answers identically whether or not the address is waiting to be
    * confirmed, so the caller cannot use this to probe for accounts -- and
@@ -169,6 +169,33 @@ export class AuthService {
       };
     }
     return { success: true, message: data.message, retryAfterSeconds: data.retryAfterSeconds };
+  }
+
+  /**
+   * Hand back the confirmation code that was mailed.
+   *
+   * This is what creates the account, so a success means the caller is now
+   * logged in and the session should be refreshed.
+   */
+  static async verifyEmail(
+    email: string,
+    code: string
+  ): Promise<{ success: boolean; error?: string }> {
+    const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.VERIFY_EMAIL), {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
+      body: JSON.stringify({ email, code }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.error || 'Could not confirm your email address. Please try again.',
+      };
+    }
+    return { success: true };
   }
 
   /**

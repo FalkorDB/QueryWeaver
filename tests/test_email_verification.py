@@ -1,9 +1,9 @@
 """Tests for the pending-signup store that backs email verification.
 
-The store is what makes "no account until the link is opened" true, so the
-properties pinned here are the ones the guarantee rests on: the raw token is
-never stored, a token is redeemable exactly once, and the send limits cannot be
-reset by asking again.
+The store is what makes "no account until the code comes back" true, so the
+properties pinned here are the ones the guarantee rests on: the raw code is
+never stored, a code is redeemable exactly once, wrong guesses are finite, and
+the send limits cannot be reset by asking again.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -40,7 +40,7 @@ class TestStartPendingSignup:
     """Parking a signup, and the limits on how much mail it can generate."""
 
     @pytest.mark.asyncio
-    async def test_only_the_token_hash_is_stored(self):
+    async def test_only_the_code_hash_is_stored(self):
         graph = _FakeGraph([_result([[1]])])
         with _patch_graph(graph):
             issue = await ev.start_pending_signup(
@@ -49,9 +49,22 @@ class TestStartPendingSignup:
 
         assert issue.issued
         _, params = graph.calls[-1]
-        assert params["token_hash"] == ev.hash_token(issue.token)
-        # A graph snapshot must not yield a working link.
-        assert issue.token not in params.values()
+        assert params["code_hash"] == ev.hash_code(issue.code)
+        # A graph snapshot must not yield a usable code.
+        assert issue.code not in params.values()
+
+    @pytest.mark.asyncio
+    async def test_the_code_is_six_digits(self):
+        graph = _FakeGraph([_result([[1]])])
+        with _patch_graph(graph):
+            issue = await ev.start_pending_signup(
+                "new@example.com", "Ada", "Lovelace", "hash"
+            )
+
+        # Including the leading zeros: a code that sometimes arrives five
+        # digits long is a code the user cannot type into a fixed-width field.
+        assert len(issue.code) == ev.CODE_DIGITS
+        assert issue.code.isdigit()
 
     @pytest.mark.asyncio
     async def test_the_limit_is_enforced_inside_the_write(self):
@@ -125,8 +138,8 @@ class TestRefreshPendingSignup:
         assert all("MERGE" not in cypher for cypher, _ in graph.calls)
 
     @pytest.mark.asyncio
-    async def test_refresh_replaces_the_previous_link(self):
-        graph = _FakeGraph([_result([["Ada", "old-hash", 4242]])])
+    async def test_refresh_replaces_the_previous_code(self):
+        graph = _FakeGraph([_result([["Ada", "old-hash", 4242, 3]])])
         with _patch_graph(graph):
             issue = await ev.refresh_pending_signup("pending@example.com")
 
@@ -134,11 +147,14 @@ class TestRefreshPendingSignup:
         assert issue.first_name == "Ada"
         write_cypher, params = graph.calls[-1]
         assert "MATCH" in write_cypher and "MERGE" not in write_cypher
-        assert params["token_hash"] == ev.hash_token(issue.token)
+        assert params["code_hash"] == ev.hash_code(issue.code)
         assert "p.send_count = p.send_count + 1" in write_cypher
+        # A fresh code deserves a fresh budget of guesses.
+        assert "p.attempts = 0" in write_cypher
         # Kept so a send that never reaches a transport can be undone.
-        assert issue.previous_token_hash == "old-hash"
+        assert issue.previous_code_hash == "old-hash"
         assert issue.previous_expires_at == 4242
+        assert issue.previous_attempts == 3
 
     @pytest.mark.asyncio
     async def test_losing_a_race_with_verification_is_not_an_error(self):
@@ -157,28 +173,41 @@ class TestRevertVerificationSend:
 
     @staticmethod
     def _issued():
-        return ev.TokenIssue(
-            token="raw-token",
+        return ev.CodeIssue(
+            code="123456",
             first_name="Ada",
-            previous_token_hash="old-hash",
+            previous_code_hash="old-hash",
             previous_expires_at=4242,
+            previous_attempts=3,
         )
 
     @pytest.mark.asyncio
-    async def test_the_send_is_refunded_and_the_old_link_restored(self):
+    async def test_the_send_is_refunded_and_the_old_code_restored(self):
         # A transport failure must cost the user neither their send budget nor
-        # the link they may already be holding.
+        # the code they may already be holding.
         graph = _FakeGraph([])
         with _patch_graph(graph):
             await ev.revert_verification_send("pending@example.com", self._issued())
 
         cypher, params = graph.calls[-1]
         assert "p.send_count = p.send_count - 1" in cypher
-        assert params["previous_token_hash"] == "old-hash"
+        assert params["previous_code_hash"] == "old-hash"
         assert params["previous_expires_at"] == 4242
 
     @pytest.mark.asyncio
-    async def test_a_link_issued_since_is_left_alone(self):
+    async def test_the_spent_guesses_come_back_too(self):
+        # Otherwise a failed send would hand out a free reset of the attempt
+        # budget, which is the thing keeping six digits honest.
+        graph = _FakeGraph([])
+        with _patch_graph(graph):
+            await ev.revert_verification_send("pending@example.com", self._issued())
+
+        cypher, params = graph.calls[-1]
+        assert "p.attempts = $previous_attempts" in cypher
+        assert params["previous_attempts"] == 3
+
+    @pytest.mark.asyncio
+    async def test_a_code_issued_since_is_left_alone(self):
         # The revert only matches the hash it wrote, so it cannot clobber a
         # send that succeeded in the meantime.
         graph = _FakeGraph([])
@@ -186,8 +215,8 @@ class TestRevertVerificationSend:
             await ev.revert_verification_send("pending@example.com", self._issued())
 
         cypher, params = graph.calls[-1]
-        assert "WHERE p.token_hash = $token_hash" in cypher
-        assert params["token_hash"] == ev.hash_token("raw-token")
+        assert "WHERE p.code_hash = $code_hash" in cypher
+        assert params["code_hash"] == ev.hash_code("123456")
 
     @pytest.mark.asyncio
     async def test_the_clock_is_not_rolled_back(self):
@@ -203,7 +232,7 @@ class TestRevertVerificationSend:
         graph = _FakeGraph([])
         with _patch_graph(graph):
             await ev.revert_verification_send(
-                "pending@example.com", ev.TokenIssue(throttled=True)
+                "pending@example.com", ev.CodeIssue(throttled=True)
             )
 
         assert graph.calls == []
@@ -218,28 +247,30 @@ class TestRevertVerificationSend:
 
 
 class TestConsumePendingSignup:
-    """Redeeming a link."""
+    """Redeeming a code, and the budget of wrong guesses."""
 
     @staticmethod
     def _row(expires_at):
-        return [["new@example.com", "Ada", "Lovelace", "hash", expires_at]]
+        return [["Ada", "Lovelace", "hash", expires_at]]
 
     @pytest.mark.asyncio
-    async def test_empty_token_never_reaches_the_database(self):
+    async def test_empty_code_never_reaches_the_database(self):
         graph = _FakeGraph([])
         with _patch_graph(graph):
-            pending, result = await ev.consume_pending_signup("")
+            pending, result = await ev.consume_pending_signup("new@example.com", "")
 
         assert pending is None
         assert result == ev.RESULT_INVALID
         assert not graph.calls
 
     @pytest.mark.asyncio
-    async def test_live_token_returns_the_details_and_deletes_the_record(self):
+    async def test_live_code_returns_the_details_and_deletes_the_record(self):
         future = ev._now_ms() + 60_000
         graph = _FakeGraph([_result(self._row(future))])
         with _patch_graph(graph):
-            pending, result = await ev.consume_pending_signup("raw-token")
+            pending, result = await ev.consume_pending_signup(
+                "new@example.com", "123456"
+            )
 
         assert result == ev.RESULT_OK
         assert pending.email == "new@example.com"
@@ -248,23 +279,82 @@ class TestConsumePendingSignup:
         # Single-use is structural: the read and the delete are one query, so a
         # replay cannot find the node no matter how the caller behaves.
         assert "DELETE" in cypher
-        assert params["token_hash"] == ev.hash_token("raw-token")
+        assert params["code_hash"] == ev.hash_code("123456")
 
     @pytest.mark.asyncio
-    async def test_replayed_token_finds_nothing(self):
-        graph = _FakeGraph([_result([])])
+    async def test_the_attempt_limit_is_enforced_inside_the_write(self):
+        # Reading the counter first would let a burst of concurrent guesses all
+        # pass a check that only one increment ever answered for.
+        future = ev._now_ms() + 60_000
+        graph = _FakeGraph([_result(self._row(future))])
         with _patch_graph(graph):
-            pending, result = await ev.consume_pending_signup("already-used")
+            await ev.consume_pending_signup("new@example.com", "123456")
+
+        cypher, params = graph.calls[0]
+        assert "p.attempts < $max_attempts" in cypher
+        assert params["max_attempts"] == ev.max_attempts()
+
+    @pytest.mark.asyncio
+    async def test_a_wrong_code_is_charged_for(self):
+        # Six digits are only enough while the number of guesses is small.
+        graph = _FakeGraph([_result([]), _result([])])
+        with _patch_graph(graph):
+            pending, result = await ev.consume_pending_signup(
+                "new@example.com", "000000"
+            )
+
+        assert pending is None
+        assert result == ev.RESULT_INVALID
+        charge_cypher, _ = graph.calls[-1]
+        assert "p.attempts = p.attempts + 1" in charge_cypher
+
+    @pytest.mark.asyncio
+    async def test_running_out_of_guesses_destroys_the_signup(self):
+        # Guessing has to end somewhere, and ending it by deleting the record
+        # costs the attacker their target while the user just signs up again.
+        graph = _FakeGraph([_result([]), _result([[5]])])
+        with _patch_graph(graph):
+            await ev.consume_pending_signup("new@example.com", "000000")
+
+        charge_cypher, params = graph.calls[-1]
+        assert "attempts >= $max_attempts" in charge_cypher
+        assert "DELETE p" in charge_cypher
+        assert params["max_attempts"] == ev.max_attempts()
+
+    @pytest.mark.asyncio
+    async def test_a_failing_charge_is_not_a_free_retry_signal(self):
+        # The guess still fails; only the bookkeeping is best-effort.
+        graph = _FakeGraph([_result([])])
+        graph.query = AsyncMock(
+            side_effect=[_result([]), RuntimeError("db down")]
+        )
+        with _patch_graph(graph):
+            pending, result = await ev.consume_pending_signup(
+                "new@example.com", "000000"
+            )
 
         assert pending is None
         assert result == ev.RESULT_INVALID
 
     @pytest.mark.asyncio
-    async def test_expired_token_is_reported_and_consumed(self):
+    async def test_replayed_code_finds_nothing(self):
+        graph = _FakeGraph([_result([]), _result([])])
+        with _patch_graph(graph):
+            pending, result = await ev.consume_pending_signup(
+                "new@example.com", "123456"
+            )
+
+        assert pending is None
+        assert result == ev.RESULT_INVALID
+
+    @pytest.mark.asyncio
+    async def test_expired_code_is_reported_and_consumed(self):
         past = ev._now_ms() - 1
         graph = _FakeGraph([_result(self._row(past))])
         with _patch_graph(graph):
-            pending, result = await ev.consume_pending_signup("stale")
+            pending, result = await ev.consume_pending_signup(
+                "new@example.com", "123456"
+            )
 
         assert pending is None
         assert result == ev.RESULT_EXPIRED
@@ -274,7 +364,9 @@ class TestConsumePendingSignup:
         # A missing expiry must fail closed, not read as "never expires".
         graph = _FakeGraph([_result(self._row(None))])
         with _patch_graph(graph):
-            pending, result = await ev.consume_pending_signup("malformed")
+            pending, result = await ev.consume_pending_signup(
+                "new@example.com", "123456"
+            )
 
         assert pending is None
         assert result == ev.RESULT_EXPIRED
@@ -282,9 +374,11 @@ class TestConsumePendingSignup:
     @pytest.mark.asyncio
     async def test_record_missing_a_password_is_rejected(self):
         future = ev._now_ms() + 60_000
-        graph = _FakeGraph([_result([["new@example.com", "Ada", "Lovelace", None, future]])])
+        graph = _FakeGraph([_result([["Ada", "Lovelace", None, future]])])
         with _patch_graph(graph):
-            pending, result = await ev.consume_pending_signup("malformed")
+            pending, result = await ev.consume_pending_signup(
+                "new@example.com", "123456"
+            )
 
         assert pending is None
         assert result == ev.RESULT_INVALID
@@ -301,23 +395,35 @@ class TestDiscardPendingSignup:
             await ev.discard_pending_signup("new@example.com")
 
 
-class TestSendVerificationLink:
+class TestSendVerificationCode:
     """The mail itself."""
 
     @pytest.mark.asyncio
-    async def test_link_is_included_in_both_bodies(self):
+    async def test_code_is_included_in_both_bodies(self):
         with patch("api.auth.email_verification.send_mail",
                    new_callable=AsyncMock) as mock_send:
             mock_send.return_value = True
-            sent = await ev.send_verification_link(
-                "new@example.com", "Ada", "http://testserver/verify/email?token=raw"
-            )
+            sent = await ev.send_verification_code("new@example.com", "Ada", "123456")
 
         assert sent is True
         kwargs = mock_send.await_args.kwargs
         assert kwargs["to"] == "new@example.com"
-        assert "token=raw" in kwargs["text_body"]
-        assert "token=raw" in kwargs["html_body"]
+        assert "123456" in kwargs["text_body"]
+        assert "123456" in kwargs["html_body"]
+
+    @pytest.mark.asyncio
+    async def test_no_link_is_offered(self):
+        # The point of a code is that nothing in the mail can be acted on by
+        # someone who did not fill in the form -- including a scanner that
+        # fetches every URL it sees.
+        with patch("api.auth.email_verification.send_mail",
+                   new_callable=AsyncMock) as mock_send:
+            mock_send.return_value = True
+            await ev.send_verification_code("new@example.com", "Ada", "123456")
+
+        kwargs = mock_send.await_args.kwargs
+        assert "http" not in kwargs["text_body"]
+        assert "<a " not in kwargs["html_body"]
 
     @pytest.mark.asyncio
     async def test_a_name_from_the_form_cannot_inject_markup(self):
@@ -325,8 +431,8 @@ class TestSendVerificationLink:
         with patch("api.auth.email_verification.send_mail",
                    new_callable=AsyncMock) as mock_send:
             mock_send.return_value = True
-            await ev.send_verification_link(
-                "new@example.com", "<script>alert(1)</script>", "http://testserver/v"
+            await ev.send_verification_code(
+                "new@example.com", "<script>alert(1)</script>", "123456"
             )
 
         html_body = mock_send.await_args.kwargs["html_body"]

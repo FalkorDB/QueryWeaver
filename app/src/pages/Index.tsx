@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const Index = () => {
-  const { isAuthenticated, isUnavailable, isLoading: authLoading, logout, user, refreshAuth } = useAuth();
+  const { isAuthenticated, isUnavailable, isLoading: authLoading, logout, user } = useAuth();
   const { selectedGraph, graphs, selectGraph, uploadSchema } = useDatabase();
   const { selectedQueryId, clearQueryHighlight } = useQueryHighlight();
   const { toast } = useToast();
@@ -147,68 +147,6 @@ const Index = () => {
     setShowSchemaViewer(false);
     clearQueryHighlight();
   }, [clearQueryHighlight]);
-
-  // Report the outcome of an emailed signup confirmation link.
-  //
-  // Opening that link is what creates the account and starts the session, so a
-  // success also has to re-check auth: this page was loaded by the redirect
-  // that set the cookie, and nothing else would notice it.
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const verified = params.get('verified');
-    if (!verified) return;
-
-    const outcomes: Record<string, { title: string; description: string; ok: boolean }> = {
-      success: {
-        title: "Email confirmed",
-        description: "Your account is ready and you are signed in.",
-        ok: true,
-      },
-      invalid: {
-        title: "That link is not valid",
-        description: "It may have already been used. Sign up again to get a fresh one.",
-        ok: false,
-      },
-      expired: {
-        title: "That link has expired",
-        description: "Sign up again to get a fresh confirmation link.",
-        ok: false,
-      },
-      exists: {
-        title: "Account already confirmed",
-        description: "Sign in with your email and password.",
-        ok: false,
-      },
-      unavailable: {
-        title: "We could not reach the database",
-        description: "Please open the link again in a moment.",
-        ok: false,
-      },
-      failed: {
-        title: "We could not confirm your email",
-        description: "Please try signing up again.",
-        ok: false,
-      },
-    };
-
-    const outcome = outcomes[verified] ?? outcomes.failed;
-    toast({
-      title: outcome.title,
-      description: outcome.description,
-      variant: outcome.ok ? undefined : "destructive",
-    });
-
-    if (outcome.ok) {
-      void refreshAuth();
-    } else {
-      setShowLoginModal(true);
-    }
-
-    // Drop the parameter so a refresh does not replay the message.
-    params.delete('verified');
-    const query = params.toString();
-    window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
-  }, [toast, refreshAuth]);
 
   // Show login modal when not authenticated after loading completes
   useEffect(() => {

@@ -30,7 +30,7 @@ export interface AuthStatus {
   unavailable?: boolean;
 }
 
-/** Reply to a signup: no account exists yet, only a mailed link. */
+/** Reply to a signup: no account exists yet, only a mailed code. */
 export interface SignupResult {
   success: boolean;
   pending?: boolean;
@@ -38,6 +38,7 @@ export interface SignupResult {
   message?: string;
   error?: string;
   retryAfterSeconds?: number;
+  codeTtlSeconds?: number;
 }
 
 // Graph/Database types

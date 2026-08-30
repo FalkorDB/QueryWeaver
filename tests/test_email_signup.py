@@ -7,22 +7,30 @@ belongs to an account (under any provider) must NOT issue a session token, which
 would otherwise allow taking over that account without knowing its password.
 
 And the property that replaces it: signup creates nothing at all. It parks the
-details and mails a link, and only opening that link creates the account and
-signs the browser in. So an address the registrant does not control never
-becomes an account.
+details and mails a code, and only handing that code back creates the account
+and signs the browser in. So an address the registrant does not control never
+becomes an account -- and because the code has to come back to the session that
+submitted the form, a stranger cannot get someone else to finish a signup they
+never started.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
-from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi import HTTPException
 
-from api.auth.email_verification import RESULT_EXPIRED, RESULT_OK, PendingSignup, TokenIssue
+from api.auth.email_verification import (
+    RESULT_EXPIRED,
+    RESULT_INVALID,
+    RESULT_OK,
+    CodeIssue,
+    PendingSignup,
+)
 from api.core.errors import AuthBackendUnavailableError
 from api.routes.auth import (
     EmailResendRequest,
     EmailSignupRequest,
+    EmailVerifyRequest,
     _email_account_exists,
     email_signup,
     resend_verification_email,
@@ -61,14 +69,12 @@ def _pending(email="new@example.com"):
     )
 
 
+def _verify_data(email="new@example.com", code="123456"):
+    return EmailVerifyRequest(email=email, code=code)
+
+
 def _set_cookie_header(response):
     return response.headers.get("set-cookie", "") or ""
-
-
-def _verified_param(response):
-    """Read the ``verified`` outcome off a verification redirect."""
-    query = parse_qs(urlparse(response.headers["location"]).query)
-    return (query.get("verified") or [None])[0]
 
 
 class TestEmailSignupExistingAccount:
@@ -90,10 +96,10 @@ class TestEmailSignupExistingAccount:
         assert "already exists" in response.body.decode()
         # No session token must be issued for an existing account.
         assert "api_token=" not in _set_cookie_header(response)
-        # Nothing may be parked either: a link mailed now would be redeemable
+        # Nothing may be parked either: a code mailed now would be redeemable
         # against an account that already exists.
         mock_start.assert_not_called()
-        # Any link still outstanding for the address is revoked.
+        # Any code still outstanding for the address is revoked.
         mock_discard.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -125,20 +131,20 @@ class TestEmailSignupExistingAccount:
 
 
 class TestEmailSignupPending:
-    """Signup mails a link and creates nothing."""
+    """Signup mails a code and creates nothing."""
 
     @pytest.mark.asyncio
     @patch("api.routes.auth.ensure_user_in_organizations", new_callable=AsyncMock)
     @patch("api.routes.auth._set_mail_hash", new_callable=AsyncMock)
-    @patch("api.routes.auth.send_verification_link", new_callable=AsyncMock)
+    @patch("api.routes.auth.send_verification_code", new_callable=AsyncMock)
     @patch("api.routes.auth.start_pending_signup", new_callable=AsyncMock)
     @patch("api.routes.auth._email_account_exists", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
-    async def test_signup_mails_a_link_and_creates_nothing(
+    async def test_signup_mails_a_code_and_creates_nothing(
         self, _enabled, mock_exists, mock_start, mock_send, mock_set_hash, mock_ensure
     ):
         mock_exists.return_value = False
-        mock_start.return_value = TokenIssue(token="raw-token", first_name="Mallory")
+        mock_start.return_value = CodeIssue(code="123456", first_name="Mallory")
         mock_send.return_value = True
 
         request = _mock_request()
@@ -149,20 +155,20 @@ class TestEmailSignupPending:
         body = response.body.decode()
         assert '"pending":true' in body.replace(" ", "")
         assert "api_token=" not in _set_cookie_header(response)
-        # The whole point: no account and no session until the link is opened.
+        # The whole point: no account and no session until the code comes back.
         assert not request.session
         mock_ensure.assert_not_called()
         mock_set_hash.assert_not_called()
 
-        # The mailed link must carry the raw token, which exists nowhere else.
-        _, kwargs = mock_send.await_args
-        args = mock_send.await_args.args
-        verify_url = kwargs.get("verify_url") or args[2]
-        assert parse_qs(urlparse(verify_url).query)["token"] == ["raw-token"]
+        # The mail carries the raw code, which exists nowhere else.
+        assert mock_send.await_args.args[2] == "123456"
+        # And the code must not be echoed to the caller: the point of mailing it
+        # is that only whoever reads the inbox learns it.
+        assert "123456" not in body
 
     @pytest.mark.asyncio
     @patch("api.routes.auth.discard_pending_signup", new_callable=AsyncMock)
-    @patch("api.routes.auth.send_verification_link", new_callable=AsyncMock)
+    @patch("api.routes.auth.send_verification_code", new_callable=AsyncMock)
     @patch("api.routes.auth.start_pending_signup", new_callable=AsyncMock)
     @patch("api.routes.auth._email_account_exists", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
@@ -172,7 +178,7 @@ class TestEmailSignupPending:
         # Answering 202 here would leave the user waiting for a mail that was
         # never sent, and the dead record would burn the rate limit on retry.
         mock_exists.return_value = False
-        mock_start.return_value = TokenIssue(token="raw-token", first_name="Mallory")
+        mock_start.return_value = CodeIssue(code="123456", first_name="Mallory")
         mock_send.return_value = False
 
         response = await email_signup(_mock_request(), _signup_data("new@example.com"))
@@ -181,7 +187,7 @@ class TestEmailSignupPending:
         mock_discard.assert_awaited_once()
 
     @pytest.mark.asyncio
-    @patch("api.routes.auth.send_verification_link", new_callable=AsyncMock)
+    @patch("api.routes.auth.send_verification_code", new_callable=AsyncMock)
     @patch("api.routes.auth.start_pending_signup", new_callable=AsyncMock)
     @patch("api.routes.auth._email_account_exists", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
@@ -189,7 +195,7 @@ class TestEmailSignupPending:
         self, _enabled, mock_exists, mock_start, mock_send
     ):
         mock_exists.return_value = False
-        mock_start.return_value = TokenIssue(throttled=True)
+        mock_start.return_value = CodeIssue(throttled=True)
 
         response = await email_signup(_mock_request(), _signup_data("new@example.com"))
 
@@ -198,7 +204,7 @@ class TestEmailSignupPending:
         mock_send.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch("api.routes.auth.send_verification_link", new_callable=AsyncMock)
+    @patch("api.routes.auth.send_verification_code", new_callable=AsyncMock)
     @patch("api.routes.auth.start_pending_signup", new_callable=AsyncMock)
     @patch("api.routes.auth._email_account_exists", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
@@ -206,7 +212,7 @@ class TestEmailSignupPending:
         self, _enabled, mock_exists, mock_start, mock_send
     ):
         mock_exists.return_value = False
-        mock_start.return_value = TokenIssue(exhausted=True)
+        mock_start.return_value = CodeIssue(exhausted=True)
 
         response = await email_signup(_mock_request(), _signup_data("new@example.com"))
 
@@ -216,7 +222,7 @@ class TestEmailSignupPending:
 
 
 class TestVerifyEmail:
-    """Opening the link is what creates the account and the session."""
+    """Handing the code back is what creates the account and the session."""
 
     @pytest.mark.asyncio
     @patch("api.routes.auth.establish_browser_session", return_value=True)
@@ -225,7 +231,7 @@ class TestVerifyEmail:
     @patch("api.routes.auth._email_account_exists", new_callable=AsyncMock)
     @patch("api.routes.auth.consume_pending_signup", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
-    async def test_valid_link_creates_the_account_and_logs_in(
+    async def test_valid_code_creates_the_account_and_logs_in(
         self, _enabled, mock_consume, mock_exists, mock_ensure, mock_set_hash, mock_session
     ):
         pending = _pending()
@@ -233,10 +239,9 @@ class TestVerifyEmail:
         mock_exists.return_value = False
         mock_ensure.return_value = (True, {"new_identity": True})
 
-        response = await verify_email(_mock_request(), token="raw-token")
+        response = await verify_email(_mock_request(), _verify_data())
 
-        assert response.status_code == 303
-        assert _verified_param(response) == "success"
+        assert response.status_code == 200
         mock_ensure.assert_awaited_once()
         # No API token is minted: the session cookie is the browser credential.
         assert mock_ensure.await_args.args[-1] is None
@@ -244,34 +249,49 @@ class TestVerifyEmail:
         assert mock_session.call_args.kwargs["provisioned"] is True
 
     @pytest.mark.asyncio
+    @patch("api.routes.auth.consume_pending_signup", new_callable=AsyncMock)
+    @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
+    async def test_the_code_is_matched_against_the_address_that_was_submitted(
+        self, _enabled, mock_consume
+    ):
+        # A code that redeemed against any pending signup would be a code worth
+        # guessing against every one of them at once.
+        mock_consume.return_value = (None, RESULT_INVALID)
+
+        await verify_email(_mock_request(), _verify_data(email="Ada@Example.com "))
+
+        assert mock_consume.await_args.args == ("ada@example.com", "123456")
+
+    @pytest.mark.asyncio
     @patch("api.routes.auth.ensure_user_in_organizations", new_callable=AsyncMock)
     @patch("api.routes.auth.consume_pending_signup", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
-    async def test_unknown_or_replayed_token_creates_nothing(
+    async def test_wrong_expired_and_replayed_codes_read_identically(
         self, _enabled, mock_consume, mock_ensure
     ):
-        # A second click finds nothing, because the first one deleted the node.
-        mock_consume.return_value = (None, "invalid")
+        # Telling them apart would let a guesser learn when they had found a
+        # live signup, and let anyone probe which addresses are mid-signup.
+        mock_consume.return_value = (None, RESULT_INVALID)
+        wrong = await verify_email(_mock_request(), _verify_data())
 
-        response = await verify_email(_mock_request(), token="already-used")
+        mock_consume.return_value = (None, RESULT_EXPIRED)
+        expired = await verify_email(_mock_request(), _verify_data())
 
-        assert _verified_param(response) == "invalid"
+        assert wrong.status_code == expired.status_code == 400
+        assert wrong.body == expired.body
         mock_ensure.assert_not_called()
 
     @pytest.mark.asyncio
     @patch("api.routes.auth.ensure_user_in_organizations", new_callable=AsyncMock)
     @patch("api.routes.auth.consume_pending_signup", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
-    async def test_expired_token_is_distinguished_from_an_invalid_one(
+    async def test_an_empty_code_never_reaches_the_store(
         self, _enabled, mock_consume, mock_ensure
     ):
-        # The user can act on "expired" (sign up again); "invalid" reads like a
-        # broken link, so conflating them would send them to support instead.
-        mock_consume.return_value = (None, RESULT_EXPIRED)
+        response = await verify_email(_mock_request(), _verify_data(code="  "))
 
-        response = await verify_email(_mock_request(), token="stale")
-
-        assert _verified_param(response) == "expired"
+        assert response.status_code == 400
+        mock_consume.assert_not_called()
         mock_ensure.assert_not_called()
 
     @pytest.mark.asyncio
@@ -279,17 +299,17 @@ class TestVerifyEmail:
     @patch("api.routes.auth._email_account_exists", new_callable=AsyncMock)
     @patch("api.routes.auth.consume_pending_signup", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
-    async def test_link_for_an_address_that_gained_an_account_is_refused(
+    async def test_code_for_an_address_that_gained_an_account_is_refused(
         self, _enabled, mock_consume, mock_exists, mock_ensure
     ):
-        # Signed up by email, then logged in with Google before clicking. The
-        # link must not log anyone into that account.
+        # Signed up by email, then logged in with Google before confirming. The
+        # code must not log anyone into that account.
         mock_consume.return_value = (_pending(), RESULT_OK)
         mock_exists.return_value = True
 
-        response = await verify_email(_mock_request(), token="raw-token")
+        response = await verify_email(_mock_request(), _verify_data())
 
-        assert _verified_param(response) == "exists"
+        assert response.status_code == 409
         mock_ensure.assert_not_called()
 
     @pytest.mark.asyncio
@@ -302,15 +322,15 @@ class TestVerifyEmail:
     async def test_unset_session_is_reported_as_a_failure(
         self, _enabled, mock_consume, mock_exists, mock_ensure, _set_hash, _session
     ):
-        # Landing on a logged-out page with no explanation is worse than being
-        # told it did not work; the account is real, so logging in still works.
+        # Silently reporting success would leave the user logged out with no
+        # explanation; the account is real, so logging in still works.
         mock_consume.return_value = (_pending(), RESULT_OK)
         mock_exists.return_value = False
         mock_ensure.return_value = (True, {"new_identity": True})
 
-        response = await verify_email(_mock_request(), token="raw-token")
+        response = await verify_email(_mock_request(), _verify_data())
 
-        assert _verified_param(response) == "failed"
+        assert response.status_code == 500
 
     @pytest.mark.asyncio
     @patch("api.routes.auth.establish_browser_session", return_value=True)
@@ -327,30 +347,28 @@ class TestVerifyEmail:
         mock_ensure.return_value = (True, {"new_identity": True})
         mock_set_hash.side_effect = HTTPException(status_code=500)
 
-        response = await verify_email(_mock_request(), token="raw-token")
+        response = await verify_email(_mock_request(), _verify_data())
 
-        assert _verified_param(response) == "failed"
+        assert response.status_code == 500
         mock_session.assert_not_called()
 
     @pytest.mark.asyncio
     @patch("api.routes.auth.consume_pending_signup", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
-    async def test_backend_outage_asks_the_user_to_try_the_link_again(
-        self, _enabled, mock_consume
-    ):
+    async def test_backend_outage_is_retryable(self, _enabled, mock_consume):
         mock_consume.side_effect = AuthBackendUnavailableError("down")
 
-        response = await verify_email(_mock_request(), token="raw-token")
+        response = await verify_email(_mock_request(), _verify_data())
 
-        assert _verified_param(response) == "unavailable"
+        assert response.status_code == 503
 
     @pytest.mark.asyncio
     @patch("api.routes.auth.consume_pending_signup", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=False)
     async def test_disabled_email_auth_redeems_nothing(self, _enabled, mock_consume):
-        response = await verify_email(_mock_request(), token="raw-token")
+        response = await verify_email(_mock_request(), _verify_data())
 
-        assert _verified_param(response) == "failed"
+        assert response.status_code == 403
         mock_consume.assert_not_called()
 
 
@@ -358,11 +376,11 @@ class TestResendVerification:
     """The resend endpoint must not become an account-existence oracle."""
 
     @pytest.mark.asyncio
-    @patch("api.routes.auth.send_verification_link", new_callable=AsyncMock)
+    @patch("api.routes.auth.send_verification_code", new_callable=AsyncMock)
     @patch("api.routes.auth.refresh_pending_signup", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
-    async def test_pending_address_gets_a_fresh_link(self, _enabled, mock_refresh, mock_send):
-        mock_refresh.return_value = TokenIssue(token="fresh-token", first_name="Ada")
+    async def test_pending_address_gets_a_fresh_code(self, _enabled, mock_refresh, mock_send):
+        mock_refresh.return_value = CodeIssue(code="654321", first_name="Ada")
         mock_send.return_value = True
 
         response = await resend_verification_email(
@@ -371,9 +389,10 @@ class TestResendVerification:
 
         assert response.status_code == 202
         mock_send.assert_awaited_once()
+        assert "654321" not in response.body.decode()
 
     @pytest.mark.asyncio
-    @patch("api.routes.auth.send_verification_link", new_callable=AsyncMock)
+    @patch("api.routes.auth.send_verification_code", new_callable=AsyncMock)
     @patch("api.routes.auth.refresh_pending_signup", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
     async def test_unknown_and_throttled_answer_exactly_like_a_success(
@@ -381,18 +400,18 @@ class TestResendVerification:
     ):
         # Same status and same body for all three, or the endpoint would tell an
         # anonymous caller which addresses are mid-signup.
-        mock_refresh.return_value = TokenIssue(token="fresh-token", first_name="Ada")
+        mock_refresh.return_value = CodeIssue(code="654321", first_name="Ada")
         mock_send.return_value = True
         issued = await resend_verification_email(
             _mock_request(), EmailResendRequest(email="pending@example.com")
         )
 
-        mock_refresh.return_value = TokenIssue(missing=True)
+        mock_refresh.return_value = CodeIssue(missing=True)
         unknown = await resend_verification_email(
             _mock_request(), EmailResendRequest(email="nobody@example.com")
         )
 
-        mock_refresh.return_value = TokenIssue(throttled=True)
+        mock_refresh.return_value = CodeIssue(throttled=True)
         throttled = await resend_verification_email(
             _mock_request(), EmailResendRequest(email="pending@example.com")
         )
@@ -401,11 +420,11 @@ class TestResendVerification:
         assert issued.body == unknown.body == throttled.body
 
     @pytest.mark.asyncio
-    @patch("api.routes.auth.send_verification_link", new_callable=AsyncMock)
+    @patch("api.routes.auth.send_verification_code", new_callable=AsyncMock)
     @patch("api.routes.auth.refresh_pending_signup", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
     async def test_unknown_address_is_never_mailed(self, _enabled, mock_refresh, mock_send):
-        mock_refresh.return_value = TokenIssue(missing=True)
+        mock_refresh.return_value = CodeIssue(missing=True)
 
         await resend_verification_email(
             _mock_request(), EmailResendRequest(email="nobody@example.com")

@@ -1,23 +1,31 @@
 """Signup email verification -- the holding pen for accounts that do not exist yet.
 
 Signing up does not create a user. It records the submitted details on a
-``PendingSignup`` node and mails a link; clicking that link is what creates the
-``User`` and ``Identity`` and logs the browser in. An address that is never
-confirmed therefore never becomes an account at all -- nothing to count, nothing
-to log in as, nothing to clean up beyond an expiring node.
+``PendingSignup`` node and mails a six-digit code; typing that code back into
+the browser that signed up is what creates the ``User`` and ``Identity`` and
+logs it in. An address that is never confirmed therefore never becomes an
+account at all -- nothing to count, nothing to log in as, nothing to clean up
+beyond an expiring node.
 
 That ordering is what makes the guarantee cheap. There is no ``email_verified``
 flag to check at every call site and no half-real user for the org graph,
 analytics or quota logic to trip over, because an unverified address is simply
 absent from the account graph.
 
-The link carries a 256-bit random token. Only its SHA-256 is stored, so a
-snapshot of the graph does not yield a working link -- the same reasoning that
-keeps passwords hashed. Plain SHA-256 rather than a slow KDF is deliberate and
-sufficient here: the input is full-entropy random, so there is no dictionary to
-grind and nothing for a work factor to buy.
+A code rather than a link, deliberately. A link can be opened by whoever
+receives it, which is the wrong person in the case that matters: submit someone
+else's address with a password of your choosing, and their click would create an
+account they do not control the password to. A code has to be carried back to
+the session that submitted the form, and the person who submitted it never sees
+the mail. It also means no URL for a mail scanner to fetch and silently burn.
 
-Tokens are single-use (consuming one deletes the node) and expiring, and sends
+The code is short, so its secrecy cannot rest on entropy -- a million
+possibilities is nothing to a script. What bounds it is the attempt limit: a
+handful of wrong guesses destroys the pending signup outright, and the code
+expires in minutes. Only the SHA-256 is stored, which keeps a casual reader of
+the graph from lifting a live code, but the attempt limit is the actual defence.
+
+Codes are single-use (consuming one deletes the node) and expiring, and sends
 are rate-limited per address so the endpoint cannot be used to mail-bomb a third
 party.
 """
@@ -35,9 +43,18 @@ from api.config import ORGANIZATIONS_GRAPH
 from api.extensions import db
 from api.mail import send_mail
 
-# Long enough to survive a link sitting in an inbox overnight, short enough that
-# an intercepted mail does not stay useful.
-DEFAULT_TTL_HOURS = 24
+# Digits in a verification code. Six is what people expect to retype; the
+# attempt limit below is what makes it safe, not the length.
+CODE_DIGITS = 6
+
+# Long enough to walk to the other device and back, short enough that a code
+# left in an inbox is not still live tomorrow.
+DEFAULT_TTL_MINUTES = 15
+
+# Wrong guesses allowed before the pending signup is destroyed. With six digits
+# this is the whole defence against grinding the code, so it is deliberately
+# small: five wrong guesses out of a million is not a meaningful head start.
+DEFAULT_MAX_ATTEMPTS = 5
 
 # Minimum gap between two sends to one address.
 DEFAULT_RESEND_INTERVAL_SECONDS = 60
@@ -46,7 +63,7 @@ DEFAULT_RESEND_INTERVAL_SECONDS = 60
 # mail a single submitted address can generate.
 DEFAULT_MAX_SENDS = 5
 
-# Outcomes of redeeming a token, kept as constants so routes and tests agree on
+# Outcomes of redeeming a code, kept as constants so routes and tests agree on
 # the spelling.
 RESULT_OK = "ok"
 RESULT_INVALID = "invalid"
@@ -55,7 +72,7 @@ RESULT_EXPIRED = "expired"
 
 @dataclass(frozen=True)
 class PendingSignup:
-    """The details captured at signup, replayed when the link is clicked."""
+    """The details captured at signup, replayed when the code is redeemed."""
 
     email: str
     first_name: str
@@ -69,29 +86,30 @@ class PendingSignup:
 
 
 @dataclass(frozen=True)
-class TokenIssue:
-    """The result of asking for a verification link.
+class CodeIssue:  # pylint: disable=too-many-instance-attributes
+    """The result of asking for a verification code.
 
-    ``token`` is the only time the raw value exists outside the mail; the graph
+    ``code`` is the only time the raw value exists outside the mail; the graph
     keeps just its hash. ``throttled`` and ``exhausted`` are separated so the
     caller can tell "come back in a minute" from "stop asking".
 
-    The ``previous_*`` fields are what the link this one displaced looked like,
-    so ``revert_verification_send`` can put it back if the mail never goes out.
+    The ``previous_*`` fields are the code this one displaced, so
+    ``revert_verification_send`` can put it back if the mail never goes out.
     """
 
-    token: Optional[str] = None
+    code: Optional[str] = None
     first_name: Optional[str] = None
     throttled: bool = False
     exhausted: bool = False
     missing: bool = False
-    previous_token_hash: Optional[str] = None
+    previous_code_hash: Optional[str] = None
     previous_expires_at: Optional[int] = None
+    previous_attempts: Optional[int] = None
 
     @property
     def issued(self) -> bool:
-        """Whether a link was actually produced."""
-        return self.token is not None
+        """Whether a code was actually produced."""
+        return self.code is not None
 
 
 def _positive_int_env(name: str, default: int) -> int:
@@ -109,9 +127,14 @@ def _positive_int_env(name: str, default: int) -> int:
     return default
 
 
-def token_ttl_seconds() -> int:
-    """How long a verification link stays valid."""
-    return _positive_int_env("EMAIL_VERIFICATION_TTL_HOURS", DEFAULT_TTL_HOURS) * 3600
+def code_ttl_seconds() -> int:
+    """How long a verification code stays valid."""
+    return _positive_int_env("EMAIL_VERIFICATION_TTL_MINUTES", DEFAULT_TTL_MINUTES) * 60
+
+
+def max_attempts() -> int:
+    """Wrong guesses a pending signup survives."""
+    return _positive_int_env("EMAIL_VERIFICATION_MAX_ATTEMPTS", DEFAULT_MAX_ATTEMPTS)
 
 
 def resend_interval_seconds() -> int:
@@ -131,9 +154,14 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def hash_token(token: str) -> str:
-    """Hash a raw token for storage and lookup."""
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+def generate_code() -> str:
+    """A fresh zero-padded verification code."""
+    return f"{secrets.randbelow(10 ** CODE_DIGITS):0{CODE_DIGITS}d}"
+
+
+def hash_code(code: str) -> str:
+    """Hash a raw code for storage and lookup."""
+    return hashlib.sha256(code.encode("utf-8")).hexdigest()
 
 
 def _graph():
@@ -168,7 +196,7 @@ _SEND_ALLOWED = """
 """
 
 # Creates the pending signup if it is new, then replaces its details and issues
-# a link -- but only for a node the guard lets through. A node created by this
+# a code -- but only for a node the guard lets through. A node created by this
 # very query starts at zero sends, so it always passes.
 _START_SIGNUP = (
     """
@@ -178,11 +206,12 @@ _START_SIGNUP = (
 """
     + _SEND_ALLOWED
     + """
-        SET p.token_hash = $token_hash,
+        SET p.code_hash = $code_hash,
             p.first_name = $first_name,
             p.last_name = $last_name,
             p.password_hash = $password_hash,
             p.expires_at = $expires_at,
+            p.attempts = 0,
             p.last_sent_at = $now,
             p.send_count = p.send_count + 1
         RETURN p.send_count AS send_count
@@ -198,25 +227,29 @@ _REFRESH_SIGNUP = (
     + _SEND_ALLOWED
     + """
         WITH p,
-             p.token_hash AS previous_token_hash,
-             p.expires_at AS previous_expires_at
-        SET p.token_hash = $token_hash,
+             p.code_hash AS previous_code_hash,
+             p.expires_at AS previous_expires_at,
+             p.attempts AS previous_attempts
+        SET p.code_hash = $code_hash,
             p.expires_at = $expires_at,
+            p.attempts = 0,
             p.last_sent_at = $now,
             p.send_count = p.send_count + 1
         RETURN p.first_name AS first_name,
-               previous_token_hash,
-               previous_expires_at
+               previous_code_hash,
+               previous_expires_at,
+               previous_attempts
 """
 )
 
 # Undoes one send. Matching on the hash this send wrote makes it a no-op if
-# another request has since issued a link of its own.
+# another request has since issued a code of its own.
 _REVERT_SEND = """
         MATCH (p:PendingSignup {email: $email})
-        WHERE p.token_hash = $token_hash
-        SET p.token_hash = $previous_token_hash,
+        WHERE p.code_hash = $code_hash
+        SET p.code_hash = $previous_code_hash,
             p.expires_at = $previous_expires_at,
+            p.attempts = $previous_attempts,
             p.send_count = p.send_count - 1
 """
 
@@ -230,60 +263,62 @@ def _throttle_params(now: int) -> dict:
     }
 
 
-async def _classify_refusal(email: str) -> TokenIssue:
+async def _classify_refusal(email: str) -> CodeIssue:
     """Say why the guard rejected a send. Only ever reports, never decides."""
     last_sent_at, send_count, first_name = await _read_send_state(email)
     if last_sent_at is None and send_count == 0 and first_name is None:
-        return TokenIssue(missing=True)
+        return CodeIssue(missing=True)
     if send_count >= max_sends():
-        return TokenIssue(exhausted=True)
-    return TokenIssue(throttled=True)
+        return CodeIssue(exhausted=True)
+    return CodeIssue(throttled=True)
 
 
 async def start_pending_signup(
     email: str, first_name: str, last_name: str, password_hash: str
-) -> TokenIssue:
-    """Record a signup awaiting verification and return its link token.
+) -> CodeIssue:
+    """Record a signup awaiting verification and return its code.
 
     Re-submitting the form for an address that is already pending replaces the
-    stored details and invalidates the previous link, so the most recent attempt
+    stored details and invalidates the previous code, so the most recent attempt
     is the one that works. The send counter deliberately survives that replace:
     otherwise resubmitting would reset the rate limit and defeat it.
     """
     now = _now_ms()
-    token = secrets.token_urlsafe(32)
+    code = generate_code()
     result = await _graph().query(
         _START_SIGNUP,
         {
             "email": email,
-            "token_hash": hash_token(token),
+            "code_hash": hash_code(code),
             "first_name": first_name,
             "last_name": last_name,
             "password_hash": password_hash,
-            "expires_at": now + token_ttl_seconds() * 1000,
+            "expires_at": now + code_ttl_seconds() * 1000,
             **_throttle_params(now),
         },
     )
     if not result.result_set:
         return await _classify_refusal(email)
 
-    return TokenIssue(token=token, first_name=first_name)
+    return CodeIssue(code=code, first_name=first_name)
 
 
-async def refresh_pending_signup(email: str) -> TokenIssue:
-    """Issue a fresh link for an existing pending signup.
+async def refresh_pending_signup(email: str) -> CodeIssue:
+    """Issue a fresh code for an existing pending signup.
 
     Only ever refreshes; it will not create a pending signup, so the resend
-    endpoint cannot be used to send mail to an address nobody submitted.
+    endpoint cannot be used to send mail to an address nobody submitted. A new
+    code comes with a fresh attempt budget -- the old one belonged to a code
+    that no longer works.
     """
     now = _now_ms()
-    token = secrets.token_urlsafe(32)
+    code = generate_code()
     result = await _graph().query(
         _REFRESH_SIGNUP,
         {
             "email": email,
-            "token_hash": hash_token(token),
-            "expires_at": now + token_ttl_seconds() * 1000,
+            "code_hash": hash_code(code),
+            "expires_at": now + code_ttl_seconds() * 1000,
             **_throttle_params(now),
         },
     )
@@ -293,20 +328,23 @@ async def refresh_pending_signup(email: str) -> TokenIssue:
         # that just consumed the record.
         return await _classify_refusal(email)
 
-    first_name, previous_token_hash, previous_expires_at = result.result_set[0]
-    return TokenIssue(
-        token=token,
+    first_name, previous_code_hash, previous_expires_at, previous_attempts = (
+        result.result_set[0]
+    )
+    return CodeIssue(
+        code=code,
         first_name=first_name,
-        previous_token_hash=previous_token_hash,
+        previous_code_hash=previous_code_hash,
         previous_expires_at=previous_expires_at,
+        previous_attempts=previous_attempts,
     )
 
 
-async def revert_verification_send(email: str, issue: TokenIssue) -> None:
+async def revert_verification_send(email: str, issue: CodeIssue) -> None:
     """Give back a send whose mail never left. Best-effort; never fatal.
 
-    Refunds the counter and puts the displaced link back in force, so a
-    transport failure costs the user neither their send budget nor the link
+    Refunds the counter and puts the displaced code back in force, so a
+    transport failure costs the user neither their send budget nor the code
     they may already be holding. ``last_sent_at`` is deliberately left where
     the failed attempt put it: retries stay one per interval even when they
     fail, which is what stops a broken transport from being hammered.
@@ -318,54 +356,83 @@ async def revert_verification_send(email: str, issue: TokenIssue) -> None:
             _REVERT_SEND,
             {
                 "email": email,
-                "token_hash": hash_token(issue.token),
-                "previous_token_hash": issue.previous_token_hash,
+                "code_hash": hash_code(issue.code),
+                "previous_code_hash": issue.previous_code_hash,
                 "previous_expires_at": issue.previous_expires_at,
+                "previous_attempts": issue.previous_attempts,
             },
         )
     except Exception as e:  # pylint: disable=broad-exception-caught
         logging.warning("Could not revert a failed verification send: %s", e)
 
 
-async def consume_pending_signup(token: str) -> Tuple[Optional[PendingSignup], str]:
-    """Redeem a verification token exactly once.
-
-    Returns ``(pending, RESULT_OK)`` when the token was live. The node is
-    deleted in the same query that reads it, so a replayed link finds nothing --
-    that, not a flag, is what makes the token single-use.
-
-    Lookup is by token *hash*, an exact match on a stored value, so there is no
-    secret-dependent comparison here for timing to leak.
-    """
-    if not token:
-        return None, RESULT_INVALID
-
-    result = await _graph().query(
-        """
-        MATCH (p:PendingSignup {token_hash: $token_hash})
+# Redeems a code. The attempt guard rides inside the write for the same reason
+# the send guard does: checking first would let concurrent guesses all pass a
+# check that only one increment ever answered for.
+_CONSUME_CODE = """
+        MATCH (p:PendingSignup {email: $email})
+        WHERE p.code_hash = $code_hash AND p.attempts < $max_attempts
         WITH p,
-             p.email AS email,
              p.first_name AS first_name,
              p.last_name AS last_name,
              p.password_hash AS password_hash,
              p.expires_at AS expires_at
         DELETE p
-        RETURN email, first_name, last_name, password_hash, expires_at
-        """,
-        {"token_hash": hash_token(token)},
-    )
-    if not result.result_set:
+        RETURN first_name, last_name, password_hash, expires_at
+"""
+
+# Charges a wrong guess, and destroys the signup once the budget is gone. A
+# six-digit code only stays secret while the number of guesses stays small.
+_CHARGE_ATTEMPT = """
+        MATCH (p:PendingSignup {email: $email})
+        SET p.attempts = p.attempts + 1
+        WITH p, p.attempts AS attempts
+        WHERE attempts >= $max_attempts
+        DELETE p
+        RETURN attempts
+"""
+
+
+async def consume_pending_signup(
+    email: str, code: str
+) -> Tuple[Optional[PendingSignup], str]:
+    """Redeem a verification code exactly once.
+
+    Returns ``(pending, RESULT_OK)`` when the code was live. The node is deleted
+    in the same query that reads it, so a replayed code finds nothing -- that,
+    not a flag, is what makes it single-use.
+
+    A wrong guess is charged against the record's attempt budget, and running
+    that budget out deletes the pending signup. That, rather than the length of
+    the code, is what makes six digits enough.
+
+    Lookup is by code *hash*, an exact match on a stored value, so there is no
+    secret-dependent comparison here for timing to leak.
+    """
+    if not email or not code:
         return None, RESULT_INVALID
 
-    email, first_name, last_name, password_hash, expires_at = result.result_set[0]
+    result = await _graph().query(
+        _CONSUME_CODE,
+        {
+            "email": email,
+            "code_hash": hash_code(code),
+            "max_attempts": max_attempts(),
+        },
+    )
+    if not result.result_set:
+        await _charge_failed_attempt(email)
+        return None, RESULT_INVALID
 
-    # Expired tokens are consumed rather than left behind: the link is dead
+    first_name, last_name, password_hash, expires_at = result.result_set[0]
+
+    # Expired codes are consumed rather than left behind: the code is dead
     # either way, and dropping the record keeps abandoned signups from
     # accumulating. The user simply signs up again.
     if not isinstance(expires_at, (int, float)) or _now_ms() >= expires_at:
         return None, RESULT_EXPIRED
 
-    if not email or not password_hash:
+    if not password_hash:
         logging.error("Discarding a malformed pending signup record")
         return None, RESULT_INVALID
 
@@ -380,11 +447,23 @@ async def consume_pending_signup(token: str) -> Tuple[Optional[PendingSignup], s
     )
 
 
+async def _charge_failed_attempt(email: str) -> None:
+    """Bill a wrong guess. Best-effort; a failure must not become a free retry."""
+    try:
+        result = await _graph().query(
+            _CHARGE_ATTEMPT, {"email": email, "max_attempts": max_attempts()}
+        )
+        if result.result_set:
+            logging.warning("Pending signup discarded after too many wrong codes")
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logging.warning("Could not record a failed verification attempt: %s", e)
+
+
 async def discard_pending_signup(email: str) -> None:
     """Drop any pending signup for an address. Best-effort; never fatal.
 
     Called once an account exists for the address by some other route, so a
-    stale link cannot later be redeemed against it.
+    stale code cannot later be redeemed against it.
     """
     try:
         await _graph().query(
@@ -400,39 +479,41 @@ def _greeting(first_name: Optional[str]) -> str:
     return f"Hi {name}," if name else "Hi,"
 
 
-async def send_verification_link(
-    email: str, first_name: Optional[str], verify_url: str
+async def send_verification_code(
+    email: str, first_name: Optional[str], code: str
 ) -> bool:
-    """Mail the verification link. Returns whether it was handed to a transport."""
-    hours = token_ttl_seconds() // 3600
+    """Mail the verification code. Returns whether it was handed to a transport."""
+    minutes = code_ttl_seconds() // 60
     greeting = _greeting(first_name)
 
     text_body = (
         f"{greeting}\n\n"
-        "Confirm your email address to finish creating your QueryWeaver account:\n\n"
-        f"{verify_url}\n\n"
-        f"The link works once and expires in {hours} hours. Your account is not "
-        "created until you open it.\n\n"
+        "Your QueryWeaver confirmation code is:\n\n"
+        f"    {code}\n\n"
+        f"Type it into the tab where you signed up. It works once and expires in "
+        f"{minutes} minutes. Your account is not created until you enter it.\n\n"
         "If you did not sign up for QueryWeaver, ignore this message -- no "
-        "account exists for this address and none will be created.\n"
+        "account exists for this address and none will be created. Never share "
+        "this code with anyone.\n"
     )
 
     html_body = (
         "<html><body>"
         f"<p>{html.escape(greeting)}</p>"
-        "<p>Confirm your email address to finish creating your QueryWeaver "
-        "account:</p>"
-        f'<p><a href="{html.escape(verify_url, quote=True)}">Confirm my email address</a></p>'
-        f"<p>The link works once and expires in {hours} hours. Your account is "
-        "not created until you open it.</p>"
+        "<p>Your QueryWeaver confirmation code is:</p>"
+        f'<p style="font-size:28px;font-weight:bold;letter-spacing:6px">'
+        f"{html.escape(code)}</p>"
+        f"<p>Type it into the tab where you signed up. It works once and expires "
+        f"in {minutes} minutes. Your account is not created until you enter it.</p>"
         "<p>If you did not sign up for QueryWeaver, ignore this message &mdash; "
-        "no account exists for this address and none will be created.</p>"
+        "no account exists for this address and none will be created. Never "
+        "share this code with anyone.</p>"
         "</body></html>"
     )
 
     return await send_mail(
         to=email,
-        subject="Confirm your QueryWeaver email address",
+        subject="Your QueryWeaver confirmation code",
         text_body=text_body,
         html_body=html_body,
     )
