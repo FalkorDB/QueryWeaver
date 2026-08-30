@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { Data, FalkorDBCanvas, GraphNode, GraphLink } from '@falkordb/canvas';
 import { X, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -30,6 +31,12 @@ interface SchemaViewerProps {
   isOpen: boolean;
   onClose: () => void;
   onWidthChange?: (width: number) => void;
+  /**
+   * Raised while the handle is being dragged. The parent must suspend its own
+   * width/margin transition for the duration, otherwise the main content
+   * animates behind the handle and visibly lags the pointer.
+   */
+  onResizingChange?: (isResizing: boolean) => void;
   sidebarWidth?: number;
 }
 
@@ -54,7 +61,38 @@ const linkKey = (source: unknown, target: unknown): string =>
 // highlight framing is applied after the canvas' own initial fit.
 const HIGHLIGHT_ZOOM_DELAY_MS = 100;
 
-const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: SchemaViewerProps) => {
+/** Panel width bounds, as a fraction of the viewport width. */
+const MIN_WIDTH_PERCENT = 0.2;
+const MAX_WIDTH_PERCENT = 0.6;
+const DEFAULT_WIDTH_PERCENT = 0.5;
+
+// Usability floor. Below this the "Database Schema" heading wraps and the
+// canvas controls stack into three rows, so the percentage minimum may only
+// raise the floor, never lower it.
+const MIN_WIDTH_PX = 300;
+
+/** How far one arrow-key press moves the handle, in pixels. */
+const KEYBOARD_RESIZE_STEP = 24;
+
+/** The current viewport-relative width bounds of the panel. */
+const panelWidthBounds = (): { min: number; max: number } => {
+  const max = Math.floor(window.innerWidth * MAX_WIDTH_PERCENT);
+  // On a narrow viewport the pixel floor can exceed the maximum; the maximum
+  // wins, so the panel never claims more than MAX_WIDTH_PERCENT of the screen.
+  const min = Math.min(
+    Math.max(MIN_WIDTH_PX, Math.floor(window.innerWidth * MIN_WIDTH_PERCENT)),
+    max
+  );
+  return { min, max };
+};
+
+/** Keeps the panel width inside the viewport-relative bounds. */
+const clampPanelWidth = (candidate: number): number => {
+  const { min, max } = panelWidthBounds();
+  return Math.min(Math.max(Math.floor(candidate), min), max);
+};
+
+const SchemaViewer = ({ isOpen, onClose, onWidthChange, onResizingChange, sidebarWidth = 64 }: SchemaViewerProps) => {
   const canvasRef = useRef<FalkorDBCanvas>(null);
   const resizeRef = useRef<HTMLDivElement>(null);
   // Schema snapshot currently seeded into the canvas, used to avoid re-seeding
@@ -177,16 +215,40 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
   }, []);
 
   const NODE_WIDTH = 160;
-  const MIN_WIDTH = 300;
-  const MAX_WIDTH_PERCENT = 0.6;
-  const DEFAULT_WIDTH_PERCENT = 0.5;
 
-  const [width, setWidth] = useState(() => {
-    const initialWidth = Math.floor(window.innerWidth * DEFAULT_WIDTH_PERCENT);
-    return initialWidth;
-  });
+  const [width, setWidth] = useState(() =>
+    clampPanelWidth(window.innerWidth * DEFAULT_WIDTH_PERCENT)
+  );
   const [isResizing, setIsResizing] = useState(false);
   const [canvasLoaded, setCanvasLoaded] = useState(false);
+  // Mirrors the viewport-relative bounds so the separator can report them via
+  // aria-valuemin/aria-valuemax without reading `window` during render.
+  const [widthBounds, setWidthBounds] = useState(panelWidthBounds);
+  // Once the user drags the handle their width is theirs to keep; only an
+  // untouched panel falls back to the default on open.
+  const hasUserResized = useRef(false);
+  // Mirrors `width` for synchronous reads. Arrow-key auto-repeat fires several
+  // keydowns before React commits, and each one must build on the previous.
+  const widthRef = useRef(width);
+  // The width the user asked for, held as a fraction of the viewport. Shrinking
+  // the window clamps the *displayed* width; re-deriving from this fraction is
+  // what lets the original width come back when the window grows again.
+  const preferredFractionRef = useRef(DEFAULT_WIDTH_PERCENT);
+
+  // Single write path for the panel width. `remember` records the result as the
+  // user's preference; the viewport-resize path passes `false` so it re-derives
+  // from the preference instead of re-clamping an already-clamped value, which
+  // would lose the original width for good.
+  const applyWidth = useCallback((candidate: number, remember: boolean) => {
+    const next = clampPanelWidth(candidate);
+    widthRef.current = next;
+    if (remember) {
+      preferredFractionRef.current = next / window.innerWidth;
+    }
+    setWidth(next);
+  }, []);
+
+  const endResize = useCallback(() => setIsResizing(false), []);
 
   // Notify parent of width changes
   useEffect(() => {
@@ -194,6 +256,50 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
       onWidthChange(width);
     }
   }, [width, onWidthChange]);
+
+  // Notify parent while dragging, so it can drop its own transition too.
+  useEffect(() => {
+    onResizingChange?.(isResizing);
+  }, [isResizing, onResizingChange]);
+
+  // The panel mounts with the app, so its initial width is derived from
+  // whatever the viewport was at startup. Recompute the default when it is
+  // actually opened, otherwise a window resize in between leaves it off.
+  useEffect(() => {
+    if (!isOpen || hasUserResized.current) return;
+    applyWidth(window.innerWidth * DEFAULT_WIDTH_PERCENT, true);
+  }, [isOpen, applyWidth]);
+
+  // The bounds are viewport-relative, so shrinking the window can leave the
+  // panel wider than its maximum. Re-derive from the remembered fraction rather
+  // than from the current width, so a transient narrowing does not permanently
+  // collapse the panel to the minimum.
+  useEffect(() => {
+    const handleResize = () => {
+      setWidthBounds(panelWidthBounds());
+      applyWidth(preferredFractionRef.current * window.innerWidth, false);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [applyWidth]);
+
+  // Arrow/Home/End resizing, so the panel is not mouse-only. Uses the same
+  // clamp as the drag path and marks the width as user-owned either way.
+  const handleResizeKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const { min, max } = panelWidthBounds();
+    let next: number | null = null;
+
+    if (event.key === 'ArrowLeft') next = widthRef.current - KEYBOARD_RESIZE_STEP;
+    else if (event.key === 'ArrowRight') next = widthRef.current + KEYBOARD_RESIZE_STEP;
+    else if (event.key === 'Home') next = min;
+    else if (event.key === 'End') next = max;
+
+    if (next === null) return;
+
+    event.preventDefault();
+    hasUserResized.current = true;
+    applyWidth(next, true);
+  };
 
   // Load falkordb-canvas dynamically
   useEffect(() => {
@@ -208,36 +314,19 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
     }
   }, [isOpen, selectedGraph]);
 
+  // The drag itself is tracked by the handle via pointer capture (see the
+  // separator's pointer handlers); this only owns the page-wide affordances.
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing) return;
+    if (!isResizing) return;
 
-      const newWidth = e.clientX - sidebarWidth;
-      const maxWidth = Math.floor(window.innerWidth * MAX_WIDTH_PERCENT);
-
-      if (newWidth >= MIN_WIDTH && newWidth <= maxWidth) {
-        setWidth(newWidth);
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
-
-    if (isResizing) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = 'ew-resize';
-      document.body.style.userSelect = 'none';
-    }
+    document.body.style.cursor = 'ew-resize';
+    document.body.style.userSelect = 'none';
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [isResizing, sidebarWidth]);
+  }, [isResizing]);
 
   const loadSchemaData = async () => {
     if (!selectedGraph) return;
@@ -543,10 +632,13 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
         onClick={onClose}
       />
 
-      {/* Schema Viewer */}
+      {/* Schema Viewer. The width transition has to be off while dragging,
+          otherwise every mousemove animates over 300ms and the panel lags
+          behind the cursor. */}
       <div
         data-testid="schema-panel"
-        className={`fixed top-0 h-full bg-background border-r border-border flex flex-col transition-all duration-300
+        className={`fixed top-0 h-full bg-background border-r border-border flex flex-col
+          ${isResizing ? '' : 'transition-all duration-300'}
           translate-x-0
           md:z-30 z-50
           w-[80vw] max-w-[400px] md:max-w-none
@@ -624,15 +716,49 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
           )}
         </div>
 
-        {/* Resize Handle */}
+        {/* Resize Handle. Hidden below `md`, where the panel is sized by the
+            `w-[80vw]` class and ignores the `width` state entirely — a handle
+            there would move the ARIA values without moving the panel. */}
         <div
           ref={resizeRef}
-          className="absolute right-0 top-0 w-1 h-full cursor-ew-resize hover:bg-purple-500 transition-colors z-50"
-          onMouseDown={(e) => {
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize schema panel"
+          aria-valuenow={width}
+          aria-valuemin={widthBounds.min}
+          aria-valuemax={widthBounds.max}
+          tabIndex={0}
+          data-testid="schema-panel-resize-handle"
+          className="hidden md:block absolute right-0 top-0 w-1 h-full cursor-ew-resize hover:bg-purple-500 focus-visible:bg-purple-500 focus-visible:outline-none transition-colors z-50"
+          onKeyDown={handleResizeKeyDown}
+          onPointerDown={(e) => {
+            if (e.button !== 0) return;
             e.preventDefault();
             e.stopPropagation();
+            // `preventDefault` also suppresses the click's focus, which would
+            // leave the arrow-key resize unreachable for a mouse user.
+            e.currentTarget.focus({ preventScroll: true });
+            // Capture keeps the drag glued to the handle, so a release outside
+            // the window still ends it. A document-level `mouseup` never fires
+            // there, which left the panel latched in resize mode.
+            e.currentTarget.setPointerCapture(e.pointerId);
             setIsResizing(true);
           }}
+          onPointerMove={(e) => {
+            if (!isResizing) return;
+            // Only an actual drag counts as a user-chosen width. Setting this
+            // on pointerdown meant a bare click — including clicking the
+            // separator just to focus it — opted the panel out of the
+            // default-width recompute on open for the rest of the session.
+            hasUserResized.current = true;
+            // Clamp rather than ignore out-of-range values: a fast drag puts
+            // the pointer past the bound in a single event, and ignoring it
+            // froze the panel mid-drag instead of pinning it to min or max.
+            applyWidth(e.clientX - sidebarWidth, true);
+          }}
+          onPointerUp={endResize}
+          onPointerCancel={endResize}
+          onLostPointerCapture={endResize}
         >
           <div className="absolute right-0 top-1/2 -translate-y-1/2 -translate-x-1/2">
             <GripVertical className="h-4 w-4 text-border" />
