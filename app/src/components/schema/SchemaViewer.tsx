@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { Data, FalkorDBCanvas, GraphNode, GraphLink } from '@falkordb/canvas';
 import { X, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -30,6 +31,12 @@ interface SchemaViewerProps {
   isOpen: boolean;
   onClose: () => void;
   onWidthChange?: (width: number) => void;
+  /**
+   * Raised while the handle is being dragged. The parent must suspend its own
+   * width/margin transition for the duration, otherwise the main content
+   * animates behind the handle and visibly lags the pointer.
+   */
+  onResizingChange?: (isResizing: boolean) => void;
   sidebarWidth?: number;
 }
 
@@ -37,6 +44,23 @@ interface SchemaViewerProps {
 const HIGHLIGHT_COLOR = '#8b5cf6';
 /** Opacity applied to schema elements the selected query does not touch. */
 const DIMMED_OPACITY = 0.25;
+
+// Geometry of a rendered table card, shared by the drawing code and the
+// viewport framing below.
+const NODE_WIDTH = 160;
+const NODE_LINE_HEIGHT = 14;
+const NODE_PADDING = 8;
+const NODE_HEADER_HEIGHT = 20;
+
+const tableNodeHeight = (columnCount: number): number =>
+  NODE_HEADER_HEIGHT + columnCount * NODE_LINE_HEIGHT + NODE_PADDING * 2;
+
+/** Gap in pixels kept between the framed tables and the canvas edges. */
+const FIT_PADDING_PX = 32;
+/** Upper bound on the framing zoom, so a single small table is not blown up. */
+const FIT_MAX_ZOOM = 1.5;
+const FIT_MIN_ZOOM = 0.05;
+const FIT_ANIMATION_MS = 300;
 
 /** Link endpoints are ids before the layout runs and node objects afterwards. */
 const endpointId = (endpoint: unknown): string => {
@@ -50,13 +74,64 @@ const endpointId = (endpoint: unknown): string => {
 const linkKey = (source: unknown, target: unknown): string =>
   [endpointId(source), endpointId(target)].sort().join('|');
 
-// Must stay above the canvas' `interaction.zoomToFitDelay` (50ms default) so the
-// highlight framing is applied after the canvas' own initial fit.
-const HIGHLIGHT_ZOOM_DELAY_MS = 100;
+// Must stay above the canvas' `interaction.zoomToFitDelay` (50ms default) so our
+// framing is always applied after the canvas' own centre-based fit.
+const CANVAS_FIT_DELAY_MS = 100;
+/** How long to keep waiting for the layout to settle before framing anyway. */
+const SETTLE_TIMEOUT_MS = 2000;
+/** World-unit movement below which the layout counts as settled. */
+const SETTLE_EPSILON = 0.5;
 
-const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: SchemaViewerProps) => {
+interface Bounds {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+const boundsSettled = (a: Bounds, b: Bounds): boolean =>
+  Math.abs(a.minX - b.minX) < SETTLE_EPSILON &&
+  Math.abs(a.maxX - b.maxX) < SETTLE_EPSILON &&
+  Math.abs(a.minY - b.minY) < SETTLE_EPSILON &&
+  Math.abs(a.maxY - b.maxY) < SETTLE_EPSILON;
+
+/** Panel width bounds, as a fraction of the viewport width. */
+const MIN_WIDTH_PERCENT = 0.2;
+const MAX_WIDTH_PERCENT = 0.6;
+const DEFAULT_WIDTH_PERCENT = 0.5;
+
+// Usability floor. Below this the "Database Schema" heading wraps and the
+// canvas controls stack into three rows, so the percentage minimum may only
+// raise the floor, never lower it.
+const MIN_WIDTH_PX = 300;
+
+/** How far one arrow-key press moves the handle, in pixels. */
+const KEYBOARD_RESIZE_STEP = 24;
+
+/** The current viewport-relative width bounds of the panel. */
+const panelWidthBounds = (): { min: number; max: number } => {
+  const max = Math.floor(window.innerWidth * MAX_WIDTH_PERCENT);
+  // On a narrow viewport the pixel floor can exceed the maximum; the maximum
+  // wins, so the panel never claims more than MAX_WIDTH_PERCENT of the screen.
+  const min = Math.min(
+    Math.max(MIN_WIDTH_PX, Math.floor(window.innerWidth * MIN_WIDTH_PERCENT)),
+    max
+  );
+  return { min, max };
+};
+
+/** Keeps the panel width inside the viewport-relative bounds. */
+const clampPanelWidth = (candidate: number): number => {
+  const { min, max } = panelWidthBounds();
+  return Math.min(Math.max(Math.floor(candidate), min), max);
+};
+
+const SchemaViewer = ({ isOpen, onClose, onWidthChange, onResizingChange, sidebarWidth = 64 }: SchemaViewerProps) => {
   const canvasRef = useRef<FalkorDBCanvas>(null);
   const resizeRef = useRef<HTMLDivElement>(null);
+  // Handle of the in-flight "wait for the layout to settle" loop, so a new
+  // framing request cancels the previous one instead of racing it.
+  const settleFrameRef = useRef(0);
   // Schema snapshot currently seeded into the canvas, used to avoid re-seeding
   // (and losing node positions) when only the highlight changed.
   const renderedSchemaRef = useRef<SchemaData | null>(null);
@@ -176,17 +251,39 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
     return () => observer.disconnect();
   }, []);
 
-  const NODE_WIDTH = 160;
-  const MIN_WIDTH = 300;
-  const MAX_WIDTH_PERCENT = 0.6;
-  const DEFAULT_WIDTH_PERCENT = 0.5;
-
-  const [width, setWidth] = useState(() => {
-    const initialWidth = Math.floor(window.innerWidth * DEFAULT_WIDTH_PERCENT);
-    return initialWidth;
-  });
+  const [width, setWidth] = useState(() =>
+    clampPanelWidth(window.innerWidth * DEFAULT_WIDTH_PERCENT)
+  );
   const [isResizing, setIsResizing] = useState(false);
   const [canvasLoaded, setCanvasLoaded] = useState(false);
+  // Mirrors the viewport-relative bounds so the separator can report them via
+  // aria-valuemin/aria-valuemax without reading `window` during render.
+  const [widthBounds, setWidthBounds] = useState(panelWidthBounds);
+  // Once the user drags the handle their width is theirs to keep; only an
+  // untouched panel falls back to the default on open.
+  const hasUserResized = useRef(false);
+  // Mirrors `width` for synchronous reads. Arrow-key auto-repeat fires several
+  // keydowns before React commits, and each one must build on the previous.
+  const widthRef = useRef(width);
+  // The width the user asked for, held as a fraction of the viewport. Shrinking
+  // the window clamps the *displayed* width; re-deriving from this fraction is
+  // what lets the original width come back when the window grows again.
+  const preferredFractionRef = useRef(DEFAULT_WIDTH_PERCENT);
+
+  // Single write path for the panel width. `remember` records the result as the
+  // user's preference; the viewport-resize path passes `false` so it re-derives
+  // from the preference instead of re-clamping an already-clamped value, which
+  // would lose the original width for good.
+  const applyWidth = useCallback((candidate: number, remember: boolean) => {
+    const next = clampPanelWidth(candidate);
+    widthRef.current = next;
+    if (remember) {
+      preferredFractionRef.current = next / window.innerWidth;
+    }
+    setWidth(next);
+  }, []);
+
+  const endResize = useCallback(() => setIsResizing(false), []);
 
   // Notify parent of width changes
   useEffect(() => {
@@ -194,6 +291,50 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
       onWidthChange(width);
     }
   }, [width, onWidthChange]);
+
+  // Notify parent while dragging, so it can drop its own transition too.
+  useEffect(() => {
+    onResizingChange?.(isResizing);
+  }, [isResizing, onResizingChange]);
+
+  // The panel mounts with the app, so its initial width is derived from
+  // whatever the viewport was at startup. Recompute the default when it is
+  // actually opened, otherwise a window resize in between leaves it off.
+  useEffect(() => {
+    if (!isOpen || hasUserResized.current) return;
+    applyWidth(window.innerWidth * DEFAULT_WIDTH_PERCENT, true);
+  }, [isOpen, applyWidth]);
+
+  // The bounds are viewport-relative, so shrinking the window can leave the
+  // panel wider than its maximum. Re-derive from the remembered fraction rather
+  // than from the current width, so a transient narrowing does not permanently
+  // collapse the panel to the minimum.
+  useEffect(() => {
+    const handleResize = () => {
+      setWidthBounds(panelWidthBounds());
+      applyWidth(preferredFractionRef.current * window.innerWidth, false);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [applyWidth]);
+
+  // Arrow/Home/End resizing, so the panel is not mouse-only. Uses the same
+  // clamp as the drag path and marks the width as user-owned either way.
+  const handleResizeKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const { min, max } = panelWidthBounds();
+    let next: number | null = null;
+
+    if (event.key === 'ArrowLeft') next = widthRef.current - KEYBOARD_RESIZE_STEP;
+    else if (event.key === 'ArrowRight') next = widthRef.current + KEYBOARD_RESIZE_STEP;
+    else if (event.key === 'Home') next = min;
+    else if (event.key === 'End') next = max;
+
+    if (next === null) return;
+
+    event.preventDefault();
+    hasUserResized.current = true;
+    applyWidth(next, true);
+  };
 
   // Load falkordb-canvas dynamically
   useEffect(() => {
@@ -208,36 +349,19 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
     }
   }, [isOpen, selectedGraph]);
 
+  // The drag itself is tracked by the handle via pointer capture (see the
+  // separator's pointer handlers); this only owns the page-wide affordances.
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing) return;
+    if (!isResizing) return;
 
-      const newWidth = e.clientX - sidebarWidth;
-      const maxWidth = Math.floor(window.innerWidth * MAX_WIDTH_PERCENT);
-
-      if (newWidth >= MIN_WIDTH && newWidth <= maxWidth) {
-        setWidth(newWidth);
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
-
-    if (isResizing) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = 'ew-resize';
-      document.body.style.userSelect = 'none';
-    }
+    document.body.style.cursor = 'ew-resize';
+    document.body.style.userSelect = 'none';
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [isResizing, sidebarWidth]);
+  }, [isResizing]);
 
   const loadSchemaData = async () => {
     if (!selectedGraph) return;
@@ -290,15 +414,123 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
     return theme === 'light' ? '#9ca3af' : '#4b5563';
   }, [theme, hasHighlight, highlightedLinkKeys]);
 
+  // Bounding box of the matching table cards in world units, or null when the
+  // layout has not produced coordinates for any of them yet.
+  const nodeBounds = useCallback((match?: (nodeId: number) => boolean): Bounds | null => {
+    const canvas = canvasRef.current;
+
+    if (!canvas || !schemaData) return null;
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    canvas.getGraphData()?.nodes.forEach((node) => {
+      if (node.x === undefined || node.y === undefined) return;
+      if (match && !match(Number(node.id))) return;
+
+      const columns = schemaData.nodesMap.get(Number(node.id))?.columns ?? [];
+      const halfHeight = tableNodeHeight(columns.length) / 2;
+
+      minX = Math.min(minX, node.x - NODE_WIDTH / 2);
+      maxX = Math.max(maxX, node.x + NODE_WIDTH / 2);
+      minY = Math.min(minY, node.y - halfHeight);
+      maxY = Math.max(maxY, node.y + halfHeight);
+    });
+
+    // Nothing matched, or the layout has not produced coordinates yet.
+    if (!Number.isFinite(minX)) return null;
+
+    return { minX, maxX, minY, maxY };
+  }, [schemaData]);
+
+  // The canvas' own zoomToFit frames node centres, so a tall table gets clipped
+  // and a single table is zoomed to the configured maximum whatever its size.
+  // Frame the rendered cards instead.
+  const frameNodes = useCallback((match?: (nodeId: number) => boolean): boolean => {
+    const canvas = canvasRef.current;
+
+    if (!canvas) return false;
+
+    const rect = canvas.getBoundingClientRect();
+
+    if (!rect.width || !rect.height) return false;
+
+    const bounds = nodeBounds(match);
+
+    if (!bounds) return false;
+
+    const { minX, maxX, minY, maxY } = bounds;
+
+    // A panel narrower than the padding would otherwise ask for a negative area.
+    const fitZoom = Math.min(
+      Math.max(rect.width - FIT_PADDING_PX * 2, 1) / (maxX - minX),
+      Math.max(rect.height - FIT_PADDING_PX * 2, 1) / (maxY - minY)
+    );
+
+    canvas.centerAt((minX + maxX) / 2, (minY + maxY) / 2, FIT_ANIMATION_MS);
+
+    const zoom = Math.min(Math.max(fitZoom, FIT_MIN_ZOOM), FIT_MAX_ZOOM);
+    // The canvas' own zoom() is instant, so go through force-graph to keep the
+    // pan and the zoom on the same animation.
+    const graph = canvas.getGraph();
+
+    if (graph) {
+      graph.zoom(zoom, FIT_ANIMATION_MS);
+    } else {
+      canvas.zoom(zoom);
+    }
+
+    return true;
+  }, [nodeBounds]);
+
+  // A running layout keeps moving after it has produced its first coordinates,
+  // so framing them aims at an already-stale target. Wait for the bounds to stop
+  // changing. Only one wait runs at a time: a later request supersedes an
+  // earlier one rather than racing it.
+  const frameWhenSettled = useCallback((match?: (nodeId: number) => boolean) => {
+    cancelAnimationFrame(settleFrameRef.current);
+
+    const start = Date.now();
+    // Bounds can settle within a couple of frames, well before the canvas runs
+    // its own delayed fit, which would then undo our framing. Never frame first.
+    const earliest = start + CANVAS_FIT_DELAY_MS;
+    const deadline = start + SETTLE_TIMEOUT_MS;
+    let previous: Bounds | null = null;
+
+    const attempt = () => {
+      // The viewer can close mid-wait, which unmounts the canvas.
+      if (!canvasRef.current) return;
+
+      const bounds = nodeBounds(match);
+      const settled = Boolean(bounds && previous && boundsSettled(bounds, previous));
+      const now = Date.now();
+
+      if (now >= earliest && (settled || now >= deadline)) {
+        frameNodes(match);
+        return;
+      }
+
+      previous = bounds;
+      settleFrameRef.current = requestAnimationFrame(attempt);
+    };
+
+    settleFrameRef.current = requestAnimationFrame(attempt);
+  }, [nodeBounds, frameNodes]);
+
+  // Switching layout or direction re-runs the canvas' own centre-based fit,
+  // which clips tall cards and discards any highlight framing.
+  const frameCurrentTarget = useCallback(() => {
+    frameWhenSettled(
+      hasHighlight ? (nodeId: number) => highlightedNodeIds.has(nodeId) : undefined
+    );
+  }, [frameWhenSettled, hasHighlight, highlightedNodeIds]);
+
   // Convert schema data to canvas format
   const convertToCanvasData = useCallback((data: SchemaData): Data => {
     const nodes = data.nodes.map((node) => {
-      // Calculate node size based on height (same calculation as in nodeCanvasObject)
-      const columns = node.columns || [];
-      const lineHeight = 14;
-      const padding = 8;
-      const headerHeight = 20;
-      const nodeHeight = headerHeight + columns.length * lineHeight + padding * 2;
+      const nodeHeight = tableNodeHeight((node.columns || []).length);
 
       // Use the larger dimension as collision radius (in pixels)
       const size = Math.max(NODE_WIDTH / 2, nodeHeight / 2);
@@ -340,9 +572,9 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
     if (!canvas || !canvasLoaded || !schemaData) return;
 
     const nodeCanvasObject = (node: GraphNode, ctx: CanvasRenderingContext2D) => {
-      const lineHeight = 14;
-      const padding = 8;
-      const headerHeight = 20;
+      const lineHeight = NODE_LINE_HEIGHT;
+      const padding = NODE_PADDING;
+      const headerHeight = NODE_HEADER_HEIGHT;
       const fontSize = 12;
 
       // Theme-aware colors
@@ -364,7 +596,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
 
       const columns = schemaNode.columns || [];
 
-      const nodeHeight = headerHeight + columns.length * lineHeight + padding * 2;
+      const nodeHeight = tableNodeHeight(columns.length);
 
       const previousAlpha = ctx.globalAlpha;
       if (isDimmed) {
@@ -448,10 +680,7 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
       if (!schemaNode) return;
 
       const columns = schemaNode.columns || [];
-      const lineHeight = 14;
-      const padding = 8;
-      const headerHeight = 20;
-      const nodeHeight = headerHeight + columns.length * lineHeight + padding * 2;
+      const nodeHeight = tableNodeHeight(columns.length);
 
       ctx.fillStyle = color;
       const areaPadding = 5;
@@ -520,18 +749,16 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
     canvas.setGraphData(canvasData);
   }, [schemaData, canvasLoaded, convertToCanvasData]);
 
-  // Bring the highlighted tables into view when a query is selected
+  // Bring the highlighted tables into view when a query is selected. The layout
+  // may still be moving, so frame it once it has stopped.
+  // Reopening the viewer re-runs this, since the canvas is unmounted while closed.
   useEffect(() => {
-    const canvas = canvasRef.current;
+    if (!isOpen || !canvasLoaded || !hasHighlight) return;
 
-    if (!canvas || !canvasLoaded || !hasHighlight) return;
+    frameWhenSettled((nodeId) => highlightedNodeIds.has(nodeId));
 
-    const timer = setTimeout(() => {
-      canvas.zoomToFit(1.5, (node: GraphNode) => highlightedNodeIds.has(node.id));
-    }, HIGHLIGHT_ZOOM_DELAY_MS);
-
-    return () => clearTimeout(timer);
-  }, [canvasLoaded, hasHighlight, highlightedNodeIds]);
+    return () => cancelAnimationFrame(settleFrameRef.current);
+  }, [isOpen, canvasLoaded, hasHighlight, highlightedNodeIds, frameWhenSettled]);
 
   if (!isOpen) return null;
 
@@ -543,10 +770,13 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
         onClick={onClose}
       />
 
-      {/* Schema Viewer */}
+      {/* Schema Viewer. The width transition has to be off while dragging,
+          otherwise every mousemove animates over 300ms and the panel lags
+          behind the cursor. */}
       <div
         data-testid="schema-panel"
-        className={`fixed top-0 h-full bg-background border-r border-border flex flex-col transition-all duration-300
+        className={`fixed top-0 h-full bg-background border-r border-border flex flex-col
+          ${isResizing ? '' : 'transition-all duration-300'}
           translate-x-0
           md:z-30 z-50
           w-[80vw] max-w-[400px] md:max-w-none
@@ -580,6 +810,8 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
           onFocusModeChange={setFocusMode}
           selectedTableId={selectedTableId}
           onSelectTable={setSelectedTableId}
+          onFrameNodes={frameNodes}
+          onLayoutChanged={frameCurrentTarget}
         />
 
         {/* Highlight status */}
@@ -624,15 +856,49 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, sidebarWidth = 64 }: Sch
           )}
         </div>
 
-        {/* Resize Handle */}
+        {/* Resize Handle. Hidden below `md`, where the panel is sized by the
+            `w-[80vw]` class and ignores the `width` state entirely — a handle
+            there would move the ARIA values without moving the panel. */}
         <div
           ref={resizeRef}
-          className="absolute right-0 top-0 w-1 h-full cursor-ew-resize hover:bg-purple-500 transition-colors z-50"
-          onMouseDown={(e) => {
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize schema panel"
+          aria-valuenow={width}
+          aria-valuemin={widthBounds.min}
+          aria-valuemax={widthBounds.max}
+          tabIndex={0}
+          data-testid="schema-panel-resize-handle"
+          className="hidden md:block absolute right-0 top-0 w-1 h-full cursor-ew-resize hover:bg-purple-500 focus-visible:bg-purple-500 focus-visible:outline-none transition-colors z-50"
+          onKeyDown={handleResizeKeyDown}
+          onPointerDown={(e) => {
+            if (e.button !== 0) return;
             e.preventDefault();
             e.stopPropagation();
+            // `preventDefault` also suppresses the click's focus, which would
+            // leave the arrow-key resize unreachable for a mouse user.
+            e.currentTarget.focus({ preventScroll: true });
+            // Capture keeps the drag glued to the handle, so a release outside
+            // the window still ends it. A document-level `mouseup` never fires
+            // there, which left the panel latched in resize mode.
+            e.currentTarget.setPointerCapture(e.pointerId);
             setIsResizing(true);
           }}
+          onPointerMove={(e) => {
+            if (!isResizing) return;
+            // Only an actual drag counts as a user-chosen width. Setting this
+            // on pointerdown meant a bare click — including clicking the
+            // separator just to focus it — opted the panel out of the
+            // default-width recompute on open for the rest of the session.
+            hasUserResized.current = true;
+            // Clamp rather than ignore out-of-range values: a fast drag puts
+            // the pointer past the bound in a single event, and ignoring it
+            // froze the panel mid-drag instead of pinning it to min or max.
+            applyWidth(e.clientX - sidebarWidth, true);
+          }}
+          onPointerUp={endResize}
+          onPointerCancel={endResize}
+          onLostPointerCapture={endResize}
         >
           <div className="absolute right-0 top-1/2 -translate-y-1/2 -translate-x-1/2">
             <GripVertical className="h-4 w-4 text-border" />

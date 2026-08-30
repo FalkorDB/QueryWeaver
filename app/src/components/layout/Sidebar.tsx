@@ -1,8 +1,6 @@
 import React from 'react';
-import { useIsMobile } from '@/hooks/use-mobile';
-import { Link, useNavigate, useLocation } from 'react-router';
+import { useNavigate, useLocation } from 'react-router';
 import {
-  PanelLeft,
   BookOpen,
   LifeBuoy,
   Waypoints,
@@ -23,7 +21,6 @@ interface SidebarProps {
   onSchemaClick?: () => void;
   isSchemaOpen?: boolean;
   isCollapsed?: boolean;
-  onToggleCollapse?: () => void;
   onSettingsClick?: () => void;
 }
 
@@ -34,61 +31,52 @@ const SidebarIcon = ({ icon: Icon, label, active, onClick, href, testId }: {
   onClick?: () => void,
   href?: string,
   testId?: string
-}) => (
-  <TooltipProvider delayDuration={300} skipDelayDuration={0}>
-    <Tooltip delayDuration={0}>
-      <TooltipTrigger asChild>
-        {onClick ? (
-          <button
-            onClick={onClick}
-            className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
-              active
-                ? 'bg-purple-600 text-white'
-                : 'text-muted-foreground hover:bg-card hover:text-foreground'
-            }`}
-            data-testid={testId}
-          >
-            <Icon className="h-5 w-5" />
-            <span className="sr-only">{label}</span>
-          </button>
-        ) : href ? (
-          <a
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
-              active
-                ? 'bg-purple-600 text-white'
-                : 'text-muted-foreground hover:bg-card hover:text-foreground'
-            }`}
-            data-testid={testId}
-          >
-            <Icon className="h-5 w-5" />
-            <span className="sr-only">{label}</span>
-          </a>
-        ) : (
-          <Link
-            to="#"
-            className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
-              active
-                ? 'bg-purple-600 text-white'
-                : 'text-muted-foreground hover:bg-card hover:text-foreground'
-            }`}
-            data-testid={testId}
-          >
-            <Icon className="h-5 w-5" />
-            <span className="sr-only">{label}</span>
-          </Link>
-        )}
-      </TooltipTrigger>
-      <TooltipContent side="right">{label}</TooltipContent>
-    </Tooltip>
-  </TooltipProvider>
-);
+}) => {
+  // An icon with neither a handler nor a destination used to fall through to a
+  // `<Link to="#">`, which looks clickable but does nothing (issue #239).
+  // Render nothing instead, so a button only exists once it is wired up.
+  if (!onClick && !href) return null;
+
+  const iconClasses = `flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
+    active
+      ? 'bg-purple-600 text-white'
+      : 'text-muted-foreground hover:bg-card hover:text-foreground'
+  }`;
+
+  return (
+    <TooltipProvider delayDuration={300} skipDelayDuration={0}>
+      <Tooltip delayDuration={0}>
+        <TooltipTrigger asChild>
+          {onClick ? (
+            <button
+              onClick={onClick}
+              className={iconClasses}
+              data-testid={testId}
+            >
+              <Icon className="h-5 w-5" />
+              <span className="sr-only">{label}</span>
+            </button>
+          ) : (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={iconClasses}
+              data-testid={testId}
+            >
+              <Icon className="h-5 w-5" />
+              <span className="sr-only">{label}</span>
+            </a>
+          )}
+        </TooltipTrigger>
+        <TooltipContent side="right">{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
 
 
-const Sidebar = ({ className, onSchemaClick, isSchemaOpen, isCollapsed = false, onToggleCollapse, onSettingsClick }: SidebarProps) => {
-  const isMobile = useIsMobile();
+const Sidebar = ({ className, onSchemaClick, isSchemaOpen, isCollapsed = false, onSettingsClick }: SidebarProps) => {
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -114,19 +102,7 @@ const Sidebar = ({ className, onSchemaClick, isSchemaOpen, isCollapsed = false, 
         className
       )}>
         <nav className="flex flex-col items-center gap-4 px-2 py-4">
-          {isMobile && (
-            <button
-              onClick={onToggleCollapse}
-              className="group flex h-10 w-10 shrink-0 items-center justify-center gap-2 rounded-full bg-card text-lg font-semibold text-foreground hover:bg-muted"
-              title="Toggle Sidebar (Mobile)"
-              data-testid="sidebar-toggle"
-            >
-              <PanelLeft className="h-5 w-5 transition-all group-hover:scale-110" />
-              <span className="sr-only">Toggle Sidebar</span>
-            </button>
-          )}
           <ThemeToggle />
-          {/* <SidebarIcon icon={BrainCircuit} label="Query" active /> */}
           <SidebarIcon
             icon={Waypoints}
             label="Schema"
