@@ -91,7 +91,7 @@ def _smtp_port() -> int:
 
 
 def is_smtp_configured() -> bool:
-    """Whether a relay is configured. When ``False``, mail is logged, not sent."""
+    """Whether a relay is configured, from ``MAIL_SERVER``."""
     return bool(os.getenv("MAIL_SERVER", "").strip())
 
 
