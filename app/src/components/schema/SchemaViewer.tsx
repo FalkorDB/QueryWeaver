@@ -74,9 +74,9 @@ const endpointId = (endpoint: unknown): string => {
 const linkKey = (source: unknown, target: unknown): string =>
   [endpointId(source), endpointId(target)].sort().join('|');
 
-// Must stay above the canvas' `interaction.zoomToFitDelay` (50ms default) so the
-// highlight framing is applied after the canvas' own initial fit.
-const HIGHLIGHT_ZOOM_DELAY_MS = 100;
+// Must stay above the canvas' `interaction.zoomToFitDelay` (50ms default) so our
+// framing is always applied after the canvas' own centre-based fit.
+const CANVAS_FIT_DELAY_MS = 100;
 /** How long to keep waiting for the layout to settle before framing anyway. */
 const SETTLE_TIMEOUT_MS = 2000;
 /** World-unit movement below which the layout counts as settled. */
@@ -492,7 +492,11 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, onResizingChange, sideba
   const frameWhenSettled = useCallback((match?: (nodeId: number) => boolean) => {
     cancelAnimationFrame(settleFrameRef.current);
 
-    const deadline = Date.now() + SETTLE_TIMEOUT_MS;
+    const start = Date.now();
+    // Bounds can settle within a couple of frames, well before the canvas runs
+    // its own delayed fit, which would then undo our framing. Never frame first.
+    const earliest = start + CANVAS_FIT_DELAY_MS;
+    const deadline = start + SETTLE_TIMEOUT_MS;
     let previous: Bounds | null = null;
 
     const attempt = () => {
@@ -500,8 +504,10 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, onResizingChange, sideba
       if (!canvasRef.current) return;
 
       const bounds = nodeBounds(match);
+      const settled = Boolean(bounds && previous && boundsSettled(bounds, previous));
+      const now = Date.now();
 
-      if ((bounds && previous && boundsSettled(bounds, previous)) || Date.now() >= deadline) {
+      if (now >= earliest && (settled || now >= deadline)) {
         frameNodes(match);
         return;
       }
@@ -749,14 +755,9 @@ const SchemaViewer = ({ isOpen, onClose, onWidthChange, onResizingChange, sideba
   useEffect(() => {
     if (!isOpen || !canvasLoaded || !hasHighlight) return;
 
-    const timer = setTimeout(() => {
-      frameWhenSettled((nodeId) => highlightedNodeIds.has(nodeId));
-    }, HIGHLIGHT_ZOOM_DELAY_MS);
+    frameWhenSettled((nodeId) => highlightedNodeIds.has(nodeId));
 
-    return () => {
-      clearTimeout(timer);
-      cancelAnimationFrame(settleFrameRef.current);
-    };
+    return () => cancelAnimationFrame(settleFrameRef.current);
   }, [isOpen, canvasLoaded, hasHighlight, highlightedNodeIds, frameWhenSettled]);
 
   if (!isOpen) return null;
