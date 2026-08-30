@@ -47,7 +47,7 @@ If you prefer to pass variables on the command line, use `-e` flags (less conven
 
 ```bash
 docker run -p 5000:5000 -it \
-  -e APP_ENV=production \
+  -e APP_ENV=development \
   -e FASTAPI_SECRET_KEY=your_super_secret_key_here \
   -e GOOGLE_CLIENT_ID=your_google_client_id \
   -e GOOGLE_CLIENT_SECRET=your_google_client_secret \
@@ -56,6 +56,11 @@ docker run -p 5000:5000 -it \
   -e AZURE_API_KEY=your_azure_api_key \
   falkordb/queryweaver
 ```
+
+> `APP_ENV=development` is what makes the login work on the plain-HTTP
+> `http://localhost:5000` this command serves. Drop it (or set anything else)
+> when you put QueryWeaver behind HTTPS, so the session cookie is marked
+> `Secure`. See [Application environment](#application-environment).
 
 > Note: QueryWeaver supports multiple AI providers. You can use `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, or `AZURE_API_KEY`. See the [AI/LLM configuration](#aillm-configuration) section for details.
 
@@ -129,7 +134,7 @@ OpenAPI JSON: https://app.queryweaver.ai/openapi.json
 
 ### Overview
 
-QueryWeaver exposes a small REST API for managing graphs (database schemas) and running Text2SQL queries. All endpoints that modify or access user-scoped data require authentication via a bearer token. In the browser the app uses session cookies and OAuth flows; for CLI and scripts you can use an API token (see `tokens` routes or the web UI to create one).
+QueryWeaver exposes a small REST API for managing graphs (database schemas) and running Text2SQL queries. All endpoints that modify or access user-scoped data require authentication. In the browser the app uses a signed session cookie established by OAuth or email/password; for CLI and scripts you can use an API token (see `tokens` routes or the web UI to create one).
 
 Core endpoints
 - GET /graphs — list available graphs for the authenticated user
@@ -139,6 +144,40 @@ Core endpoints
 
 Authentication
 - Add an Authorization header: `Authorization: Bearer <API_TOKEN>`
+
+#### Three separate credentials
+
+QueryWeaver keeps its three kinds of "login" independent of one another, so a
+failure in one never looks like a failure in another:
+
+| Credential | What it proves | Where it lives | Depends on FalkorDB? |
+| --- | --- | --- | --- |
+| Browser login | Who is using the app | Signed session cookie, established once by OAuth or a password | No, once the process is running |
+| API token | A script may act as a user | `Token` node in the Organizations graph, sent as `Authorization: Bearer …` | Yes |
+| Data-source connection | Access to *your* database | Supplied per request, never stored | No (it is your own database) |
+
+Because the browser login is a signed cookie, staying logged in costs no database
+round trip and survives a FalkorDB outage in an already-running process — you
+keep your session and only the operations that genuinely need the graph fail.
+Requests that supply an API token explicitly are always checked against the
+database and are answered with `503` (not `401`) when it cannot be reached, so
+clients retry instead of re-authenticating.
+
+Note the scope: this is about staying logged in, not about booting. QueryWeaver
+still connects to FalkorDB at startup and will not start without it, so a restart
+during an outage is not covered.
+
+A browser login lasts 24 hours by default; set `BROWSER_SESSION_TTL_HOURS` to
+change that. Logging out clears the session cookie. No API token is issued to
+the browser, so there is none to revoke — tokens are created explicitly from the
+tokens API and revoked there. (A legacy `api_token` cookie left over from an
+older release is cleared and revoked on logout too.)
+
+The trade-off of a signed session cookie is that it cannot be revoked from
+the server before it expires: the TTL bounds the damage, and rotating
+`FASTAPI_SECRET_KEY` invalidates every browser login at once. API tokens keep
+their server-side record and so can still be revoked individually and
+immediately. Shorten `BROWSER_SESSION_TTL_HOURS` if you need a tighter window.
 
 Examples
 
@@ -432,17 +471,19 @@ QueryWeaver supports Google and GitHub OAuth. Create OAuth credentials for each 
 
 #### Environment-specific OAuth settings
 
-For production/staging deployments, set `APP_ENV=production` or `APP_ENV=staging` in your environment to enable secure session cookies (HTTPS-only). This prevents OAuth CSRF state mismatch errors.
+For production/staging deployments, session cookies are HTTPS-only by default. Only an `APP_ENV` that reads as `development` once trimmed and lower-cased turns that off, so a deployment that forgets the variable still gets secure cookies. Set `APP_ENV=development` for plain-HTTP local runs, otherwise the browser drops the cookie and you get OAuth CSRF state mismatch errors.
+
+The signed session cookie is the browser's only credential. An `api_token` is never written to a browser cookie - a bearer token in a cookie sits on disk in clear text for its whole lifetime - so programmatic clients fetch one from the tokens API instead. Sessions issued before this change keep working: the legacy `api_token` cookie is still accepted, just no longer handed out.
 
 ```bash
-# For production/staging (enables HTTPS-only session cookies)
+# For production/staging (HTTPS-only session cookies - also the default)
 APP_ENV=production
 
 # For development (allows HTTP session cookies)
 APP_ENV=development
 ```
 
-**Important**: If you're getting "mismatching_state: CSRF Warning!" errors on staging/production, ensure `APP_ENV` is set to `production` or `staging` to enable secure session handling.
+**Important**: If you're getting "mismatching_state: CSRF Warning!" errors on a plain-HTTP environment, ensure `APP_ENV` is set to `development`.
 
 ### AI/LLM configuration
 
@@ -502,7 +543,7 @@ docker run -p 5000:5000 -it \
   -e FASTAPI_SECRET_KEY=your_secret_key \
   -e AZURE_API_KEY=your_azure_api_key \
   -e AZURE_API_BASE=https://your-resource.openai.azure.com/ \
-  -e AZURE_API_VERSION=2024-12-01-preview \
+  -e AZURE_API_VERSION=2025-03-01-preview \
   falkordb/queryweaver
 ```
 
@@ -560,7 +601,7 @@ GitHub Actions run unit and E2E tests on pushes and pull requests. Failures capt
 - FalkorDB connection issues: start the DB helper `make docker-falkordb` or check network/host settings.
 - Playwright/browser failures: install browsers with `uv run playwright install` and ensure system deps are present.
 - Missing environment variables: copy `.env.example` and fill required values.
-- **OAuth "mismatching_state: CSRF Warning!" errors**: Set `APP_ENV=production` (or `staging`) in your environment for HTTPS deployments, or `APP_ENV=development` for HTTP development environments. This ensures session cookies are configured correctly for your deployment type.
+- **OAuth "mismatching_state: CSRF Warning!" errors**: Session cookies are HTTPS-only unless `APP_ENV` reads as `development` once trimmed and lower-cased. Set `APP_ENV=development` for plain-HTTP environments; use `production` or `staging` (or leave the variable out entirely) for HTTPS deployments.
 
 ## Project layout (high level)
 

@@ -38,7 +38,8 @@ class AnalysisAgent(BaseAgent):
         self.messages.append({"role": "user", "content": prompt})
 
         response = run_completion(
-            self.messages, self.custom_model, self.custom_api_key, temperature=0
+            self.messages, self.custom_model, self.custom_api_key,
+            label="analysis", temperature=0,
         )
         analysis = parse_response(response)
         if isinstance(analysis["ambiguities"], list):

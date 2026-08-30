@@ -77,6 +77,7 @@ class ResponseFormatterAgent:
 
         response = run_completion(
             messages, self.custom_model, self.custom_api_key,
+            label="formatter",
             temperature=0.3  # Slightly higher temperature for more natural responses
         )
         return response.strip()

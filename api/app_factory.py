@@ -9,14 +9,18 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import Response
 from fastmcp import FastMCP
 from fastmcp.server.providers.openapi import MCPType, RouteMap
 
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
+from api.auth.browser_session import session_ttl_seconds
 from api.auth.oauth_handlers import setup_oauth_handlers
 from api.auth.user_management import SECRET_KEY
+from api.helpers.request_security import is_secure_request
+from api.core.errors import AuthBackendUnavailableError, TRANSIENT_BACKEND_ERRORS
 from api.analytics import report_error
 from api.routes.auth import auth_router, init_auth
 from api.routes.graphs import graphs_router
@@ -35,35 +39,121 @@ class SecurityMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-
 
     STATIC_PREFIX = "/static/"
 
-    async def dispatch(self, request: Request, call_next):
+    # The exact FastAPI documentation endpoints, which are the only paths
+    # allowed the permissive DOCS_CSP.  A prefix test would also match SPA
+    # routes such as /docs-preview, handing them 'unsafe-eval' and two CDNs.
+    DOCS_PATHS = frozenset(
+        {"/docs", "/docs/oauth2-redirect", "/redoc", "/openapi.json"}
+    )
+
+    # CSP for FastAPI interactive docs (/docs, /redoc) which load CDN assets.
+    # ReDoc builds its search index in a blob: worker, and both doc pages
+    # default to a favicon served from fastapi.tiangolo.com.
+    DOCS_CSP = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
+        "https://cdn.jsdelivr.net https://unpkg.com; "
+        "style-src 'self' 'unsafe-inline' "
+        "https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+        "img-src 'self' data: https://cdn.jsdelivr.net "
+        "https://fastapi.tiangolo.com; "
+        "font-src 'self' https://fonts.gstatic.com data:; "
+        "connect-src 'self'; "
+        "worker-src 'self' blob:; "
+        "frame-ancestors 'none'; "
+        "object-src 'none'; "
+        "base-uri 'self'"
+    )
+
+    # CSP for the SPA and all other routes.  img-src has to name the identity
+    # providers because the SPA renders the logged-in avatar straight from the
+    # provider URL that /auth-status passes through.
+    DEFAULT_CSP = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "img-src 'self' data: https://*.googleusercontent.com "
+        "https://avatars.githubusercontent.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "connect-src 'self' https://api.github.com; "
+        "frame-ancestors 'none'; "
+        "object-src 'none'; "
+        "base-uri 'self'"
+    )
+
+    @staticmethod
+    def _apply_security_headers(response: Response, path: str) -> None:
+        """Apply all security headers to a response."""
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains; preload"
+        )
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), payment=()"
+        )
+
+        # Use a more permissive CSP for FastAPI docs pages
+        if path in SecurityMiddleware.DOCS_PATHS:
+            response.headers["Content-Security-Policy"] = (
+                SecurityMiddleware.DOCS_CSP
+            )
+        else:
+            response.headers["Content-Security-Policy"] = (
+                SecurityMiddleware.DEFAULT_CSP
+            )
+
+    @staticmethod
+    def _has_traversal_segment(filename: str) -> bool:
+        """True if any segment of the path is a parent-directory marker.
+
+        Substring-matching "../" misses a bare trailing ".." and the
+        backslash-separated form, so the path is split into segments instead.
+        """
+        return ".." in filename.replace("\\", "/").split("/")
+
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        path = request.url.path
+
         # Block directory access in static files
-        if request.url.path.startswith(self.STATIC_PREFIX):
-            # Remove /static/ prefix to get the actual path
-            filename = request.url.path[len(self.STATIC_PREFIX) :]
-            # Basic security check for directory traversal
-            if not filename or "../" in filename or filename.endswith("/"):
-                return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+        if path.startswith(self.STATIC_PREFIX):
+            filename = path[len(self.STATIC_PREFIX) :]
+            if (
+                not filename
+                or filename.endswith("/")
+                or self._has_traversal_segment(filename)
+            ):
+                response = JSONResponse(
+                    status_code=403, content={"detail": "Forbidden"}
+                )
+                self._apply_security_headers(response, path)
+                return response
 
         response = await call_next(request)
-
-        # Add HSTS header to prevent man-in-the-middle attacks
-        # max-age=31536000: 1 year in seconds
-        # includeSubDomains: apply to all subdomains
-        # preload: eligible for browser HSTS preload lists
-        hsts_value = "max-age=31536000; includeSubDomains; preload"
-        response.headers["Strict-Transport-Security"] = hsts_value
-
+        self._apply_security_headers(response, path)
         return response
 
 
 def _is_secure_request(request: Request) -> bool:
     """Determine if the request is over HTTPS."""
-    forwarded_proto = request.headers.get("x-forwarded-proto")
-    if forwarded_proto:
-        # Normalize: proxies may send comma-separated or mixed-case values
-        first_proto = forwarded_proto.split(",")[0].strip().lower()
-        return first_proto == "https"
-    return request.url.scheme == "https"
+    return is_secure_request(request)
+
+
+def _session_cookie_https_only() -> bool:
+    """Whether the session cookie must be HTTPS-only.
+
+    Fail secure: the cookie now carries the browser login itself, so a missing
+    ``APP_ENV`` must not silently downgrade it. Only an explicit
+    ``APP_ENV=development`` opts out, because a Secure cookie is dropped over
+    the plain HTTP a local run serves.
+    """
+    app_env = os.getenv("APP_ENV")
+    if app_env is None:
+        return True
+    return app_env.strip().lower() != "development"
 
 
 class CSRFMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods
@@ -88,7 +178,9 @@ class CSRFMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-meth
         "/mcp",
     )
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         # Validate CSRF for unsafe, non-exempt, non-Bearer requests
         if (
             request.method not in self.SAFE_METHODS
@@ -114,7 +206,9 @@ class CSRFMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-meth
         self._ensure_csrf_cookie(request, response)
         return response
 
-    # Match the session cookie lifetime (14 days in seconds)
+    # Deliberately outlives the session cookie: this is only the other half of a
+    # double-submit pair, so it carries no authority on its own, and letting it
+    # expire first would 403 an unsafe request from a still-valid login.
     CSRF_COOKIE_MAX_AGE = 60 * 60 * 24 * 14
 
     def _ensure_csrf_cookie(self, request: Request, response):
@@ -262,19 +356,34 @@ def create_app():  # pylint: disable=too-many-statements
 
     app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
+    session_https_only = _session_cookie_https_only()
+    if session_https_only:
+        # The single most common local-dev symptom is a login that silently
+        # never sticks, because the browser drops a Secure cookie over HTTP.
+        # Say so once at startup rather than leaving it to be guessed.
+        logging.info(
+            "Session cookie is Secure (HTTPS-only); set APP_ENV=development to serve over plain HTTP"
+        )
+    else:
+        logging.warning("APP_ENV=development: session cookie is NOT Secure - local use only")
+
     app.add_middleware(
         SessionMiddleware,
         secret_key=SECRET_KEY,
         same_site="lax",  # allow top-level OAuth GET redirects to send cookies
-        https_only=False,  # True for HTTPS environments (staging/prod), False for HTTP dev
-        max_age=60 * 60 * 24 * 14,  # 14 days - measured by seconds
+        # The session cookie now carries the browser login itself, so it must be
+        # HTTPS-only everywhere except local HTTP development.
+        https_only=session_https_only,
+        max_age=session_ttl_seconds(),
     )
-
-    # Add security middleware
-    app.add_middleware(SecurityMiddleware)
 
     # Add CSRF middleware (double-submit cookie pattern)
     app.add_middleware(CSRFMiddleware)
+
+    # Add security middleware.  add_middleware prepends, so registering this
+    # last makes it the outermost layer: its headers then also cover the 403
+    # that CSRFMiddleware returns before call_next is ever reached.
+    app.add_middleware(SecurityMiddleware)
 
     # Mount static files from the React build (app/dist)
     # This serves the bundled assets (JS, CSS, images, etc.)
@@ -325,6 +434,40 @@ def create_app():  # pylint: disable=too-many-statements
             return FileResponse(favicon_path, media_type="image/x-icon")
         return JSONResponse({"error": "Favicon not found"}, status_code=404)
 
+    @app.exception_handler(AuthBackendUnavailableError)
+    async def handle_auth_backend_unavailable(
+        request: Request, exc: AuthBackendUnavailableError
+    ):  # pylint: disable=unused-argument
+        """Report an unreachable auth store as transient, wherever it surfaces."""
+        logging.warning("Auth store unreachable for %s %s", request.method, request.url.path)
+        return JSONResponse(
+            {"detail": "Authentication service temporarily unavailable - please retry"},
+            status_code=503,
+        )
+
+    async def handle_transient_backend_error(
+        request: Request, exc: Exception
+    ):  # pylint: disable=unused-argument
+        """A route that could not reach FalkorDB is a 503, not a 500.
+
+        The whole point of separating the browser login from the database is
+        that an outage stops looking like a broken login. That only holds if the
+        routes that genuinely need the graph say "retry" rather than "we are
+        broken" — or worse, "you are logged out".
+        """
+        report_error(request, exc)
+        logging.warning(
+            "Backend unreachable for %s %s: %s", request.method, request.url.path, exc
+        )
+        return JSONResponse(
+            {"detail": "Service temporarily unavailable - please retry"},
+            status_code=503,
+        )
+
+    # add_exception_handler keys on a single class, so register the tuple's
+    # members one at a time.
+    for _transient in TRANSIENT_BACKEND_ERRORS:
+        app.add_exception_handler(_transient, handle_transient_backend_error)
     @app.exception_handler(Exception)
     async def handle_oauth_error(
         request: Request, exc: Exception

@@ -116,6 +116,7 @@ make build-prod       # Vite production build
 
 - **Unit tests** (`tests/`): pytest with markers `e2e`, `slow`, `auth`, `integration`, `unit`
 - **E2E tests** (`e2e/`): Playwright with Page Object Model pattern; auth setup runs first
+- E2E tests tagged `@requires-ai` need LLM secrets (Azure OpenAI) for DB schema loading; non-AI tests run unconditionally in CI
 - E2E infra lives in `e2e/infra/`, page objects in `e2e/logic/pom/`
 - Test data (SQL init scripts) in `e2e/test-data/`
 
@@ -127,7 +128,9 @@ Required:
 
 LLM provider (set one): `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `COHERE_API_KEY`, `AZURE_API_KEY`, or `OLLAMA_MODEL`
 
-Optional overrides: `COMPLETION_MODEL`, `EMBEDDING_MODEL` (must match provider)
+Optional overrides: `COMPLETION_MODEL`, `EMBEDDING_MODEL` (must match provider), `APP_ENV` (anything that does not read as `development` once trimmed and lower-cased marks the session cookie Secure, so a missing value fails secure), `BROWSER_SESSION_TTL_HOURS` (browser login lifetime, default 24)
+
+Authentication is deliberately split three ways — a signed session cookie for the browser login (no FalkorDB dependency, see `api/auth/browser_session.py`), FalkorDB-backed API tokens for programmatic clients, and per-request data-source credentials. `validate_user` in `api/auth/user_management.py` owns the precedence between them.
 
 See `.env.example` for the full list.
 
@@ -135,7 +138,7 @@ See `.env.example` for the full list.
 
 GitHub Actions workflows (`.github/workflows/`):
 - **tests.yml** — unit tests + lint on push/PR to main/staging
-- **playwright.yml** — dedicated Playwright E2E suite (skipped for Dependabot PRs; secrets unavailable)
+- **playwright.yml** — dedicated Playwright E2E suite; non-AI tests always run, `@requires-ai` tests only when LLM secrets are available (secrets are unavailable for Dependabot and fork PRs)
 - **pylint.yml** — Python linting
 - **spellcheck.yml** — docs spellcheck
 - **publish-docker.yml** — build & push Docker image to DockerHub

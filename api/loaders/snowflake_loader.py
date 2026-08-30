@@ -1,6 +1,7 @@
 """Snowflake loader for loading database schemas into FalkorDB graphs."""
 
 import base64
+import contextlib
 import datetime
 import decimal
 import logging
@@ -15,8 +16,10 @@ import tqdm
 import snowflake.connector
 from snowflake.connector import DictCursor
 
+from api.config import Config
 from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
+from api.loaders.introspection import run_introspection
 
 
 class SnowflakeQueryError(Exception):
@@ -241,7 +244,50 @@ class SnowflakeLoader(BaseLoader):
         return conn_params
 
     @staticmethod
-    async def load(prefix: str, connection_url: str) -> AsyncGenerator[
+    def _introspect_schema(
+        conn_params: Dict[str, Any], db_name: str, schema_name: str
+    ):
+        """Connect, introspect and close — all inside one worker thread.
+
+        Same reasoning as the other loaders: cleanup belongs in the thread that
+        owns the connection. Cancelling a ``to_thread`` call does not stop the
+        thread, and without a ``finally`` here a client disconnect leaked the
+        session outright. The parser's login/network timeouts bound the
+        connect.
+        """
+        conn = None
+        cursor = None
+        try:
+            # Bound the introspection itself, not just the login: cancelling
+            # the awaiting task cannot stop this thread.
+            conn_params = dict(conn_params)
+            conn_params["network_timeout"] = Config.DB_SCHEMA_TIMEOUT
+            # ``network_timeout`` bounds retries, not an individual socket
+            # read: without ``socket_timeout`` a stalled read falls back to
+            # the connector's own 60s default, ignoring the configured
+            # deadline entirely.
+            conn_params["socket_timeout"] = Config.DB_SCHEMA_TIMEOUT
+            conn_params["session_parameters"] = {
+                **(conn_params.get("session_parameters") or {}),
+                "STATEMENT_TIMEOUT_IN_SECONDS": Config.DB_SCHEMA_TIMEOUT,
+            }
+            conn = snowflake.connector.connect(**conn_params)
+            cursor = conn.cursor(DictCursor)
+            entities = SnowflakeLoader.extract_tables_info(
+                cursor, db_name, schema_name
+            )
+            relationships = SnowflakeLoader.extract_relationships(
+                cursor, db_name, schema_name
+            )
+            return entities, relationships
+        finally:
+            if cursor is not None:
+                cursor.close()
+            if conn is not None:
+                conn.close()
+
+    @staticmethod
+    async def load(prefix: str, connection_url: str, db=None) -> AsyncGenerator[
         tuple[bool, str], None
     ]:
         """
@@ -257,33 +303,21 @@ class SnowflakeLoader(BaseLoader):
         try:
             # Parse connection URL
             conn_params = SnowflakeLoader._parse_snowflake_url(connection_url)
-
-            # Connect to Snowflake database
-            conn = snowflake.connector.connect(**conn_params)
-            cursor = conn.cursor(DictCursor)
-
-            # Get database and schema name
             db_name = conn_params['database']
             # Snowflake stores unquoted identifiers in UPPERCASE;
             # INFORMATION_SCHEMA lookups require the canonical form.
             schema_name = conn_params['schema'].upper()
 
-            # Get all table information
             yield True, "Extracting table information..."
-            entities = SnowflakeLoader.extract_tables_info(cursor, db_name, schema_name)
-
-            # Get all relationship information
-            yield True, "Extracting relationship information..."
-            relationships = SnowflakeLoader.extract_relationships(cursor, db_name, schema_name)
-
-            # Close database connection
-            cursor.close()
-            conn.close()
+            entities, relationships = await run_introspection(
+                SnowflakeLoader._introspect_schema,
+                conn_params, db_name, schema_name,
+            )
 
             # Load data into graph
             yield True, "Loading data into graph..."
             await load_to_graph(f"{prefix}_{db_name}", entities, relationships,
-                         db_name=db_name, db_url=connection_url)
+                         db_name=db_name, db_url=connection_url, db=db)
 
             yield True, (f"Snowflake schema loaded successfully. "
                          f"Found {len(entities)} tables.")
@@ -578,7 +612,9 @@ class SnowflakeLoader(BaseLoader):
         return False, ""
 
     @staticmethod
-    async def refresh_graph_schema(graph_id: str, db_url: str) -> Tuple[bool, str]:
+    async def refresh_graph_schema(
+        graph_id: str, db_url: str, db=None
+    ) -> Tuple[bool, str]:
         """
         Refresh the graph schema by clearing existing data and reloading from the database.
 
@@ -593,11 +629,11 @@ class SnowflakeLoader(BaseLoader):
             logging.info("Schema modification detected. Refreshing graph schema.")
 
             # Import here to avoid circular imports
-            from api.extensions import db  # pylint: disable=import-error,import-outside-toplevel
+            from api.core.db_resolver import resolve_db  # pylint: disable=import-outside-toplevel
 
             # Clear existing graph data
             # Drop current graph before reloading
-            graph = db.select_graph(graph_id)
+            graph = resolve_db(db).select_graph(graph_id)
             await graph.delete()
 
             # Extract prefix from graph_id (remove database name part)
@@ -612,7 +648,7 @@ class SnowflakeLoader(BaseLoader):
             # Reuse the existing load method to reload the schema
             success = False
             message = ""
-            async for progress_tuple in SnowflakeLoader.load(prefix, db_url):
+            async for progress_tuple in SnowflakeLoader.load(prefix, db_url, db=db):
                 success, message = progress_tuple
 
             if success:
@@ -642,9 +678,25 @@ class SnowflakeLoader(BaseLoader):
         Returns:
             List of dictionaries containing the query results
         """
+        conn = None
+        cursor = None
         try:
             # Parse connection URL
             conn_params = SnowflakeLoader._parse_snowflake_url(db_url)
+
+            # Bound login, network waits and server-side statement runtime.
+            # ``_parse_snowflake_url`` hardcodes login_timeout/network_timeout,
+            # so these must be assigned — setdefault would be a no-op and the
+            # configured values would never apply.
+            conn_params["login_timeout"] = Config.DB_CONNECT_TIMEOUT
+            conn_params["network_timeout"] = Config.DB_STATEMENT_TIMEOUT
+            # See the note in ``load``: retries are not socket reads.
+            conn_params["socket_timeout"] = Config.DB_STATEMENT_TIMEOUT
+            session_parameters = dict(conn_params.get("session_parameters") or {})
+            session_parameters.setdefault(
+                "STATEMENT_TIMEOUT_IN_SECONDS", Config.DB_STATEMENT_TIMEOUT
+            )
+            conn_params["session_parameters"] = session_parameters
 
             # Connect to Snowflake database
             conn = snowflake.connector.connect(**conn_params)
@@ -687,25 +739,26 @@ class SnowflakeLoader(BaseLoader):
             # Commit the transaction for write operations
             conn.commit()
 
-            # Close database connection
-            cursor.close()
-            conn.close()
-
             return result_list
 
         except snowflake.connector.Error as e:
-            # Rollback in case of error
-            if 'conn' in locals():
-                conn.rollback()
-                cursor.close()
-                conn.close()
+            # Bounded by the network/socket timeouts above, and suppressed so
+            # a rollback failure cannot mask the error that got us here.
+            if conn is not None:
+                with contextlib.suppress(Exception):
+                    conn.rollback()
             logging.error("Snowflake query execution error: %s", e)
             raise SnowflakeQueryError(f"Snowflake query execution error: {str(e)}") from e
         except Exception as e:
-            # Rollback in case of error
-            if 'conn' in locals():
-                conn.rollback()
-                cursor.close()
-                conn.close()
+            if conn is not None:
+                with contextlib.suppress(Exception):
+                    conn.rollback()
             logging.error("Error executing SQL query: %s", e)
             raise SnowflakeQueryError(f"Error executing SQL query: {str(e)}") from e
+        finally:
+            if cursor is not None:
+                with contextlib.suppress(Exception):
+                    cursor.close()
+            if conn is not None:
+                with contextlib.suppress(Exception):
+                    conn.close()

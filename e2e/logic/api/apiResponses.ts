@@ -7,7 +7,7 @@ export interface User {
   email: string;
   name: string;
   picture: string;
-  provider: 'google' | 'github' | 'email';
+  provider: 'google' | 'github' | 'email' | 'api';
 }
 
 export interface AuthStatusResponse {
