@@ -169,44 +169,6 @@ def _validate_email(email: str) -> bool:
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\Z'
     return re.match(pattern, email) is not None
 
-async def _set_mail_hash(email: str, password_hash: str) -> bool:
-    """Set email hash for the user in the database."""
-    # Sanitized up front so the error path below can log it too.
-    safe_email = _sanitize_for_log(email)
-    try:
-        organizations_graph = db.select_graph(ORGANIZATIONS_GRAPH)
-
-        # Create new email identity and user
-        create_query = """
-        MERGE (i:Identity {
-            provider_user_id: $email,
-            email: $email
-        })
-        SET i.password_hash = $password_hash
-        RETURN i
-        """
-
-        result = await organizations_graph.query(create_query, {
-            "email": email,
-            "password_hash": password_hash,
-        })
-
-        if result.result_set:
-            return True
-        else:
-            logging.error("Failed to set email hash for user: %s", safe_email)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-                detail="Internal server error"
-            )
-
-    except Exception as e:
-        logging.error("Error setting email hash for user %s: %s", safe_email, e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-            detail="Internal server error"
-        )
-
 async def _email_account_exists(email: str) -> bool:
     """Return True if an account already exists for the given email (any provider).
 
@@ -509,9 +471,13 @@ async def verify_email(request: Request, verify_data: EmailVerifyRequest) -> JSO
             )
 
         # ``api_token=None``: the browser is credentialed by the session cookie,
-        # so minting a token here would only leave an orphan Token node.
+        # so minting a token here would only leave an orphan Token node. The
+        # password goes in with the identity: a second write could fail and
+        # leave an account that cannot be logged into and cannot be signed up
+        # for again.
         is_new_identity, user_info = await ensure_user_in_organizations(
-            pending.email, pending.email, pending.full_name, "email", None
+            pending.email, pending.email, pending.full_name, "email", None,
+            password_hash=pending.password_hash,
         )
         if not (is_new_identity and user_info and user_info.get("new_identity")):
             logging.error("Could not create the verified account for %s",
@@ -520,8 +486,6 @@ async def verify_email(request: Request, verify_data: EmailVerifyRequest) -> JSO
                 {"success": False, "error": "Could not create your account"},
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
-        await _set_mail_hash(pending.email, pending.password_hash)
 
         if not establish_browser_session(
             request,
@@ -556,15 +520,6 @@ async def verify_email(request: Request, verify_data: EmailVerifyRequest) -> JSO
             {"success": False,
              "error": "Authentication service temporarily unavailable - please retry"},
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE
-        )
-    except HTTPException:
-        # How _set_mail_hash reports failure. The identity exists but carries no
-        # password hash, so the login it enables is the one thing that will not
-        # work.
-        logging.error("Could not store the password for a freshly verified account")
-        return JSONResponse(
-            {"success": False, "error": "Could not finish creating your account"},
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
     except Exception as e:
         logging.error("Email verification error: %s", e)

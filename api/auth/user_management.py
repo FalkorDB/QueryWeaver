@@ -132,6 +132,8 @@ async def ensure_user_in_organizations(  # pylint: disable=too-many-arguments, d
     provider: str,
     api_token: Optional[str],
     picture: str | None = None,
+    *,
+    password_hash: Optional[str] = None,
 ) -> tuple[bool, Optional[IdentityInfo]]:
     """
     Check if identity exists in Organizations graph, create if not.
@@ -141,6 +143,10 @@ async def ensure_user_in_organizations(  # pylint: disable=too-many-arguments, d
     Pass ``api_token=None`` to persist only the User/Identity records without
     minting a programmatic token — used when repairing an existing browser
     login that was established while the graph was unreachable.
+
+    ``password_hash`` is stored on the identity as it is created, in the same
+    write. A second write would be a window in which the account exists but
+    cannot be logged into, and the address is already taken for signup.
 
     Returns (is_new_identity, user_info). ``user_info`` is ``None`` when the
     records could not be persisted, so callers should test that, not the flag.
@@ -162,7 +168,10 @@ async def ensure_user_in_organizations(  # pylint: disable=too-many-arguments, d
         organizations_graph = db.select_graph(ORGANIZATIONS_GRAPH)
         first_name, last_name = _extract_name_parts(name)
 
-        merge_query = _build_user_merge_query(include_token=api_token is not None)
+        merge_query = _build_user_merge_query(
+            include_token=api_token is not None,
+            include_password=password_hash is not None,
+        )
         query_params = _build_query_params(
             provider,
             provider_user_id,
@@ -172,6 +181,7 @@ async def ensure_user_in_organizations(  # pylint: disable=too-many-arguments, d
             first_name=first_name,
             last_name=last_name,
             api_token=api_token,
+            password_hash=password_hash,
         )
 
         result = await organizations_graph.query(merge_query, query_params)
@@ -458,11 +468,14 @@ def _extract_name_parts(name: str) -> tuple:
     return first_name, last_name
 
 
-def _build_user_merge_query(include_token: bool = True) -> str:
+def _build_user_merge_query(include_token: bool = True, include_password: bool = False) -> str:
     """Build the Cypher query for user/identity merge operations.
 
     ``include_token`` drops the Token MERGE so an identity can be persisted
-    without issuing a programmatic credential.
+    without issuing a programmatic credential. ``include_password`` stores a
+    password on the identity as it is created; it is deliberately absent from
+    the ON MATCH branch, so this can never overwrite the password of an
+    identity that already exists.
     """
     token_clause = (
         """
@@ -476,6 +489,7 @@ def _build_user_merge_query(include_token: bool = True) -> str:
         if include_token
         else ""
     )
+    password_clause = ",\n            identity.password_hash = $password_hash" if include_password else ""
     return """
         // First, ensure user exists (merge by email)
         MERGE (user:User {email: $email})
@@ -491,7 +505,7 @@ def _build_user_merge_query(include_token: bool = True) -> str:
             identity.name = $name,
             identity.picture = $picture,
             identity.created_at = timestamp(),
-            identity.last_login = timestamp()
+            identity.last_login = timestamp()""" + password_clause + """
         ON MATCH SET
             identity.email = $email,
             identity.name = $name,
@@ -518,7 +532,8 @@ def _build_query_params(  # pylint: disable=too-many-arguments
     picture: str | None = None,
     first_name: str,
     last_name: str,
-    api_token: Optional[str]
+    api_token: Optional[str],
+    password_hash: Optional[str] = None,
 ) -> dict:
     """Build query parameters for the database operation."""
     return {
@@ -530,6 +545,7 @@ def _build_query_params(  # pylint: disable=too-many-arguments
         "first_name": first_name,
         "last_name": last_name,
         "api_token": api_token,
+        "password_hash": password_hash,
     }
 
 

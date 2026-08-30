@@ -170,8 +170,8 @@ jobs:
         FASTAPI_DEBUG: False
         FALKORDB_URL: redis://localhost:6379
         DISABLE_MCP: true
-        # Signup mails a confirmation link and the account is only created when
-        # it is opened, so the suite has to be able to read the message back.
+        # Signup mails a confirmation code and the account is only created when
+        # it is typed back, so the suite has to be able to read the message.
         MAIL_OUTBOX_DIR: e2e/.mail
         # Azure OpenAI API keys - required for database schema analysis
         AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}

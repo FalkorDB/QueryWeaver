@@ -17,7 +17,6 @@ never started.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
 
 from api.auth.email_verification import (
     RESULT_EXPIRED,
@@ -26,6 +25,7 @@ from api.auth.email_verification import (
     CodeIssue,
     PendingSignup,
 )
+from api.auth.user_management import _build_user_merge_query
 from api.core.errors import AuthBackendUnavailableError
 from api.routes.auth import (
     EmailResendRequest,
@@ -135,13 +135,12 @@ class TestEmailSignupPending:
 
     @pytest.mark.asyncio
     @patch("api.routes.auth.ensure_user_in_organizations", new_callable=AsyncMock)
-    @patch("api.routes.auth._set_mail_hash", new_callable=AsyncMock)
     @patch("api.routes.auth.send_verification_code", new_callable=AsyncMock)
     @patch("api.routes.auth.start_pending_signup", new_callable=AsyncMock)
     @patch("api.routes.auth._email_account_exists", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
     async def test_signup_mails_a_code_and_creates_nothing(
-        self, _enabled, mock_exists, mock_start, mock_send, mock_set_hash, mock_ensure
+        self, _enabled, mock_exists, mock_start, mock_send, mock_ensure
     ):
         mock_exists.return_value = False
         mock_start.return_value = CodeIssue(code="123456", first_name="Mallory")
@@ -158,7 +157,6 @@ class TestEmailSignupPending:
         # The whole point: no account and no session until the code comes back.
         assert not request.session
         mock_ensure.assert_not_called()
-        mock_set_hash.assert_not_called()
 
         # The mail carries the raw code, which exists nowhere else.
         assert mock_send.await_args.args[2] == "123456"
@@ -226,13 +224,12 @@ class TestVerifyEmail:
 
     @pytest.mark.asyncio
     @patch("api.routes.auth.establish_browser_session", return_value=True)
-    @patch("api.routes.auth._set_mail_hash", new_callable=AsyncMock)
     @patch("api.routes.auth.ensure_user_in_organizations", new_callable=AsyncMock)
     @patch("api.routes.auth._email_account_exists", new_callable=AsyncMock)
     @patch("api.routes.auth.consume_pending_signup", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
     async def test_valid_code_creates_the_account_and_logs_in(
-        self, _enabled, mock_consume, mock_exists, mock_ensure, mock_set_hash, mock_session
+        self, _enabled, mock_consume, mock_exists, mock_ensure, mock_session
     ):
         pending = _pending()
         mock_consume.return_value = (pending, RESULT_OK)
@@ -245,7 +242,9 @@ class TestVerifyEmail:
         mock_ensure.assert_awaited_once()
         # No API token is minted: the session cookie is the browser credential.
         assert mock_ensure.await_args.args[-1] is None
-        mock_set_hash.assert_awaited_once_with(pending.email, pending.password_hash)
+        # The password is written with the identity, not after it: a separate
+        # write could fail and leave an account nobody can log into.
+        assert mock_ensure.await_args.kwargs["password_hash"] == pending.password_hash
         assert mock_session.call_args.kwargs["provisioned"] is True
 
     @pytest.mark.asyncio
@@ -314,13 +313,12 @@ class TestVerifyEmail:
 
     @pytest.mark.asyncio
     @patch("api.routes.auth.establish_browser_session", return_value=False)
-    @patch("api.routes.auth._set_mail_hash", new_callable=AsyncMock)
     @patch("api.routes.auth.ensure_user_in_organizations", new_callable=AsyncMock)
     @patch("api.routes.auth._email_account_exists", new_callable=AsyncMock)
     @patch("api.routes.auth.consume_pending_signup", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
     async def test_unset_session_is_reported_as_a_failure(
-        self, _enabled, mock_consume, mock_exists, mock_ensure, _set_hash, _session
+        self, _enabled, mock_consume, mock_exists, mock_ensure, _session
     ):
         # Silently reporting success would leave the user logged out with no
         # explanation; the account is real, so logging in still works.
@@ -334,18 +332,18 @@ class TestVerifyEmail:
 
     @pytest.mark.asyncio
     @patch("api.routes.auth.establish_browser_session", return_value=True)
-    @patch("api.routes.auth._set_mail_hash", new_callable=AsyncMock)
     @patch("api.routes.auth.ensure_user_in_organizations", new_callable=AsyncMock)
     @patch("api.routes.auth._email_account_exists", new_callable=AsyncMock)
     @patch("api.routes.auth.consume_pending_signup", new_callable=AsyncMock)
     @patch("api.routes.auth._is_email_auth_enabled", return_value=True)
-    async def test_password_write_failure_does_not_log_anyone_in(
-        self, _enabled, mock_consume, mock_exists, mock_ensure, mock_set_hash, mock_session
+    async def test_a_failed_account_write_does_not_log_anyone_in(
+        self, _enabled, mock_consume, mock_exists, mock_ensure, mock_session
     ):
+        # The account and its password are one write, so a failure leaves
+        # nothing behind and the address is still free to sign up again.
         mock_consume.return_value = (_pending(), RESULT_OK)
         mock_exists.return_value = False
-        mock_ensure.return_value = (True, {"new_identity": True})
-        mock_set_hash.side_effect = HTTPException(status_code=500)
+        mock_ensure.return_value = (False, None)
 
         response = await verify_email(_mock_request(), _verify_data())
 
@@ -454,6 +452,27 @@ class TestResendVerification:
         )
 
         assert response.status_code == 503
+
+
+class TestPasswordIsWrittenWithTheIdentity:
+    """The password clause on the identity merge.
+
+    Verification consumes the code before it creates the account, so there is
+    no second chance: an account written without its password could neither be
+    logged into nor signed up for again.
+    """
+
+    def test_no_password_is_written_unless_one_is_given(self):
+        assert "password_hash" not in _build_user_merge_query()
+
+    def test_the_password_is_set_as_the_identity_is_created(self):
+        query = _build_user_merge_query(include_token=False, include_password=True)
+        on_create, on_match = query.split("ON MATCH SET", 1)
+
+        assert "identity.password_hash = $password_hash" in on_create
+        # Never on the ON MATCH branch: an identity that already exists keeps
+        # the password it already has.
+        assert "password_hash" not in on_match
 
 
 class TestEmailAccountExistsResultHandling:
