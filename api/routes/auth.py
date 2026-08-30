@@ -378,7 +378,7 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
             return _signup_accepted(email)
 
         if not await send_verification_code(email, first_name, issue.code):
-            if issue.previous_code_hash:
+            if issue.displaced:
                 # This address already had a live code before the failed send.
                 # Put it back rather than deleting the record: the user may be
                 # holding that code, and it is the only one that ever arrived.

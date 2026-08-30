@@ -105,23 +105,29 @@ class CodeIssue:
     the routes answer refusals and successes identically, so the reason would
     only be a way to ask the graph questions about other people's addresses.
 
-    The ``previous_*`` fields are the code this one displaced, so
-    ``revert_verification_send`` can put it back if the mail never goes out.
-    They also say whether there was a pending signup here at all: a code hash
-    means the record pre-dated this call.
+    ``previous`` is the record exactly as it stood before this send, so
+    ``revert_verification_send`` can put it back if the mail never goes out. It
+    is the whole property map rather than the handful of fields that seemed
+    interesting: issuing a code rewrites the name, the password hash and the
+    ticket as well, and an undo that restores only some of those leaves a
+    record nobody submitted -- someone else's code against this caller's
+    password. An empty map means the record did not exist until this call.
     """
 
     code: Optional[str] = None
     first_name: Optional[str] = None
     ticket: Optional[str] = None
-    previous_code_hash: Optional[str] = None
-    previous_expires_at: Optional[int] = None
-    previous_attempts: Optional[int] = None
+    previous: Optional[dict] = None
 
     @property
     def issued(self) -> bool:
         """Whether a code was actually produced."""
         return self.code is not None
+
+    @property
+    def displaced(self) -> bool:
+        """Whether a live code was overwritten, and so is there to put back."""
+        return bool(self.previous and self.previous.get("code_hash"))
 
 
 def _positive_int_env(name: str, default: int) -> int:
@@ -223,10 +229,7 @@ _START_SIGNUP = (
 """
     + _SEND_GUARD
     + """
-        WITH p, stale,
-             p.code_hash AS previous_code_hash,
-             p.expires_at AS previous_expires_at,
-             p.attempts AS previous_attempts
+        WITH p, stale, properties(p) AS previous
         SET p.code_hash = $code_hash,
             p.ticket_hash = $ticket_hash,
             p.first_name = $first_name,
@@ -238,9 +241,7 @@ _START_SIGNUP = (
             """
     + _COUNT_SEND
     + """
-        RETURN previous_code_hash,
-               previous_expires_at,
-               previous_attempts
+        RETURN previous
 """
 )
 
@@ -254,10 +255,7 @@ _REFRESH_SIGNUP = (
 """
     + _SEND_GUARD
     + """
-        WITH p, stale,
-             p.code_hash AS previous_code_hash,
-             p.expires_at AS previous_expires_at,
-             p.attempts AS previous_attempts
+        WITH p, stale, properties(p) AS previous
         SET p.code_hash = $code_hash,
             p.expires_at = $expires_at,
             p.attempts = 0,
@@ -265,22 +263,23 @@ _REFRESH_SIGNUP = (
             """
     + _COUNT_SEND
     + """
-        RETURN p.first_name AS first_name,
-               previous_code_hash,
-               previous_expires_at,
-               previous_attempts
+        RETURN p.first_name AS first_name, previous
 """
 )
 
-# Undoes one send. Matching on the hash this send wrote makes it a no-op if
-# another request has since issued a code of its own.
+# Undoes one send, by putting the record back exactly as it was rather than
+# by naming the fields to restore -- ``SET p = $previous`` also drops properties
+# the send added, and cannot fall behind a change to what issuing a code writes.
+# ``last_sent_at`` is then pushed back to now: the send budget is refunded with
+# the rest of the snapshot, but retries still stay one per interval, which is
+# what stops a broken transport from being hammered. Matching on the hash this
+# send wrote makes the whole thing a no-op if another request has since issued a
+# code of its own.
 _REVERT_SEND = """
         MATCH (p:PendingSignup {email: $email})
         WHERE p.code_hash = $code_hash
-        SET p.code_hash = $previous_code_hash,
-            p.expires_at = $previous_expires_at,
-            p.attempts = $previous_attempts,
-            p.send_count = p.send_count - 1
+        SET p = $previous
+        SET p.last_sent_at = $now
 """
 
 
@@ -327,14 +326,11 @@ async def start_pending_signup(
         # whether a stranger's address has a signup in flight.
         return CodeIssue()
 
-    previous_code_hash, previous_expires_at, previous_attempts = result.result_set[0]
     return CodeIssue(
         code=code,
         first_name=first_name,
         ticket=ticket,
-        previous_code_hash=previous_code_hash,
-        previous_expires_at=previous_expires_at,
-        previous_attempts=previous_attempts,
+        previous=result.result_set[0][0],
     )
 
 
@@ -363,28 +359,20 @@ async def refresh_pending_signup(email: str) -> CodeIssue:
         # that just consumed the record. Indistinguishable on purpose.
         return CodeIssue()
 
-    first_name, previous_code_hash, previous_expires_at, previous_attempts = (
-        result.result_set[0]
-    )
-    return CodeIssue(
-        code=code,
-        first_name=first_name,
-        previous_code_hash=previous_code_hash,
-        previous_expires_at=previous_expires_at,
-        previous_attempts=previous_attempts,
-    )
+    first_name, previous = result.result_set[0]
+    return CodeIssue(code=code, first_name=first_name, previous=previous)
 
 
 async def revert_verification_send(email: str, issue: CodeIssue) -> None:
     """Give back a send whose mail never left. Best-effort; never fatal.
 
-    Refunds the counter and puts the displaced code back in force, so a
-    transport failure costs the user neither their send budget nor the code
-    they may already be holding. ``last_sent_at`` is deliberately left where
-    the failed attempt put it: retries stay one per interval even when they
-    fail, which is what stops a broken transport from being hammered.
+    Puts the record back exactly as it stood, so a transport failure costs the
+    user neither their send budget nor the code they may already be holding.
+    Only for a send that displaced a live code -- there is nothing to restore
+    a record to if this call is what created it, and ``discard_pending_signup``
+    is the right way to undo that.
     """
-    if not issue.issued:
+    if not issue.issued or not issue.displaced:
         return
     try:
         await _graph().query(
@@ -392,9 +380,8 @@ async def revert_verification_send(email: str, issue: CodeIssue) -> None:
             {
                 "email": email,
                 "code_hash": hash_code(issue.code),
-                "previous_code_hash": issue.previous_code_hash,
-                "previous_expires_at": issue.previous_expires_at,
-                "previous_attempts": issue.previous_attempts,
+                "previous": issue.previous,
+                "now": _now_ms(),
             },
         )
     except Exception as e:  # pylint: disable=broad-exception-caught

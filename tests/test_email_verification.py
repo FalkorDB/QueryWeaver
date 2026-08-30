@@ -40,9 +40,9 @@ class TestStartPendingSignup:
     """Parking a signup, and the limits on how much mail it can generate."""
 
     @staticmethod
-    def _issued(previous_code_hash=None, previous_expires_at=None, previous_attempts=None):
-        """The row the issuing query returns: the code this one displaced."""
-        return _result([[previous_code_hash, previous_expires_at, previous_attempts]])
+    def _issued(**previous):
+        """The row the issuing query returns: the record as it stood before."""
+        return _result([[previous]])
 
     @pytest.mark.asyncio
     async def test_only_the_code_hash_is_stored(self):
@@ -76,7 +76,7 @@ class TestStartPendingSignup:
     async def test_every_signup_gets_its_own_ticket(self):
         # The ticket is what stops a second submission for the same address
         # from having its password confirmed by the address's owner.
-        graph = _FakeGraph([self._issued(), self._issued("old-hash", 4242, 0)])
+        graph = _FakeGraph([self._issued(), self._issued(code_hash="old-hash")])
         with _patch_graph(graph):
             first = await ev.start_pending_signup(
                 "new@example.com", "Ada", "Lovelace", "hash"
@@ -118,7 +118,7 @@ class TestStartPendingSignup:
     async def test_resubmitting_cannot_reset_the_send_limit(self):
         # Otherwise the rate limit is decorative: re-post the form and the
         # counter starts over. Only a record this query creates starts at zero.
-        graph = _FakeGraph([self._issued("old-hash", 4242, 1)])
+        graph = _FakeGraph([self._issued(code_hash="old-hash", send_count=1)])
         with _patch_graph(graph):
             issue = await ev.start_pending_signup(
                 "new@example.com", "Ada", "Lovelace", "hash"
@@ -135,7 +135,7 @@ class TestStartPendingSignup:
         # Nothing deletes a signup that is never confirmed, so a spent send
         # budget would otherwise lock an address out of the product for good --
         # five submissions by a stranger and the real owner can never sign up.
-        graph = _FakeGraph([self._issued("old-hash", 1, 0)])
+        graph = _FakeGraph([self._issued(code_hash="old-hash", expires_at=1)])
         with _patch_graph(graph):
             await ev.start_pending_signup("new@example.com", "Ada", "Lovelace", "hash")
 
@@ -157,18 +157,38 @@ class TestStartPendingSignup:
         assert "stale OR p.last_sent_at" not in cypher
 
     @pytest.mark.asyncio
-    async def test_the_displaced_code_comes_back_for_reverting(self):
-        # The caller needs it to tell "this address already had a live code"
-        # from "this record is one I just created", and to put it back.
-        graph = _FakeGraph([self._issued("old-hash", 4242, 3)])
+    async def test_the_whole_displaced_record_comes_back_for_reverting(self):
+        # Not just the code: issuing rewrites the name, the password hash and
+        # the ticket too, and an undo that restores a subset would leave a
+        # record nobody submitted -- one person's code against another's
+        # password. The snapshot is also how the caller tells "this address
+        # already had a live code" from "this record is one I just created".
+        previous = {
+            "code_hash": "old-hash",
+            "ticket_hash": "old-ticket",
+            "password_hash": "someone-elses-password",
+            "expires_at": 4242,
+            "attempts": 3,
+        }
+        graph = _FakeGraph([self._issued(**previous)])
         with _patch_graph(graph):
             issue = await ev.start_pending_signup(
                 "new@example.com", "Ada", "Lovelace", "hash"
             )
 
-        assert issue.previous_code_hash == "old-hash"
-        assert issue.previous_expires_at == 4242
-        assert issue.previous_attempts == 3
+        assert issue.previous == previous
+        assert issue.displaced
+
+    @pytest.mark.asyncio
+    async def test_a_record_this_call_created_displaced_nothing(self):
+        graph = _FakeGraph([self._issued(email="new@example.com", send_count=0)])
+        with _patch_graph(graph):
+            issue = await ev.start_pending_signup(
+                "new@example.com", "Ada", "Lovelace", "hash"
+            )
+
+        assert issue.issued
+        assert not issue.displaced
 
     @pytest.mark.asyncio
     async def test_a_refused_send_says_nothing_about_why(self, monkeypatch):
@@ -218,7 +238,7 @@ class TestRefreshPendingSignup:
     async def test_a_resend_keeps_the_ticket(self):
         # A resend is another copy of the same signup. Minting a new ticket
         # would lock out the browser that is sitting on the code entry screen.
-        graph = _FakeGraph([_result([["Ada", "old-hash", 4242, 3]])])
+        graph = _FakeGraph([_result([["Ada", {"code_hash": "old-hash"}]])])
         with _patch_graph(graph):
             issue = await ev.refresh_pending_signup("pending@example.com")
 
@@ -229,7 +249,8 @@ class TestRefreshPendingSignup:
 
     @pytest.mark.asyncio
     async def test_refresh_replaces_the_previous_code(self):
-        graph = _FakeGraph([_result([["Ada", "old-hash", 4242, 3]])])
+        previous = {"code_hash": "old-hash", "ticket_hash": "kept", "attempts": 3}
+        graph = _FakeGraph([_result([["Ada", previous]])])
         with _patch_graph(graph):
             issue = await ev.refresh_pending_signup("pending@example.com")
 
@@ -242,9 +263,7 @@ class TestRefreshPendingSignup:
         # A fresh code deserves a fresh budget of guesses.
         assert "p.attempts = 0" in write_cypher
         # Kept so a send that never reaches a transport can be undone.
-        assert issue.previous_code_hash == "old-hash"
-        assert issue.previous_expires_at == 4242
-        assert issue.previous_attempts == 3
+        assert issue.previous == previous
 
     @pytest.mark.asyncio
     async def test_losing_a_race_with_verification_is_not_an_error(self):
@@ -264,35 +283,43 @@ class TestRevertVerificationSend:
         return ev.CodeIssue(
             code="123456",
             first_name="Ada",
-            previous_code_hash="old-hash",
-            previous_expires_at=4242,
-            previous_attempts=3,
+            previous={
+                "code_hash": "old-hash",
+                "ticket_hash": "old-ticket",
+                "password_hash": "someone-elses-password",
+                "expires_at": 4242,
+                "attempts": 3,
+                "send_count": 1,
+            },
         )
 
     @pytest.mark.asyncio
-    async def test_the_send_is_refunded_and_the_old_code_restored(self):
+    async def test_the_record_is_put_back_exactly_as_it_was(self):
         # A transport failure must cost the user neither their send budget nor
-        # the code they may already be holding.
+        # the code they may already be holding. Restoring the whole map rather
+        # than named fields is also what keeps the undo honest: the send
+        # rewrote the password hash and the ticket too.
         graph = _FakeGraph([])
         with _patch_graph(graph):
             await ev.revert_verification_send("pending@example.com", self._issued())
 
         cypher, params = graph.calls[-1]
-        assert "p.send_count = p.send_count - 1" in cypher
-        assert params["previous_code_hash"] == "old-hash"
-        assert params["previous_expires_at"] == 4242
+        assert "SET p = $previous" in cypher
+        assert params["previous"] == self._issued().previous
 
     @pytest.mark.asyncio
-    async def test_the_spent_guesses_come_back_too(self):
-        # Otherwise a failed send would hand out a free reset of the attempt
-        # budget, which is the thing keeping six digits honest.
+    async def test_a_send_that_displaced_nothing_is_not_reverted(self):
+        # There is no record to restore this one to. Reverting anyway would
+        # write back the bare node the MERGE created, leaving a husk behind;
+        # discarding it is the caller's job.
         graph = _FakeGraph([])
         with _patch_graph(graph):
-            await ev.revert_verification_send("pending@example.com", self._issued())
+            await ev.revert_verification_send(
+                "new@example.com",
+                ev.CodeIssue(code="123456", previous={"email": "new@example.com"}),
+            )
 
-        cypher, params = graph.calls[-1]
-        assert "p.attempts = $previous_attempts" in cypher
-        assert params["previous_attempts"] == 3
+        assert graph.calls == []
 
     @pytest.mark.asyncio
     async def test_a_code_issued_since_is_left_alone(self):
@@ -308,12 +335,15 @@ class TestRevertVerificationSend:
 
     @pytest.mark.asyncio
     async def test_the_clock_is_not_rolled_back(self):
-        # Otherwise a broken transport could be retried without limit.
+        # The snapshot would restore the old last_sent_at along with everything
+        # else, and a broken transport could then be retried without limit.
         graph = _FakeGraph([])
         with _patch_graph(graph):
             await ev.revert_verification_send("pending@example.com", self._issued())
 
-        assert "last_sent_at" not in graph.calls[-1][0]
+        cypher, params = graph.calls[-1]
+        assert "SET p.last_sent_at = $now" in cypher
+        assert params["now"] >= params["previous"].get("last_sent_at", 0)
 
     @pytest.mark.asyncio
     async def test_nothing_to_undo_when_nothing_was_issued(self):

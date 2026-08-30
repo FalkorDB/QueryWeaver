@@ -248,9 +248,7 @@ class TestEmailSignupPending:
             code="123456",
             first_name="Mallory",
             ticket="ticket-abc",
-            previous_code_hash="old-hash",
-            previous_expires_at=4242,
-            previous_attempts=1,
+            previous={"code_hash": "old-hash", "expires_at": 4242, "attempts": 1},
         )
         mock_send.return_value = False
 
