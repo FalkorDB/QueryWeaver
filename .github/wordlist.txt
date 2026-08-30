@@ -128,3 +128,4 @@ signup
 SMTP
 outbox
 PendingSignup
+unconfigured
