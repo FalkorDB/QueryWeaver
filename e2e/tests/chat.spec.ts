@@ -41,7 +41,7 @@ test.describe('Chat Feature Tests', () => {
     expect(hasCorrectDescription).toBeTruthy();
   });
 
-  test('valid query shows SQL, results, and AI response', async () => {
+  test('valid query shows SQL, results, and AI response', { tag: '@requires-ai' }, async () => {
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
@@ -73,7 +73,7 @@ test.describe('Chat Feature Tests', () => {
     expect(finalAIMessageCount).toBeGreaterThanOrEqual(2); // At least welcome + final response
   });
 
-  test('off-topic query shows AI message without SQL or results', async () => {
+  test('off-topic query shows AI message without SQL or results', { tag: '@requires-ai' }, async () => {
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
@@ -87,11 +87,18 @@ test.describe('Chat Feature Tests', () => {
     const processingComplete = await homePage.waitForProcessingToComplete();
     expect(processingComplete).toBeTruthy();
 
-    // Verify Query Analysis message appears (but without actual SQL)
-    const sqlMessageVisible = await homePage.isSQLQueryMessageVisible();
-    expect(sqlMessageVisible).toBeTruthy();
+    // Verify NO SQL card at all. An off-topic query never reaches SQL
+    // generation, so there is no SQL and no analysis to show — the card would
+    // render as a bare "Query Analysis" header with nothing under it. The
+    // off-topic explanation reaches the user as a normal AI message instead
+    // (asserted below). This previously asserted the empty card was visible,
+    // which masked the phantom card seen in the 2026-07-29 incident.
+    // Strict web-first assertion: toHaveCount(0) waits for the final DOM
+    // state and fails on a broken selector, unlike the boolean helper which
+    // catches locator errors and returns false.
+    await expect(homePage.sqlQueryCard).toHaveCount(0);
 
-    // Verify NO actual SQL content (should say "Query Analysis" or "Off topic")
+    // And therefore no SQL content anywhere.
     const hasSQLContent = await homePage.verifySQLQueryContains("SELECT");
     expect(hasSQLContent).toBeFalsy();
 
@@ -116,7 +123,7 @@ test.describe('Chat Feature Tests', () => {
     expect(aiText.length).toBeGreaterThan(0);
   });
 
-  test('multiple sequential queries maintain conversation history', async () => {
+  test('multiple sequential queries maintain conversation history', { tag: '@requires-ai' }, async () => {
     test.slow(); // Two sequential LLM round-trips need extra time in CI
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
@@ -157,15 +164,12 @@ test.describe('Chat Feature Tests', () => {
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
-    // Ensure database is connected (will skip if already connected)
-    await homePage.ensureDatabaseConnected(apiCall);
-
-    // Verify send button is disabled with empty input
+    // Verify send button is disabled with empty input (pure UI validation, no DB needed)
     const isSendButtonDisabled = await homePage.isSendQueryButtonDisabled();
     expect(isSendButtonDisabled).toBeTruthy();
   });
 
-  test('rapid query submission is prevented during processing', async () => {
+  test('rapid query submission is prevented during processing', { tag: '@requires-ai' }, async () => {
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
@@ -183,7 +187,7 @@ test.describe('Chat Feature Tests', () => {
     expect(isDisabledDuringProcessing).toBeTruthy();
   });
 
-  test('switching databases clears chat history', async () => {
+  test('switching databases clears chat history', { tag: '@requires-ai' }, async () => {
     test.slow(); // Two database connections plus LLM round-trip need extra time in CI
     // Connect two databases via API
     const { postgres: postgresUrl } = getTestDatabases();
@@ -237,7 +241,8 @@ test.describe('Chat Feature Tests', () => {
     expect(aiMessageCount).toBe(1);
   });
 
-  test('destructive operation shows inline confirmation and executes on confirm', async () => {
+  test('destructive operation shows inline confirmation and executes on confirm', { tag: '@requires-ai' }, async () => {
+    test.slow(); // 30s confirmation wait + 50s processing wait exceeds the 60s describe budget
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();
 
@@ -271,15 +276,15 @@ test.describe('Chat Feature Tests', () => {
     expect(processingComplete).toBeTruthy();
 
     // Verify confirmation message is no longer visible
-    const confirmationStillVisible = await homePage.isConfirmationMessageVisible();
-    expect(confirmationStillVisible).toBeFalsy();
+    const confirmationDismissed = await homePage.waitForConfirmationToDisappear();
+    expect(confirmationDismissed).toBeTruthy();
 
     // Verify AI response appears after confirmation
     const finalAIMessageCount = await homePage.getAIMessageCount();
     expect(finalAIMessageCount).toBeGreaterThan(1); // Welcome message + execution result
   });
 
-  test('duplicate record shows user-friendly error message', async () => {
+  test('duplicate record shows user-friendly error message', { tag: '@requires-ai' }, async () => {
     test.slow(); // Two LLM round-trips with confirmation dialogs need extra time in CI
     const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
     await browser.setPageToFullScreen();

@@ -1,11 +1,12 @@
 """Graph loader module for loading data into graph databases."""
 
+import asyncio
 import json
 
 import tqdm
 
-from api.config import Config
 from api.core.db_resolver import resolve_db
+from api.embeddings import embed_off_loop, vector_size_off_loop
 from api.utils import generate_db_description, create_combined_description
 
 
@@ -30,10 +31,17 @@ async def load_to_graph(  # pylint: disable=too-many-arguments,too-many-position
     - db: Optional FalkorDB handle; falls back to the server singleton.
     """
     graph = resolve_db(db).select_graph(graph_id)
-    embedding_model = Config.EMBEDDING_MODEL
-    vec_len = embedding_model.get_vector_size()
+    # Off-loop: these are blocking network calls, and this coroutine runs
+    # inside the connect/refresh streaming responses. Running them directly
+    # blocks the event loop, so those streams cannot emit keepalives while a
+    # large schema is loading.
+    vec_len = await vector_size_off_loop()
 
-    create_combined_description(entities)
+    # Both of these make blocking provider calls (a batch completion over every
+    # table, then a description completion). This coroutine backs the connect
+    # and refresh streams, so running them inline blocks the event loop and no
+    # stream can emit keepalives while a schema loads.
+    await asyncio.to_thread(create_combined_description, entities)
 
     try:
         # Create vector indices
@@ -56,7 +64,9 @@ async def load_to_graph(  # pylint: disable=too-many-arguments,too-many-position
     except Exception as e:  # pylint: disable=broad-exception-caught
         print(f"Error creating vector indices: {str(e)}")
 
-    db_des = generate_db_description(db_name=db_name, table_names=list(entities.keys()))
+    db_des = await asyncio.to_thread(
+        generate_db_description, db_name=db_name, table_names=list(entities.keys())
+    )
     await graph.query(
         """
         CREATE (d:Database {
@@ -70,7 +80,7 @@ async def load_to_graph(  # pylint: disable=too-many-arguments,too-many-position
 
     for table_name, table_info in tqdm.tqdm(entities.items(), desc="Creating Graph Table Nodes"):
         table_desc = table_info["description"]
-        embedding_result = embedding_model.embed(table_desc)
+        embedding_result = await embed_off_loop(table_desc)
         fk = json.dumps(table_info.get("foreign_keys", []))
 
         # Create table node
@@ -109,7 +119,7 @@ async def load_to_graph(  # pylint: disable=too-many-arguments,too-many-position
                     desc=f"Creating embeddings for {table_name} columns",
                 ):
 
-                    embedding_result = embedding_model.embed(batch)
+                    embedding_result = await embed_off_loop(batch)
                     embed_columns.extend(embedding_result)
             except Exception as e:  # pylint: disable=broad-exception-caught
                 print(f"Error creating embeddings: {str(e)}")
@@ -123,7 +133,7 @@ async def load_to_graph(  # pylint: disable=too-many-arguments,too-many-position
         ):
             if not batch_flag:
                 embed_columns = []
-                embedding_result = embedding_model.embed(col_info["description"])
+                embedding_result = await embed_off_loop(col_info["description"])
                 embed_columns.extend(embedding_result)
                 idx = 0
 

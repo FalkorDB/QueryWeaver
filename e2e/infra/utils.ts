@@ -1,4 +1,4 @@
-import { Locator } from "playwright";
+import { Locator, expect } from "@playwright/test";
 
 export function delay(ms: number) {
   return new Promise((resolve) => {
@@ -6,22 +6,23 @@ export function delay(ms: number) {
   });
 }
 
+// `time` and `retry` are kept for call-site compatibility: they define the total budget.
+// Floored at 1ms because Playwright reads `timeout: 0` as "no timeout", which
+// would turn a zero argument into a wait for the whole test rather than an
+// immediate `false`.
+const budget = (time: number, retry: number) => Math.max(1, time * retry);
+
 export const waitForElementToBeVisible = async (
   locator: Locator,
   time = 500,
   retry = 10
 ): Promise<boolean> => {
-  for (let i = 0; i < retry; i += 1) {
-    try {
-      if (await locator.isVisible()) {
-        return true;
-      }
-    } catch (error) {
-      console.error(`Error checking element visibility: ${error}`);
-    }
-    await delay(time);
+  try {
+    await locator.waitFor({ state: "visible", timeout: budget(time, retry) });
+    return true;
+  } catch {
+    return false;
   }
-  return false;
 };
 
 export const waitForElementToNotBeVisible = async (
@@ -29,17 +30,12 @@ export const waitForElementToNotBeVisible = async (
   time = 500,
   retry = 10
 ): Promise<boolean> => {
-  for (let i = 0; i < retry; i += 1) {
-    try {
-      if (!(await locator.isVisible())) {
-        return true;
-      }
-    } catch (error) {
-      console.error(`Error checking element visibility: ${error}`);
-    }
-    await delay(time);
+  try {
+    await locator.waitFor({ state: "hidden", timeout: budget(time, retry) });
+    return true;
+  } catch {
+    return false;
   }
-  return false;
 };
 
 export const waitForElementToBeEnabled = async (
@@ -47,17 +43,12 @@ export const waitForElementToBeEnabled = async (
   time = 500,
   retry = 10
 ): Promise<boolean> => {
-  for (let i = 0; i < retry; i += 1) {
-    try {
-      if (await locator.isEnabled()) {
-        return true;
-      }
-    } catch (error) {
-      console.error(`Error checking element enabled: ${error}`);
-    }
-    await delay(time);
+  try {
+    await expect(locator).toBeEnabled({ timeout: budget(time, retry) });
+    return true;
+  } catch {
+    return false;
   }
-  return false;
 };
 
 export function getRandomString(prefix = "", delimiter = "_"): string {

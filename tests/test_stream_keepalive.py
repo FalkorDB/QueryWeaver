@@ -1,0 +1,200 @@
+"""Tests for the streaming keepalive wrapper.
+
+The 2026-07-29 demo failure was a stream that emitted nothing for the whole
+SQL-generation phase and was severed mid-body. ``with_keepalive`` keeps bytes
+flowing through those silent gaps.
+"""
+
+import asyncio
+
+import pytest
+
+from api.core.pipeline import MESSAGE_DELIMITER
+from api.routes.streaming import with_keepalive
+
+
+async def _collect(agen):
+    return [chunk async for chunk in agen]
+
+
+@pytest.mark.unit
+async def test_passes_chunks_through_unchanged():
+    """A stream that never goes idle is forwarded verbatim."""
+    async def source():
+        yield "a"
+        yield "b"
+
+    assert await _collect(with_keepalive(source(), interval=5.0)) == ["a", "b"]
+
+
+@pytest.mark.unit
+async def test_empty_stream_yields_nothing():
+    async def source():
+        return
+        yield  # pragma: no cover - never reached
+
+    assert await _collect(with_keepalive(source(), interval=5.0)) == []
+
+
+@pytest.mark.unit
+async def test_emits_keepalive_during_a_silent_gap():
+    """A slow producer gets bare delimiters until its next real chunk."""
+    async def source():
+        yield "first"
+        await asyncio.sleep(0.25)
+        yield "second"
+
+    chunks = await _collect(with_keepalive(source(), interval=0.05))
+
+    assert chunks[0] == "first"
+    assert chunks[-1] == "second"
+    keepalives = chunks[1:-1]
+    assert keepalives, "expected at least one keepalive during the gap"
+    assert set(keepalives) == {MESSAGE_DELIMITER}
+
+
+@pytest.mark.unit
+async def test_keepalive_is_an_empty_part_for_the_client():
+    """A bare delimiter splits into empty parts, which the client skips.
+
+    This is what makes the keepalive backward compatible: no new message type
+    and no client change. Mirrors the parser in app/src/services/chat.ts.
+    """
+    payload = "".join([MESSAGE_DELIMITER, MESSAGE_DELIMITER])
+    parts = [p for p in payload.split(MESSAGE_DELIMITER) if p.strip()]
+    assert parts == []
+
+
+@pytest.mark.unit
+async def test_propagates_producer_exception():
+    """Pipeline failures must still reach the route's error handler."""
+    async def source():
+        yield "a"
+        raise RuntimeError("pipeline exploded")
+
+    with pytest.raises(RuntimeError, match="pipeline exploded"):
+        await _collect(with_keepalive(source(), interval=5.0))
+
+
+@pytest.mark.unit
+async def test_close_mid_gap_tears_down_the_inner_stream():
+    """A client disconnect during a silent gap must not orphan the pull.
+
+    The inner generator's ``finally`` running is the observable proof that the
+    wrapper closed it rather than leaving it pending on the loop.
+    """
+    closed = asyncio.Event()
+
+    async def source():
+        try:
+            yield "first"
+            await asyncio.sleep(60)  # the silent gap; never completes
+            yield "unreachable"  # pragma: no cover
+        finally:
+            closed.set()
+
+    agen = with_keepalive(source(), interval=0.05)
+    assert await agen.__anext__() == "first"
+    # The next pull enters the gap, so this returns a keepalive, not a chunk.
+    assert await agen.__anext__() == MESSAGE_DELIMITER
+
+    await agen.aclose()
+
+    await asyncio.wait_for(closed.wait(), timeout=1)
+
+
+@pytest.mark.unit
+async def test_cancellation_at_arbitrary_moments_never_raises():
+    """Teardown must be clean no matter when cancellation lands.
+
+    A client disconnect cancels the ASGI task at an arbitrary point. Cleanup
+    that awaits cannot finish once cancellation is pending, which previously
+    let an ``aclose()`` race an in-flight pull and raise
+    ``asynchronous generator is already running``. Sweep the cancellation
+    point across the keepalive cycle to cover that window.
+    """
+    errors = []
+
+    for step in range(60):
+        async def source():
+            yield "first"
+            await asyncio.sleep(5)          # silent gap, pull stays in flight
+            yield "never"  # pragma: no cover
+
+        agen = with_keepalive(source(), interval=0.01)
+
+        async def consume(gen):
+            async for _ in gen:
+                pass
+
+        task = asyncio.ensure_future(consume(agen))
+        # Sweep across (and past) the keepalive interval in small increments.
+        await asyncio.sleep(0.001 + step * 0.0005)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            # Expected: we cancelled it. The assertion is about teardown, not
+            # about how the consumer ended.
+            pass
+
+        # Starlette closes the body iterator after cancelling it.
+        try:
+            await agen.aclose()
+        except asyncio.CancelledError:
+            # Also acceptable: closing during cancellation may surface the
+            # cancellation itself. Only a RuntimeError is a defect.
+            pass
+        except RuntimeError as exc:         # the regression we are guarding
+            errors.append(f"step={step}: {exc}")
+
+    assert not errors, "teardown raised: " + "; ".join(errors)
+
+
+@pytest.mark.unit
+async def test_producer_is_cancelled_when_consumer_stops_early():
+    """Abandoning the stream must not leave the pipeline running."""
+    cancelled = asyncio.Event()
+
+    async def source():
+        try:
+            yield "first"
+            await asyncio.sleep(60)
+            yield "never"  # pragma: no cover
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+        finally:
+            cancelled.set()
+
+    agen = with_keepalive(source(), interval=0.01)
+    assert await agen.__anext__() == "first"
+    await agen.aclose()
+
+    await asyncio.wait_for(cancelled.wait(), timeout=2)
+
+
+@pytest.mark.unit
+async def test_producer_cancellation_reaches_the_consumer():
+    """A cancelling inner stream must end the response, not stall it.
+
+    ``CancelledError`` is a ``BaseException``, so the pump does not relay it as
+    a queue item. Without observing the pump's terminal state the consumer sat
+    on an empty queue emitting keepalives forever — an endless response.
+    """
+    async def source():
+        yield "first"
+        raise asyncio.CancelledError()
+
+    chunks = []
+
+    async def consume():
+        async for chunk in with_keepalive(source(), interval=0.02):
+            chunks.append(chunk)
+
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(consume(), timeout=3)
+
+    assert chunks[0] == "first"
+    # A handful of keepalives during the gap is fine; an unbounded stream is not.
+    assert len(chunks) < 50, "consumer kept emitting keepalives after the producer died"
