@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import type { User as UserType } from '@/types/api';
 
 interface Step {
@@ -61,7 +62,10 @@ const markdownComponents: Components = {
       {children}
     </a>
   ),
-  code: ({ children }) => <code className="rounded bg-muted px-1 py-0.5 font-mono text-sm">{children}</code>,
+  // `className` carries the fence's `language-*` marker, so keep it.
+  code: ({ className, children }) => (
+    <code className={cn('rounded bg-muted px-1 py-0.5 font-mono text-sm', className)}>{children}</code>
+  ),
   // A fenced block brings its own frame, so cancel the inline chip styling inside it.
   pre: ({ children }) => (
     <pre className="mb-3 last:mb-0 overflow-x-auto rounded border border-border bg-background p-3 [&_code]:bg-transparent [&_code]:p-0">
