@@ -391,18 +391,24 @@ async def revert_verification_send(email: str, issue: CodeIssue) -> None:
 # Redeems a code. The attempt guard rides inside the write for the same reason
 # the send guard does: checking first would let concurrent guesses all pass a
 # check that only one increment ever answered for.
+#
+# The delete is conditional because an expired record is still worth something:
+# the send guard lets a resend revive it, and deleting it here would strand a
+# user who typed the right code a minute late -- their resend would quietly do
+# nothing, because refreshing only ever MATCHes. A NULL ``expires_at`` fails the
+# comparison and so is treated as not live, which is the safe way round.
 _CONSUME_CODE = """
         MATCH (p:PendingSignup {email: $email})
         WHERE p.code_hash = $code_hash
           AND p.ticket_hash = $ticket_hash
           AND p.attempts < $max_attempts
         WITH p,
+             p.expires_at >= $now AS live,
              p.first_name AS first_name,
              p.last_name AS last_name,
-             p.password_hash AS password_hash,
-             p.expires_at AS expires_at
-        DELETE p
-        RETURN first_name, last_name, password_hash, expires_at
+             p.password_hash AS password_hash
+        FOREACH (_ IN CASE WHEN live THEN [1] ELSE [] END | DELETE p)
+        RETURN live, first_name, last_name, password_hash
 """
 
 # Charges a wrong guess, and destroys the signup once the budget is gone. A
@@ -449,18 +455,20 @@ async def consume_pending_signup(
             "code_hash": hash_code(code),
             "ticket_hash": hash_code(ticket),
             "max_attempts": max_attempts(),
+            "now": _now_ms(),
         },
     )
     if not result.result_set:
         await _charge_failed_attempt(email)
         return None, RESULT_INVALID
 
-    first_name, last_name, password_hash, expires_at = result.result_set[0]
+    live, first_name, last_name, password_hash = result.result_set[0]
 
-    # Expired codes are consumed rather than left behind: the code is dead
-    # either way, and dropping the record keeps abandoned signups from
-    # accumulating. The user simply signs up again.
-    if not isinstance(expires_at, (int, float)) or _now_ms() >= expires_at:
+    # The record survives an expired code, so the user can ask for a fresh one
+    # from the screen they are already on. No attempt is charged either: the
+    # code was right, and running the budget out here would delete the very
+    # record the resend needs.
+    if not live:
         return None, RESULT_EXPIRED
 
     if not password_hash:

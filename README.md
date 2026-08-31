@@ -198,7 +198,9 @@ it signs the browser in directly: the password was chosen minutes earlier, and
 asking for it again would prove nothing. A code can be re-sent from the same
 screen, subject to a per-address rate limit; the send budget is per pending
 signup, so it starts over once the pending signup expires and an address can
-always be signed up again later.
+always be signed up again later. Typing a code that has expired is not one of
+the wrong guesses and does not discard anything — the pending signup is left
+where it is so the same screen can send a fresh code.
 
 In development, a message with no mail server configured is written to the
 application log instead of being sent, so the flow can be completed by copying

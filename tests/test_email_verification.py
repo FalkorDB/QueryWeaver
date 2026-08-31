@@ -368,8 +368,8 @@ class TestConsumePendingSignup:
     """Redeeming a code, and the budget of wrong guesses."""
 
     @staticmethod
-    def _row(expires_at):
-        return [["Ada", "Lovelace", "hash", expires_at]]
+    def _row(live):
+        return [[live, "Ada", "Lovelace", "hash"]]
 
     @pytest.mark.asyncio
     async def test_empty_code_never_reaches_the_database(self):
@@ -399,8 +399,7 @@ class TestConsumePendingSignup:
 
     @pytest.mark.asyncio
     async def test_live_code_returns_the_details_and_deletes_the_record(self):
-        future = ev._now_ms() + 60_000
-        graph = _FakeGraph([_result(self._row(future))])
+        graph = _FakeGraph([_result(self._row(True))])
         with _patch_graph(graph):
             pending, result = await ev.consume_pending_signup(
                 "new@example.com", "123456", "ticket"
@@ -412,15 +411,14 @@ class TestConsumePendingSignup:
         cypher, params = graph.calls[0]
         # Single-use is structural: the read and the delete are one query, so a
         # replay cannot find the node no matter how the caller behaves.
-        assert "DELETE" in cypher
+        assert "DELETE p" in cypher
         assert params["code_hash"] == ev.hash_code("123456")
 
     @pytest.mark.asyncio
     async def test_the_ticket_is_matched_in_the_same_query(self):
         # Otherwise re-submitting a stranger's pending signup with a password
         # of your own gets it confirmed by the address's owner.
-        future = ev._now_ms() + 60_000
-        graph = _FakeGraph([_result(self._row(future))])
+        graph = _FakeGraph([_result(self._row(True))])
         with _patch_graph(graph):
             await ev.consume_pending_signup("new@example.com", "123456", "ticket")
 
@@ -444,8 +442,7 @@ class TestConsumePendingSignup:
     async def test_the_attempt_limit_is_enforced_inside_the_write(self):
         # Reading the counter first would let a burst of concurrent guesses all
         # pass a check that only one increment ever answered for.
-        future = ev._now_ms() + 60_000
-        graph = _FakeGraph([_result(self._row(future))])
+        graph = _FakeGraph([_result(self._row(True))])
         with _patch_graph(graph):
             await ev.consume_pending_signup("new@example.com", "123456", "ticket")
 
@@ -507,9 +504,11 @@ class TestConsumePendingSignup:
         assert result == ev.RESULT_INVALID
 
     @pytest.mark.asyncio
-    async def test_expired_code_is_reported_and_consumed(self):
-        past = ev._now_ms() - 1
-        graph = _FakeGraph([_result(self._row(past))])
+    async def test_an_expired_code_leaves_the_record_to_be_resent(self):
+        # Deleting it would strand a user who typed the right code a minute
+        # late: refreshing only ever MATCHes, so the resend button on the screen
+        # they are looking at would quietly do nothing.
+        graph = _FakeGraph([_result(self._row(False))])
         with _patch_graph(graph):
             pending, result = await ev.consume_pending_signup(
                 "new@example.com", "123456", "ticket"
@@ -517,10 +516,17 @@ class TestConsumePendingSignup:
 
         assert pending is None
         assert result == ev.RESULT_EXPIRED
+        cypher, params = graph.calls[0]
+        assert "FOREACH (_ IN CASE WHEN live THEN [1] ELSE [] END | DELETE p)" in cypher
+        assert params["now"] > 0
+        # The code was right, so no guess is charged -- and charging one could
+        # run the budget out and delete the record the resend needs.
+        assert len(graph.calls) == 1
 
     @pytest.mark.asyncio
     async def test_record_without_an_expiry_is_not_treated_as_eternal(self):
-        # A missing expiry must fail closed, not read as "never expires".
+        # A missing expiry must fail closed, not read as "never expires". The
+        # comparison in the query yields NULL, which is not true.
         graph = _FakeGraph([_result(self._row(None))])
         with _patch_graph(graph):
             pending, result = await ev.consume_pending_signup(
@@ -532,8 +538,7 @@ class TestConsumePendingSignup:
 
     @pytest.mark.asyncio
     async def test_record_missing_a_password_is_rejected(self):
-        future = ev._now_ms() + 60_000
-        graph = _FakeGraph([_result([["Ada", "Lovelace", None, future]])])
+        graph = _FakeGraph([_result([[True, "Ada", "Lovelace", None]])])
         with _patch_graph(graph):
             pending, result = await ev.consume_pending_signup(
                 "new@example.com", "123456", "ticket"
