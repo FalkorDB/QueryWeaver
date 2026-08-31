@@ -1,4 +1,7 @@
 import React, { useState } from 'react';
+import Markdown, { type Components } from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
+import remarkGfm from 'remark-gfm';
 import { Database, Search, Code, MessageSquare, AlertTriangle, Copy, Check } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent } from '@/components/ui/card';
@@ -36,6 +39,46 @@ interface ChatMessageProps {
   onConfirm?: () => void;
   onCancel?: () => void;
 }
+
+// The model answers in markdown; render it with the app's typography instead of
+// pulling in the Tailwind prose plugin.
+const markdownComponents: Components = {
+  p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+  ul: ({ children }) => <ul className="mb-3 last:mb-0 list-disc pl-5 space-y-1">{children}</ul>,
+  ol: ({ children }) => <ol className="mb-3 last:mb-0 list-decimal pl-5 space-y-1">{children}</ol>,
+  li: ({ children }) => <li>{children}</li>,
+  strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+  em: ({ children }) => <em className="italic">{children}</em>,
+  h1: ({ children }) => <h1 className="mb-2 mt-4 first:mt-0 text-lg font-semibold">{children}</h1>,
+  h2: ({ children }) => <h2 className="mb-2 mt-4 first:mt-0 text-base font-semibold">{children}</h2>,
+  h3: ({ children }) => <h3 className="mb-2 mt-3 first:mt-0 text-base font-semibold">{children}</h3>,
+  blockquote: ({ children }) => (
+    <blockquote className="mb-3 last:mb-0 border-l-2 border-border pl-3 text-muted-foreground">{children}</blockquote>
+  ),
+  hr: () => <hr className="my-4 border-border" />,
+  a: ({ children, href }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
+      {children}
+    </a>
+  ),
+  code: ({ className, children }) => {
+    const isBlock = Boolean(className?.startsWith('language-'));
+    if (isBlock) {
+      return <code className="font-mono text-sm">{children}</code>;
+    }
+    return <code className="rounded bg-muted px-1 py-0.5 font-mono text-sm">{children}</code>;
+  },
+  pre: ({ children }) => (
+    <pre className="mb-3 last:mb-0 overflow-x-auto rounded border border-border bg-background p-3">{children}</pre>
+  ),
+  table: ({ children }) => (
+    <div className="mb-3 last:mb-0 overflow-x-auto">
+      <table className="w-full border-collapse text-sm">{children}</table>
+    </div>
+  ),
+  th: ({ children }) => <th className="border border-border px-2 py-1 text-left font-semibold">{children}</th>,
+  td: ({ children }) => <td className="border border-border px-2 py-1">{children}</td>,
+};
 
 const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmationData, progress, user, isQueryHighlighted, onToggleQueryHighlight, onConfirm, onCancel }: ChatMessageProps) => {
   const [copied, setCopied] = useState(false);
@@ -325,8 +368,10 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmati
               </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <div className="text-foreground text-base leading-relaxed whitespace-pre-line">
-              {content}
+            <div className="text-foreground text-base leading-relaxed break-words">
+              <Markdown remarkPlugins={[remarkGfm, remarkBreaks]} components={markdownComponents}>
+                {content}
+              </Markdown>
             </div>
           </div>
         </div>
