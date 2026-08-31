@@ -61,16 +61,15 @@ const markdownComponents: Components = {
       {children}
     </a>
   ),
-  code: ({ className, children }) => {
-    const isBlock = Boolean(className?.startsWith('language-'));
-    if (isBlock) {
-      return <code className="font-mono text-sm">{children}</code>;
-    }
-    return <code className="rounded bg-muted px-1 py-0.5 font-mono text-sm">{children}</code>;
-  },
+  code: ({ children }) => <code className="rounded bg-muted px-1 py-0.5 font-mono text-sm">{children}</code>,
+  // A fenced block brings its own frame, so cancel the inline chip styling inside it.
   pre: ({ children }) => (
-    <pre className="mb-3 last:mb-0 overflow-x-auto rounded border border-border bg-background p-3">{children}</pre>
+    <pre className="mb-3 last:mb-0 overflow-x-auto rounded border border-border bg-background p-3 [&_code]:bg-transparent [&_code]:p-0">
+      {children}
+    </pre>
   ),
+  // The answer is model output; rendering images would fetch arbitrary URLs.
+  img: ({ alt }) => <span className="text-muted-foreground">{alt ? `[image: ${alt}]` : '[image]'}</span>,
   table: ({ children }) => (
     <div className="mb-3 last:mb-0 overflow-x-auto">
       <table className="w-full border-collapse text-sm">{children}</table>
