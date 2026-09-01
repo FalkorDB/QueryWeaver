@@ -23,9 +23,23 @@ from pydantic import BaseModel
 from api.auth.browser_session import (
     clear_browser_session,
     establish_browser_session,
+    forget_signup_ticket,
     is_provisioned,
     mark_provisioned,
     read_browser_session,
+    read_signup_ticket,
+    remember_signup_ticket,
+)
+from api.auth.email_verification import (
+    RESULT_OK,
+    code_ttl_seconds,
+    consume_pending_signup,
+    discard_pending_signup,
+    refresh_pending_signup,
+    resend_interval_seconds,
+    revert_verification_send,
+    send_verification_code,
+    start_pending_signup,
 )
 from api.auth.user_management import delete_user_token, ensure_user_in_organizations, validate_user
 from api.config import ORGANIZATIONS_GRAPH
@@ -106,6 +120,15 @@ class EmailSignupRequest(BaseModel):
     email: str
     password: str
 
+class EmailResendRequest(BaseModel):
+    """Request to re-send a signup verification code."""
+    email: str
+
+class EmailVerifyRequest(BaseModel):
+    """The confirmation code, typed back in by the browser that signed up."""
+    email: str
+    code: str
+
 # ---- Password utilities ----
 def _hash_password(password: str) -> str:
     """Hash a password using PBKDF2 with a random salt."""
@@ -143,46 +166,11 @@ def _sanitize_for_log(value: str) -> str:
 
 def _validate_email(email: str) -> bool:
     """Basic email validation."""
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    # ``\Z`` rather than ``$``: ``$`` also matches immediately before a trailing
+    # newline, which would let "victim@example.com\nBcc: ..." through and split
+    # the headers of the verification mail this address is about to receive.
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\Z'
     return re.match(pattern, email) is not None
-
-async def _set_mail_hash(email: str, password_hash: str) -> bool:
-    """Set email hash for the user in the database."""
-    # Sanitized up front so the error path below can log it too.
-    safe_email = _sanitize_for_log(email)
-    try:
-        organizations_graph = db.select_graph(ORGANIZATIONS_GRAPH)
-
-        # Create new email identity and user
-        create_query = """
-        MERGE (i:Identity {
-            provider_user_id: $email,
-            email: $email
-        })
-        SET i.password_hash = $password_hash
-        RETURN i
-        """
-
-        result = await organizations_graph.query(create_query, {
-            "email": email,
-            "password_hash": password_hash,
-        })
-
-        if result.result_set:
-            return True
-        else:
-            logging.error("Failed to set email hash for user: %s", safe_email)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-                detail="Internal server error"
-            )
-
-    except Exception as e:
-        logging.error("Error setting email hash for user %s: %s", safe_email, e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-            detail="Internal server error"
-        )
 
 async def _email_account_exists(email: str) -> bool:
     """Return True if an account already exists for the given email (any provider).
@@ -302,6 +290,27 @@ async def _complete_login(request: Request, provider: str, user_data: dict) -> N
         )
 
 
+def _signup_accepted(email: str) -> JSONResponse:
+    """The one answer ``/signup/email`` gives once the form itself is valid.
+
+    202, not 201: the account does not exist yet, and will not until the code
+    comes back. It reads the same whether a code went out or the address was
+    refused one for being asked too often -- a 429 here would say that a signup
+    for this address is already in flight, which is the same question
+    ``/signup/email/resend`` deliberately refuses to answer.
+    """
+    return JSONResponse({
+        "success": True,
+        "pending": True,
+        "email": email,
+        "message": "Check your inbox for the confirmation code.",
+        "codeTtlSeconds": code_ttl_seconds(),
+        # So the resend button comes back exactly when another request
+        # would be honoured, whatever the deployment configured.
+        "retryAfterSeconds": resend_interval_seconds(),
+    }, status_code=status.HTTP_202_ACCEPTED)
+
+
 # ---- Email Authentication Routes ----
 @auth_router.post("/signup/email")
 async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSONResponse:
@@ -347,56 +356,54 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
         # (CVE-2026-10130, authentication bypass via signup token issuance).
         if await _email_account_exists(email):
             logging.info("Signup attempt for existing account: %s", _sanitize_for_log(email))
+            # An account exists, so any code still outstanding for this address
+            # must not stay redeemable against it.
+            await discard_pending_signup(email)
             return JSONResponse(
                 {"success": False, "error": "An account with this email already exists"},
                 status_code=status.HTTP_409_CONFLICT
             )
 
-        # ``api_token=None``: signup logs the browser in with the session cookie
-        # and never returns a token, so minting one here would only leave an
-        # orphan Token node behind.
-        is_new_identity, user_info = await ensure_user_in_organizations(email, email,
-                                            f"{first_name} {last_name}", "email", None)
+        # Nothing is created yet. The details are parked on a PendingSignup node
+        # and only become a User when the mailed code is typed back in, so an
+        # address the registrant does not control never turns into an account.
+        password_hash = _hash_password(password)
+        issue = await start_pending_signup(email, first_name, last_name, password_hash)
 
-        if not (is_new_identity and user_info and user_info.get("new_identity")):
-            # Creation failed (e.g. DB error) or raced with a concurrent signup.
-            logging.error("Failed to create new user during signup: %s",
+        if not issue.issued:
+            # Refused for asking too often. Answered exactly like a success so
+            # the state of a stranger's signup stays private; the caller can
+            # still use the code they were sent a moment ago.
+            logging.info("Verification code not issued for %s", _sanitize_for_log(email))
+            return _signup_accepted(email)
+
+        if not await send_verification_code(email, first_name, issue.code):
+            if issue.displaced:
+                # This address already had a live code before the failed send.
+                # Put it back rather than deleting the record: the user may be
+                # holding that code, and it is the only one that ever arrived.
+                await revert_verification_send(email, issue)
+            else:
+                # Nothing was displaced, so the record is dead weight that would
+                # only burn the rate limit on the retry.
+                await discard_pending_signup(email)
+            logging.error("Could not send the verification email for %s",
                           _sanitize_for_log(email))
             return JSONResponse(
-                {"success": False, "error": "Registration failed"},
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"success": False,
+                 "error": "Could not send the verification email - please retry"},
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE
             )
 
-        logging.info("New user created: %s", _sanitize_for_log(email))
+        # The other half of the code. It stays in this browser's session, so the
+        # code is only redeemable here -- someone else re-submitting this
+        # address cannot have their password confirmed by its owner.
+        remember_signup_ticket(request, email=email, ticket=issue.ticket)
 
-        # Hash password
-        password_hash = _hash_password(password)
+        logging.info("Verification code sent for pending signup: %s",
+                     _sanitize_for_log(email))
 
-        # Set email hash
-        await _set_mail_hash(email, password_hash)
-
-        logging.info("User registration successful: %s", _sanitize_for_log(email))
-
-        if not establish_browser_session(
-            request,
-            email=email,
-            name=f"{first_name} {last_name}",
-            provider="email",
-            provider_user_id=email,
-            provisioned=True,
-        ):
-            # The account exists but the browser has no credential, so reporting
-            # success would leave the user staring at a logged-out page.
-            logging.error("Could not establish a browser session after email signup")
-            return JSONResponse(
-                {"success": False, "error": "Registration failed"},
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-        response = JSONResponse({
-            "success": True,
-        }, status_code=201)
-        return response
+        return _signup_accepted(email)
 
     except (AuthBackendUnavailableError, *TRANSIENT_BACKEND_ERRORS) as e:
         # Same reasoning as /login/email: an unreachable store is not a rejected
@@ -414,6 +421,199 @@ async def email_signup(request: Request, signup_data: EmailSignupRequest) -> JSO
             {"success": False, "error": "Registration failed"},
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+@auth_router.post("/signup/email/verify")
+async def verify_email(request: Request, verify_data: EmailVerifyRequest) -> JSONResponse:
+    """Redeem a signup confirmation code.
+
+    This is where the account is actually created. Producing the code is the
+    proof that the registrant controls the address, so creating the ``User``
+    here -- rather than at signup and flagging it afterwards -- is what keeps an
+    unconfirmed address from existing as an account at all.
+
+    A code rather than a link because the code has to come back to the session
+    that submitted the form. Mail a link instead and anyone can be signed up by
+    a stranger who picked their password: the victim's click would be enough to
+    create the account, and the stranger would know the password to it. The
+    person who fills in the form is the only one who sees both halves.
+
+    Both halves are checked. The ticket held in this browser's session is the
+    other one, and without it the same attack survives the change to codes:
+    re-submit a stranger's pending signup with a password of your own, and the
+    code that reaches them redeems *your* password. A code is only good in the
+    browser it was issued to.
+
+    Every refusal reads the same. Whether the address has a signup pending, a
+    wrong code, an expired one or nothing at all is not something an
+    unauthenticated caller gets to learn by guessing.
+    """
+    if not _is_email_auth_enabled():
+        return JSONResponse(
+            {"success": False, "error": "Email authentication is not enabled"},
+            status_code=status.HTTP_403_FORBIDDEN
+        )
+
+    email = verify_data.email.strip().lower() if verify_data.email else ""
+    code = verify_data.code.strip() if verify_data.code else ""
+
+    rejected = JSONResponse(
+        {"success": False,
+         "error": "That code is not valid or has expired. "
+                  "Request a new one and try again."},
+        status_code=status.HTTP_400_BAD_REQUEST
+    )
+
+    if not _validate_email(email) or not code:
+        return rejected
+
+    ticket = read_signup_ticket(request, email=email)
+    if not ticket:
+        # No signup was started in this browser for this address, so there is
+        # nothing here to confirm -- whatever code the caller has, it belongs to
+        # somebody else's session.
+        logging.info("Verification without a signup ticket for %s",
+                     _sanitize_for_log(email))
+        return rejected
+
+    try:
+        pending, result = await consume_pending_signup(email, code, ticket)
+        if result != RESULT_OK or pending is None:
+            logging.info("Verification refused for %s: %s",
+                         _sanitize_for_log(email), result)
+            return rejected
+
+        # The code is spent from here on, whatever happens next, so the ticket
+        # that went with it has nothing left to unlock.
+        forget_signup_ticket(request)
+
+        # The address may have acquired an account by another route (Google,
+        # GitHub) while the code sat unused. The code is spent either way.
+        if await _email_account_exists(pending.email):
+            logging.info("Verification code for an address that now has an account: %s",
+                         _sanitize_for_log(pending.email))
+            return JSONResponse(
+                {"success": False,
+                 "error": "This address already has an account. Sign in instead."},
+                status_code=status.HTTP_409_CONFLICT
+            )
+
+        # ``api_token=None``: the browser is credentialed by the session cookie,
+        # so minting a token here would only leave an orphan Token node. The
+        # password goes in with the identity: a second write could fail and
+        # leave an account that cannot be logged into and cannot be signed up
+        # for again.
+        is_new_identity, user_info = await ensure_user_in_organizations(
+            pending.email, pending.email, pending.full_name, "email", None,
+            password_hash=pending.password_hash,
+        )
+        if not (is_new_identity and user_info and user_info.get("new_identity")):
+            logging.error("Could not create the verified account for %s",
+                          _sanitize_for_log(pending.email))
+            return JSONResponse(
+                {"success": False, "error": "Could not create your account"},
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        if not establish_browser_session(
+            request,
+            email=pending.email,
+            name=pending.full_name,
+            provider="email",
+            provider_user_id=pending.email,
+            provisioned=True,
+        ):
+            # Unlike the old signup path this is recoverable: the account is
+            # real, so the user can simply log in.
+            logging.error("Verified %s but could not establish a browser session",
+                          _sanitize_for_log(pending.email))
+            return JSONResponse(
+                {"success": False,
+                 "error": "Your account is ready, but we could not sign you in. "
+                          "Please log in."},
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        logging.info("Email verified and account created: %s",
+                     _sanitize_for_log(pending.email))
+        return JSONResponse({
+            "success": True,
+            "email": pending.email,
+            "name": pending.full_name,
+        })
+
+    except (AuthBackendUnavailableError, *TRANSIENT_BACKEND_ERRORS) as e:
+        logging.error("Auth store unreachable during email verification: %s", e)
+        return JSONResponse(
+            {"success": False,
+             "error": "Authentication service temporarily unavailable - please retry"},
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+    except Exception as e:
+        logging.error("Email verification error: %s", e)
+        return JSONResponse(
+            {"success": False, "error": "Could not confirm your email address"},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@auth_router.post("/signup/email/resend")
+async def resend_verification_email(
+    request: Request, resend_data: EmailResendRequest
+) -> JSONResponse:
+    """Re-send a signup verification code.
+
+    Always answers the same way once the address is well-formed. Whether it has
+    a signup awaiting confirmation, an account already, or nothing at all is not
+    something an unauthenticated caller gets to learn from this endpoint -- and
+    that includes the rate-limit state, which would otherwise answer the same
+    question a beat later.
+    """
+    if not _is_email_auth_enabled():
+        return JSONResponse(
+            {"success": False, "error": "Email authentication is not enabled"},
+            status_code=status.HTTP_403_FORBIDDEN
+        )
+
+    email = resend_data.email.strip().lower() if resend_data.email else ""
+    if not _validate_email(email):
+        return JSONResponse(
+            {"success": False, "error": "Invalid email format"},
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+    accepted = JSONResponse(
+        {"success": True,
+         "message": "If that address is waiting to be confirmed, a new code is on its way.",
+         "retryAfterSeconds": resend_interval_seconds()},
+        status_code=status.HTTP_202_ACCEPTED
+    )
+
+    try:
+        issue = await refresh_pending_signup(email)
+    except (AuthBackendUnavailableError, *TRANSIENT_BACKEND_ERRORS) as e:
+        logging.error("Auth store unreachable during verification resend: %s", e)
+        return JSONResponse(
+            {"success": False,
+             "error": "Authentication service temporarily unavailable - please retry"},
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+
+    if not issue.issued:
+        # Unknown address, throttled and exhausted are indistinguishable here by
+        # design, and are not told apart anywhere else either: knowing which one
+        # it was is the answer this endpoint exists to withhold.
+        logging.info("Verification resend not issued for %s", _sanitize_for_log(email))
+        return accepted
+
+    if not await send_verification_code(email, issue.first_name, issue.code):
+        # Nothing left the building, so hand the send back and put the code the
+        # user may already be holding back in force.
+        await revert_verification_send(email, issue)
+        logging.error("Could not re-send the verification email for %s",
+                      _sanitize_for_log(email))
+
+    return accepted
+
 
 @auth_router.post("/login/email")
 async def email_login(request: Request, login_data: EmailLoginRequest) -> JSONResponse:
@@ -750,6 +950,7 @@ async def auth_status(request: Request) -> JSONResponse:
         response = JSONResponse(
             content={
                 "authenticated": True,
+                "providers": _get_auth_config(),
                 "user": {
                     # Falls back to the email so the id is always a usable string
                     # for clients, even for database-backed API tokens.
@@ -767,7 +968,7 @@ async def auth_status(request: Request) -> JSONResponse:
     # Not authenticated - return 200 with authenticated: false
     # This is NOT an error - unauthenticated users can still use the app
     return JSONResponse(
-        content={"authenticated": False},
+        content={"authenticated": False, "providers": _get_auth_config()},
         status_code=200
     )
 
