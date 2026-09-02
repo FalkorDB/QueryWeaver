@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import Markdown, { type Components } from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
@@ -42,45 +42,145 @@ interface ChatMessageProps {
 }
 
 // The model answers in markdown; render it with the app's typography instead of
-// pulling in the Tailwind prose plugin.
+// pulling in the Tailwind prose plugin. Each override merges its classes with
+// the ones remark emits and forwards the rest of the props, so `start`,
+// alignment styles, footnote ids and task-list markers survive.
 const markdownComponents: Components = {
-  p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
-  ul: ({ children }) => <ul className="mb-3 last:mb-0 list-disc pl-5 space-y-1">{children}</ul>,
-  ol: ({ children }) => <ol className="mb-3 last:mb-0 list-decimal pl-5 space-y-1">{children}</ol>,
-  li: ({ children }) => <li>{children}</li>,
-  strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
-  em: ({ children }) => <em className="italic">{children}</em>,
-  h1: ({ children }) => <h1 className="mb-2 mt-4 first:mt-0 text-lg font-semibold">{children}</h1>,
-  h2: ({ children }) => <h2 className="mb-2 mt-4 first:mt-0 text-base font-semibold">{children}</h2>,
-  h3: ({ children }) => <h3 className="mb-2 mt-3 first:mt-0 text-base font-semibold">{children}</h3>,
-  blockquote: ({ children }) => (
-    <blockquote className="mb-3 last:mb-0 border-l-2 border-border pl-3 text-muted-foreground">{children}</blockquote>
-  ),
-  hr: () => <hr className="my-4 border-border" />,
-  a: ({ children, href }) => (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
+  p: ({ node: _node, className, children, ...props }) => (
+    <p className={cn('mb-3 last:mb-0', className)} {...props}>
       {children}
-    </a>
+    </p>
   ),
+  // A task list draws its own checkboxes, so it must not also draw bullets.
+  ul: ({ node: _node, className, children, ...props }) => (
+    <ul
+      className={cn(
+        'mb-3 last:mb-0 list-disc pl-5 space-y-1',
+        className,
+        className?.includes('contains-task-list') && 'list-none pl-0'
+      )}
+      {...props}
+    >
+      {children}
+    </ul>
+  ),
+  ol: ({ node: _node, className, children, ...props }) => (
+    <ol className={cn('mb-3 last:mb-0 list-decimal pl-5 space-y-1', className)} {...props}>
+      {children}
+    </ol>
+  ),
+  strong: ({ node: _node, className, children, ...props }) => (
+    <strong className={cn('font-semibold text-foreground', className)} {...props}>
+      {children}
+    </strong>
+  ),
+  em: ({ node: _node, className, children, ...props }) => (
+    <em className={cn('italic', className)} {...props}>
+      {children}
+    </em>
+  ),
+  h1: ({ node: _node, className, children, ...props }) => (
+    <h1 className={cn('mb-2 mt-4 first:mt-0 text-lg font-semibold', className)} {...props}>
+      {children}
+    </h1>
+  ),
+  h2: ({ node: _node, className, children, ...props }) => (
+    <h2 className={cn('mb-2 mt-4 first:mt-0 text-base font-semibold', className)} {...props}>
+      {children}
+    </h2>
+  ),
+  h3: ({ node: _node, className, children, ...props }) => (
+    <h3 className={cn('mb-2 mt-3 first:mt-0 text-base font-semibold', className)} {...props}>
+      {children}
+    </h3>
+  ),
+  // Tailwind's preflight flattens headings, so the deeper levels need classes too.
+  h4: ({ node: _node, className, children, ...props }) => (
+    <h4 className={cn('mb-2 mt-3 first:mt-0 text-sm font-semibold', className)} {...props}>
+      {children}
+    </h4>
+  ),
+  h5: ({ node: _node, className, children, ...props }) => (
+    <h5 className={cn('mb-1 mt-3 first:mt-0 text-sm font-semibold', className)} {...props}>
+      {children}
+    </h5>
+  ),
+  h6: ({ node: _node, className, children, ...props }) => (
+    <h6 className={cn('mb-1 mt-3 first:mt-0 text-sm font-semibold text-muted-foreground', className)} {...props}>
+      {children}
+    </h6>
+  ),
+  blockquote: ({ node: _node, className, children, ...props }) => (
+    <blockquote
+      className={cn('mb-3 last:mb-0 border-l-2 border-border pl-3 text-muted-foreground', className)}
+      {...props}
+    >
+      {children}
+    </blockquote>
+  ),
+  hr: ({ node: _node, className, ...props }) => <hr className={cn('my-4 border-border', className)} {...props} />,
+  a: ({ node: _node, className, children, href, ...props }) => {
+    const linkClassName = cn('text-primary underline underline-offset-2', className);
+
+    // Footnote references and back-references stay on the page.
+    if (href?.startsWith('#')) {
+      return (
+        <a href={href} className={linkClassName} {...props}>
+          {children}
+        </a>
+      );
+    }
+
+    // react-markdown blanks the href of an unsafe scheme; without this, such a
+    // link would open a second copy of the app instead of doing nothing.
+    if (!href || !/^(?:https?:|mailto:)/i.test(href)) {
+      return <span className={className}>{children}</span>;
+    }
+
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" className={linkClassName} {...props}>
+        {children}
+      </a>
+    );
+  },
   // `className` carries the fence's `language-*` marker, so keep it.
-  code: ({ className, children }) => (
-    <code className={cn('rounded bg-muted px-1 py-0.5 font-mono text-sm', className)}>{children}</code>
+  code: ({ node: _node, className, children, ...props }) => (
+    <code className={cn('rounded bg-muted px-1 py-0.5 font-mono text-sm', className)} {...props}>
+      {children}
+    </code>
   ),
   // A fenced block brings its own frame, so cancel the inline chip styling inside it.
-  pre: ({ children }) => (
-    <pre className="mb-3 last:mb-0 overflow-x-auto rounded border border-border bg-background p-3 [&_code]:bg-transparent [&_code]:p-0">
+  pre: ({ node: _node, className, children, ...props }) => (
+    <pre
+      className={cn(
+        'mb-3 last:mb-0 overflow-x-auto rounded border border-border bg-background p-3 [&_code]:bg-transparent [&_code]:p-0',
+        className
+      )}
+      {...props}
+    >
       {children}
     </pre>
   ),
   // The answer is model output; rendering images would fetch arbitrary URLs.
   img: ({ alt }) => <span className="text-muted-foreground">{alt ? `[image: ${alt}]` : '[image]'}</span>,
-  table: ({ children }) => (
+  table: ({ node: _node, className, children, ...props }) => (
     <div className="mb-3 last:mb-0 overflow-x-auto">
-      <table className="w-full border-collapse text-sm">{children}</table>
+      <table className={cn('w-full border-collapse text-sm', className)} {...props}>
+        {children}
+      </table>
     </div>
   ),
-  th: ({ children }) => <th className="border border-border px-2 py-1 text-left font-semibold">{children}</th>,
-  td: ({ children }) => <td className="border border-border px-2 py-1">{children}</td>,
+  // GFM column alignment arrives as an inline `style`, which outranks `text-left`.
+  th: ({ node: _node, className, children, ...props }) => (
+    <th className={cn('border border-border px-2 py-1 text-left font-semibold', className)} {...props}>
+      {children}
+    </th>
+  ),
+  td: ({ node: _node, className, children, ...props }) => (
+    <td className={cn('border border-border px-2 py-1', className)} {...props}>
+      {children}
+    </td>
+  ),
 };
 
 const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmationData, progress, user, isQueryHighlighted, onToggleQueryHighlight, onConfirm, onCancel }: ChatMessageProps) => {
