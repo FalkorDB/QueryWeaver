@@ -34,6 +34,7 @@ interface ChatMessageProps {
     message: string;
   };
   progress?: number; // Progress percentage for AI steps
+  isError?: boolean; // Error text is shown verbatim, not as markdown
   user?: UserType | null; // User info for avatar
   isQueryHighlighted?: boolean; // Whether this query's tables are highlighted in the schema canvas
   onToggleQueryHighlight?: () => void; // Select/unselect this query to highlight it in the schema canvas
@@ -44,7 +45,9 @@ interface ChatMessageProps {
 // The model answers in markdown; render it with the app's typography instead of
 // pulling in the Tailwind prose plugin. Each override merges its classes with
 // the ones remark emits and forwards the rest of the props, so `start`,
-// alignment styles, footnote ids and task-list markers survive.
+// alignment styles, footnote ids and task-list markers survive. The two
+// exceptions are deliberate: `img` and a link whose scheme we refuse drop what
+// they were given rather than pass it on.
 const markdownComponents: Components = {
   p: ({ node: _node, className, children, ...props }) => (
     <p className={cn('mb-3 last:mb-0', className)} {...props}>
@@ -183,7 +186,7 @@ const markdownComponents: Components = {
   ),
 };
 
-const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmationData, progress, user, isQueryHighlighted, onToggleQueryHighlight, onConfirm, onCancel }: ChatMessageProps) => {
+const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmationData, progress, isError, user, isQueryHighlighted, onToggleQueryHighlight, onConfirm, onCancel }: ChatMessageProps) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopyQuery = async () => {
@@ -471,10 +474,15 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmati
               </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <div className="text-foreground text-base leading-relaxed break-words">
-              <Markdown remarkPlugins={[remarkGfm, remarkBreaks]} components={markdownComponents}>
-                {content}
-              </Markdown>
+            {/* An error quotes paths, regexes and column values, so it has to be shown as it came. */}
+            <div className={cn('text-foreground text-base leading-relaxed break-words', isError && 'whitespace-pre-line')}>
+              {isError ? (
+                content
+              ) : (
+                <Markdown remarkPlugins={[remarkGfm, remarkBreaks]} components={markdownComponents}>
+                  {content}
+                </Markdown>
+              )}
             </div>
           </div>
         </div>
