@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { AuthService } from '@/services/auth';
-import type { User } from '@/types/api';
+import type { AuthProviders, User } from '@/types/api';
 
 // How long to wait before re-checking while the backend cannot answer. The
 // login survives the outage, so the session comes back on its own once the
@@ -10,6 +10,8 @@ const UNAVAILABLE_RETRY_MS = 15000;
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
+  /** Which sign-in methods the backend offers; null until the first check lands. */
+  providers: AuthProviders | null;
   /** The check could not be made, as opposed to answering "not logged in". */
   isUnavailable: boolean;
   isLoading: boolean;
@@ -25,6 +27,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [providers, setProviders] = useState<AuthProviders | null>(null);
   const [isUnavailable, setIsUnavailable] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -37,7 +40,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setIsLoading(true);
       const status = await AuthService.checkAuthStatus();
-      setUser(status.user || null);
+      // A backend that could not answer has not said the session ended, so an
+      // outage must not log the user out. Same reasoning for the providers:
+      // keep the last known ones so the sign-in form does not vanish mid-outage.
+      if (!status.unavailable) {
+        setUser(status.user || null);
+      }
+      if (status.providers) {
+        setProviders(status.providers);
+      }
       setIsUnavailable(!!status.unavailable);
       if (status.unavailable) {
         retryTimer.current = setTimeout(checkAuth, UNAVAILABLE_RETRY_MS);
@@ -73,6 +84,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const value: AuthContextType = {
     user,
     isAuthenticated: !!user,
+    providers,
     isUnavailable,
     isLoading,
     login: {

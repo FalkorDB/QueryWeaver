@@ -76,6 +76,7 @@ clean: ## Clean up test artifacts
 	rm -rf test-results/
 	rm -rf playwright-report/
 	rm -rf e2e/.auth/
+	rm -rf e2e/.mail/
 	rm -rf __pycache__/
 	rm -rf dist/
 	rm -rf *.egg-info/
