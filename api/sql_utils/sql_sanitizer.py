@@ -24,20 +24,47 @@ class SQLIdentifierQuoter:
         'EXCEPT', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'CAST', 'ASC', 'DESC'
     }
 
+    @staticmethod
+    def _is_already_quoted(identifier: str, quote_char: str = '"') -> bool:
+        """Check if an identifier is already *validly* quoted for the dialect.
+
+        The pair is scoped to *quote_char* so that a bracketed identifier is
+        only treated as pre-quoted for SQL Server; on PostgreSQL/MySQL a name
+        such as ``[weird]`` is data, not a delimiter, and must still be quoted.
+
+        Matching delimiters at the ends are not sufficient: every closing
+        delimiter *inside* the pair must be doubled, or the first stray one
+        ends the identifier early and the rest of the string is parsed as SQL.
+        ``[name] DROP TABLE users]`` must therefore not count as quoted.
+
+        Args:
+            identifier: The identifier to inspect.
+            quote_char: Opening delimiter of the active dialect.
+
+        Returns:
+            True if *identifier* is already delimited and internally escaped.
+        """
+        close_char = ']' if quote_char == '[' else quote_char
+        if len(identifier) < 2:
+            return False
+        if not (identifier.startswith(quote_char) and identifier.endswith(close_char)):
+            return False
+        return close_char not in identifier[1:-1].replace(close_char * 2, '')
+
     @classmethod
-    def needs_quoting(cls, identifier: str) -> bool:
+    def needs_quoting(cls, identifier: str, quote_char: str = '"') -> bool:
         """
         Check if an identifier needs quoting based on special characters.
-        
+
         Args:
             identifier: The table or column name to check
-            
+            quote_char: Quote character of the active dialect
+
         Returns:
             True if the identifier needs quoting, False otherwise
         """
         # Already quoted
-        if (identifier.startswith('"') and identifier.endswith('"')) or \
-           (identifier.startswith('`') and identifier.endswith('`')):
+        if cls._is_already_quoted(identifier, quote_char):
             return False
 
         # Check if it's a SQL keyword
@@ -51,22 +78,28 @@ class SQLIdentifierQuoter:
     def quote_identifier(identifier: str, quote_char: str = '"') -> str:
         """
         Quote an identifier if not already quoted.
-        
+
         Args:
             identifier: The identifier to quote
-            quote_char: The quote character to use (default: " for PostgreSQL/standard SQL)
-            
+            quote_char: The quote character to use (default: " for PostgreSQL/standard SQL,
+                        use ` for MySQL, [ for SQL Server)
+
         Returns:
             Quoted identifier
         """
         identifier = identifier.strip()
 
         # Don't double-quote
-        if (identifier.startswith('"') and identifier.endswith('"')) or \
-           (identifier.startswith('`') and identifier.endswith('`')):
+        if SQLIdentifierQuoter._is_already_quoted(identifier, quote_char):
             return identifier
 
-        return f'{quote_char}{identifier}{quote_char}'
+        # Every dialect here escapes its closing delimiter by doubling it --
+        # ``]`` for SQL Server brackets, otherwise the quote character itself.
+        # Without this a name carrying a delimiter closes the identifier early
+        # and turns the remainder of the name into executable SQL.
+        close_char = ']' if quote_char == '[' else quote_char
+        escaped = identifier.replace(close_char, close_char * 2)
+        return f'{quote_char}{escaped}{close_char}'
 
     @classmethod
     def extract_table_names_from_query(cls, sql_query: str) -> Set[str]:
@@ -130,7 +163,7 @@ class SQLIdentifierQuoter:
         # For each table that needs quoting
         for table in query_tables:
             # Check if this table exists in known schema and needs quoting
-            if table in known_tables and cls.needs_quoting(table):
+            if table in known_tables and cls.needs_quoting(table, quote_char):
                 # Quote the table name
                 quoted = cls.quote_identifier(table, quote_char)
 
@@ -167,5 +200,7 @@ class DatabaseSpecificQuoter:  # pylint: disable=too-few-public-methods
         """
         if db_type.lower() in ['mysql', 'mariadb']:
             return '`'
-        # PostgreSQL, SQLite, SQL Server (standard SQL) use double quotes
+        if db_type.lower() in ['sqlserver', 'mssql']:
+            return '['
+        # PostgreSQL, SQLite use double quotes (standard SQL)
         return '"'

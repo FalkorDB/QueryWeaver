@@ -1,6 +1,10 @@
 """Unit tests for SQL identifier quoting utilities."""
 
+import pytest
+
 from api.sql_utils import SQLIdentifierQuoter, DatabaseSpecificQuoter
+
+pytestmark = pytest.mark.unit
 
 
 class TestSQLIdentifierQuoter:
@@ -19,9 +23,15 @@ class TestSQLIdentifierQuoter:
         assert SQLIdentifierQuoter.needs_quoting("OrderItems") is False
 
     def test_needs_quoting_already_quoted(self):
-        """Test that already quoted identifiers don't need quoting again."""
+        """Test that already quoted identifiers don't need quoting again.
+
+        "Already quoted" is dialect-scoped: only the active dialect's delimiter
+        counts, so a backtick pair is pre-quoted for MySQL but is ordinary data
+        for PostgreSQL.
+        """
         assert SQLIdentifierQuoter.needs_quoting('"table-name"') is False
-        assert SQLIdentifierQuoter.needs_quoting('`table-name`') is False
+        assert SQLIdentifierQuoter.needs_quoting('`table-name`', '`') is False
+        assert SQLIdentifierQuoter.needs_quoting('`table-name`', '"') is True
 
     def test_needs_quoting_with_spaces(self):
         """Test that identifiers with spaces need quoting."""
@@ -41,7 +51,7 @@ class TestSQLIdentifierQuoter:
     def test_quote_identifier_no_double_quote(self):
         """Test that already quoted identifiers aren't double-quoted."""
         assert SQLIdentifierQuoter.quote_identifier('"table-name"') == '"table-name"'
-        assert SQLIdentifierQuoter.quote_identifier('`table-name`') == '`table-name`'
+        assert SQLIdentifierQuoter.quote_identifier('`table-name`', '`') == '`table-name`'
 
     def test_extract_table_names_from_query(self):
         """Test extracting table names from SQL queries."""
@@ -231,3 +241,88 @@ class TestIntegrationScenarios:
 
         assert modified is True
         assert 'select * from "table-name"' in result.lower()
+
+
+class TestSQLServerQuoting:
+    """SQL Server bracket-quoting behaviour."""
+
+    def test_get_quote_char_sqlserver(self):
+        """SQL Server uses the opening bracket as its quote character."""
+        assert DatabaseSpecificQuoter.get_quote_char('sqlserver') == '['
+        assert DatabaseSpecificQuoter.get_quote_char('SQLServer') == '['
+        assert DatabaseSpecificQuoter.get_quote_char('mssql') == '['
+
+    def test_quote_identifier_brackets(self):
+        """Identifiers are wrapped in a bracket pair."""
+        assert SQLIdentifierQuoter.quote_identifier('my-table', '[') == '[my-table]'
+
+    def test_quote_identifier_escapes_closing_bracket(self):
+        """A literal ``]`` is doubled so it cannot terminate the delimiter."""
+        assert SQLIdentifierQuoter.quote_identifier('my]table', '[') == '[my]]table]'
+
+    def test_quote_identifier_no_double_quoting(self):
+        """An already-bracketed identifier is left alone."""
+        assert SQLIdentifierQuoter.quote_identifier('[my-table]', '[') == '[my-table]'
+
+    def test_auto_quote_identifiers_sqlserver(self):
+        """Table names with special characters get bracket-quoted."""
+        result, modified = SQLIdentifierQuoter.auto_quote_identifiers(
+            'SELECT * FROM user-accounts', {'user-accounts'}, '['
+        )
+        assert modified is True
+        assert '[user-accounts]' in result
+
+    def test_bracketed_name_still_quoted_for_postgres(self):
+        """``[weird]`` is data on PostgreSQL, so it must still be quoted.
+
+        Regression test: a dialect-agnostic bracket pair made this identifier
+        look pre-quoted and it was emitted unquoted.
+        """
+        assert SQLIdentifierQuoter.needs_quoting('[weird]', '"') is True
+        assert SQLIdentifierQuoter.quote_identifier('[weird]', '"') == '"[weird]"'
+
+    def test_bracketed_name_treated_as_quoted_for_sqlserver(self):
+        """The same identifier is already delimited on SQL Server."""
+        assert SQLIdentifierQuoter.needs_quoting('[weird]', '[') is False
+
+    @pytest.mark.parametrize(
+        "identifier, quote_char",
+        [
+            ('[name] DROP TABLE users]', '['),
+            ('"a" ; DROP TABLE users --"', '"'),
+            ('`a` ; DROP TABLE users --`', '`'),
+        ],
+    )
+    def test_a_broken_out_delimiter_is_not_mistaken_for_quoting(self, identifier, quote_char):
+        """Matching outer delimiters are not enough to call a name quoted.
+
+        ``[name] DROP TABLE users]`` opens and closes with a bracket pair, but
+        the ``]`` after ``name`` ends the identifier early and leaves the rest
+        to be parsed as SQL. Treating it as pre-quoted skipped the escaping and
+        emitted the payload verbatim.
+        """
+        assert SQLIdentifierQuoter._is_already_quoted(identifier, quote_char) is False
+
+        quoted = SQLIdentifierQuoter.quote_identifier(identifier, quote_char)
+        close_char = ']' if quote_char == '[' else quote_char
+
+        # Nothing but the outer pair may act as a delimiter: strip the ends and
+        # every remaining closing delimiter has to be doubled.
+        assert quoted.startswith(quote_char) and quoted.endswith(close_char)
+        assert close_char not in quoted[1:-1].replace(close_char * 2, '')
+
+    def test_quoting_escapes_the_delimiter_for_every_dialect(self):
+        """Doubling is how all three dialects escape their closing delimiter."""
+        assert SQLIdentifierQuoter.quote_identifier('a"b', '"') == '"a""b"'
+        assert SQLIdentifierQuoter.quote_identifier('a`b', '`') == '`a``b`'
+        assert SQLIdentifierQuoter.quote_identifier('a]b', '[') == '[a]]b]'
+
+    def test_a_lone_delimiter_is_not_a_quoted_identifier(self):
+        """One character cannot be an opening and closing pair at once."""
+        assert SQLIdentifierQuoter._is_already_quoted('"', '"') is False
+        assert SQLIdentifierQuoter._is_already_quoted('[', '[') is False
+
+    def test_a_properly_escaped_name_is_left_alone(self):
+        """``[a]] ; SELECT 1]`` is the escaped name ``a] ; SELECT 1``, not a breakout."""
+        assert SQLIdentifierQuoter._is_already_quoted('[a]] ; SELECT 1]', '[') is True
+        assert SQLIdentifierQuoter.quote_identifier('[a]] ; SELECT 1]', '[') == '[a]] ; SELECT 1]'
