@@ -37,6 +37,7 @@ interface ChatMessageData {
     message: string;
     chatHistory: string[];
   };
+  isError?: boolean;
   timestamp: Date;
 }
 
@@ -143,6 +144,7 @@ const ChatInterface = ({
     try {
       // No need for a steps accumulator message - we'll add each step as a separate AI message
       let finalContent = "";
+      let finalIsError = false;
       let sqlQuery = "";
       let queryResults: any[] | null = null;
       let analysisInfo: {
@@ -198,10 +200,12 @@ const ChatInterface = ({
           // AI-generated response - this is what we show to the user
           const responseContent = (message.message || message.content || '').trim();
           finalContent = responseContent;
+          finalIsError = false;
         } else if (message.type === 'followup_questions') {
           // Follow-up questions when query is unclear or off-topic
           const followupContent = (message.message || message.content || '').trim();
           finalContent = followupContent;
+          finalIsError = false;
         } else if (message.type === 'error') {
           // Handle error. Backend error events carry the text in `message`;
           // some client-side errors use `content`. Fall back across both.
@@ -212,6 +216,7 @@ const ChatInterface = ({
             variant: "destructive",
           });
           finalContent = `Error: ${errorContent}`;
+          finalIsError = true;
         } else if (message.type === 'confirmation' || message.type === 'destructive_confirmation') {
           // Handle destructive operation confirmation - add inline confirmation message
           const confirmationMessage: ChatMessageData = {
@@ -279,6 +284,7 @@ const ChatInterface = ({
           id: (Date.now() + 4).toString(),
           type: "ai",
           content: finalContent,
+          isError: finalIsError,
           timestamp: new Date(),
         };
         
@@ -298,6 +304,7 @@ const ChatInterface = ({
         id: (Date.now() + 2).toString(),
         type: "ai",
         content: `Failed to process query: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        isError: true,
         timestamp: new Date(),
       };
       
@@ -342,6 +349,7 @@ const ChatInterface = ({
 
     try {
       let finalContent = "";
+      let finalIsError = false;
       let queryResults: any[] | null = null;
 
       // Build confirm request with custom credentials if available
@@ -383,6 +391,7 @@ const ChatInterface = ({
           // AI-generated response
           const responseContent = (message.message || message.content || '').trim();
           finalContent = responseContent;
+          finalIsError = false;
         } else if (message.type === 'error') {
           // Handle error - backend sends 'message' field, not 'content'
           let errorMsg = message.message || message.content || 'Unknown error occurred';
@@ -418,6 +427,7 @@ const ChatInterface = ({
             variant: "destructive",
           });
           finalContent = `${errorMsg}`;
+          finalIsError = true;
         } else if (message.type === 'schema_refresh') {
           // Schema refresh notification
           const refreshContent = message.message || message.content || '';
@@ -451,6 +461,7 @@ const ChatInterface = ({
           id: (Date.now() + 4).toString(),
           type: "ai",
           content: finalContent,
+          isError: finalIsError,
           timestamp: new Date(),
         };
         setMessages(prev => [...prev, finalResponse]);
@@ -468,6 +479,7 @@ const ChatInterface = ({
         id: (Date.now() + 2).toString(),
         type: "ai",
         content: `Failed to execute operation: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        isError: true,
         timestamp: new Date(),
       };
 
@@ -522,6 +534,7 @@ const ChatInterface = ({
               queryData={msg.queryData}
               analysisInfo={msg.analysisInfo}
               confirmationData={msg.confirmationData}
+              isError={msg.isError}
               user={user}
               isQueryHighlighted={msg.type === 'sql-query' && selectedQueryId === msg.id}
               onToggleQueryHighlight={msg.type === 'sql-query' ? () => toggleQueryHighlight(msg.id, msg.content) : undefined}
