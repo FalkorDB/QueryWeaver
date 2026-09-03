@@ -30,6 +30,11 @@ from fastapi import Request
 # Key under which the login payload lives inside the Starlette session dict.
 SESSION_KEY = "browser_login"
 
+# Key under which a signup awaiting its mailed code parks its ticket. Separate
+# from the login: it is held before any account exists, and clearing one must
+# not clear the other.
+SIGNUP_TICKET_KEY = "signup_ticket"
+
 # Bumped whenever the payload shape changes, so old cookies are ignored rather
 # than misread.
 SESSION_VERSION = 1
@@ -176,3 +181,40 @@ def mark_provisioned(request: Request) -> None:
         payload["provisioned"] = True
         # Reassign so Starlette re-serialises the mutated payload.
         store[SESSION_KEY] = payload
+
+
+def remember_signup_ticket(request: Request, *, email: str, ticket: str) -> None:
+    """Hold the ticket for a signup this browser just started.
+
+    Not a login -- there is no account yet. It is the browser's half of the
+    pending signup, and it lives here rather than in the graph because that is
+    exactly what it has to prove: that the caller redeeming the mailed code is
+    the same browser that submitted the password being redeemed. One at a time
+    is enough; a second signup in the same browser replaces the first.
+
+    Storing it in a signed-but-readable cookie is fine. It is a capability of
+    the browser it was handed to, so its owner reading it learns nothing they
+    did not already have, and it is worthless without the code that was mailed.
+    """
+    store = _session_store(request)
+    if store is None:
+        logging.error("Cannot hold a signup ticket: SessionMiddleware is not installed")
+        return
+    store[SIGNUP_TICKET_KEY] = {"email": email, "ticket": ticket}
+
+
+def read_signup_ticket(request: Request, *, email: str) -> Optional[str]:
+    """Return this browser's ticket for ``email``, or ``None``."""
+    store = _session_store(request)
+    payload = store.get(SIGNUP_TICKET_KEY) if store else None
+    if not isinstance(payload, dict) or payload.get("email") != email:
+        return None
+    ticket = payload.get("ticket")
+    return ticket if isinstance(ticket, str) and ticket else None
+
+
+def forget_signup_ticket(request: Request) -> None:
+    """Drop any held signup ticket. The code it belonged to is spent."""
+    store = _session_store(request)
+    if store is not None:
+        store.pop(SIGNUP_TICKET_KEY, None)

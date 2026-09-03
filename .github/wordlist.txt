@@ -132,3 +132,8 @@ tsql
 hostname
 TLS
 sqlglot
+signup
+SMTP
+outbox
+PendingSignup
+unconfigured

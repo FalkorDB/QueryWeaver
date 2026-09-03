@@ -78,6 +78,15 @@ export default class BrowserWrapper {
         await this.page.setViewportSize({ width: 1920, height: 1080 });
     }
 
+    /** Narrower than the app's 768px mobile breakpoint. */
+    async setPageToMobileViewport() {
+        if (!this.page) {
+            throw new Error('Browser is not launched yet!');
+        }
+
+        await this.page.setViewportSize({ width: 480, height: 900 });
+    }
+
     async navigateTo(url: string) {
         if (!this.page) {
             throw new Error('Browser is not launched yet!');

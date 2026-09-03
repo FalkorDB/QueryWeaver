@@ -9,7 +9,8 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import Response
 from fastmcp import FastMCP
 from fastmcp.server.providers.openapi import MCPType, RouteMap
 
@@ -38,24 +39,101 @@ class SecurityMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-
 
     STATIC_PREFIX = "/static/"
 
-    async def dispatch(self, request: Request, call_next):
+    # The exact FastAPI documentation endpoints, which are the only paths
+    # allowed the permissive DOCS_CSP.  A prefix test would also match SPA
+    # routes such as /docs-preview, handing them 'unsafe-eval' and two CDNs.
+    DOCS_PATHS = frozenset(
+        {"/docs", "/docs/oauth2-redirect", "/redoc", "/openapi.json"}
+    )
+
+    # CSP for FastAPI interactive docs (/docs, /redoc) which load CDN assets.
+    # ReDoc builds its search index in a blob: worker, and both doc pages
+    # default to a favicon served from fastapi.tiangolo.com.
+    DOCS_CSP = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
+        "https://cdn.jsdelivr.net https://unpkg.com; "
+        "style-src 'self' 'unsafe-inline' "
+        "https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+        "img-src 'self' data: https://cdn.jsdelivr.net "
+        "https://fastapi.tiangolo.com; "
+        "font-src 'self' https://fonts.gstatic.com data:; "
+        "connect-src 'self'; "
+        "worker-src 'self' blob:; "
+        "frame-ancestors 'none'; "
+        "object-src 'none'; "
+        "base-uri 'self'"
+    )
+
+    # CSP for the SPA and all other routes.  img-src has to name the identity
+    # providers because the SPA renders the logged-in avatar straight from the
+    # provider URL that /auth-status passes through.
+    DEFAULT_CSP = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "img-src 'self' data: https://*.googleusercontent.com "
+        "https://avatars.githubusercontent.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "connect-src 'self' https://api.github.com; "
+        "frame-ancestors 'none'; "
+        "object-src 'none'; "
+        "base-uri 'self'"
+    )
+
+    @staticmethod
+    def _apply_security_headers(response: Response, path: str) -> None:
+        """Apply all security headers to a response."""
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains; preload"
+        )
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), payment=()"
+        )
+
+        # Use a more permissive CSP for FastAPI docs pages
+        if path in SecurityMiddleware.DOCS_PATHS:
+            response.headers["Content-Security-Policy"] = (
+                SecurityMiddleware.DOCS_CSP
+            )
+        else:
+            response.headers["Content-Security-Policy"] = (
+                SecurityMiddleware.DEFAULT_CSP
+            )
+
+    @staticmethod
+    def _has_traversal_segment(filename: str) -> bool:
+        """True if any segment of the path is a parent-directory marker.
+
+        Substring-matching "../" misses a bare trailing ".." and the
+        backslash-separated form, so the path is split into segments instead.
+        """
+        return ".." in filename.replace("\\", "/").split("/")
+
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        path = request.url.path
+
         # Block directory access in static files
-        if request.url.path.startswith(self.STATIC_PREFIX):
-            # Remove /static/ prefix to get the actual path
-            filename = request.url.path[len(self.STATIC_PREFIX) :]
-            # Basic security check for directory traversal
-            if not filename or "../" in filename or filename.endswith("/"):
-                return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+        if path.startswith(self.STATIC_PREFIX):
+            filename = path[len(self.STATIC_PREFIX) :]
+            if (
+                not filename
+                or filename.endswith("/")
+                or self._has_traversal_segment(filename)
+            ):
+                response = JSONResponse(
+                    status_code=403, content={"detail": "Forbidden"}
+                )
+                self._apply_security_headers(response, path)
+                return response
 
         response = await call_next(request)
-
-        # Add HSTS header to prevent man-in-the-middle attacks
-        # max-age=31536000: 1 year in seconds
-        # includeSubDomains: apply to all subdomains
-        # preload: eligible for browser HSTS preload lists
-        hsts_value = "max-age=31536000; includeSubDomains; preload"
-        response.headers["Strict-Transport-Security"] = hsts_value
-
+        self._apply_security_headers(response, path)
         return response
 
 
@@ -100,7 +178,9 @@ class CSRFMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-meth
         "/mcp",
     )
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         # Validate CSRF for unsafe, non-exempt, non-Bearer requests
         if (
             request.method not in self.SAFE_METHODS
@@ -297,11 +377,13 @@ def create_app():  # pylint: disable=too-many-statements
         max_age=session_ttl_seconds(),
     )
 
-    # Add security middleware
-    app.add_middleware(SecurityMiddleware)
-
     # Add CSRF middleware (double-submit cookie pattern)
     app.add_middleware(CSRFMiddleware)
+
+    # Add security middleware.  add_middleware prepends, so registering this
+    # last makes it the outermost layer: its headers then also cover the 403
+    # that CSRFMiddleware returns before call_next is ever reached.
+    app.add_middleware(SecurityMiddleware)
 
     # Mount static files from the React build (app/dist)
     # This serves the bundled assets (JS, CSS, images, etc.)

@@ -1,10 +1,14 @@
-import React, { useState } from 'react';
+import { useId, useState } from 'react';
+import Markdown, { type Components } from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
+import remarkGfm from 'remark-gfm';
 import { Database, Search, Code, MessageSquare, AlertTriangle, Copy, Check } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import type { User as UserType } from '@/types/api';
 
 interface Step {
@@ -30,6 +34,7 @@ interface ChatMessageProps {
     message: string;
   };
   progress?: number; // Progress percentage for AI steps
+  isError?: boolean; // Error text is shown verbatim, not as markdown
   user?: UserType | null; // User info for avatar
   isQueryHighlighted?: boolean; // Whether this query's tables are highlighted in the schema canvas
   onToggleQueryHighlight?: () => void; // Select/unselect this query to highlight it in the schema canvas
@@ -37,8 +42,183 @@ interface ChatMessageProps {
   onCancel?: () => void;
 }
 
-const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmationData, progress, user, isQueryHighlighted, onToggleQueryHighlight, onConfirm, onCancel }: ChatMessageProps) => {
+// The model answers in markdown; render it with the app's typography instead of
+// pulling in the Tailwind prose plugin. Each override merges its classes with
+// the ones remark emits and forwards the rest of the props, so `start`,
+// alignment styles, footnote ids and task-list markers survive. The two
+// exceptions are deliberate: `img` and a link whose scheme we refuse drop what
+// they were given rather than pass it on.
+const markdownComponents: Components = {
+  p: ({ node: _node, className, children, ...props }) => (
+    <p className={cn('mb-3 last:mb-0', className)} {...props}>
+      {children}
+    </p>
+  ),
+  // A task list draws its own checkboxes, so it must not also draw bullets.
+  ul: ({ node: _node, className, children, ...props }) => (
+    <ul
+      className={cn(
+        'mb-3 last:mb-0 list-disc pl-5 space-y-1',
+        className,
+        className?.includes('contains-task-list') && 'list-none pl-0'
+      )}
+      {...props}
+    >
+      {children}
+    </ul>
+  ),
+  ol: ({ node: _node, className, children, ...props }) => (
+    <ol className={cn('mb-3 last:mb-0 list-decimal pl-5 space-y-1', className)} {...props}>
+      {children}
+    </ol>
+  ),
+  strong: ({ node: _node, className, children, ...props }) => (
+    <strong className={cn('font-semibold text-foreground', className)} {...props}>
+      {children}
+    </strong>
+  ),
+  em: ({ node: _node, className, children, ...props }) => (
+    <em className={cn('italic', className)} {...props}>
+      {children}
+    </em>
+  ),
+  h1: ({ node: _node, className, children, ...props }) => (
+    <h1 className={cn('mb-2 mt-4 first:mt-0 text-lg font-semibold', className)} {...props}>
+      {children}
+    </h1>
+  ),
+  h2: ({ node: _node, className, children, ...props }) => (
+    <h2 className={cn('mb-2 mt-4 first:mt-0 text-base font-semibold', className)} {...props}>
+      {children}
+    </h2>
+  ),
+  h3: ({ node: _node, className, children, ...props }) => (
+    <h3 className={cn('mb-2 mt-3 first:mt-0 text-base font-semibold', className)} {...props}>
+      {children}
+    </h3>
+  ),
+  // Tailwind's preflight flattens headings, so the deeper levels need classes too.
+  h4: ({ node: _node, className, children, ...props }) => (
+    <h4 className={cn('mb-2 mt-3 first:mt-0 text-sm font-semibold', className)} {...props}>
+      {children}
+    </h4>
+  ),
+  h5: ({ node: _node, className, children, ...props }) => (
+    <h5 className={cn('mb-1 mt-3 first:mt-0 text-sm font-semibold', className)} {...props}>
+      {children}
+    </h5>
+  ),
+  h6: ({ node: _node, className, children, ...props }) => (
+    <h6 className={cn('mb-1 mt-3 first:mt-0 text-sm font-semibold text-muted-foreground', className)} {...props}>
+      {children}
+    </h6>
+  ),
+  blockquote: ({ node: _node, className, children, ...props }) => (
+    <blockquote
+      className={cn('mb-3 last:mb-0 border-l-2 border-border pl-3 text-muted-foreground', className)}
+      {...props}
+    >
+      {children}
+    </blockquote>
+  ),
+  hr: ({ node: _node, className, ...props }) => <hr className={cn('my-4 border-border', className)} {...props} />,
+  a: ({ node: _node, className, children, href, ...props }) => {
+    const linkClassName = cn('text-primary underline underline-offset-2', className);
+
+    // Footnote references and back-references stay on the page.
+    if (href?.startsWith('#')) {
+      return (
+        <a href={href} className={linkClassName} {...props}>
+          {children}
+        </a>
+      );
+    }
+
+    // react-markdown blanks the href of an unsafe scheme; without this, such a
+    // link would open a second copy of the app instead of doing nothing.
+    if (!href || !/^(?:https?:|mailto:)/i.test(href)) {
+      return <span className={className}>{children}</span>;
+    }
+
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" className={linkClassName} {...props}>
+        {children}
+      </a>
+    );
+  },
+  // `className` carries the fence's `language-*` marker, so keep it.
+  code: ({ node: _node, className, children, ...props }) => (
+    <code className={cn('rounded bg-muted px-1 py-0.5 font-mono text-sm', className)} {...props}>
+      {children}
+    </code>
+  ),
+  // A fenced block brings its own frame, so cancel the inline chip styling inside it.
+  pre: ({ node: _node, className, children, ...props }) => (
+    <pre
+      className={cn(
+        'mb-3 last:mb-0 overflow-x-auto rounded border border-border bg-background p-3 [&_code]:bg-transparent [&_code]:p-0',
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </pre>
+  ),
+  // The answer is model output; rendering images would fetch arbitrary URLs.
+  img: ({ alt }) => <span className="text-muted-foreground">{alt ? `[image: ${alt}]` : '[image]'}</span>,
+  table: ({ node: _node, className, children, ...props }) => (
+    <div className="mb-3 last:mb-0 overflow-x-auto">
+      <table className={cn('w-full border-collapse text-sm', className)} {...props}>
+        {children}
+      </table>
+    </div>
+  ),
+  // GFM column alignment arrives as an inline `style`, which outranks `text-left`.
+  th: ({ node: _node, className, children, ...props }) => (
+    <th className={cn('border border-border px-2 py-1 text-left font-semibold', className)} {...props}>
+      {children}
+    </th>
+  ),
+  td: ({ node: _node, className, children, ...props }) => (
+    <td className={cn('border border-border px-2 py-1', className)} {...props}>
+      {children}
+    </td>
+  ),
+};
+
+interface HastNode {
+  properties?: Record<string, unknown>;
+  children?: HastNode[];
+}
+
+// `clobberPrefix` namespaces the footnote ids but not the label's, which
+// mdast-util-to-hast hardcodes, so two answers with footnotes would share it.
+const namespaceFootnoteLabel = (prefix: string) => (tree: HastNode) => {
+  const label = 'footnote-label';
+
+  const rename = (node: HastNode) => {
+    const properties = node.properties;
+
+    if (properties) {
+      if (properties.id === label) {
+        properties.id = prefix + label;
+      }
+      // hast keeps `aria-describedby` as a list of ids.
+      if (Array.isArray(properties.ariaDescribedBy)) {
+        properties.ariaDescribedBy = properties.ariaDescribedBy.map((id) => (id === label ? prefix + label : id));
+      }
+    }
+
+    node.children?.forEach(rename);
+  };
+
+  rename(tree);
+};
+
+const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmationData, progress, isError, user, isQueryHighlighted, onToggleQueryHighlight, onConfirm, onCancel }: ChatMessageProps) => {
   const [copied, setCopied] = useState(false);
+  // Every message renders its footnotes into the same document.
+  const footnotePrefix = `user-content-${useId().replace(/[^a-zA-Z0-9]/g, '')}-`;
 
   const handleCopyQuery = async () => {
     try {
@@ -325,8 +505,20 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmati
               </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <div className="text-foreground text-base leading-relaxed whitespace-pre-line">
-              {content}
+            {/* An error quotes paths, regexes and column values, so it has to be shown as it came. */}
+            <div className={cn('text-foreground text-base leading-relaxed break-words', isError && 'whitespace-pre-line')}>
+              {isError ? (
+                content
+              ) : (
+                <Markdown
+                  remarkPlugins={[remarkGfm, remarkBreaks]}
+                  rehypePlugins={[[namespaceFootnoteLabel, footnotePrefix]]}
+                  remarkRehypeOptions={{ clobberPrefix: footnotePrefix }}
+                  components={markdownComponents}
+                >
+                  {content}
+                </Markdown>
+              )}
             </div>
           </div>
         </div>

@@ -173,6 +173,46 @@ the browser, so there is none to revoke — tokens are created explicitly from t
 tokens API and revoked there. (A legacy `api_token` cookie left over from an
 older release is cleared and revoked on logout too.)
 
+#### Email signup is verified before the account exists
+
+Signing up with an email address and password does not create an account. The
+submitted details are parked, a six-digit confirmation code is mailed to the
+address, and the account — and the session — come into being only when that code
+is typed back into the signup form. So an address the registrant does not
+control never becomes an account at all, and there is no half-real user for the
+rest of the system to reason about.
+
+A code rather than an emailed link, because the code has to come back to the
+session that submitted the form. A link can be opened by anyone who receives it:
+a stranger could submit your address with a password of their choosing, and your
+single click would create an account they knew the password to. Nobody can be
+signed up by someone else here, because the person who fills in the form is the
+only one who ever holds both halves.
+
+The code is single-use, expires after 15 minutes and tolerates only a handful of
+wrong guesses before the pending signup is discarded — a short code is only safe
+while the number of attempts is small. It is also only redeemable in the browser
+that submitted the form: each submission mints a ticket that stays in that
+browser's session, and a code presented without its ticket is refused. Entering
+it signs the browser in directly: the password was chosen minutes earlier, and
+asking for it again would prove nothing. A code can be re-sent from the same
+screen, subject to a per-address rate limit; the send budget is per pending
+signup, so it starts over once the pending signup expires and an address can
+always be signed up again later. Typing a code that has expired is not one of
+the wrong guesses and does not discard anything — the pending signup is left
+where it is so the same screen can send a fresh code.
+
+In development, a message with no mail server configured is written to the
+application log instead of being sent, so the flow can be completed by copying
+the code out of the log. This needs `APP_ENV=development` — anywhere else an
+unconfigured process refuses the send rather than logging the code and
+reporting success. Set `MAIL_SERVER` (plus `MAIL_PORT`, `MAIL_USERNAME`,
+`MAIL_PASSWORD`, `MAIL_DEFAULT_SENDER`) to send for real; any provider with an
+SMTP endpoint works. `EMAIL_VERIFICATION_TTL_MINUTES`,
+`EMAIL_VERIFICATION_MAX_ATTEMPTS`, `EMAIL_VERIFICATION_RESEND_SECONDS` and
+`EMAIL_VERIFICATION_MAX_SENDS` tune the lifetime and the limits. See
+`.env.example` for the full list.
+
 The trade-off of a signed session cookie is that it cannot be revoked from
 the server before it expires: the TTL bounds the damage, and rotating
 `FASTAPI_SECRET_KEY` invalidates every browser login at once. API tokens keep
