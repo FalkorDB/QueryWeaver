@@ -48,7 +48,7 @@ memory = [
 # repo/Docker checkout; the published SDK wheel does not include the server.
 server = [
     "fastapi>=0.136.1,<0.142.0",
-    "uvicorn>=0.46,<0.52",
+    "uvicorn>=0.46,<0.53",
     "authlib~=1.7.0",
     "itsdangerous~=2.2.0",
     "python-multipart~=0.0.32",
