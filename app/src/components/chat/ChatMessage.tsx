@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import Markdown, { type Components } from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
@@ -186,8 +186,39 @@ const markdownComponents: Components = {
   ),
 };
 
+interface HastNode {
+  properties?: Record<string, unknown>;
+  children?: HastNode[];
+}
+
+// `clobberPrefix` namespaces the footnote ids but not the label's, which
+// mdast-util-to-hast hardcodes, so two answers with footnotes would share it.
+const namespaceFootnoteLabel = (prefix: string) => (tree: HastNode) => {
+  const label = 'footnote-label';
+
+  const rename = (node: HastNode) => {
+    const properties = node.properties;
+
+    if (properties) {
+      if (properties.id === label) {
+        properties.id = prefix + label;
+      }
+      // hast keeps `aria-describedby` as a list of ids.
+      if (Array.isArray(properties.ariaDescribedBy)) {
+        properties.ariaDescribedBy = properties.ariaDescribedBy.map((id) => (id === label ? prefix + label : id));
+      }
+    }
+
+    node.children?.forEach(rename);
+  };
+
+  rename(tree);
+};
+
 const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmationData, progress, isError, user, isQueryHighlighted, onToggleQueryHighlight, onConfirm, onCancel }: ChatMessageProps) => {
   const [copied, setCopied] = useState(false);
+  // Every message renders its footnotes into the same document.
+  const footnotePrefix = `user-content-${useId().replace(/[^a-zA-Z0-9]/g, '')}-`;
 
   const handleCopyQuery = async () => {
     try {
@@ -479,7 +510,12 @@ const ChatMessage = ({ type, content, steps, queryData, analysisInfo, confirmati
               {isError ? (
                 content
               ) : (
-                <Markdown remarkPlugins={[remarkGfm, remarkBreaks]} components={markdownComponents}>
+                <Markdown
+                  remarkPlugins={[remarkGfm, remarkBreaks]}
+                  rehypePlugins={[[namespaceFootnoteLabel, footnotePrefix]]}
+                  remarkRehypeOptions={{ clobberPrefix: footnotePrefix }}
+                  components={markdownComponents}
+                >
                   {content}
                 </Markdown>
               )}
