@@ -218,7 +218,6 @@ _DIALECT_BY_DB_TYPE = {
     "mysql": "mysql",
     "snowflake": "snowflake",
     "sqlserver": "tsql",
-    "mssql": "tsql",
 }
 
 # sqlglot expression class names that represent a write, DDL, privilege change,

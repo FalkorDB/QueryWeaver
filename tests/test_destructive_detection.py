@@ -333,6 +333,3 @@ class TestSQLServerDialect:
     ])
     def test_writes_are_destructive(self, sql):
         assert detect_destructive_operation(sql, "sqlserver")[1] is True
-
-    def test_mssql_alias_maps_to_tsql(self):
-        assert detect_destructive_operation("SELECT TOP 1 * FROM t", "mssql")[1] is False

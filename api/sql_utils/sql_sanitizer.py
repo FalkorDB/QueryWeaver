@@ -200,7 +200,7 @@ class DatabaseSpecificQuoter:  # pylint: disable=too-few-public-methods
         """
         if db_type.lower() in ['mysql', 'mariadb']:
             return '`'
-        if db_type.lower() in ['sqlserver', 'mssql']:
+        if db_type.lower() == 'sqlserver':
             return '['
         # PostgreSQL, SQLite use double quotes (standard SQL)
         return '"'

@@ -50,7 +50,6 @@ sqlserver://appuser:s3cr3t@sql.example.com:1433/reporting?schema=dbo&encrypt=tru
 - Columns with data types, nullability, defaults and primary-key flags
 - Extended properties (`MS_Description`) used as table and column descriptions
 - Foreign keys, including composite keys — both sides must live in the selected schema
-- Many-to-many relationships inferred from junction tables
 
 All catalog queries join `sys.schemas` and bind the schema name as a parameter, so
 a connection only ever sees the requested schema. Tables in other schemas are not
@@ -59,13 +58,19 @@ extracted and cannot collide with same-named tables in the selected schema.
 ### Sample Values
 
 Sample values are collected per column with a schema-qualified, bracket-quoted
-query:
+query. The `DISTINCT` sits in a derived table because SQL Server rejects
+`SELECT DISTINCT … ORDER BY NEWID()`:
 
 ```sql
-SELECT DISTINCT TOP 3 [column_name]
-FROM [dbo].[table_name]
-WHERE [column_name] IS NOT NULL;
+SELECT TOP 3 [column_name]
+FROM (SELECT DISTINCT [column_name] FROM [dbo].[table_name]
+      WHERE [column_name] IS NOT NULL) AS sampled
+ORDER BY NEWID();
 ```
+
+Sampling is best-effort: a column whose type has no `DISTINCT` (`xml`, `text`,
+`image`, the spatial types) is logged and left without samples rather than
+failing the schema load.
 
 ### Query Execution
 
@@ -81,7 +86,7 @@ SQL Server delimits identifiers with brackets. A literal `]` inside a name is
 escaped by doubling it, so `my]table` becomes `[my]]table]`. This is applied both
 in the loader's own catalog/sample queries and in
 `api/sql_utils/sql_sanitizer.py`, where `DatabaseSpecificQuoter.get_quote_char`
-returns `[` for `sqlserver` and `mssql`.
+returns `[` for `sqlserver`.
 
 ## Usage
 

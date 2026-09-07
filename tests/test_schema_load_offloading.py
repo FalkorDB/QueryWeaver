@@ -102,7 +102,7 @@ async def test_mysql_load_does_not_block_the_loop(mock_connect, mock_load_to_gra
 
 @pytest.mark.unit
 @patch("api.loaders.sqlserver_loader.load_to_graph")
-@patch("api.loaders.sqlserver_loader.SQLServerLoader.extract_relationships", _slow)
+@patch("api.loaders.sqlserver_loader.SQLServerLoader.extract_foreign_keys", _slow)
 @patch("api.loaders.sqlserver_loader.SQLServerLoader.extract_tables_info", _slow)
 @patch("api.loaders.sqlserver_loader.pymssql.connect")
 async def test_sqlserver_load_does_not_block_the_loop(mock_connect, mock_load_to_graph):

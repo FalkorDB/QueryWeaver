@@ -250,7 +250,6 @@ class TestSQLServerQuoting:
         """SQL Server uses the opening bracket as its quote character."""
         assert DatabaseSpecificQuoter.get_quote_char('sqlserver') == '['
         assert DatabaseSpecificQuoter.get_quote_char('SQLServer') == '['
-        assert DatabaseSpecificQuoter.get_quote_char('mssql') == '['
 
     def test_quote_identifier_brackets(self):
         """Identifiers are wrapped in a bracket pair."""

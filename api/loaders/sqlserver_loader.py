@@ -4,6 +4,7 @@ import datetime
 import decimal
 import logging
 import re
+import uuid
 from typing import AsyncGenerator, Dict, Any, List, Tuple
 from urllib.parse import urlparse, parse_qs, unquote
 
@@ -20,6 +21,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 DEFAULT_SCHEMA = "dbo"
 DEFAULT_PORT = 1433
 
+_CONTROL_CHARS = re.compile(r'[\x00-\x1f\x7f]')
+
 
 class SQLServerQueryError(Exception):
     """Exception raised for SQL Server query execution errors."""
@@ -32,16 +35,18 @@ class SQLServerConnectionError(Exception):
 def validate_ident(
     identifier: str, identifier_type: str = "identifier", allow_dot: bool = True
 ) -> str:
-    """Validate that an identifier is safe to interpolate into T-SQL.
+    """Validate that a *user-supplied* identifier is safe to interpolate into T-SQL.
 
-    T-SQL cannot bind identifiers as parameters, so table, schema and column
-    names must be interpolated. This is an anchored allow-list: only characters
-    that can legitimately appear in a SQL Server object name are accepted, and
-    everything capable of breaking out of a bracket-delimited identifier
-    (``]``, quotes, semicolons, backslashes, control characters) is rejected.
+    T-SQL cannot bind identifiers as parameters, so the schema taken from the
+    connection URL must be interpolated. This is an anchored allow-list: only
+    characters that can legitimately appear in a SQL Server object name are
+    accepted, and everything capable of breaking out of a bracket-delimited
+    identifier (``]``, quotes, semicolons, backslashes, control characters) is
+    rejected. Names read back from the system catalog go through
+    :func:`validate_catalog_ident` instead, which is deliberately laxer.
 
     Args:
-        identifier: Raw identifier, typically read from the system catalog.
+        identifier: Raw identifier supplied by the user.
         identifier_type: Label used in the error message.
         allow_dot: Whether ``.`` is accepted. A dot is legal inside a
             bracket-quoted SQL Server name, but callers that recover a schema
@@ -71,6 +76,40 @@ def validate_ident(
     return identifier
 
 
+def validate_catalog_ident(
+    identifier: str, identifier_type: str = "identifier", allow_dot: bool = True
+) -> str:
+    """Validate an identifier that the server itself returned from the catalog.
+
+    SQL Server allows almost anything inside a delimited identifier, and Hebrew,
+    German and CJK table names are ordinary in the databases this loader reads.
+    Holding catalog names to the ASCII allow-list above would fail the whole
+    schema load over one such name, so this only rejects what bracket-quoting
+    cannot survive: control characters, and — when *allow_dot* is False — a dot
+    that would make a schema-qualified name ambiguous.
+
+    Raises:
+        ValueError: If the identifier is empty, over-long, contains a control
+            character, or contains a dot that the caller cannot allow.
+    """
+    if not identifier or len(identifier) > 128:
+        raise ValueError(
+            f"Invalid {identifier_type}: {identifier!r}. "
+            "Must be between 1 and 128 characters."
+        )
+    if _CONTROL_CHARS.search(identifier):
+        raise ValueError(
+            f"Invalid {identifier_type}: {identifier!r}. "
+            "Control characters are not allowed."
+        )
+    if not allow_dot and '.' in identifier:
+        raise ValueError(
+            f"Invalid {identifier_type}: {identifier!r}. A dot would make a "
+            "schema-qualified name ambiguous."
+        )
+    return identifier
+
+
 def quote_ident(identifier: str) -> str:
     """Bracket-quote a T-SQL identifier, escaping any embedded ``]``.
 
@@ -79,7 +118,8 @@ def quote_ident(identifier: str) -> str:
     crafted identifier would terminate the quote early.
 
     This is defence in depth: callers that interpolate the result into a
-    statement validate the identifier with :func:`validate_ident` first.
+    statement validate the identifier with :func:`validate_ident` or
+    :func:`validate_catalog_ident` first.
 
     Args:
         identifier: Raw identifier as read from the system catalog.
@@ -88,13 +128,6 @@ def quote_ident(identifier: str) -> str:
         The bracket-quoted identifier.
     """
     return f"[{identifier.replace(']', ']]')}]"
-
-
-_KEY_TYPES = {
-    'PRI': 'PRIMARY KEY',
-    'MUL': 'FOREIGN KEY',
-    'UNI': 'UNIQUE KEY',
-}
 
 
 def _build_column_description(col_info: Dict[str, Any], key_type: str, is_nullable: str) -> str:
@@ -164,24 +197,28 @@ class SQLServerLoader(BaseLoader):
         """
         schema, _, bare_table = table_name.rpartition('.')
         qualified = quote_ident(
-            validate_ident(bare_table, "table name", allow_dot=False)
+            validate_catalog_ident(bare_table, "table name", allow_dot=False)
         )
         if schema:
             qualified = (
-                f"{quote_ident(validate_ident(schema, 'schema name', allow_dot=False))}"
+                f"{quote_ident(validate_catalog_ident(schema, 'schema name', allow_dot=False))}"
                 f".{qualified}"
             )
 
-        col = quote_ident(validate_ident(col_name, "column name"))
+        col = quote_ident(validate_catalog_ident(col_name, "column name"))
         if not isinstance(sample_size, int) or sample_size <= 0:
             raise ValueError(f"sample_size must be a positive integer, got {sample_size!r}")
 
-        # Identifiers are allow-list validated and bracket-quoted with ``]``
-        # escaped, since T-SQL cannot bind identifiers as parameters.
+        # Identifiers are validated and bracket-quoted with ``]`` escaped, since
+        # T-SQL cannot bind identifiers as parameters.
+        #
+        # The DISTINCT sits in a derived table because SQL Server rejects
+        # ``SELECT DISTINCT ... ORDER BY NEWID()`` outright: "ORDER BY items
+        # must appear in the select list if SELECT DISTINCT is specified".
         query = (
-            f"SELECT DISTINCT TOP {int(sample_size)} {col}"
-            f" FROM {qualified}"
-            f" WHERE {col} IS NOT NULL"
+            f"SELECT TOP {int(sample_size)} {col}"
+            f" FROM (SELECT DISTINCT {col} FROM {qualified}"
+            f" WHERE {col} IS NOT NULL) AS sampled"
             f" ORDER BY NEWID()"
         )
         cursor.execute(query)
@@ -190,6 +227,30 @@ class SQLServerLoader(BaseLoader):
         # name only — pymssql's ``row2dict`` strips positional keys.
         sample_results = cursor.fetchall()
         return [row[col_name] for row in sample_results if row[col_name] is not None]
+
+    @classmethod
+    def extract_sample_values_for_column(
+        cls, cursor, table_name: str, col_name: str, sample_size: int = 3
+    ) -> List[Any]:
+        """Sample *col_name*, returning ``[]`` rather than failing the whole load.
+
+        Sampling is best-effort decoration on top of the catalog data, but it is
+        also the only part of introspection that touches user tables, so it is
+        where the surprises live: ``DISTINCT`` is not defined for ``xml``,
+        ``text``, ``image`` or the spatial types, and a name that survives the
+        catalog can still be one this loader will not interpolate. Either would
+        otherwise abort a schema that is fine apart from one column.
+        """
+        try:
+            return super().extract_sample_values_for_column(
+                cursor, table_name, col_name, sample_size
+            )
+        except (ValueError, pymssql.Error) as exc:
+            # %r so a control character in a catalog name cannot forge a log line.
+            logging.warning(
+                "Skipping sample values for %r.%r: %s", table_name, col_name, exc
+            )
+            return []
 
     @staticmethod
     def _serialize_value(value):
@@ -202,16 +263,16 @@ class SQLServerLoader(BaseLoader):
         Returns:
             JSON serializable version of the value
         """
-        if isinstance(value, (datetime.date, datetime.datetime)):
-            return value.isoformat()
-        if isinstance(value, datetime.time):
+        if isinstance(value, (datetime.date, datetime.datetime, datetime.time)):
             return value.isoformat()
         if isinstance(value, decimal.Decimal):
             return float(value)
+        # pymssql decodes ``uniqueidentifier`` to uuid.UUID, which the result
+        # stream's plain json.dumps cannot encode.
+        if isinstance(value, uuid.UUID):
+            return str(value)
         if isinstance(value, bytes):
             return value.hex()
-        if value is None:
-            return None
         return value
 
     @staticmethod
@@ -340,8 +401,11 @@ class SQLServerLoader(BaseLoader):
             )
             cursor = conn.cursor(as_dict=True)
 
-            entities = SQLServerLoader.extract_tables_info(cursor, schema)
-            relationships = SQLServerLoader.extract_relationships(cursor, schema)
+            foreign_keys = SQLServerLoader.extract_foreign_keys(cursor, schema)
+            entities = SQLServerLoader.extract_tables_info(
+                cursor, schema, SQLServerLoader.group_foreign_keys(foreign_keys)
+            )
+            relationships = SQLServerLoader.build_relationships(foreign_keys)
             return entities, relationships
         finally:
             SQLServerLoader._close_quietly(cursor, conn)
@@ -407,18 +471,27 @@ class SQLServerLoader(BaseLoader):
                 logging.debug("Ignoring error while closing SQL Server handle", exc_info=True)
 
     @staticmethod
-    def extract_tables_info(cursor, schema: str = DEFAULT_SCHEMA) -> Dict[str, Any]:
+    def extract_tables_info(
+        cursor,
+        schema: str = DEFAULT_SCHEMA,
+        foreign_keys_by_table: Dict[str, List[Dict[str, str]]] | None = None,
+    ) -> Dict[str, Any]:
         """
         Extract table and column information from a SQL Server schema.
 
         Args:
             cursor: Database cursor
             schema: Schema to extract tables from (default: ``dbo``)
+            foreign_keys_by_table: Foreign keys for the whole schema, keyed by
+                owning table, as produced by :meth:`group_foreign_keys`. Passed
+                in rather than queried per table, which would be one round trip
+                per table on a large schema.
 
         Returns:
             Dict containing table information
         """
         entities = {}
+        foreign_keys_by_table = foreign_keys_by_table or {}
 
         # Get all tables in the requested schema. ``s.name`` is selected back so
         # sample queries qualify tables with the server's own canonical schema
@@ -452,9 +525,6 @@ class SQLServerLoader(BaseLoader):
                 cursor, schema, table_name, catalog_schema
             )
 
-            # Get foreign keys for this table
-            foreign_keys = SQLServerLoader.extract_foreign_keys(cursor, schema, table_name)
-
             # Generate table description
             table_description = table_comment if table_comment else f"Table: {table_name}"
 
@@ -464,7 +534,7 @@ class SQLServerLoader(BaseLoader):
             entities[table_name] = {
                 'description': table_description,
                 'columns': columns_info,
-                'foreign_keys': foreign_keys,
+                'foreign_keys': foreign_keys_by_table.get(table_name, []),
                 'col_descriptions': col_descriptions
             }
 
@@ -497,10 +567,10 @@ class SQLServerLoader(BaseLoader):
                 c.is_nullable,
                 dc.definition AS column_default,
                 CASE
-                    WHEN pk.column_id IS NOT NULL THEN 'PRI'
-                    WHEN fk.parent_column_id IS NOT NULL THEN 'MUL'
-                    WHEN uc.column_id IS NOT NULL THEN 'UNI'
-                    ELSE ''
+                    WHEN pk.column_id IS NOT NULL THEN 'PRIMARY KEY'
+                    WHEN fk.parent_column_id IS NOT NULL THEN 'FOREIGN KEY'
+                    WHEN uc.column_id IS NOT NULL THEN 'UNIQUE KEY'
+                    ELSE 'NONE'
                 END AS column_key,
                 ISNULL(CAST(ep.value AS NVARCHAR(MAX)), '') AS column_comment
             FROM sys.columns c
@@ -514,10 +584,12 @@ class SQLServerLoader(BaseLoader):
                 JOIN sys.indexes i ON ic.object_id = i.object_id AND ic.index_id = i.index_id
                 WHERE i.is_primary_key = 1
             ) pk ON c.object_id = pk.object_id AND c.column_id = pk.column_id
-            LEFT JOIN sys.foreign_key_columns fk
-                ON fk.parent_object_id = c.object_id AND fk.parent_column_id = c.column_id
             LEFT JOIN (
-                SELECT ic.object_id, ic.column_id
+                SELECT DISTINCT fkc.parent_object_id, fkc.parent_column_id
+                FROM sys.foreign_key_columns fkc
+            ) fk ON fk.parent_object_id = c.object_id AND fk.parent_column_id = c.column_id
+            LEFT JOIN (
+                SELECT DISTINCT ic.object_id, ic.column_id
                 FROM sys.index_columns ic
                 JOIN sys.indexes i ON ic.object_id = i.object_id AND ic.index_id = i.index_id
                 WHERE i.is_unique = 1 AND i.is_primary_key = 0
@@ -539,7 +611,7 @@ class SQLServerLoader(BaseLoader):
         for col_info in columns:
             col_name = col_info['column_name']
             is_nullable = 'YES' if col_info['is_nullable'] else 'NO'
-            key_type = _KEY_TYPES.get(col_info['column_key'], 'NONE')
+            key_type = col_info['column_key']
 
             columns_info[col_name] = {
                 'type': col_info['data_type'],
@@ -556,74 +628,24 @@ class SQLServerLoader(BaseLoader):
         return columns_info
 
     @staticmethod
-    def extract_foreign_keys(cursor, schema: str, table_name: str) -> List[Dict[str, str]]:
-        """
-        Extract foreign key information for a specific table.
-
-        Only foreign keys whose referenced table also lives in *schema* are
-        returned, so they never point at a table outside the loaded schema.
-
-        Args:
-            cursor: Database cursor
-            schema: Schema owning the table
-            table_name: Name of the table
-
-        Returns:
-            List of foreign key dictionaries
-        """
-        cursor.execute("""
-            SELECT
-                fk.name AS constraint_name,
-                cp.name AS column_name,
-                rt.name AS referenced_table_name,
-                cr.name AS referenced_column_name
-            FROM sys.foreign_keys fk
-            JOIN sys.foreign_key_columns fkc
-                ON fk.object_id = fkc.constraint_object_id
-            JOIN sys.columns cp
-                ON fkc.parent_object_id = cp.object_id
-                AND fkc.parent_column_id = cp.column_id
-            JOIN sys.tables rt
-                ON fkc.referenced_object_id = rt.object_id
-            JOIN sys.schemas rs ON rt.schema_id = rs.schema_id
-            JOIN sys.columns cr
-                ON fkc.referenced_object_id = cr.object_id
-                AND fkc.referenced_column_id = cr.column_id
-            JOIN sys.tables pt
-                ON fkc.parent_object_id = pt.object_id
-            JOIN sys.schemas ps ON pt.schema_id = ps.schema_id
-            WHERE ps.name = %s AND rs.name = %s AND pt.name = %s
-            ORDER BY fk.name;
-        """, (schema, schema, table_name))
-
-        foreign_keys = []
-        for fk_info in cursor.fetchall():
-            foreign_keys.append({
-                'constraint_name': fk_info['constraint_name'],
-                'column': fk_info['column_name'],
-                'referenced_table': fk_info['referenced_table_name'],
-                'referenced_column': fk_info['referenced_column_name']
-            })
-
-        return foreign_keys
-
-    @staticmethod
-    def extract_relationships(
+    def extract_foreign_keys(
         cursor, schema: str = DEFAULT_SCHEMA
-    ) -> Dict[str, List[Dict[str, str]]]:
+    ) -> List[Dict[str, str]]:
         """
-        Extract all relationship information from a schema.
+        Extract every foreign key in a schema, in a single query.
 
-        Only foreign keys whose parent *and* referenced tables both live in
-        *schema* are returned, so relationships always point at entities that
-        were actually loaded.
+        Both the parent and the referenced table must live in *schema*, so a key
+        never names a table that was not loaded. The per-entity view and the
+        relationship map are both derived from these rows — see
+        :meth:`group_foreign_keys` and :meth:`build_relationships` — rather than
+        from a second query per table.
 
         Args:
             cursor: Database cursor
-            schema: Schema to extract relationships from (default: ``dbo``)
+            schema: Schema to extract foreign keys from (default: ``dbo``)
 
         Returns:
-            Dict containing relationship information
+            One dict per foreign-key column, in constraint order.
         """
         cursor.execute("""
             SELECT
@@ -651,21 +673,45 @@ class SQLServerLoader(BaseLoader):
             ORDER BY pt.name, fk.name;
         """, (schema, schema))
 
+        return [{
+            'table': fk_info['table_name'],
+            'constraint_name': fk_info['constraint_name'],
+            'column': fk_info['column_name'],
+            'referenced_table': fk_info['referenced_table_name'],
+            'referenced_column': fk_info['referenced_column_name'],
+        } for fk_info in cursor.fetchall()]
+
+    @staticmethod
+    def group_foreign_keys(
+        foreign_keys: List[Dict[str, str]]
+    ) -> Dict[str, List[Dict[str, str]]]:
+        """Group :meth:`extract_foreign_keys` rows by the table that owns them."""
+        by_table: Dict[str, List[Dict[str, str]]] = {}
+        for fk in foreign_keys:
+            by_table.setdefault(fk['table'], []).append(
+                {key: value for key, value in fk.items() if key != 'table'}
+            )
+        return by_table
+
+    @staticmethod
+    def build_relationships(
+        foreign_keys: List[Dict[str, str]]
+    ) -> Dict[str, List[Dict[str, str]]]:
+        """Group :meth:`extract_foreign_keys` rows by constraint.
+
+        A composite key contributes one row per column, all under the one
+        constraint name.
+        """
         relationships: Dict[str, List[Dict[str, str]]] = {}
-        for rel_info in cursor.fetchall():
-            constraint_name = rel_info['constraint_name']
-
-            if constraint_name not in relationships:
-                relationships[constraint_name] = []
-
-            relationships[constraint_name].append({
-                'from': rel_info['table_name'],
-                'to': rel_info['referenced_table_name'],
-                'source_column': rel_info['column_name'],
-                'target_column': rel_info['referenced_column_name'],
+        for fk in foreign_keys:
+            constraint_name = fk['constraint_name']
+            relationships.setdefault(constraint_name, []).append({
+                'from': fk['table'],
+                'to': fk['referenced_table'],
+                'source_column': fk['column'],
+                'target_column': fk['referenced_column'],
                 'note': f'Foreign key constraint: {constraint_name}'
             })
-
         return relationships
 
     @staticmethod
