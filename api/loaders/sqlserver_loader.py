@@ -761,19 +761,18 @@ class SQLServerLoader(BaseLoader):
 
             from api.core.db_resolver import resolve_db  # pylint: disable=import-outside-toplevel
 
+            # ``load`` names the graph f"{prefix}_{db_name}", so strip that exact
+            # suffix — splitting on "_" mistakes a database name that contains one
+            # for the prefix boundary. Parsed before the delete so a bad URL cannot
+            # drop the graph without reloading it.
+            db_name = SQLServerLoader._parse_sqlserver_url(db_url)['database']
+            suffix = f"_{db_name}"
+            prefix = graph_id[:-len(suffix)] if graph_id.endswith(suffix) else graph_id
+
             # Clear existing graph data
             # Drop current graph before reloading
             graph = resolve_db(db).select_graph(graph_id)
             await graph.delete()
-
-            # Extract prefix from graph_id (remove database name part)
-            # graph_id format is typically "prefix_database_name"
-            parts = graph_id.split('_')
-            if len(parts) >= 2:
-                # Reconstruct prefix by joining all parts except the last one
-                prefix = '_'.join(parts[:-1])
-            else:
-                prefix = graph_id
 
             # Reuse the existing load method to reload the schema
             success, message = False, ""

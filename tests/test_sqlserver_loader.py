@@ -813,6 +813,40 @@ class TestRefreshGraphSchema:
         assert seen["prefix"] == "testdb"
 
     @pytest.mark.asyncio
+    async def test_an_underscored_database_name_keeps_the_whole_prefix(self):
+        """``load`` names the graph ``f"{prefix}_{db_name}"``.
+
+        Regression test: splitting the graph id on ``_`` cut ``user1_my_db`` down
+        to prefix ``user1_my``, so the reload wrote to ``user1_my_my_db`` after
+        deleting the graph the user was actually looking at.
+        """
+        _graph, db = self._graph_and_db()
+        seen = {}
+
+        async def _load(prefix, _url, db=None):  # pylint: disable=unused-argument
+            seen["prefix"] = prefix
+            yield True, "reloaded"
+
+        with patch("api.core.db_resolver.resolve_db", return_value=db), \
+             patch.object(SQLServerLoader, "load", _load):
+            await SQLServerLoader.refresh_graph_schema(
+                "user1_my_db", "sqlserver://sa:pw@localhost/my_db", db=db)
+
+        assert seen["prefix"] == "user1"
+
+    @pytest.mark.asyncio
+    async def test_a_malformed_url_leaves_the_graph_alone(self):
+        """The database name is needed before the delete, not after it."""
+        graph, db = self._graph_and_db()
+
+        with patch("api.core.db_resolver.resolve_db", return_value=db):
+            ok, _message = await SQLServerLoader.refresh_graph_schema(
+                "user1_testdb", "postgresql://sa:pw@localhost/testdb", db=db)
+
+        assert ok is False
+        graph.delete.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_an_unreachable_graph_is_reported_not_raised(self):
         with patch("api.core.db_resolver.resolve_db", side_effect=ConnectionError("down")):
             ok, message = await SQLServerLoader.refresh_graph_schema(
