@@ -16,8 +16,6 @@ from api.loaders.base_loader import BaseLoader
 from api.loaders.graph_loader import load_to_graph
 from api.loaders.introspection import run_introspection
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
 DEFAULT_SCHEMA = "dbo"
 DEFAULT_PORT = 1433
 
