@@ -233,8 +233,9 @@ class SQLServerLoader(BaseLoader):
         """
         try:
             parsed = urlparse(connection_url)
-            schema = parse_qs(parsed.query).get('schema', [''])[0]
-            schema = unquote(schema).strip()
+            # parse_qs already percent-decodes; decoding again would accept
+            # double-encoded values that validate_ident should reject.
+            schema = parse_qs(parsed.query).get('schema', [''])[0].strip()
         except (ValueError, AttributeError):
             return DEFAULT_SCHEMA
         if not schema:
@@ -559,6 +560,9 @@ class SQLServerLoader(BaseLoader):
         """
         Extract foreign key information for a specific table.
 
+        Only foreign keys whose referenced table also lives in *schema* are
+        returned, so they never point at a table outside the loaded schema.
+
         Args:
             cursor: Database cursor
             schema: Schema owning the table
@@ -572,7 +576,6 @@ class SQLServerLoader(BaseLoader):
                 fk.name AS constraint_name,
                 cp.name AS column_name,
                 rt.name AS referenced_table_name,
-                rs.name AS referenced_schema_name,
                 cr.name AS referenced_column_name
             FROM sys.foreign_keys fk
             JOIN sys.foreign_key_columns fkc
@@ -589,9 +592,9 @@ class SQLServerLoader(BaseLoader):
             JOIN sys.tables pt
                 ON fkc.parent_object_id = pt.object_id
             JOIN sys.schemas ps ON pt.schema_id = ps.schema_id
-            WHERE ps.name = %s AND pt.name = %s
+            WHERE ps.name = %s AND rs.name = %s AND pt.name = %s
             ORDER BY fk.name;
-        """, (schema, table_name))
+        """, (schema, schema, table_name))
 
         foreign_keys = []
         for fk_info in cursor.fetchall():

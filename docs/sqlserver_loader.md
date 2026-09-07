@@ -49,7 +49,7 @@ sqlserver://appuser:s3cr3t@sql.example.com:1433/reporting?schema=dbo&encrypt=tru
 - Tables in the selected schema (views are not extracted)
 - Columns with data types, nullability, defaults and primary-key flags
 - Extended properties (`MS_Description`) used as table and column descriptions
-- Foreign keys, including composite keys
+- Foreign keys, including composite keys — both sides must live in the selected schema
 - Many-to-many relationships inferred from junction tables
 
 All catalog queries join `sys.schemas` and bind the schema name as a parameter, so

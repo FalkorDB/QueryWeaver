@@ -261,6 +261,12 @@ class TestParseUrl:
         assert SQLServerLoader.parse_schema_from_url(
             "sqlserver://sa:pw@localhost/testdb?schema=sales") == "sales"
 
+    def test_double_encoded_schema_is_rejected(self):
+        """The parameter is decoded once, so ``%2520`` stays a literal ``%20``."""
+        with pytest.raises(ValueError):
+            SQLServerLoader.parse_schema_from_url(
+                "sqlserver://sa:pw@localhost/testdb?schema=sa%2520les")
+
 
 class TestSampleQuery:
     """Sample-value extraction — the dict-cursor contract."""
@@ -376,7 +382,6 @@ class TestIntrospection:
             "constraint_name": "FK_Orders_Customers",
             "column_name": "customer_id",
             "referenced_table_name": "Customers",
-            "referenced_schema_name": "dbo",
             "referenced_column_name": "id",
         }]])
         fks = SQLServerLoader.extract_foreign_keys(cursor, "dbo", "Orders")
@@ -386,8 +391,10 @@ class TestIntrospection:
             "referenced_table": "Customers",
             "referenced_column": "id",
         }]
-        _, params = cursor.executed[0]
-        assert params == ("dbo", "Orders")
+        query, params = cursor.executed[0]
+        # Both sides of the key are pinned to the loaded schema.
+        assert "rs.name = %s" in query
+        assert params == ("dbo", "dbo", "Orders")
 
     def test_relationships_grouped_by_constraint(self):
         """Composite keys are grouped under one constraint name."""
