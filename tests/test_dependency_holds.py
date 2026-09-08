@@ -76,8 +76,7 @@ def _litellm_openai_specifier() -> SpecifierSet:
 @pytest.mark.unit
 def test_openai_major_is_held_exactly_while_litellm_forbids_it():
     specifier = _litellm_openai_specifier()
-    # prereleases=True so a 3.0.0rc release does not read as "still forbidden".
-    litellm_allows_openai_3 = specifier.contains(Version("3.0.0"), prereleases=True)
+    litellm_allows_openai_3 = specifier.contains(Version("3.0.0"))
     held = "openai" in _major_holds("uv", "/")
 
     if litellm_allows_openai_3:
@@ -114,9 +113,47 @@ def _typescript_eslint_peer_range() -> str:
 
 
 def _lowest_excluded_major(peer_range: str) -> int | None:
-    """Smallest major the range rules out via a ``<`` bound, or None when unbounded above."""
-    bounds = re.findall(r"<\s*=?\s*(\d+)\.", peer_range)
-    return min(int(bound) for bound in bounds) if bounds else None
+    """Smallest major the range rules out entirely, or None when unbounded above.
+
+    Upper bounds get written several ways and the difference matters: ``<7``,
+    ``<7.0`` and ``<7.0.0`` all rule out every 7.x, while ``<7.1`` and ``<=7.1``
+    still admit 7.0, so the first major they exclude outright is 8.
+    """
+    for unsupported, description in (("||", "an alternation"), (" - ", "a hyphen range")):
+        assert unsupported not in peer_range, (
+            f"Peer range {peer_range!r} contains {description}, which this check cannot read - "
+            "a branch admitting the next major would be invisible to it. Read the range and "
+            "update the hold in .github/dependabot.yml by hand."
+        )
+
+    excluded = []
+    for operator, major, tail in re.findall(r"(<=?)\s*v?(\d+)((?:\.\d+)*)", peer_range):
+        # `<=` always leaves its own major partly allowed, and so does a `<`
+        # bound with a non-zero minor or patch.
+        admits_part_of_major = operator == "<=" or any(
+            part != "0" for part in tail.split(".")[1:]
+        )
+        excluded.append(int(major) + 1 if admits_part_of_major else int(major))
+    return min(excluded) if excluded else None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("peer_range", "expected"),
+    [
+        (">=4.8.4 <6.1.0", 7),  # the range in the lockfile today
+        (">=4.8.4 <7.0.0", 7),
+        (">=4.8.4 <7.0", 7),
+        (">=4.8.4 <7", 7),  # no dot: still excludes all of 7.x
+        (">=4.8.4 <=6.9.0", 7),  # <= leaves part of 6 allowed
+        (">=4.8.4 <=7", 8),
+        (">=4.8.4", None),  # genuinely unbounded above
+        ("*", None),
+    ],
+)
+def test_lowest_excluded_major_reads_every_upper_bound_spelling(peer_range, expected):
+    """The hold hangs off this parse, so a range it misreads silently stops enforcing."""
+    assert _lowest_excluded_major(peer_range) == expected
 
 
 def _declared_major(version_range: str) -> int:
