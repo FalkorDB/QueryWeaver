@@ -4,7 +4,9 @@ Two majors are pinned down in ``.github/dependabot.yml``:
 
 * ``openai`` 3, because litellm requires ``openai<3.0.0`` and the only litellm
   that permits openai 3 is 1.83.0, which carries two critical advisories.
-* ``typescript`` 7, because typescript-eslint's peer range stops below 6.1.
+* ``typescript`` 7, because typescript-eslint's peer range stops below 6.1 and
+  the app tsconfigs still set ``baseUrl``, which TS 7 removed. Either one alone
+  keeps the hold alive.
 
 An ``ignore`` entry is invisible: nothing fails when the upstream constraint is
 finally relaxed, so the hold quietly turns into an unexplained pin and the
@@ -31,6 +33,7 @@ except ImportError:  # pragma: no cover - unreachable on requires-python >=3.12
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEPENDABOT_CONFIG = REPO_ROOT / ".github" / "dependabot.yml"
+APP_DIR = REPO_ROOT / "app"
 APP_PACKAGE_JSON = REPO_ROOT / "app" / "package.json"
 APP_PACKAGE_LOCK = REPO_ROOT / "app" / "package-lock.json"
 
@@ -162,25 +165,58 @@ def _declared_major(version_range: str) -> int:
     return int(match.group(1))
 
 
+def _tsconfigs_setting_base_url() -> list[str]:
+    """App tsconfigs that still set ``baseUrl``, which TypeScript 7 removed (TS5101).
+
+    These files are JSONC - they carry ``/* ... */`` comments - so they are
+    scanned as text rather than parsed.
+    """
+    tsconfigs = sorted(APP_DIR.glob("tsconfig*.json"))
+    assert tsconfigs, (
+        f"No tsconfig*.json under {APP_DIR}. A baseUrl in those files is one of the two "
+        "reasons for the typescript major hold in .github/dependabot.yml, so re-read the "
+        "hold before trusting this test."
+    )
+    return [
+        path.name
+        for path in tsconfigs
+        if re.search(r'^\s*"baseUrl"\s*:', path.read_text(encoding="utf-8"), re.MULTILINE)
+    ]
+
+
 @pytest.mark.unit
-def test_typescript_major_is_held_exactly_while_typescript_eslint_rejects_it():
+def test_typescript_major_is_held_exactly_while_anything_blocks_it():
     peer_range = _typescript_eslint_peer_range()
     declared = json.loads(APP_PACKAGE_JSON.read_text(encoding="utf-8"))
     next_major = _declared_major(declared["devDependencies"]["typescript"]) + 1
 
     excluded_from = _lowest_excluded_major(peer_range)
-    peer_rejects_next_major = excluded_from is not None and excluded_from <= next_major
+    base_url_configs = _tsconfigs_setting_base_url()
+
+    blockers = []
+    if excluded_from is not None and excluded_from <= next_major:
+        blockers.append(
+            f"typescript-eslint declares peer typescript {peer_range!r}, which excludes "
+            f"{next_major}.x, so the bump breaks `npm install` with ERESOLVE"
+        )
+    if base_url_configs:
+        blockers.append(
+            f"{', '.join(base_url_configs)} still set baseUrl, which TypeScript 7 "
+            "removed (TS5101)"
+        )
+
     held = "typescript" in _major_holds("npm", "/app")
 
-    if peer_rejects_next_major:
+    if blockers:
         assert held, (
-            f"typescript-eslint still declares peer typescript {peer_range!r}, which excludes "
-            f"{next_major}.x, so the bump breaks `npm install` with ERESOLVE. Restore the typescript "
-            "major hold in .github/dependabot.yml instead of removing it."
+            f"typescript {next_major} is still blocked: "
+            + "; ".join(blockers)
+            + ". Restore the typescript major hold in .github/dependabot.yml instead of "
+            "removing it."
         )
     else:
         assert not held, (
-            f"typescript-eslint now declares peer typescript {peer_range!r}, which admits "
-            f"{next_major}.x, so the hold in .github/dependabot.yml is stale. Drop the typescript "
-            "ignore block and migrate (tsconfig.app.json still uses baseUrl, removed in TS 7)."
+            f"Nothing blocks typescript {next_major} any more - typescript-eslint's peer "
+            f"range {peer_range!r} admits it and no app tsconfig sets baseUrl - so the hold "
+            "in .github/dependabot.yml is stale. Drop the typescript ignore block."
         )

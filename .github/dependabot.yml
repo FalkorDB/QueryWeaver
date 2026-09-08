@@ -42,9 +42,9 @@ updates:
       # baseUrl, which TS 7 removed (TS5101). Nothing here runs tsc - the build
       # is `vite build` - so TypeScript exists only for typescript-eslint and
       # editors, and the major buys nothing until typescript-eslint catches up.
-      # Remove this block when typescript-eslint's peer range admits TS 7 -
-      # tests/test_dependency_holds.py fails for as long as the hold and that
-      # peer range disagree.
+      # Remove this block once typescript-eslint's peer range admits TS 7 *and*
+      # the tsconfigs drop baseUrl - tests/test_dependency_holds.py fails for as
+      # long as this hold and those two blockers disagree.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
     groups:
