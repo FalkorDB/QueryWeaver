@@ -15,11 +15,38 @@ updates:
     target-branch: "staging"
     schedule:
       interval: "weekly"
+    ignore:
+      # openai 3 cannot be adopted while litellm caps it: every litellm from
+      # 1.96.2 onward requires "openai>=2.20.0,<3.0.0". The only release whose
+      # constraint admits openai 3 is litellm 1.83.0, which is also the floor in
+      # pyproject.toml, so resolving openai 3 silently drags litellm down to
+      # 1.83.0 - a version carrying 11 advisories, 2 of them critical (SQL
+      # injection in proxy API key verification, authentication bypass via host
+      # header injection). That downgrade, not openai itself, is what fails
+      # dependency-review. 2.x updates still come through.
+      # Remove this block when litellm allows openai 3 -
+      # tests/test_dependency_holds.py fails for as long as the hold and
+      # litellm's own metadata disagree.
+      - dependency-name: "openai"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "npm"
     directory: "/app"
     target-branch: "staging"
     schedule:
       interval: "weekly"
+    ignore:
+      # TypeScript 7 (the native Go port) ships no programmatic compiler API, so
+      # typescript-eslint cannot support it: the latest release (8.70.0) still
+      # declares "typescript: >=4.8.4 <6.1.0" and there is no 9.x line, which
+      # makes `npm install` fail with ERESOLVE. tsconfig.app.json also uses
+      # baseUrl, which TS 7 removed (TS5101). Nothing here runs tsc - the build
+      # is `vite build` - so TypeScript exists only for typescript-eslint and
+      # editors, and the major buys nothing until typescript-eslint catches up.
+      # Remove this block when typescript-eslint's peer range admits TS 7 -
+      # tests/test_dependency_holds.py fails for as long as the hold and that
+      # peer range disagree.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     groups:
       npm-minor-patch:
         update-types:
