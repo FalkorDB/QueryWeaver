@@ -54,10 +54,51 @@ def _major_holds(ecosystem: str, directory: str) -> set[str]:
     )
     return {
         ignored["dependency-name"]
+        # `or []` rather than a default, because these keys can be present *and*
+        # empty. Deleting the last entry but leaving `ignore:` behind is exactly
+        # how a hold gets dropped, and YAML reads that as None - which must mean
+        # "nothing held", not raise TypeError out of the guard.
         for update in entries
-        for ignored in update.get("ignore", [])
-        if MAJOR_UPDATE in ignored.get("update-types", [])
+        for ignored in (update.get("ignore") or [])
+        if MAJOR_UPDATE in (ignored.get("update-types") or [])
     }
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("ignore_block", "expected"),
+    [
+        (
+            '    ignore:\n'
+            '      - dependency-name: "typescript"\n'
+            '        update-types: ["version-update:semver-major"]\n',
+            {"typescript"},
+        ),
+        ("    ignore:\n", set()),
+        ("", set()),
+        (
+            '    ignore:\n      - dependency-name: "typescript"\n        update-types:\n',
+            set(),
+        ),
+    ],
+    ids=["held", "ignore-key-left-empty", "no-ignore-key", "update-types-left-empty"],
+)
+def test_reading_holds_survives_a_half_deleted_ignore_block(
+    ignore_block, expected, tmp_path, monkeypatch
+):
+    """Emptying a key without removing it is how a hold gets dropped by hand.
+
+    YAML reads a present-but-empty key as None, and iterating that raises
+    TypeError - which would replace this guard's explanatory failure with a
+    stack trace at exactly the moment someone is editing the hold.
+    """
+    config = tmp_path / "dependabot.yml"
+    config.write_text(
+        'version: 2\nupdates:\n  - package-ecosystem: "npm"\n    directory: "/app"\n' + ignore_block,
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("tests.test_dependency_holds.DEPENDABOT_CONFIG", config)
+    assert _major_holds("npm", "/app") == expected
 
 
 def _litellm_openai_specifier() -> SpecifierSet:
