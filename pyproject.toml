@@ -66,6 +66,9 @@ dev = [
     "pylint~=4.0.3",
     "playwright>=1.60,<1.63",
     "pytest-playwright>=0.8,<0.10",
+    # tests/test_dependency_holds.py parses .github/dependabot.yml. It resolved
+    # transitively before, so a lock refresh could have taken it away.
+    "pyyaml>=6.0",
 ]
 
 # All dependencies (server + dev)
@@ -87,6 +90,7 @@ dev = [
     "playwright>=1.60,<1.63",
     "pytest-playwright>=0.8,<0.10",
     "pytest-asyncio~=1.4.0",
+    "pyyaml>=6.0",
 ]
 
 [build-system]

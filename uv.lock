@@ -2237,6 +2237,7 @@ all = [
     { name = "pytest-asyncio" },
     { name = "pytest-playwright" },
     { name = "python-multipart" },
+    { name = "pyyaml" },
     { name = "snowflake-connector-python" },
     { name = "uvicorn" },
 ]
@@ -2246,6 +2247,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-playwright" },
+    { name = "pyyaml" },
 ]
 memory = [
     { name = "graphiti-core" },
@@ -2271,6 +2273,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-playwright" },
+    { name = "pyyaml" },
 ]
 
 [package.metadata]
@@ -2310,6 +2313,8 @@ requires-dist = [
     { name = "python-dotenv", specifier = "~=1.2.2" },
     { name = "python-multipart", marker = "extra == 'all'", specifier = "~=0.0.32" },
     { name = "python-multipart", marker = "extra == 'server'", specifier = "~=0.0.32" },
+    { name = "pyyaml", marker = "extra == 'all'", specifier = ">=6.0" },
+    { name = "pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "snowflake-connector-python", marker = "extra == 'all'", specifier = ">=4.6,<4.8" },
     { name = "snowflake-connector-python", marker = "extra == 'server'", specifier = ">=4.6,<4.8" },
     { name = "sqlglot", specifier = ">=30.12.0" },
@@ -2326,6 +2331,7 @@ dev = [
     { name = "pytest", specifier = ">=9.0.3,<9.2.0" },
     { name = "pytest-asyncio", specifier = "~=1.4.0" },
     { name = "pytest-playwright", specifier = ">=0.8,<0.10" },
+    { name = "pyyaml", specifier = ">=6.0" },
 ]
 
 [[package]]
