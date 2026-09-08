@@ -162,6 +162,24 @@ two independently while the driver's timeout stays global.
 uv run --extra server --extra dev pytest tests/test_sqlserver_loader.py -v
 ```
 
+`tests/test_sqlserver_integration.py` runs the same introspection against a real
+server, because a fake cursor cannot tell you whether the SQL parses or what the
+driver decodes a column into. It builds a deliberately awkward schema — non-ASCII
+table and column names, a `]` and a `.` in a table name, `xml`/`text`/`geography`
+columns, a `uniqueidentifier`, a composite key and a cross-schema foreign key —
+and asserts the tables load, the non-comparable types degrade to no samples, and
+the cross-schema key is excluded from both entities and relationships.
+
+It skips unless `SQLSERVER_TEST_URL` is set:
+
+```bash
+docker run -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD='Str0ng!Passw0rd' \
+    -p 1433:1433 -d mcr.microsoft.com/mssql/server:2022-latest
+
+SQLSERVER_TEST_URL='sqlserver://sa:Str0ng!Passw0rd@localhost:1433/master' \
+    uv run --extra server --extra dev pytest tests/test_sqlserver_integration.py -v
+```
+
 ## Limitations
 
 - One schema per connection (defaults to `dbo`); connect again to load another

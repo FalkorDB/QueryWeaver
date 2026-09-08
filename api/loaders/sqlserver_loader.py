@@ -223,8 +223,18 @@ class SQLServerLoader(BaseLoader):
 
         # The cursor is opened with ``as_dict=True`` so rows are keyed by column
         # name only — pymssql's ``row2dict`` strips positional keys.
+        #
+        # Serialized here because the base wrapper keeps a sample only when it
+        # is already a str/int/float, so the driver's own objects — uuid.UUID
+        # for ``uniqueidentifier``, datetime, Decimal, bytes — would otherwise
+        # be dropped and the column would silently describe itself with no
+        # examples at all.
         sample_results = cursor.fetchall()
-        return [row[col_name] for row in sample_results if row[col_name] is not None]
+        return [
+            SQLServerLoader._serialize_value(row[col_name])
+            for row in sample_results
+            if row[col_name] is not None
+        ]
 
     @classmethod
     def extract_sample_values_for_column(

@@ -367,6 +367,20 @@ class TestSampleQuery:
         assert SQLServerLoader.extract_sample_values_for_column(
             cursor, "dbo.T", "n") == ["1", "2"]
 
+    def test_driver_objects_are_serialized_before_the_base_filter(self):
+        """The base wrapper keeps a sample only if it is a str/int/float.
+
+        Regression test: pymssql hands back ``uuid.UUID`` for
+        ``uniqueidentifier``, so every GUID column described itself with no
+        sample values at all. Caught by the integration suite, not by a fake
+        cursor that had only ever been fed strings.
+        """
+        cursor = FakeCursor([[
+            {"v": uuid.UUID("3f2504e0-4f89-11d3-9a0c-0305e82c3301")},
+        ]])
+        assert SQLServerLoader.extract_sample_values_for_column(
+            cursor, "dbo.T", "v") == ["3f2504e0-4f89-11d3-9a0c-0305e82c3301"]
+
     @pytest.mark.parametrize("error", [
         pymssql.Error("DISTINCT is not defined for xml"),
         ValueError("Invalid table name"),
