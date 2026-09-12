@@ -26,7 +26,7 @@ classifiers = [
 # not optional. redis is provided transitively by falkordb.
 dependencies = [
     "litellm>=1.83.0",
-    "falkordb~=1.6.1",
+    "falkordb>=1.6.1,<1.8.0",
     "psycopg2-binary~=2.9.12",
     "pymysql~=1.2.0",
     "jsonschema~=4.26.0",
@@ -53,7 +53,7 @@ server = [
     "itsdangerous~=2.2.0",
     "python-multipart~=0.0.32",
     "jinja2~=3.1.4",
-    "fastmcp>=3.4.4,<4.0.0",
+    "fastmcp>=3.4.4,<5.0.0",
     "graphiti-core>=0.29.1",
     "snowflake-connector-python>=4.6,<4.8",
     "aiohttp>=3.14.0",
