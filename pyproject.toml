@@ -56,6 +56,7 @@ server = [
     "fastmcp>=3.4.4,<4.0.0",
     "graphiti-core>=0.29.1",
     "snowflake-connector-python>=4.6,<4.8",
+    "pymssql~=2.3.13",
     "aiohttp>=3.14.0",
 ]
 

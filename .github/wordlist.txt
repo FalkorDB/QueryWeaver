@@ -124,6 +124,14 @@ SDK
 Dependabot
 PyPI
 pypi
+pymssql
+sqlserver
+SQLServerLoader
+dbo
+tsql
+hostname
+TLS
+sqlglot
 signup
 SMTP
 outbox
