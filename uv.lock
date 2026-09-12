@@ -568,15 +568,15 @@ wheels = [
 
 [[package]]
 name = "falkordb"
-version = "1.6.2"
+version = "1.7.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "python-dateutil" },
     { name = "redis" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/00/31/53c339695148ac01c7c2032f1dc06e69a6ddc8a276bd85d2eddacc2e38e8/falkordb-1.6.2.tar.gz", hash = "sha256:73dbbd9df61c56f45cf2fe8b9028888ad4892712790ce4e40d7ceabe118609ae", size = 107376, upload-time = "2026-07-19T12:22:30.476Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/98/d3/799a947869d9b8dd4cfcc6dc9654869874b1130375a78033b5a92362dc67/falkordb-1.7.1.tar.gz", hash = "sha256:09dd89dfb668c6fe7741c0ec67fcdb5c7a4b009e87f065a644199170f4fa5766", size = 121375, upload-time = "2026-08-13T13:17:39.652Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ff/05/6b6f02a0d16547b492a925d8165091b90723729f2a15b877c1f4fb237128/falkordb-1.6.2-py3-none-any.whl", hash = "sha256:b17571ebf4d65dbd3588e8c470b16f0ddfea820e0a15ed73af0dd1a4728b480d", size = 37964, upload-time = "2026-07-19T12:22:29.225Z" },
+    { url = "https://files.pythonhosted.org/packages/bf/43/41967fad8b625e2b319e03a1c8897535dd1e05723a051342422b48b870da/falkordb-1.7.1-py3-none-any.whl", hash = "sha256:0e62d535edd5abf7b6d35e2493fba71118734313436ff803fcd5d1b20e9e2194", size = 38283, upload-time = "2026-08-13T13:17:38.257Z" },
 ]
 
 [[package]]
@@ -2282,7 +2282,7 @@ requires-dist = [
     { name = "aiohttp", marker = "extra == 'server'", specifier = ">=3.14.0" },
     { name = "authlib", marker = "extra == 'all'", specifier = "~=1.7.0" },
     { name = "authlib", marker = "extra == 'server'", specifier = "~=1.7.0" },
-    { name = "falkordb", specifier = "~=1.6.1" },
+    { name = "falkordb", specifier = ">=1.6.1,<1.8.0" },
     { name = "fastapi", marker = "extra == 'all'", specifier = ">=0.136.1,<0.142.0" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.136.1,<0.142.0" },
     { name = "fastmcp", marker = "extra == 'all'", specifier = ">=3.4.4,<4.0.0" },
@@ -2336,11 +2336,11 @@ dev = [
 
 [[package]]
 name = "redis"
-version = "7.3.0"
+version = "8.1.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/da/82/4d1a5279f6c1251d3d2a603a798a1137c657de9b12cfc1fba4858232c4d2/redis-7.3.0.tar.gz", hash = "sha256:4d1b768aafcf41b01022410b3cc4f15a07d9b3d6fe0c66fc967da2c88e551034", size = 4928081, upload-time = "2026-03-06T18:18:16.287Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a8/99/604f0b666d4c616d891cf77ebb9db6bb21601344c051aebf1b72b9ff915f/redis-8.1.0.tar.gz", hash = "sha256:6e1a19beef9225c83efd689c7e6b7da2d5215b1f42cd13b7fc3714d0a09c7b25", size = 5254356, upload-time = "2026-07-30T08:51:00.269Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f0/28/84e57fce7819e81ec5aa1bd31c42b89607241f4fb1a3ea5b0d2dbeaea26c/redis-7.3.0-py3-none-any.whl", hash = "sha256:9d4fcb002a12a5e3c3fbe005d59c48a2cc231f87fbb2f6b70c2d89bb64fec364", size = 404379, upload-time = "2026-03-06T18:18:14.583Z" },
+    { url = "https://files.pythonhosted.org/packages/66/9d/c5731f6e3608663d4d3656fd8d3aecee8b509c3082818f5a13eae925baea/redis-8.1.0-py3-none-any.whl", hash = "sha256:a4fe1aac3d3b3cc791d4b3d5931c5a956045dc951ee74d1c913ee3ac4d2ee9fb", size = 560618, upload-time = "2026-07-30T08:50:58.497Z" },
 ]
 
 [[package]]
