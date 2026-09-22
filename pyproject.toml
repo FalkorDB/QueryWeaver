@@ -64,7 +64,7 @@ dev = [
     "pytest>=9.0.3,<9.2.0",
     "pytest-asyncio~=1.4.0",
     "pylint~=4.0.3",
-    "playwright>=1.60,<1.63",
+    "playwright>=1.60,<1.64",
     "pytest-playwright>=0.8,<0.10",
     # tests/test_dependency_holds.py parses .github/dependabot.yml. It resolved
     # transitively before, so a lock refresh could have taken it away.
@@ -87,7 +87,7 @@ Issues = "https://github.com/FalkorDB/QueryWeaver/issues"
 dev = [
     "pytest>=9.0.3,<9.2.0",
     "pylint~=4.0.3",
-    "playwright>=1.60,<1.63",
+    "playwright>=1.60,<1.64",
     "pytest-playwright>=0.8,<0.10",
     "pytest-asyncio~=1.4.0",
     "pyyaml>=6.0",
