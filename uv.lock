@@ -2025,7 +2025,7 @@ crypto = [
 
 [[package]]
 name = "pylint"
-version = "4.0.7"
+version = "4.0.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "astroid" },
@@ -2036,9 +2036,9 @@ dependencies = [
     { name = "platformdirs" },
     { name = "tomlkit" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/de/92/98dace02f2d11b88160354c53944f77ea7327aa78bce1c75971e7aaa4347/pylint-4.0.7.tar.gz", hash = "sha256:9b2d1d15791c84b77a4fe2aafe8f0d9570717e2dea06d53b19c105cf60275a52", size = 1594770, upload-time = "2026-08-09T19:13:23.289Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e0/5e/d5ec2c861010cf8577a3e5baaf2405fdf1004f1657d9245c4efb006c1dfd/pylint-4.0.9.tar.gz", hash = "sha256:6f1305780229ae720e89b8aff2b3ff857cbb268fbab98c8b586960267667ad34", size = 1604187, upload-time = "2026-09-23T15:26:43.144Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e0/b0/3a8040e53df6c5c1e04b0e23ed53fdbeb64f333723a334d313fba2f581ce/pylint-4.0.7-py3-none-any.whl", hash = "sha256:be4a3111557a614411ed1fc89347ce4a8e1013a59e1f33d11485227a02e3304d", size = 539710, upload-time = "2026-08-09T19:13:21.228Z" },
+    { url = "https://files.pythonhosted.org/packages/66/46/12e94ae1f9db89152223bdb17920b12c79e94ac51e19dce1da9fb63627b0/pylint-4.0.9-py3-none-any.whl", hash = "sha256:c4ba5bbaf1e70ecf05f08cd7d6091ea04824b79a2b2d9f5b10dc25fc34cb1124", size = 542068, upload-time = "2026-09-23T15:26:41.626Z" },
 ]
 
 [[package]]
