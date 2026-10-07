@@ -151,17 +151,19 @@ async def list_databases(user_id: str, general_prefix: Optional[str] = None, db=
     """
     user_graphs = await resolve_db(db).list_graphs()
 
-    # Only include graphs that start with user_id + '_', and strip the prefix
-    filtered_graphs = [
+    # Only include graphs that start with user_id + '_', and strip the prefix.
+    # Sorted because GRAPH.LIST order is not specified and differs between
+    # FalkorDB versions, and the UI auto-selects the first graph.
+    filtered_graphs = sorted(
         graph[len(f"{user_id}_") :]
         for graph in user_graphs
         if graph.startswith(f"{user_id}_")
-    ]
+    )
 
     if general_prefix:
-        demo_graphs = [
+        demo_graphs = sorted(
             graph for graph in user_graphs if graph.startswith(general_prefix)
-        ]
+        )
         filtered_graphs = filtered_graphs + demo_graphs
 
     return filtered_graphs
