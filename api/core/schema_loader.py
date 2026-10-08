@@ -32,7 +32,9 @@ def _step_start(steps_counter: int) -> dict[str, str]:
         "message": f"Step {steps_counter}: Starting database connection",
     }
 
-_KNOWN_DB_SCHEMES = ("postgresql://", "postgres://", "mysql://", "snowflake://")
+_KNOWN_DB_SCHEMES = (
+    "postgresql://", "postgres://", "mysql://", "snowflake://", "sqlserver://",
+)
 
 
 def _step_detect_db_type(steps_counter: int, url: str) -> tuple[type[BaseLoader], dict[str, str]]:
