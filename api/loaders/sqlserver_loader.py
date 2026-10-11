@@ -404,9 +404,14 @@ class SQLServerLoader(BaseLoader):
         conn = None
         cursor = None
         try:
-            conn = pymssql.connect(  # pylint: disable=no-member
-                **SQLServerLoader._with_timeouts(conn_params)
-            )
+            # Raised as its own type so ``load`` can tell an unreachable server
+            # or rejected login apart from a catalog query failing afterwards.
+            try:
+                conn = pymssql.connect(  # pylint: disable=no-member
+                    **SQLServerLoader._with_timeouts(conn_params)
+                )
+            except pymssql.Error as e:
+                raise SQLServerConnectionError(str(e)) from e
             cursor = conn.cursor(as_dict=True)
 
             foreign_keys = SQLServerLoader.extract_foreign_keys(cursor, schema)
@@ -460,9 +465,12 @@ class SQLServerLoader(BaseLoader):
             yield True, (f"SQL Server schema loaded successfully. "
                          f"Found {len(entities)} tables.")
 
-        except pymssql.Error as e:
+        except SQLServerConnectionError as e:
             logging.error("SQL Server connection error: %s", e)
             yield False, "Failed to connect to SQL Server database"
+        except pymssql.Error as e:
+            logging.error("SQL Server schema introspection error: %s", e)
+            yield False, "Failed to read SQL Server database schema"
         except Exception as e:  # pylint: disable=broad-exception-caught
             logging.error("Error loading SQL Server schema: %s", e)
             yield False, "Failed to load SQL Server database schema"

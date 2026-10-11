@@ -948,7 +948,26 @@ class TestDriverErrorsDuringLoad:
                     "user1", "sqlserver://sa:pw@localhost/testdb"):
                 results.append((success, message))
 
-        assert results[-1][0] is False
+        assert results[-1] == (False, "Failed to connect to SQL Server database")
+
+    @pytest.mark.asyncio
+    async def test_catalog_query_error_is_not_reported_as_a_connect_failure(self):
+        """A connection that succeeds but then fails a catalog query (e.g. no
+        permission on ``sys.*``) says the schema could not be read."""
+        import pymssql  # pylint: disable=import-outside-toplevel
+
+        cursor = FakeCursor()
+        cursor.execute = MagicMock(
+            side_effect=pymssql.ProgrammingError("permission denied on sys.tables"))
+        conn = FakeConnection(cursor)
+        results = []
+        with patch("pymssql.connect", return_value=conn):
+            async for success, message in SQLServerLoader.load(
+                    "user1", "sqlserver://sa:pw@localhost/testdb"):
+                results.append((success, message))
+
+        assert results[-1] == (False, "Failed to read SQL Server database schema")
+        assert conn.closed and cursor.closed
 
     @pytest.mark.asyncio
     async def test_driver_error_during_a_query_is_wrapped(self):
