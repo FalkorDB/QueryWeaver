@@ -78,11 +78,15 @@ def _schema():
         conn.commit()
         yield name
     finally:
-        with conn.cursor() as cur:
-            for target in (name, other):
-                _drop_schema(cur, target)
-        conn.commit()
-        conn.close()
+        # A cleanup failure must neither hide the error that stopped the
+        # fixture build nor leave the connection open.
+        try:
+            with conn.cursor() as cur:
+                for target in (name, other):
+                    _drop_schema(cur, target)
+            conn.commit()
+        finally:
+            conn.close()
 
 
 def _build_fixture(cur, schema: str, other: str) -> None:
@@ -164,9 +168,28 @@ def _build_fixture(cur, schema: str, other: str) -> None:
         )
     """)
 
+    # A unique index whose INCLUDE column is stored with it but is not a key.
+    cur.execute(f"""
+        CREATE TABLE {_q(schema)}.[Coupon] (
+            id INT NOT NULL PRIMARY KEY,
+            code NVARCHAR(20) NOT NULL,
+            note NVARCHAR(50) NULL
+        )
+    """)
+    cur.execute(
+        f"CREATE UNIQUE INDEX ux_coupon_code ON {_q(schema)}.[Coupon] (code) INCLUDE (note)"
+    )
+
 
 def _drop_schema(cur, schema: str) -> None:
-    """Drop every table in *schema*, then the schema itself."""
+    """Drop every table in *schema*, then the schema itself.
+
+    A no-op for a schema that was never created, so a fixture that failed
+    halfway can still be cleaned up.
+    """
+    cur.execute("SELECT 1 FROM sys.schemas WHERE name = %s", (schema,))
+    if cur.fetchone() is None:
+        return
     cur.execute("""
         SELECT t.name FROM sys.tables t
         JOIN sys.schemas s ON t.schema_id = s.schema_id
@@ -211,6 +234,7 @@ class TestIntrospectionAgainstRealServer:
         entities, _relationships = introspection
         assert set(entities) == {
             GERMAN, HEBREW, CJK, BRACKETED, DOTTED, "Region", "Store", "CrossRef",
+            "Coupon",
         }
 
     def test_non_comparable_types_cost_only_their_own_column(self, introspection):
@@ -263,3 +287,9 @@ class TestIntrospectionAgainstRealServer:
         assert entities[GERMAN]['columns']['id']['key'] == "PRIMARY KEY"
         assert entities[HEBREW]['columns']['kunde_id']['key'] == "FOREIGN KEY"
         assert entities[CJK]['columns']['label']['key'] == "NONE"
+
+    def test_an_included_column_is_not_a_unique_key(self, introspection):
+        """Only the key columns of a unique index count, not its INCLUDE list."""
+        entities, _relationships = introspection
+        assert entities["Coupon"]['columns']['code']['key'] == "UNIQUE KEY"
+        assert entities["Coupon"]['columns']['note']['key'] == "NONE"

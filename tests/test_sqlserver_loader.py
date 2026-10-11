@@ -281,6 +281,19 @@ class TestParseUrl:
         assert "encryption" not in SQLServerLoader._parse_sqlserver_url(url)
 
     @pytest.mark.parametrize("url", [
+        "sqlserver://sa:pw@localhost/testdb/",
+        "sqlserver://sa:pw@localhost/testdb/extra",
+    ])
+    def test_only_the_first_path_segment_names_the_database(self, url):
+        """A trailing slash or extra segment does not leak into the name."""
+        assert SQLServerLoader._parse_sqlserver_url(url)["database"] == "testdb"
+
+    def test_explicit_port_zero_is_rejected(self):
+        """Port 0 is an error, not a silent switch to 1433."""
+        with pytest.raises(ValueError, match="port"):
+            SQLServerLoader._parse_sqlserver_url("sqlserver://sa:pw@localhost:0/testdb")
+
+    @pytest.mark.parametrize("url", [
         "mysql://sa:pw@localhost/testdb",
         "sqlserver://localhost/testdb",
         "sqlserver://sa:pw@localhost/",
@@ -611,6 +624,11 @@ class TestSchemaModifyingQuery:
         # No specific pattern covers these; the keyword alone still flags them.
         ("CREATE PROCEDURE p AS SELECT 1", "CREATE"),
         ("DROP TRIGGER tr", "DROP"),
+        # Renames are a stored procedure call in T-SQL.
+        ("EXEC sp_rename 'dbo.t', 't2'", "RENAME"),
+        ("execute sys.sp_rename 't.c', 'c2', 'COLUMN'", "RENAME"),
+        ("sp_rename 't', 't2'", "RENAME"),
+        ("EXEC [dbo].[sp_rename] 't', 't2'", "RENAME"),
     ])
     def test_detects_ddl(self, query, expected_op):
         """DDL statements are reported as schema-modifying."""
@@ -619,6 +637,8 @@ class TestSchemaModifyingQuery:
         assert op == expected_op
 
     @pytest.mark.parametrize("query", [
+        "EXEC sp_renamed_report",
+        "EXEC sp_help 't'",
         "SELECT * FROM t",
         "INSERT INTO t VALUES (1)",
         "",

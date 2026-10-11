@@ -50,6 +50,24 @@ const snowflakeUrlPlaceholder =
 const getDbProfile = (dbType: string) =>
   DB_PROFILES[dbType as DbProfileKey] ?? DB_PROFILES.postgresql;
 
+/**
+ * Returns why *schema* is rejected for *dbType*, or '' when it is acceptable.
+ * SQL Server mirrors the backend's validate_ident allow-list; PostgreSQL keeps
+ * the stricter rule because the name is spliced into a search_path option.
+ */
+const getSchemaError = (dbType: string, schema: string): string => {
+  const value = schema.trim();
+  if (!value) return '';
+  if (dbType === 'sqlserver') {
+    return /^[A-Za-z0-9_$#@ .-]{1,128}$/.test(value)
+      ? ''
+      : 'Schema name can only contain letters, digits, underscore, dollar, hash, at-sign, space, dot, and dash (max 128)';
+  }
+  return /^[A-Za-z0-9_]+$/.test(value)
+    ? ''
+    : 'Schema name can only contain letters, digits, and underscores';
+};
+
 const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
   const [connectionMode, setConnectionMode] = useState<'url' | 'manual'>('url');
   const [selectedDatabase, setSelectedDatabase] = useState("");
@@ -60,7 +78,6 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [schema, setSchema] = useState("");
-  const [schemaError, setSchemaError] = useState("");
   // Snowflake-specific fields
   const [account, setAccount] = useState("");
   const [snowflakeSchema, setSnowflakeSchema] = useState("PUBLIC");
@@ -99,6 +116,8 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
       return [...prev, { message, status }];
     });
   };
+
+  const schemaError = getSchemaError(selectedDatabase, schema);
 
   const handleConnect = async () => {
     // The port field shows the vendor default as a placeholder; treat that hint
@@ -176,8 +195,9 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
 
           // Append the schema for the vendors that support selecting one
           if ((selectedDatabase === 'postgresql' || selectedDatabase === 'sqlserver') && schema.trim()) {
-            if (/[^a-zA-Z0-9_]/.test(schema.trim())) {
-              throw new Error('Schema name can only contain letters, digits, and underscores');
+            const invalidSchema = getSchemaError(selectedDatabase, schema);
+            if (invalidSchema) {
+              throw new Error(invalidSchema);
             }
             if (selectedDatabase === 'postgresql') {
               builtUrl.searchParams.set('options', `-csearch_path=${schema.trim()}`);
@@ -271,7 +291,6 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
               setUsername("");
               setPassword("");
               setSchema("");
-              setSchemaError("");
               setAccount("");
               setSnowflakeSchema("PUBLIC");
               setWarehouse("COMPUTE_WH");
@@ -646,15 +665,7 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
                         data-testid="schema-input"
                         placeholder={selectedDatabase === 'sqlserver' ? 'dbo' : 'public'}
                         value={schema}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setSchema(val);
-                          if (val && /[^a-zA-Z0-9_]/.test(val)) {
-                            setSchemaError('Schema name can only contain letters, digits, and underscores');
-                          } else {
-                            setSchemaError('');
-                          }
-                        }}
+                        onChange={(e) => setSchema(e.target.value)}
                         className={`bg-muted border-border ${schemaError ? 'border-red-500' : ''}`}
                       />
                       {schemaError ? (

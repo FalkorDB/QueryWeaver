@@ -337,16 +337,23 @@ class SQLServerLoader(BaseLoader):
         if not parsed.hostname:
             raise ValueError("SQL Server URL must include a host")
 
-        database = unquote(parsed.path or '').lstrip('/')
+        # Only the first path segment names the database; a trailing slash or
+        # extra segments would otherwise end up in the database name.
+        database = unquote(parsed.path or '').strip('/').split('/')[0]
         if not database:
             raise ValueError("SQL Server URL must include database name")
 
         if not parsed.username:
             raise ValueError("SQL Server URL must include username and host")
 
+        # ``parsed.port or DEFAULT_PORT`` would quietly swap an explicit port 0
+        # for 1433 and connect to a server the URL never named.
+        if parsed.port == 0:
+            raise ValueError("SQL Server URL port must be between 1 and 65535")
+
         params: Dict[str, Any] = {
             'server': parsed.hostname,
-            'port': parsed.port or DEFAULT_PORT,
+            'port': DEFAULT_PORT if parsed.port is None else parsed.port,
             'user': unquote(parsed.username),
             'password': unquote(parsed.password) if parsed.password else "",
             'database': database,
@@ -608,7 +615,10 @@ class SQLServerLoader(BaseLoader):
                 SELECT DISTINCT ic.object_id, ic.column_id
                 FROM sys.index_columns ic
                 JOIN sys.indexes i ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+                -- key_ordinal 0 marks an INCLUDE column, which is not part
+                -- of the unique key.
                 WHERE i.is_unique = 1 AND i.is_primary_key = 0
+                  AND ic.key_ordinal > 0
             ) uc ON c.object_id = uc.object_id AND c.column_id = uc.column_id
             LEFT JOIN sys.extended_properties ep
                 ON ep.major_id = c.object_id
@@ -749,6 +759,10 @@ class SQLServerLoader(BaseLoader):
 
         # Check for basic DDL operations
         first_word = normalized_query.split()[0] if normalized_query.split() else ""
+        # Renames in T-SQL go through a stored procedure, not a DDL keyword.
+        if re.match(r'^(EXEC(UTE)?\s+)?(\[?(DBO|SYS)\]?\.)?\[?SP_RENAME\b', normalized_query):
+            return True, "RENAME"
+
         if first_word in SQLServerLoader.SCHEMA_MODIFYING_OPERATIONS:
             # Additional pattern matching for more precise detection
             for pattern in SQLServerLoader.SCHEMA_PATTERNS:

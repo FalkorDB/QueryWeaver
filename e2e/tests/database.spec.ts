@@ -339,7 +339,8 @@ test.describe('Database Connection Tests', () => {
     await homePage.selectConnectionModeManual();
     // Port left empty: the vendor default (1433) must be used.
     await homePage.enterConnectionDetails('db.example.com', '', 'sales', 'sa', 'p@ss');
-    await homePage.enterSchema('reporting');
+    // A dash is legal in a SQL Server schema; only PostgreSQL forbids it.
+    await homePage.enterSchema('sales-data');
     await homePage.clickOnDatabaseModalConnect();
 
     await expect.poll(() => sentUrl).toBeDefined();
@@ -350,7 +351,7 @@ test.describe('Database Connection Tests', () => {
     expect(built.pathname).toBe('/sales');
     expect(built.username).toBe('sa');
     expect(decodeURIComponent(built.password)).toBe('p@ss');
-    expect(built.searchParams.get('schema')).toBe('reporting');
+    expect(built.searchParams.get('schema')).toBe('sales-data');
   });
 
   // Delete tests run serially to avoid conflicts

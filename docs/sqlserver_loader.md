@@ -52,8 +52,11 @@ sqlserver://appuser:s3cr3t@sql.example.com:1433/reporting?schema=dbo&encrypt=tru
 - Foreign keys, including composite keys — both sides must live in the selected schema
 
 All catalog queries join `sys.schemas` and bind the schema name as a parameter, so
-a connection only ever sees the requested schema. Tables in other schemas are not
-extracted and cannot collide with same-named tables in the selected schema.
+the loader extracts only the requested schema's tables, and tables in other schemas
+cannot collide with same-named tables in the selected schema. This scopes what is
+loaded into the graph, not what the login may access: generated queries run with the
+login's own permissions, so grant it access to the selected schema only if that is
+the boundary you want.
 
 ### Sample Values
 
@@ -98,14 +101,30 @@ returns `[` for `sqlserver`.
 
 ### From the API
 
+`POST /database` requires an API token and streams its progress as JSON messages
+separated by `|||FALKORDB_MESSAGE_BOUNDARY|||`:
+
 ```python
+import json
 import requests
 
+BOUNDARY = "|||FALKORDB_MESSAGE_BOUNDARY|||"
+
 response = requests.post(
-    "http://localhost:5000/api/database/connect",
+    "http://localhost:5000/database",
+    headers={"Authorization": "Bearer <API_TOKEN>"},
     json={"url": "sqlserver://sa:MyPassw0rd@localhost:1433/AdventureWorks"},
+    stream=True,
 )
-print(response.json())
+response.raise_for_status()
+
+buffer = ""
+for chunk in response.iter_content(chunk_size=1024, decode_unicode=True):
+    buffer += chunk
+    while BOUNDARY in buffer:
+        message, buffer = buffer.split(BOUNDARY, 1)
+        if message.strip():
+            print(json.loads(message))
 ```
 
 ## Implementation Details
