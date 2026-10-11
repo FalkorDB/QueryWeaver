@@ -26,7 +26,7 @@ classifiers = [
 # not optional. redis is provided transitively by falkordb.
 dependencies = [
     "litellm>=1.83.0",
-    "falkordb~=1.6.1",
+    "falkordb>=1.6.1,<1.8.0",
     "psycopg2-binary~=2.9.12",
     "pymysql~=1.2.0",
     "jsonschema~=4.26.0",
@@ -48,12 +48,12 @@ memory = [
 # repo/Docker checkout; the published SDK wheel does not include the server.
 server = [
     "fastapi>=0.136.1,<0.142.0",
-    "uvicorn>=0.46,<0.52",
-    "authlib~=1.7.0",
+    "uvicorn>=0.46,<0.54",
+    "authlib>=1.7,<1.9",
     "itsdangerous~=2.2.0",
     "python-multipart~=0.0.32",
     "jinja2~=3.1.4",
-    "fastmcp>=3.4.4,<4.0.0",
+    "fastmcp>=3.4.4,<5.0.0",
     "graphiti-core>=0.29.1",
     "snowflake-connector-python>=4.6,<4.8",
     "pymssql~=2.3.13",
@@ -65,8 +65,11 @@ dev = [
     "pytest>=9.0.3,<9.2.0",
     "pytest-asyncio~=1.4.0",
     "pylint~=4.0.3",
-    "playwright~=1.60.0",
+    "playwright>=1.60,<1.64",
     "pytest-playwright>=0.8,<0.10",
+    # tests/test_dependency_holds.py parses .github/dependabot.yml. It resolved
+    # transitively before, so a lock refresh could have taken it away.
+    "pyyaml>=6.0",
 ]
 
 # All dependencies (server + dev)
@@ -85,9 +88,10 @@ Issues = "https://github.com/FalkorDB/QueryWeaver/issues"
 dev = [
     "pytest>=9.0.3,<9.2.0",
     "pylint~=4.0.3",
-    "playwright~=1.60.0",
+    "playwright>=1.60,<1.64",
     "pytest-playwright>=0.8,<0.10",
     "pytest-asyncio~=1.4.0",
+    "pyyaml>=6.0",
 ]
 
 [build-system]
