@@ -52,7 +52,7 @@ sqlserver://appuser:s3cr3t@sql.example.com:1433/reporting?schema=dbo&encrypt=tru
 - Foreign keys, including composite keys — both sides must live in the selected schema
 
 All catalog queries join `sys.schemas` and bind the schema name as a parameter, so
-the loader extracts only the requested schema's tables, and tables in other schemas
+the loader extracts only the tables in the requested schema, and tables in other schemas
 cannot collide with same-named tables in the selected schema. This scopes what is
 loaded into the graph, not what the login may access: generated queries run with the
 login's own permissions, so grant it access to the selected schema only if that is
