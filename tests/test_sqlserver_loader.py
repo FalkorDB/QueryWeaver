@@ -29,6 +29,7 @@ from api.core.pipeline import get_database_type_and_loader  # noqa: E402  pylint
 from api.loaders.sqlserver_loader import (  # noqa: E402  pylint: disable=wrong-import-position
     SQLServerLoader,
     SQLServerQueryError,
+    _build_column_description,
     quote_ident,
     validate_catalog_ident,
     validate_ident,
@@ -584,6 +585,21 @@ class TestSerialization:
         assert SQLServerLoader._serialize_value(value) == expected
 
 
+class TestColumnDescription:
+    """The column description fed to the graph."""
+
+    def test_includes_key_nullability_and_default(self):
+        col = {"column_name": "status", "data_type": "varchar",
+               "column_comment": None, "column_default": "('new')"}
+        assert _build_column_description(col, "PRIMARY KEY", "NO") == (
+            "Column status of type varchar (PRIMARY KEY) (NOT NULL) (Default: ('new'))")
+
+    def test_comment_replaces_the_generated_text(self):
+        col = {"column_name": "status", "data_type": "varchar",
+               "column_comment": "Order status", "column_default": None}
+        assert _build_column_description(col, "NONE", "YES") == "Order status"
+
+
 class TestSchemaModifyingQuery:
     """DDL detection."""
 
@@ -592,6 +608,9 @@ class TestSchemaModifyingQuery:
         ("ALTER TABLE t ADD c INT", "ALTER"),
         ("DROP TABLE t", "DROP"),
         ("TRUNCATE TABLE t", "TRUNCATE"),
+        # No specific pattern covers these; the keyword alone still flags them.
+        ("CREATE PROCEDURE p AS SELECT 1", "CREATE"),
+        ("DROP TRIGGER tr", "DROP"),
     ])
     def test_detects_ddl(self, query, expected_op):
         """DDL statements are reported as schema-modifying."""

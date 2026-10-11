@@ -316,6 +316,43 @@ test.describe('Database Connection Tests', () => {
     expect(graphsList).not.toContain(invalidUrl);
   });
 
+  test('SQL Server manual entry -> builds sqlserver:// URL with default port and schema', async () => {
+    const homePage = await browser.createNewPage(HomePage, getBaseUrl(), 'e2e/.auth/user.json');
+    await browser.setPageToFullScreen();
+    const page = await browser.getPage();
+
+    // No SQL Server runs in the test stack, so capture the connect request
+    // instead of letting it reach the backend.
+    let sentUrl: string | undefined;
+    await page.route('**/database', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      sentUrl = route.request().postDataJSON().url;
+      return route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'intercepted by test' }),
+      });
+    });
+
+    await homePage.clickOnConnectDatabase();
+    await homePage.selectDatabaseType('sqlserver');
+    await homePage.selectConnectionModeManual();
+    // Port left empty: the vendor default (1433) must be used.
+    await homePage.enterConnectionDetails('db.example.com', '', 'sales', 'sa', 'p@ss');
+    await homePage.enterSchema('reporting');
+    await homePage.clickOnDatabaseModalConnect();
+
+    await expect.poll(() => sentUrl).toBeDefined();
+    const built = new URL(sentUrl!);
+    expect(built.protocol).toBe('sqlserver:');
+    expect(built.hostname).toBe('db.example.com');
+    expect(built.port).toBe('1433');
+    expect(built.pathname).toBe('/sales');
+    expect(built.username).toBe('sa');
+    expect(decodeURIComponent(built.password)).toBe('p@ss');
+    expect(built.searchParams.get('schema')).toBe('reporting');
+  });
+
   // Delete tests run serially to avoid conflicts
   test.describe.serial('Database Deletion Tests', () => {
     test('delete PostgreSQL database via UI -> verify removed via API', { tag: '@requires-ai' }, async () => {
