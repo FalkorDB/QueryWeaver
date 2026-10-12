@@ -28,7 +28,7 @@ Without it, the module skips.
 import json
 import os
 import uuid
-from urllib.parse import quote
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 import importlib
 
 import pytest
@@ -53,6 +53,14 @@ BRACKETED = "my]table"
 DOTTED = "weird.name"
 # A schema name with a dot *and* non-ASCII letters, appended to the fixture's.
 DOTTED_SCHEMA_SUFFIX = "verkäufe"
+
+
+def _with_schema(url: str, schema: str) -> str:
+    """*url* with its ``schema`` parameter set, keeping any others (``encrypt``)."""
+    parsed = urlparse(url)
+    query = dict(parse_qsl(parsed.query))
+    query["schema"] = schema
+    return urlunparse(parsed._replace(query=urlencode(query)))
 
 
 def _q(identifier: str) -> str:
@@ -274,7 +282,7 @@ class TestIntrospectionAgainstRealServer:
         the first table took the whole load down.
         """
         assert set(entities) == {
-            GERMAN, HEBREW, CJK, BRACKETED, DOTTED, "Region", "Store", "CrossRef",
+            GERMAN, HEBREW, CJK, BRACKETED, _q(DOTTED), "Region", "Store", "CrossRef",
             "Coupon", "Person",
         }
 
@@ -286,8 +294,12 @@ class TestIntrospectionAgainstRealServer:
         assert columns['label']['sample_values'] == ["顧客A"]
 
     def test_a_dotted_table_name_still_samples(self, entities):
-        """Schema and table are quoted separately, so the dot is just a character."""
-        assert entities[DOTTED]['columns']['id']['sample_values'] == ["1"]
+        """Schema and table are quoted separately, so the dot is just a character.
+
+        The entity is stored bracketed (``[weird.name]``) so SQL that uses the
+        name as written cannot read the dot as a schema separator.
+        """
+        assert entities[_q(DOTTED)]['columns']['id']['sample_values'] == ["1"]
 
     def test_a_bracketed_table_name_still_samples(self, entities):
         """``]`` is doubled by the quoter, so it needs no special handling."""
@@ -347,14 +359,18 @@ class TestDottedNonAsciiSchema:
 
     def test_it_loads_with_samples_under_its_qualified_name(self, schema):
         dotted = f"{schema}.{DOTTED_SCHEMA_SUFFIX}"
-        url = os.getenv("SQLSERVER_TEST_URL")
-        assert SQLServerLoader.parse_schema_from_url(
-            f"{url}?schema={quote(dotted)}") == dotted
+        url = _with_schema(os.getenv("SQLSERVER_TEST_URL"), dotted)
+        assert SQLServerLoader.parse_schema_from_url(url) == dotted
 
         entities, _relationships = SQLServerLoader._introspect_schema(
             SQLServerLoader._parse_sqlserver_url(url), dotted)
-        assert list(entities) == [f"{dotted}.Orders"]
-        assert entities[f"{dotted}.Orders"]['columns']['id']['sample_values'] == ["7"]
+        name = f"{_q(dotted)}.Orders"
+        assert list(entities) == [name]
+        assert entities[name]['columns']['id']['sample_values'] == ["7"]
+
+        # Unbracketed, T-SQL would read the name as database.schema.table.
+        rows = SQLServerLoader.execute_sql_query(f"SELECT COUNT(*) AS n FROM {name}", url)
+        assert rows == [{"n": 1}]
 
 
 class TestQueryExecutionAgainstRealServer:

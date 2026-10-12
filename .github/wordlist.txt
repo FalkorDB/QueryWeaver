@@ -137,3 +137,5 @@ SMTP
 outbox
 PendingSignup
 unconfigured
+FreeTDS
+VPN

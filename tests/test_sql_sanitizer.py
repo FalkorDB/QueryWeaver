@@ -401,3 +401,40 @@ class TestAlreadyDelimitedOccurrences:
         )
         assert modified is True
         assert result == 'SELECT ["user-accounts"].id FROM "user-accounts"'
+
+
+class TestStringLiteralsAndScanCost:
+    """String literals are data, and the scan stays linear on hostile input."""
+
+    def test_bracket_inside_a_literal_does_not_pair_with_a_later_one(self):
+        """``'a [note'`` must not swallow the table name up to ``[id]``."""
+        result, _ = SQLIdentifierQuoter.auto_quote_identifiers(
+            "SELECT 'a [note' AS n, [id] FROM user-accounts", {'user-accounts'}, '['
+        )
+        assert result == "SELECT 'a [note' AS n, [id] FROM [user-accounts]"
+
+    def test_a_table_name_inside_a_literal_is_left_alone(self):
+        result, _ = SQLIdentifierQuoter.auto_quote_identifiers(
+            "SELECT * FROM user-accounts WHERE n = 'user-accounts'", {'user-accounts'}, '['
+        )
+        assert result == "SELECT * FROM [user-accounts] WHERE n = 'user-accounts'"
+
+    def test_escaped_quote_does_not_end_the_literal(self):
+        result, _ = SQLIdentifierQuoter.auto_quote_identifiers(
+            "SELECT * FROM user-accounts WHERE n = 'it''s user-accounts'",
+            {'user-accounts'}, '[',
+        )
+        assert result == "SELECT * FROM [user-accounts] WHERE n = 'it''s user-accounts'"
+
+    def test_unmatched_openers_are_scanned_once(self):
+        """Retrying the closer search at each unmatched opener was quadratic.
+
+        At this size a quadratic scan runs for minutes; the linear one takes a
+        fraction of a second, so the test needs no timing assertion. Only ``[``
+        can be left unmatched over and over: a run of ``'`` pairs into escapes.
+        """
+        query = "SELECT * FROM user-accounts WHERE x = " + "[" * 200_000
+        spans = SQLIdentifierQuoter._protected_spans(query, '[')
+        assert spans == []
+        result, _ = SQLIdentifierQuoter.auto_quote_identifiers(query, {'user-accounts'}, '[')
+        assert result.startswith("SELECT * FROM [user-accounts] WHERE")

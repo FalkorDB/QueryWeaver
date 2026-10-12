@@ -1,7 +1,8 @@
 """SQL sanitization utilities for handling identifiers with special characters."""
 
+import bisect
 import re
-from typing import Set, Tuple
+from typing import Dict, List, Set, Tuple
 
 
 class SQLIdentifierQuoter:
@@ -137,17 +138,54 @@ class SQLIdentifierQuoter:
         return table_names
 
     @staticmethod
+    def _protected_spans(sql_query: str, quote_char: str) -> List[Tuple[int, int]]:
+        """``(start, end)`` of every string literal and delimited identifier.
+
+        One left-to-right pass. ``'...'`` literals and identifiers delimited by
+        the active dialect's *quote_char* are both protected; a doubled closing
+        character is an escape, not the end. Whichever opens first wins, so a
+        ``[`` inside ``'a [note'`` cannot pair with a later ``]``.
+
+        An opener with no closer after it is plain text. Once a closer is known
+        to be absent from some position on, later openers of the same kind skip
+        the search, which keeps the pass linear: retrying the search at every
+        unmatched ``[`` made long inputs quadratic.
+        """
+        closers = {"'": "'", quote_char: ']' if quote_char == '[' else quote_char}
+        absent_from: Dict[str, int] = {}
+        spans: List[Tuple[int, int]] = []
+        i, n = 0, len(sql_query)
+        while i < n:
+            close = closers.get(sql_query[i])
+            if close is None or i + 1 >= absent_from.get(close, n + 1):
+                i += 1
+                continue
+            j = i + 1
+            while True:
+                k = sql_query.find(close, j)
+                if k == -1:
+                    absent_from[close] = j
+                    break
+                if k + 1 < n and sql_query[k + 1] == close:
+                    j = k + 2
+                    continue
+                spans.append((i, k + 1))
+                break
+            i = spans[-1][1] if spans and spans[-1][0] == i else i + 1
+        return spans
+
+    @classmethod
     def _sub_outside_delimited(
-        pattern: str, replacement: str, sql_query: str, quote_char: str
+        cls, pattern: str, replacement: str, sql_query: str, quote_char: str
     ) -> str:
-        """Apply a case-insensitive substitution only outside delimited identifiers.
+        """Apply a case-insensitive substitution outside literals and delimited names.
 
         Without this a table name is also matched *inside* an occurrence that is
         already delimited, so ``[user-accounts].id`` turns into
-        ``[[user-accounts]].id``. Each delimited identifier of the active dialect
-        is matched first and emitted unchanged; only the remaining text is
-        eligible for *pattern*. Doubled closing delimiters are escapes and do not
-        end the identifier. String literals are not recognised.
+        ``[[user-accounts]].id``, and inside a string literal, which changes
+        data rather than identifiers. Matches are found on the whole query, so
+        lookarounds still see the real neighbouring text, and any match touching
+        a span from :meth:`_protected_spans` is left as it was.
 
         Args:
             pattern: Regex matching the text to replace.
@@ -156,17 +194,22 @@ class SQLIdentifierQuoter:
             quote_char: Opening delimiter of the active dialect.
 
         Returns:
-            The query with *pattern* replaced outside delimited identifiers.
+            The query with *pattern* replaced outside protected spans.
         """
-        close_char = ']' if quote_char == '[' else quote_char
-        open_esc, close_esc = re.escape(quote_char), re.escape(close_char)
-        delimited = rf'{open_esc}(?:[^{close_esc}]|{close_esc}{close_esc})*{close_esc}'
-        combined = re.compile(rf'(?P<delimited>{delimited})|(?:{pattern})', re.IGNORECASE)
-
-        def _replace(match: re.Match) -> str:
-            return match.group('delimited') or replacement
-
-        return combined.sub(_replace, sql_query)
+        spans = cls._protected_spans(sql_query, quote_char)
+        starts = [start for start, _ in spans]
+        out, last = [], 0
+        for match in re.finditer(pattern, sql_query, re.IGNORECASE):
+            idx = bisect.bisect_right(starts, match.start()) - 1
+            inside = idx >= 0 and match.start() < spans[idx][1]
+            overlaps_next = idx + 1 < len(spans) and spans[idx + 1][0] < match.end()
+            if inside or overlaps_next:
+                continue
+            out.append(sql_query[last:match.start()])
+            out.append(replacement)
+            last = match.end()
+        out.append(sql_query[last:])
+        return ''.join(out)
 
     @classmethod
     def auto_quote_identifiers(

@@ -159,6 +159,16 @@ class TestEntityName:
         """Unqualified SQL would resolve against the login's default schema."""
         assert entity_name("sales", "Orders") == "sales.Orders"
 
+    @pytest.mark.parametrize("schema,table,expected", [
+        ("sales.eu", "Orders", "[sales.eu].Orders"),
+        ("sales", "weird.name", "sales.[weird.name]"),
+        ("dbo", "weird.name", "[weird.name]"),
+        ("a]b.c", "T", "[a]]b.c].T"),
+    ])
+    def test_a_dotted_part_is_bracketed(self, schema, table, expected):
+        """``sales.eu.Orders`` would be read as database.schema.table."""
+        assert entity_name(schema, table) == expected
+
 
 class TestSampleQueryValidation:
     """The sample query contains hostile identifiers rather than trusting them."""
@@ -275,12 +285,14 @@ class TestParseUrl:
         assert SQLServerLoader.parse_schema_from_url(
             "sqlserver://sa:pw@localhost/testdb?schema=sa%2520les") == "sa%20les"
 
-    @pytest.mark.parametrize("schema", ["Verk%C3%A4ufe", "%E9%94%80%E5%94%AE"])
-    def test_non_ascii_schema_is_accepted(self, schema):
+    @pytest.mark.parametrize("encoded,expected", [
+        ("Verk%C3%A4ufe", "Verkäufe"),
+        ("%E9%94%80%E5%94%AE", "销售"),
+    ])
+    def test_non_ascii_schema_is_accepted(self, encoded, expected):
         """The URL schema is only ever bound, so non-ASCII names are fine."""
-        parsed = SQLServerLoader.parse_schema_from_url(
-            f"sqlserver://sa:pw@localhost/testdb?schema={schema}")
-        assert parsed in ("Verkäufe", "销售")
+        assert SQLServerLoader.parse_schema_from_url(
+            f"sqlserver://sa:pw@localhost/testdb?schema={encoded}") == expected
 
     def test_control_character_in_schema_is_rejected(self):
         with pytest.raises(ValueError):

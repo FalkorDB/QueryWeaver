@@ -68,7 +68,9 @@ Tables are stored in the graph under bare names for `dbo` and as `schema.table` 
 any other schema. SQL Server has no per-session default schema: an unqualified name
 resolves against the login's default schema, so `SELECT * FROM orders` would miss
 `sales.orders`, or quietly read `dbo.orders` instead. Storing the qualified name
-means the generated SQL names the right table.
+means the generated SQL names the right table. A name part containing a dot is
+stored bracketed (`[sales.eu].Orders`, `[weird.name]`), since T-SQL would otherwise
+read `sales.eu.Orders` as database, schema and table.
 
 The table, column and foreign-key catalogs are each read in one schema-wide query
 before any sampling starts.
@@ -91,8 +93,8 @@ Sampling is best-effort: a column whose type has no `DISTINCT` (`xml`, `text`,
 failing the schema load. The schema and table are quoted separately, so a dot in
 either name does not stop the table being sampled.
 
-Sampling stops early, and the remaining columns load without samples, when the
-whole introspection reaches `DB_SCHEMA_TIMEOUT` or the connection is lost (a
+Sampling stops early, and the remaining columns load without samples, once
+`DB_SCHEMA_TIMEOUT` has passed since introspection started, or the connection is lost (a
 timed-out statement can leave the FreeTDS connection unusable).
 
 ### Query Execution
@@ -166,7 +168,7 @@ rows as dictionaries keyed by column name; positional access (`row[0]`) raises
 `KeyError` with this setting and is never used there.
 
 User queries use a plain tuple cursor instead, because `as_dict=True` raises
-`ColumnsWithoutNamesError` for an unaliased `COUNT(*)` and lets duplicate names
+`ColumnsWithoutNamesError` for a `COUNT(*)` without an alias and lets duplicate names
 (`o.id, c.id`) overwrite each other. Result rows are keyed from
 `cursor.description`: an unnamed column becomes `column_<n>` by position and a
 repeated name gets a `_2`, `_3` suffix.
@@ -185,9 +187,12 @@ loaders give user queries.
 > global. Giving introspection and query execution different values would let
 > concurrent operations overwrite each other's, so both use the same one.
 
-Introspection as a whole is held to `DB_SCHEMA_TIMEOUT` by a wall-clock deadline
-checked before each sample query (see [Sample Values](#sample-values)), so one large
-schema cannot hold an introspection worker indefinitely.
+`DB_SCHEMA_TIMEOUT` is a sampling cutoff, not a hard limit on the whole
+introspection: it is checked before each sample query starts (see
+[Sample Values](#sample-values)). The three catalog queries and a sample query
+already running are each still bounded only by `DB_STATEMENT_TIMEOUT`, so the worst
+case is about `DB_SCHEMA_TIMEOUT` plus four statement timeouts, rather than one
+statement timeout per column.
 
 ## Testing
 

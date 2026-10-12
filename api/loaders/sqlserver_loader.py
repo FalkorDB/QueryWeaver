@@ -85,10 +85,16 @@ def entity_name(schema: str, table: str) -> str:
     Generated SQL uses the names stored in the graph, so a table outside
     ``dbo`` is stored as ``schema.table``; otherwise ``SELECT * FROM orders``
     would miss ``sales.orders``, or quietly read ``dbo.orders`` instead.
+
+    A part containing a dot is bracket-quoted, since T-SQL would otherwise read
+    ``sales.eu.Orders`` as database ``sales``, schema ``eu``, table ``Orders``.
     """
+    def part(name: str) -> str:
+        return quote_ident(name) if '.' in name else name
+
     if schema.lower() == DEFAULT_SCHEMA:
-        return table
-    return f"{schema}.{table}"
+        return part(table)
+    return f"{part(schema)}.{part(table)}"
 
 
 def _format_type(row: Dict[str, Any]) -> str:

@@ -17,16 +17,24 @@ pytestmark = pytest.mark.unit
 # The exact LIMIT sentences the analysis prompt carried before SQL Server
 # support. Non-SQL-Server prompts must keep them byte-for-byte.
 ORIGINAL_LIMIT_SENTENCES = [
-    "P4. Top/most/least intent: If the question asks for top/bottom N or "
-    "most/least/highest/lowest, apply ORDER BY on the metric and LIMIT "
-    "accordingly (LIMIT 1 for most/least) unless the user asks for ties.",
-    "P7. NULL handling: Add IS NOT NULL only if required to prevent NULLs from "
-    "dominating ORDER BY+LIMIT results or explicitly requested.",
-    "If the question asks for the entity/row associated with the extreme, use "
-    "ORDER BY ... LIMIT 1 and return only the requested entity/label columns.",
+    (
+        "P4. Top/most/least intent: If the question asks for top/bottom N or "
+        "most/least/highest/lowest, apply ORDER BY on the metric and LIMIT "
+        "accordingly (LIMIT 1 for most/least) unless the user asks for ties."
+    ),
+    (
+        "P7. NULL handling: Add IS NOT NULL only if required to prevent NULLs from "
+        "dominating ORDER BY+LIMIT results or explicitly requested."
+    ),
+    (
+        "If the question asks for the entity/row associated with the extreme, use "
+        "ORDER BY ... LIMIT 1 and return only the requested entity/label columns."
+    ),
     "RANKING/LIMIT: <ORDER BY ... LIMIT ... | NONE>.",
-    "7. Handle NULLs: Add IS NOT NULL only when explicitly requested or to "
-    "prevent NULL domination in ORDER BY+LIMIT.",
+    (
+        "7. Handle NULLs: Add IS NOT NULL only when explicitly requested or to "
+        "prevent NULL domination in ORDER BY+LIMIT."
+    ),
 ]
 
 NON_SQLSERVER_TYPES = ["postgresql", "mysql", "sqlite", "snowflake", None]
