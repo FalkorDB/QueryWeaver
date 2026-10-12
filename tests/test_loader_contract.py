@@ -18,8 +18,9 @@ import pytest
 # makes the snowflake import below work.
 from api.core.pipeline import MySQLLoader, PostgresLoader
 from api.loaders.snowflake_loader import SnowflakeLoader
+from api.loaders.sqlserver_loader import SQLServerLoader
 
-LOADERS = [PostgresLoader, MySQLLoader, SnowflakeLoader]
+LOADERS = [PostgresLoader, MySQLLoader, SnowflakeLoader, SQLServerLoader]
 
 
 @pytest.mark.unit

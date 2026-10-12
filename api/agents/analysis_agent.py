@@ -3,6 +3,37 @@
 from typing import List
 from .utils import BaseAgent, parse_response, run_completion
 
+# Row-limiting wording interpolated into the analysis prompt. The default text is
+# the long-standing LIMIT phrasing (PostgreSQL/MySQL/SQLite/...); SQL Server has
+# no LIMIT clause, so T-SQL gets TOP / OFFSET ... FETCH wording instead.
+_DEFAULT_ROW_LIMIT_PHRASES = {
+    "top_n": (
+        "apply ORDER BY on the metric and LIMIT accordingly "
+        "(LIMIT 1 for most/least) unless the user asks for ties."
+    ),
+    "order_limit": "ORDER BY+LIMIT",
+    "extreme_row": "use ORDER BY ... LIMIT 1",
+    "ranking_field": "<ORDER BY ... LIMIT ... | NONE>",
+}
+_SQLSERVER_ROW_LIMIT_PHRASES = {
+    "top_n": (
+        "apply ORDER BY on the metric and restrict rows with SELECT TOP n ... ORDER BY ... "
+        "(TOP 1 for most/least; use TOP n WITH TIES when the user asks for ties), or "
+        "ORDER BY ... OFFSET k ROWS FETCH NEXT n ROWS ONLY for paging/skipping rows. "
+        "LIMIT is NOT valid T-SQL - never use LIMIT for SQL Server."
+    ),
+    "order_limit": "ORDER BY+TOP",
+    "extreme_row": "use SELECT TOP 1 ... ORDER BY ... (never LIMIT)",
+    "ranking_field": "<TOP n ... ORDER BY ... | ORDER BY ... OFFSET k ROWS FETCH NEXT n ROWS ONLY | NONE>",
+}
+
+
+def _row_limit_phrases(database_type: str | None) -> dict:
+    """Return the dialect-specific row-limiting phrases for the analysis prompt."""
+    if (database_type or "").lower() == "sqlserver":
+        return _SQLSERVER_ROW_LIMIT_PHRASES
+    return _DEFAULT_ROW_LIMIT_PHRASES
+
 
 class AnalysisAgent(BaseAgent):
     # pylint: disable=too-few-public-methods
@@ -238,6 +269,8 @@ class AnalysisAgent(BaseAgent):
             13. If <memory_context> exists, use it only for resolving follow-ups or established conventions; do not let memory override schema, <user_rules_spec>, or <instructions>.
 """
 
+        row_limit = _row_limit_phrases(database_type)
+
         # pylint: disable=line-too-long
         prompt = f"""
             You are a professional Text-to-SQL system. You MUST strictly follow the rules below in priority order.
@@ -287,14 +320,14 @@ class AnalysisAgent(BaseAgent):
 
             P3. Comparative intent: If the question asks "which is higher/lower/more/less", return only the winning option unless the user asks to also return the values.
 
-            P4. Top/most/least intent: If the question asks for top/bottom N or most/least/highest/lowest, apply ORDER BY on the metric and LIMIT accordingly (LIMIT 1 for most/least) unless the user asks for ties.
+            P4. Top/most/least intent: If the question asks for top/bottom N or most/least/highest/lowest, {row_limit['top_n']}
 
             P5. Grain/time intent: If the question specifies a grain (monthly/annual/for year YYYY), aggregate to that grain before thresholds or ranking.
 
             P6. Filters + minimal joins: Add WHERE predicates only when justified by the question or by <user_rules_spec>/<instructions>. Do not add "helpful assumptions".
                 Prefer the minimum necessary tables/joins required to produce the requested outputs and filters.
 
-            P7. NULL handling: Add IS NOT NULL only if required to prevent NULLs from dominating ORDER BY+LIMIT results or explicitly requested.
+            P7. NULL handling: Add IS NOT NULL only if required to prevent NULLs from dominating {row_limit['order_limit']} results or explicitly requested.
 
             P8. Quoting/dialect: Quote identifiers as required by the target dialect.
 
@@ -307,7 +340,7 @@ class AnalysisAgent(BaseAgent):
             P11. DISTINCT discipline: Do not use DISTINCT unless explicitly requested by the question, or required to remove duplicates introduced solely by joins while preserving the intended output grain.
 
             P12. Extreme value output shape: If the question asks only for the extreme numeric value (e.g., "highest rate"), return only that value using MAX/MIN/AVG as appropriate.
-                If the question asks for the entity/row associated with the extreme, use ORDER BY ... LIMIT 1 and return only the requested entity/label columns.
+                If the question asks for the entity/row associated with the extreme, {row_limit['extreme_row']} and return only the requested entity/label columns.
 
             P13. Value-based column selection: When multiple columns could satisfy a categorical term and the schema provides allowed/example/optional values,
                 prefer the column whose values best match the term. Record ambiguity if multiple columns are plausible.
@@ -360,7 +393,7 @@ class AnalysisAgent(BaseAgent):
             ```json
             {{
                 "is_sql_translatable": true or false,
-                "query_analysis": "For an INSERT/UPDATE/DELETE request, describe the write instead: OPERATION: <INSERT|UPDATE|DELETE>; TARGET TABLE: <table>; COLUMNS/VALUES (for INSERT) or SET assignments and WHERE predicates (for UPDATE/DELETE); and set every SELECT-specific field below (OUTPUT, OUTPUT GRAIN, METRIC, GRAIN CHECK, AGGREGATION DECISION, RANKING/LIMIT, FILTERS) to N/A. If required values or an identifying predicate are missing, do NOT invent them — set is_sql_translatable to false and list the gap in missing_information/ambiguities.\\nOUTPUT: <exact SELECT columns required by the question (no extra columns); if the question says 'list/show all' but does not name columns, select minimal identifying columns>.\\nOUTPUT GRAIN: <state only if explicitly requested; otherwise write N/A>.\\nMETRIC: <write the exact metric expression only if explicitly requested/defined; otherwise N/A (direct column retrieval)>.\\nGRAIN CHECK: <MATCH|MISMATCH|N/A>.\\nAGGREGATION DECISION: <NONE|SUM|AVG|COUNT|MIN|MAX> (NONE unless explicitly requested).\\nRANKING/LIMIT: <ORDER BY ... LIMIT ... | NONE>.\\nFILTERS: <predicates explicitly justified by the question> (each predicate must be a concrete SQL condition using =, >, <, BETWEEN, IN; do NOT use LIKE/contains unless explicitly requested).",
+                "query_analysis": "For an INSERT/UPDATE/DELETE request, describe the write instead: OPERATION: <INSERT|UPDATE|DELETE>; TARGET TABLE: <table>; COLUMNS/VALUES (for INSERT) or SET assignments and WHERE predicates (for UPDATE/DELETE); and set every SELECT-specific field below (OUTPUT, OUTPUT GRAIN, METRIC, GRAIN CHECK, AGGREGATION DECISION, RANKING/LIMIT, FILTERS) to N/A. If required values or an identifying predicate are missing, do NOT invent them — set is_sql_translatable to false and list the gap in missing_information/ambiguities.\\nOUTPUT: <exact SELECT columns required by the question (no extra columns); if the question says 'list/show all' but does not name columns, select minimal identifying columns>.\\nOUTPUT GRAIN: <state only if explicitly requested; otherwise write N/A>.\\nMETRIC: <write the exact metric expression only if explicitly requested/defined; otherwise N/A (direct column retrieval)>.\\nGRAIN CHECK: <MATCH|MISMATCH|N/A>.\\nAGGREGATION DECISION: <NONE|SUM|AVG|COUNT|MIN|MAX> (NONE unless explicitly requested).\\nRANKING/LIMIT: {row_limit['ranking_field']}.\\nFILTERS: <predicates explicitly justified by the question> (each predicate must be a concrete SQL condition using =, >, <, BETWEEN, IN; do NOT use LIKE/contains unless explicitly requested).",
                 "explanation": ("Detailed explanation why the query can or cannot be "
                                "translated, mentioning instructions explicitly and "
                                "referencing conversation history if relevant"),
@@ -381,7 +414,7 @@ class AnalysisAgent(BaseAgent):
             4. Apply priority hierarchy: S-rules always apply. Then: <user_rules_spec> > <instructions> > default production rules (P1-P8) > guidance.
             5. Plan joins: Use the minimum necessary joins that preserve intended grain; avoid joins that multiply rows unless required.
             6. Calculations: Perform only when explicitly defined in question or specs; don't invent formulas.
-            7. Handle NULLs: Add IS NOT NULL only when explicitly requested or to prevent NULL domination in ORDER BY+LIMIT.
+            7. Handle NULLs: Add IS NOT NULL only when explicitly requested or to prevent NULL domination in {row_limit['order_limit']}.
             8. Final verification: (a) All tables/columns exist in schema (S1), (b) One SQL statement (S2), (c) If is_sql_translatable=true then sql_query is non-empty, (d) JSON complete (S3).{memory_evaluation_guidelines}
 
             Again: OUTPUT ONLY ONE VALID JSON OBJECT AND NOTHING ELSE (no markdown fences, no SQL outside JSON, no query results, no debug text).

@@ -193,12 +193,14 @@ async def load_database_sync(url: str, user_id: str, db=None):
     if not url or len(url.strip()) == 0:
         raise InvalidArgumentError("Invalid URL format")
 
-    # Determine database type and loader. ``sdk_only=True`` rejects snowflake
-    # and unknown schemes with a clean InvalidArgumentError instead of letting
-    # an ImportError surface when the snowflake extra isn't installed.
+    # Determine database type and loader. ``sdk_only=True`` rejects unknown
+    # schemes, and snowflake/sqlserver when the [server] extra isn't installed,
+    # with a clean InvalidArgumentError instead of an ImportError.
     _, loader = get_database_type_and_loader(url, sdk_only=True)
     if loader is None:
-        raise InvalidArgumentError("Invalid database URL format. Must be PostgreSQL or MySQL.")
+        raise InvalidArgumentError(
+            "Invalid database URL format. Must be PostgreSQL, MySQL, SQL Server or Snowflake."
+        )
 
     success = False
 

@@ -29,7 +29,12 @@ sqlserver://username:password@host:port/database
 - **port**: server port (optional, defaults to `1433`)
 - **database**: database to introspect
 - **schema**: schema to introspect (optional query parameter, defaults to `dbo`)
-- **encrypt**: `true`/`false` to force TLS on the connection (optional query parameter)
+- **encrypt**: `true`/`false` to require or disable TLS on the connection (optional
+  query parameter). **The server certificate is not verified**: FreeTDS encrypts
+  the connection but `pymssql` exposes no CA setting, so this protects against
+  passive eavesdropping only. An on-path attacker presenting any certificate can
+  still read the login, including the password. Use a trusted network or VPN when
+  that matters.
 
 Credentials are percent-decoded, so passwords containing `@`, `/` or `:` are
 supported when they are percent-encoded in the URL.
@@ -47,7 +52,8 @@ sqlserver://appuser:s3cr3t@sql.example.com:1433/reporting?schema=dbo&encrypt=tru
 ### Schema Extraction
 
 - Tables in the selected schema (views are not extracted)
-- Columns with data types, nullability, defaults and primary-key flags
+- Columns with their base data types (an alias type such as `dbo.Name` is reported
+  as `nvarchar(50)`), nullability, defaults and key flags
 - Extended properties (`MS_Description`) used as table and column descriptions
 - Foreign keys, including composite keys — both sides must live in the selected schema
 
@@ -57,6 +63,15 @@ cannot collide with same-named tables in the selected schema. This scopes what i
 loaded into the graph, not what the login may access: generated queries run with the
 login's own permissions, so grant it access to the selected schema only if that is
 the boundary you want.
+
+Tables are stored in the graph under bare names for `dbo` and as `schema.table` for
+any other schema. SQL Server has no per-session default schema: an unqualified name
+resolves against the login's default schema, so `SELECT * FROM orders` would miss
+`sales.orders`, or quietly read `dbo.orders` instead. Storing the qualified name
+means the generated SQL names the right table.
+
+The table, column and foreign-key catalogs are each read in one schema-wide query
+before any sampling starts.
 
 ### Sample Values
 
@@ -73,7 +88,12 @@ ORDER BY NEWID();
 
 Sampling is best-effort: a column whose type has no `DISTINCT` (`xml`, `text`,
 `image`, the spatial types) is logged and left without samples rather than
-failing the schema load.
+failing the schema load. The schema and table are quoted separately, so a dot in
+either name does not stop the table being sampled.
+
+Sampling stops early, and the remaining columns load without samples, when the
+whole introspection reaches `DB_SCHEMA_TIMEOUT` or the connection is lost (a
+timed-out statement can leave the FreeTDS connection unusable).
 
 ### Query Execution
 
@@ -141,29 +161,33 @@ The loader reads from SQL Server system catalog views:
 
 ### Cursor Contract
 
-Connections are opened with `as_dict=True`, so `pymssql` returns rows as
-dictionaries keyed by column name. Positional access (`row[0]`) raises `KeyError`
-with this setting and is never used.
+Introspection opens its cursor with `as_dict=True`, so `pymssql` returns catalog
+rows as dictionaries keyed by column name; positional access (`row[0]`) raises
+`KeyError` with this setting and is never used there.
+
+User queries use a plain tuple cursor instead, because `as_dict=True` raises
+`ColumnsWithoutNamesError` for an unaliased `COUNT(*)` and lets duplicate names
+(`o.id, c.id`) overwrite each other. Result rows are keyed from
+`cursor.description`: an unnamed column becomes `column_<n>` by position and a
+repeated name gets a `_2`, `_3` suffix.
 
 ### Timeouts
 
 `DB_CONNECT_TIMEOUT` maps to `login_timeout` and bounds the connection and login
 handshake.
 
-Query time is bounded by `pymssql`'s `timeout`, which is set to the **larger** of
-`DB_SCHEMA_TIMEOUT` and `DB_STATEMENT_TIMEOUT` for every connection this loader
-opens. That is a deliberate divergence from the PostgreSQL and Snowflake loaders,
-which apply `DB_STATEMENT_TIMEOUT` to query execution on its own:
+Each statement is bounded by `pymssql`'s `timeout`, set to `DB_STATEMENT_TIMEOUT`
+for every connection this loader opens — the same per-statement ceiling the other
+loaders give user queries.
 
 > `pymssql` documents that `timeout` and `login_timeout` have a *process-wide*
 > effect, because the underlying db-lib API functions used to implement them are
-> global. Giving introspection and query execution different budgets would let
-> concurrent operations overwrite each other's, leaving both nondeterministic.
+> global. Giving introspection and query execution different values would let
+> concurrent operations overwrite each other's, so both use the same one.
 
-So with the defaults (`DB_SCHEMA_TIMEOUT=300`, `DB_STATEMENT_TIMEOUT=60`), a user
-query against SQL Server may run for up to 300s rather than 60s. Lower
-`DB_SCHEMA_TIMEOUT` if you need a tighter ceiling; there is no way to bound the
-two independently while the driver's timeout stays global.
+Introspection as a whole is held to `DB_SCHEMA_TIMEOUT` by a wall-clock deadline
+checked before each sample query (see [Sample Values](#sample-values)), so one large
+schema cannot hold an introspection worker indefinitely.
 
 ## Testing
 
@@ -171,7 +195,8 @@ two independently while the driver's timeout stays global.
 
 - Bracket quoting and `]` escaping (including injection attempts)
 - URL parsing: ports, defaults, percent-encoded credentials, `schema` and `encrypt`
-- Dict-cursor row access for sample values
+- Dict-cursor row access for sample values, and result rows with unnamed or
+  duplicate columns
 - Schema qualification of catalog and sample queries
 - Column, foreign-key and relationship mapping
 - Value serialization and schema-modification detection
@@ -204,4 +229,4 @@ SQLSERVER_TEST_URL='sqlserver://sa:Str0ng!Passw0rd@localhost:1433/master' \
 - One schema per connection (defaults to `dbo`); connect again to load another
 - Requires permission to read the `sys.*` catalog views
 - Windows/Azure AD integrated authentication is not supported; use SQL logins
-- `DB_STATEMENT_TIMEOUT` is not applied on its own; see [Timeouts](#timeouts)
+- The `encrypt` option does not verify the server certificate; see [Parameters](#parameters)

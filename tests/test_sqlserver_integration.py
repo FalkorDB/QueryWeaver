@@ -28,6 +28,7 @@ Without it, the module skips.
 import json
 import os
 import uuid
+from urllib.parse import quote
 import importlib
 
 import pytest
@@ -50,6 +51,8 @@ HEBREW = "לקוחות"
 CJK = "顧客"
 BRACKETED = "my]table"
 DOTTED = "weird.name"
+# A schema name with a dot *and* non-ASCII letters, appended to the fixture's.
+DOTTED_SCHEMA_SUFFIX = "verkäufe"
 
 
 def _q(identifier: str) -> str:
@@ -72,9 +75,11 @@ def _schema():
 
     name = f"qw_{uuid.uuid4().hex[:12]}"
     other = f"{name}_ext"
+    dotted = f"{name}.{DOTTED_SCHEMA_SUFFIX}"
     try:
         with conn.cursor() as cur:
             _build_fixture(cur, name, other)
+            _build_dotted_schema(cur, dotted)
         conn.commit()
         yield name
     finally:
@@ -82,7 +87,7 @@ def _schema():
         # fixture build nor leave the connection open.
         try:
             with conn.cursor() as cur:
-                for target in (name, other):
+                for target in (name, other, dotted):
                     _drop_schema(cur, target)
             conn.commit()
         finally:
@@ -180,6 +185,23 @@ def _build_fixture(cur, schema: str, other: str) -> None:
         f"CREATE UNIQUE INDEX ux_coupon_code ON {_q(schema)}.[Coupon] (code) INCLUDE (note)"
     )
 
+    # An alias type: reported by its base type, not its own name.
+    cur.execute(f"CREATE TYPE {_q(schema)}.[ShortName] FROM NVARCHAR(20) NOT NULL")
+    cur.execute(f"""
+        CREATE TABLE {_q(schema)}.[Person] (
+            id INT NOT NULL PRIMARY KEY,
+            nick {_q(schema)}.[ShortName],
+            amount DECIMAL(19,4) NULL
+        )
+    """)
+
+
+def _build_dotted_schema(cur, schema: str) -> None:
+    """A schema whose name has a dot and non-ASCII letters, with one table."""
+    cur.execute(f"CREATE SCHEMA {_q(schema)}")
+    cur.execute(f"CREATE TABLE {_q(schema)}.[Orders] (id INT NOT NULL PRIMARY KEY)")
+    cur.execute(f"INSERT INTO {_q(schema)}.[Orders] (id) VALUES (7)")
+
 
 def _drop_schema(cur, schema: str) -> None:
     """Drop every table in *schema*, then the schema itself.
@@ -211,6 +233,13 @@ def _drop_schema(cur, schema: str) -> None:
             )
     for table in tables:
         cur.execute(f"DROP TABLE {_q(schema)}.{_q(table)}")
+    cur.execute("""
+        SELECT t.name FROM sys.types t
+        JOIN sys.schemas s ON t.schema_id = s.schema_id
+        WHERE s.name = %s AND t.is_user_defined = 1
+    """, (schema,))
+    for (type_name,) in cur.fetchall():
+        cur.execute(f"DROP TYPE {_q(schema)}.{_q(type_name)}")
     cur.execute(f"DROP SCHEMA {_q(schema)}")
 
 
@@ -221,48 +250,55 @@ def _introspection(schema):
     return SQLServerLoader._introspect_schema(params, schema)
 
 
+@pytest.fixture(name="entities", scope="module")
+def _entities(introspection, schema):
+    """The introspected entities keyed by bare table name.
+
+    The fixture schema is not ``dbo``, so the loader stores every table as
+    ``schema.table``; the assertions below only care about the table part.
+    """
+    entities, _relationships = introspection
+    prefix = f"{schema}."
+    assert all(name.startswith(prefix) for name in entities)
+    return {name[len(prefix):]: entity for name, entity in entities.items()}
+
+
 class TestIntrospectionAgainstRealServer:
     """What the loader gets back from a server that actually parses the SQL."""
 
-    def test_every_table_loads(self, introspection):
+    def test_every_table_loads(self, entities):
         """No statement in the walk is rejected, whatever the names look like.
 
         Regression test for error 145: the sample query paired ``DISTINCT`` with
         ``ORDER BY NEWID()``, which SQL Server refuses, so the first column of
         the first table took the whole load down.
         """
-        entities, _relationships = introspection
         assert set(entities) == {
             GERMAN, HEBREW, CJK, BRACKETED, DOTTED, "Region", "Store", "CrossRef",
-            "Coupon",
+            "Coupon", "Person",
         }
 
-    def test_non_comparable_types_cost_only_their_own_column(self, introspection):
+    def test_non_comparable_types_cost_only_their_own_column(self, entities):
         """``xml``, ``text`` and ``geography`` cannot be DISTINCT-ed."""
-        entities, _relationships = introspection
         columns = entities[CJK]['columns']
         for col in ("payload", "notes", "spot"):
             assert columns[col]['sample_values'] == []
         assert columns['label']['sample_values'] == ["顧客A"]
 
-    def test_a_dotted_table_name_loads_without_samples(self, introspection):
-        """A dot makes the qualified name ambiguous, so sampling is skipped."""
-        entities, _relationships = introspection
-        assert entities[DOTTED]['columns']['id']['sample_values'] == []
+    def test_a_dotted_table_name_still_samples(self, entities):
+        """Schema and table are quoted separately, so the dot is just a character."""
+        assert entities[DOTTED]['columns']['id']['sample_values'] == ["1"]
 
-    def test_a_bracketed_table_name_still_samples(self, introspection):
+    def test_a_bracketed_table_name_still_samples(self, entities):
         """``]`` is doubled by the quoter, so it needs no special handling."""
-        entities, _relationships = introspection
         assert entities[BRACKETED]['columns']['id']['sample_values'] == ["1"]
 
-    def test_non_ascii_names_and_values_round_trip(self, introspection):
+    def test_non_ascii_names_and_values_round_trip(self, entities):
         """The old allow-list rejected all three of these."""
-        entities, _relationships = introspection
         assert entities[GERMAN]['columns']["Straße"]['sample_values'] == ["Hauptstraße"]
 
-    def test_guids_arrive_as_json_encodable_strings(self, introspection):
+    def test_guids_arrive_as_json_encodable_strings(self, entities):
         """pymssql decodes ``uniqueidentifier`` to ``uuid.UUID``."""
-        entities, _relationships = introspection
         samples = entities[GERMAN]['columns']['guid']['sample_values']
         assert samples == ["3f2504e0-4f89-11d3-9a0c-0305e82c3301"]
         json.dumps(entities[GERMAN]['columns']['guid'])
@@ -275,21 +311,73 @@ class TestIntrospectionAgainstRealServer:
             for edge in relationships['fk_store_region']
         ) == [("code", "code"), ("country", "country")]
 
-    def test_a_cross_schema_key_is_left_out_of_both_structures(self, introspection):
+    def test_a_cross_schema_key_is_left_out_of_both_structures(self, entities, introspection):
         """Otherwise the graph gains an edge to a table that was never loaded."""
-        entities, relationships = introspection
+        _entities, relationships = introspection
         assert "fk_crossref_outside" not in relationships
         assert entities["CrossRef"]['foreign_keys'] == []
 
-    def test_key_kinds_come_back_in_the_loader_vocabulary(self, introspection):
+    def test_key_kinds_come_back_in_the_loader_vocabulary(self, entities):
         """The CASE emits these directly; nothing translates MySQL codes."""
-        entities, _relationships = introspection
         assert entities[GERMAN]['columns']['id']['key'] == "PRIMARY KEY"
         assert entities[HEBREW]['columns']['kunde_id']['key'] == "FOREIGN KEY"
         assert entities[CJK]['columns']['label']['key'] == "NONE"
 
-    def test_an_included_column_is_not_a_unique_key(self, introspection):
+    def test_an_included_column_is_not_a_unique_key(self, entities):
         """Only the key columns of a unique index count, not its INCLUDE list."""
-        entities, _relationships = introspection
         assert entities["Coupon"]['columns']['code']['key'] == "UNIQUE KEY"
         assert entities["Coupon"]['columns']['note']['key'] == "NONE"
+
+    def test_an_alias_type_is_reported_as_its_base_type(self, entities):
+        """``ShortName`` would tell the LLM nothing about how to compare it."""
+        columns = entities["Person"]['columns']
+        assert columns['nick']['type'] == "nvarchar(20)"
+        assert columns['amount']['type'] == "decimal(19,4)"
+
+    def test_relationships_name_tables_like_the_entities(self, introspection):
+        """Both ends of an edge must match an entity key, qualified or not."""
+        entities, relationships = introspection
+        for edges in relationships.values():
+            for edge in edges:
+                assert edge['from'] in entities and edge['to'] in entities
+
+
+class TestDottedNonAsciiSchema:
+    """A schema the URL validator used to reject, with a dot the sampler used to refuse."""
+
+    def test_it_loads_with_samples_under_its_qualified_name(self, schema):
+        dotted = f"{schema}.{DOTTED_SCHEMA_SUFFIX}"
+        url = os.getenv("SQLSERVER_TEST_URL")
+        assert SQLServerLoader.parse_schema_from_url(
+            f"{url}?schema={quote(dotted)}") == dotted
+
+        entities, _relationships = SQLServerLoader._introspect_schema(
+            SQLServerLoader._parse_sqlserver_url(url), dotted)
+        assert list(entities) == [f"{dotted}.Orders"]
+        assert entities[f"{dotted}.Orders"]['columns']['id']['sample_values'] == ["7"]
+
+
+class TestQueryExecutionAgainstRealServer:
+    """``execute_sql_query`` with the result shapes a dict cursor cannot handle."""
+
+    @staticmethod
+    def _run(sql):
+        return SQLServerLoader.execute_sql_query(sql, os.getenv("SQLSERVER_TEST_URL"))
+
+    def test_an_unaliased_count_returns_a_row(self, schema):
+        """``as_dict=True`` raised ColumnsWithoutNamesError on exactly this."""
+        rows = self._run(f"SELECT COUNT(*) FROM {_q(schema)}.[Region]")
+        assert rows == [{"column_1": 0}]
+
+    def test_duplicate_column_names_keep_both_values(self, schema):
+        rows = self._run(
+            f"SELECT TOP 1 b.id, d.id FROM {_q(schema)}.{_q(BRACKETED)} b "
+            f"CROSS JOIN {_q(schema)}.{_q(DOTTED)} d"
+        )
+        assert rows == [{"id": 1, "id_2": 1}]
+
+    def test_a_stored_entity_name_is_valid_sql_as_written(self, introspection):
+        """Generated SQL uses the graph's names, so ``schema.table`` must resolve."""
+        entities, _relationships = introspection
+        name = next(n for n in entities if n.endswith(".Coupon"))
+        assert self._run(f"SELECT COUNT(*) AS n FROM {name}") == [{"n": 0}]

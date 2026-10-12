@@ -52,16 +52,18 @@ const getDbProfile = (dbType: string) =>
 
 /**
  * Returns why *schema* is rejected for *dbType*, or '' when it is acceptable.
- * SQL Server mirrors the backend's validate_ident allow-list; PostgreSQL keeps
- * the stricter rule because the name is spliced into a search_path option.
+ * SQL Server mirrors the backend's validate_catalog_ident: any name of 1-128
+ * characters without control characters, so non-ASCII schemas work. PostgreSQL
+ * keeps the stricter rule because the name is spliced into a search_path option.
  */
 const getSchemaError = (dbType: string, schema: string): string => {
   const value = schema.trim();
   if (!value) return '';
   if (dbType === 'sqlserver') {
-    return /^[A-Za-z0-9_$#@ .-]{1,128}$/.test(value)
+    // eslint-disable-next-line no-control-regex
+    return value.length <= 128 && !/[\u0000-\u001f\u007f]/.test(value)
       ? ''
-      : 'Schema name can only contain letters, digits, underscore, dollar, hash, at-sign, space, dot, and dash (max 128)';
+      : 'Schema name must be at most 128 characters, without control characters';
   }
   return /^[A-Za-z0-9_]+$/.test(value)
     ? ''

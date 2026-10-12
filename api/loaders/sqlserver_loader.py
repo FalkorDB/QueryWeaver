@@ -4,6 +4,7 @@ import datetime
 import decimal
 import logging
 import re
+import time
 import uuid
 from typing import AsyncGenerator, Dict, Any, List, Tuple
 from urllib.parse import urlparse, parse_qs, unquote
@@ -30,65 +31,19 @@ class SQLServerConnectionError(Exception):
     """Exception raised for SQL Server connection errors."""
 
 
-def validate_ident(
-    identifier: str, identifier_type: str = "identifier", allow_dot: bool = True
-) -> str:
-    """Validate that a *user-supplied* identifier is safe to interpolate into T-SQL.
-
-    T-SQL cannot bind identifiers as parameters, so the schema taken from the
-    connection URL must be interpolated. This is an anchored allow-list: only
-    characters that can legitimately appear in a SQL Server object name are
-    accepted, and everything capable of breaking out of a bracket-delimited
-    identifier (``]``, quotes, semicolons, backslashes, control characters) is
-    rejected. Names read back from the system catalog go through
-    :func:`validate_catalog_ident` instead, which is deliberately laxer.
-
-    Args:
-        identifier: Raw identifier supplied by the user.
-        identifier_type: Label used in the error message.
-        allow_dot: Whether ``.`` is accepted. A dot is legal inside a
-            bracket-quoted SQL Server name, but callers that recover a schema
-            and a table from one dotted string cannot tell the two apart, so
-            they pass ``False`` and get a clear error instead of a query
-            against the wrong object.
-
-    Returns:
-        The identifier, unchanged, once validated.
-
-    Raises:
-        ValueError: If the identifier is empty, over-long, or contains a
-            character outside the allow-list.
-    """
-    if not identifier or len(identifier) > 128:
-        raise ValueError(
-            f"Invalid {identifier_type}: {identifier!r}. "
-            "Must be between 1 and 128 characters."
-        )
-    allowed = r'[A-Za-z0-9_$#@ .\-]+' if allow_dot else r'[A-Za-z0-9_$#@ \-]+'
-    if not re.fullmatch(allowed, identifier):
-        dot = "dot, " if allow_dot else ""
-        raise ValueError(
-            f"Invalid {identifier_type}: {identifier!r}. Only letters, digits, "
-            f"underscore, dollar, hash, at-sign, space, {dot}and dash are allowed."
-        )
-    return identifier
-
-
-def validate_catalog_ident(
-    identifier: str, identifier_type: str = "identifier", allow_dot: bool = True
-) -> str:
-    """Validate an identifier that the server itself returned from the catalog.
+def validate_catalog_ident(identifier: str, identifier_type: str = "identifier") -> str:
+    """Validate an identifier before it is bracket-quoted into a statement.
 
     SQL Server allows almost anything inside a delimited identifier, and Hebrew,
-    German and CJK table names are ordinary in the databases this loader reads.
-    Holding catalog names to the ASCII allow-list above would fail the whole
-    schema load over one such name, so this only rejects what bracket-quoting
-    cannot survive: control characters, and — when *allow_dot* is False — a dot
-    that would make a schema-qualified name ambiguous.
+    German and CJK names are ordinary in the databases this loader reads, so
+    this only rejects what bracket-quoting cannot survive: control characters
+    and names outside SQL Server's 1-128 character limit. It also guards the
+    schema taken from the connection URL, which is only ever bound as a query
+    parameter, so the same rule applies there.
 
     Raises:
-        ValueError: If the identifier is empty, over-long, contains a control
-            character, or contains a dot that the caller cannot allow.
+        ValueError: If the identifier is empty, over-long or contains a
+            control character.
     """
     if not identifier or len(identifier) > 128:
         raise ValueError(
@@ -99,11 +54,6 @@ def validate_catalog_ident(
         raise ValueError(
             f"Invalid {identifier_type}: {identifier!r}. "
             "Control characters are not allowed."
-        )
-    if not allow_dot and '.' in identifier:
-        raise ValueError(
-            f"Invalid {identifier_type}: {identifier!r}. A dot would make a "
-            "schema-qualified name ambiguous."
         )
     return identifier
 
@@ -116,8 +66,7 @@ def quote_ident(identifier: str) -> str:
     crafted identifier would terminate the quote early.
 
     This is defence in depth: callers that interpolate the result into a
-    statement validate the identifier with :func:`validate_ident` or
-    :func:`validate_catalog_ident` first.
+    statement validate the identifier with :func:`validate_catalog_ident` first.
 
     Args:
         identifier: Raw identifier as read from the system catalog.
@@ -126,6 +75,43 @@ def quote_ident(identifier: str) -> str:
         The bracket-quoted identifier.
     """
     return f"[{identifier.replace(']', ']]')}]"
+
+
+def entity_name(schema: str, table: str) -> str:
+    """The name a table is stored under in the graph.
+
+    SQL Server has no per-session default schema: an unqualified name resolves
+    against the *login's* default schema, which is ``dbo`` almost everywhere.
+    Generated SQL uses the names stored in the graph, so a table outside
+    ``dbo`` is stored as ``schema.table``; otherwise ``SELECT * FROM orders``
+    would miss ``sales.orders``, or quietly read ``dbo.orders`` instead.
+    """
+    if schema.lower() == DEFAULT_SCHEMA:
+        return table
+    return f"{schema}.{table}"
+
+
+def _format_type(row: Dict[str, Any]) -> str:
+    """Render a column's base type the way it would be declared.
+
+    *row* carries the base type name with ``max_length`` (bytes, ``-1`` for
+    ``max``), ``precision`` and ``scale`` from ``sys.columns``, so a column of
+    an alias type such as AdventureWorks' ``dbo.Name`` reads ``nvarchar(50)``.
+    """
+    name = row['data_type']
+    max_length = row.get('max_length')
+    if name in ('char', 'varchar', 'binary', 'varbinary', 'nchar', 'nvarchar'):
+        if max_length == -1:
+            return f"{name}(max)"
+        if max_length is not None:
+            # nchar/nvarchar store two bytes per character.
+            chars = max_length // 2 if name in ('nchar', 'nvarchar') else max_length
+            return f"{name}({chars})"
+    if name in ('decimal', 'numeric') and row.get('precision') is not None:
+        return f"{name}({row['precision']},{row.get('scale') or 0})"
+    if name in ('datetime2', 'time', 'datetimeoffset') and row.get('scale') is not None:
+        return f"{name}({row['scale']})"
+    return name
 
 
 def _build_column_description(col_info: Dict[str, Any], key_type: str, is_nullable: str) -> str:
@@ -160,48 +146,25 @@ class SQLServerLoader(BaseLoader):
 
     # DDL operations that modify database schema  # pylint: disable=duplicate-code
     SCHEMA_MODIFYING_OPERATIONS = {
-        'CREATE', 'ALTER', 'DROP', 'RENAME', 'TRUNCATE'
+        'CREATE', 'ALTER', 'DROP', 'TRUNCATE'
     }
-
-    # More specific patterns for schema-affecting operations
-    SCHEMA_PATTERNS = [  # pylint: disable=duplicate-code
-        r'^\s*CREATE\s+TABLE',
-        r'^\s*CREATE\s+INDEX',
-        r'^\s*CREATE\s+UNIQUE\s+INDEX',
-        r'^\s*ALTER\s+TABLE',
-        r'^\s*DROP\s+TABLE',
-        r'^\s*DROP\s+INDEX',
-        r'^\s*RENAME\s+TABLE',
-        r'^\s*TRUNCATE\s+TABLE',
-        r'^\s*CREATE\s+VIEW',
-        r'^\s*DROP\s+VIEW',
-        r'^\s*CREATE\s+SCHEMA',
-        r'^\s*DROP\s+SCHEMA',
-    ]
 
     @staticmethod
     def _execute_sample_query(
-        cursor, table_name: str, col_name: str, sample_size: int = 3
+        cursor, table_name: str, col_name: str, sample_size: int = 3,
+        schema: str | None = None,
     ) -> List[Any]:
         """
         Execute query to get random sample values for a column.
         SQL Server implementation using TOP with NEWID() for random sampling.
 
-        ``table_name`` may be schema-qualified (``schema.table``); each part is
-        bracket-quoted separately so the schema prefix survives. A dot is legal
-        inside a bracket-quoted name, but a single dotted string cannot say
-        which dot is the separator, so neither part may contain one: a
-        dot-bearing name is rejected rather than sampled from the wrong object.
+        *schema* is passed separately rather than folded into *table_name*, so
+        a dot inside either name is just part of that name and the table is
+        still sampled.
         """
-        schema, _, bare_table = table_name.rpartition('.')
-        qualified = quote_ident(
-            validate_catalog_ident(bare_table, "table name", allow_dot=False)
-        )
+        qualified = quote_ident(validate_catalog_ident(table_name, "table name"))
         if schema:
-            qualified = (
-                f"{quote_ident(validate_catalog_ident(schema, 'schema name', allow_dot=False))}"
-                f".{qualified}"
-            )
+            qualified = f"{quote_ident(validate_catalog_ident(schema, 'schema name'))}.{qualified}"
 
         col = quote_ident(validate_catalog_ident(col_name, "column name"))
         if not isinstance(sample_size, int) or sample_size <= 0:
@@ -237,8 +200,22 @@ class SQLServerLoader(BaseLoader):
         ]
 
     @classmethod
-    def extract_sample_values_for_column(
-        cls, cursor, table_name: str, col_name: str, sample_size: int = 3
+    def sample_column(
+        cls, cursor, schema: str | None, table_name: str, col_name: str, sample_size: int = 3
+    ) -> List[str]:
+        """Sample *col_name*, raising on failure; see the wrapper below."""
+        sample_values = cls._execute_sample_query(
+            cursor, table_name, col_name, sample_size, schema=schema
+        )
+        # Same filter as ``BaseLoader.extract_sample_values_for_column``.
+        if sample_values and isinstance(sample_values[0], (str, int, float)):
+            return [str(v) for v in sample_values]
+        return []
+
+    @classmethod
+    def extract_sample_values_for_column(  # pylint: disable=arguments-differ
+        cls, cursor, table_name: str, col_name: str, sample_size: int = 3,
+        schema: str | None = None,
     ) -> List[Any]:
         """Sample *col_name*, returning ``[]`` rather than failing the whole load.
 
@@ -250,9 +227,7 @@ class SQLServerLoader(BaseLoader):
         otherwise abort a schema that is fine apart from one column.
         """
         try:
-            return super().extract_sample_values_for_column(
-                cursor, table_name, col_name, sample_size
-            )
+            return cls.sample_column(cursor, schema, table_name, col_name, sample_size)
         except (ValueError, pymssql.Error) as exc:
             # %r so a control character in a catalog name cannot forge a log line.
             logging.warning(
@@ -302,14 +277,16 @@ class SQLServerLoader(BaseLoader):
         """
         try:
             parsed = urlparse(connection_url)
-            # parse_qs already percent-decodes; decoding again would accept
-            # double-encoded values that validate_ident should reject.
+            # parse_qs already percent-decodes; decoding a second time would
+            # turn a literal "%41" in a schema name into "A".
             schema = parse_qs(parsed.query).get('schema', [''])[0].strip()
         except (ValueError, AttributeError):
             return DEFAULT_SCHEMA
         if not schema:
             return DEFAULT_SCHEMA
-        return validate_ident(schema, "schema name")
+        # Only ever bound as a query parameter, never interpolated, so it is
+        # held to the same rule as catalog names: non-ASCII names are fine.
+        return validate_catalog_ident(schema, "schema name")
 
     @staticmethod
     def _parse_sqlserver_url(connection_url: str) -> Dict[str, Any]:
@@ -383,14 +360,14 @@ class SQLServerLoader(BaseLoader):
         because the FreeTDS db-lib API functions used to implement such timeouts
         have a global effect" — so handing introspection and query execution
         different budgets would just let concurrent operations overwrite each
-        other's, leaving both nondeterministic. The larger of the two settings
-        wins: it still bounds the wait, and it is the only choice that cannot
-        cut short an operation that was legitimately given the longer budget.
+        other's. ``timeout`` bounds each *statement*, so it is the statement
+        budget the other loaders give user queries; introspection is held to
+        ``DB_SCHEMA_TIMEOUT`` as a whole by :meth:`_introspect_schema` instead.
         """
         return {
             **conn_params,
             'login_timeout': Config.DB_CONNECT_TIMEOUT,
-            'timeout': max(Config.DB_SCHEMA_TIMEOUT, Config.DB_STATEMENT_TIMEOUT),
+            'timeout': Config.DB_STATEMENT_TIMEOUT,
         }
 
     @staticmethod
@@ -421,9 +398,13 @@ class SQLServerLoader(BaseLoader):
                 raise SQLServerConnectionError(str(e)) from e
             cursor = conn.cursor(as_dict=True)
 
+            # Wall-clock budget for the whole run. pymssql's own ``timeout``
+            # only bounds each statement; see ``_sample_columns``.
+            deadline = time.monotonic() + Config.DB_SCHEMA_TIMEOUT
             foreign_keys = SQLServerLoader.extract_foreign_keys(cursor, schema)
             entities = SQLServerLoader.extract_tables_info(
-                cursor, schema, SQLServerLoader.group_foreign_keys(foreign_keys)
+                cursor, schema, SQLServerLoader.group_foreign_keys(foreign_keys),
+                deadline=deadline,
             )
             relationships = SQLServerLoader.build_relationships(foreign_keys)
             return entities, relationships
@@ -498,27 +479,32 @@ class SQLServerLoader(BaseLoader):
         cursor,
         schema: str = DEFAULT_SCHEMA,
         foreign_keys_by_table: Dict[str, List[Dict[str, str]]] | None = None,
+        deadline: float | None = None,
     ) -> Dict[str, Any]:
         """
         Extract table and column information from a SQL Server schema.
+
+        Every catalog query runs before any sampling, one per kind of object
+        for the whole schema rather than one per table, so a large schema over
+        a slow link costs a handful of round trips. Sampling comes last; see
+        :meth:`_sample_columns`.
 
         Args:
             cursor: Database cursor
             schema: Schema to extract tables from (default: ``dbo``)
             foreign_keys_by_table: Foreign keys for the whole schema, keyed by
-                owning table, as produced by :meth:`group_foreign_keys`. Passed
-                in rather than queried per table, which would be one round trip
-                per table on a large schema.
+                owning table, as produced by :meth:`group_foreign_keys`.
+            deadline: ``time.monotonic()`` value after which no further sample
+                queries are started.
 
         Returns:
-            Dict containing table information
+            Dict containing table information, keyed by :func:`entity_name`.
         """
-        entities = {}
         foreign_keys_by_table = foreign_keys_by_table or {}
 
-        # Get all tables in the requested schema. ``s.name`` is selected back so
-        # sample queries qualify tables with the server's own canonical schema
-        # name rather than the string taken from the connection URL.
+        # ``s.name`` is selected back so names and sample queries use the
+        # server's own canonical schema name rather than the string taken from
+        # the connection URL.
         cursor.execute("""
             SELECT
                 t.name AS table_name,
@@ -535,58 +521,56 @@ class SQLServerLoader(BaseLoader):
             AND s.name = %s
             ORDER BY t.name;
         """, (schema,))
-
         tables = cursor.fetchall()
 
-        for table_info in tqdm.tqdm(tables, desc="Extracting table information"):
+        columns_by_table = SQLServerLoader.extract_columns_info(cursor, schema)
+
+        entities = {}
+        sample_targets = []
+        for table_info in tables:
             table_name = table_info['table_name']
-            table_comment = table_info['table_comment']
             catalog_schema = table_info['schema_name']
+            name = entity_name(catalog_schema, table_name)
+            columns_info = columns_by_table.get(table_name, {})
 
-            # Get column information for this table
-            columns_info = SQLServerLoader.extract_columns_info(
-                cursor, schema, table_name, catalog_schema
-            )
-
-            # Generate table description
-            table_description = table_comment if table_comment else f"Table: {table_name}"
-
-            # Get column descriptions for batch embedding
-            col_descriptions = [col_info['description'] for col_info in columns_info.values()]
-
-            entities[table_name] = {
-                'description': table_description,
+            entities[name] = {
+                'description': table_info['table_comment'] or f"Table: {name}",
                 'columns': columns_info,
-                'foreign_keys': foreign_keys_by_table.get(table_name, []),
-                'col_descriptions': col_descriptions
+                'foreign_keys': foreign_keys_by_table.get(name, []),
+                'col_descriptions': [col['description'] for col in columns_info.values()],
             }
+            sample_targets.append((catalog_schema, table_name, columns_info))
 
+        SQLServerLoader._sample_columns(cursor, sample_targets, deadline)
         return entities
 
     @staticmethod
-    def extract_columns_info(
-        cursor, schema: str, table_name: str, catalog_schema: str
-    ) -> Dict[str, Any]:
+    def extract_columns_info(cursor, schema: str) -> Dict[str, Dict[str, Any]]:
         """
-        Extract column information for a specific table.
+        Extract column information for every table in *schema*, in one query.
 
         Args:
             cursor: Database cursor
-            schema: Schema owning the table. Only ever passed to the driver as
+            schema: Schema owning the tables. Only ever passed to the driver as
                 a bound query parameter, never interpolated into a statement.
-            table_name: Name of the table, as returned by ``sys.tables``
-            catalog_schema: Schema name as returned by ``sys.schemas``. Sample
-                queries interpolate this rather than *schema*, so the value
-                that reaches a statement body comes from the server rather
-                than from the connection URL.
 
         Returns:
-            Dict containing column information
+            Column information keyed by table name, then column name. Sample
+            values start empty and are filled in by :meth:`_sample_columns`.
         """
+        # The type is resolved to its base system type: joining sys.types on
+        # user_type_id alone reports an alias type (``dbo.Name``) by its alias
+        # and loses its length. CLR types such as geography are assembly types,
+        # not aliases, and keep their own name.
         cursor.execute("""
             SELECT
+                t.name AS table_name,
                 c.name AS column_name,
-                tp.name AS data_type,
+                CASE WHEN tp.is_user_defined = 1 AND tp.is_assembly_type = 0
+                     THEN bt.name ELSE tp.name END AS data_type,
+                c.max_length,
+                c.precision,
+                c.scale,
                 c.is_nullable,
                 dc.definition AS column_default,
                 CASE
@@ -598,6 +582,7 @@ class SQLServerLoader(BaseLoader):
                 ISNULL(CAST(ep.value AS NVARCHAR(MAX)), '') AS column_comment
             FROM sys.columns c
             JOIN sys.types tp ON c.user_type_id = tp.user_type_id
+            LEFT JOIN sys.types bt ON bt.user_type_id = tp.system_type_id
             JOIN sys.tables t ON c.object_id = t.object_id
             JOIN sys.schemas s ON t.schema_id = s.schema_id
             LEFT JOIN sys.default_constraints dc ON c.default_object_id = dc.object_id
@@ -625,33 +610,82 @@ class SQLServerLoader(BaseLoader):
                 AND ep.minor_id = c.column_id
                 AND ep.class = 1
                 AND ep.name = 'MS_Description'
-            WHERE s.name = %s AND t.name = %s
-            ORDER BY c.column_id;
-        """, (schema, table_name))
+            WHERE t.is_ms_shipped = 0 AND s.name = %s
+            ORDER BY t.name, c.column_id;
+        """, (schema,))
 
-        columns = cursor.fetchall()
-        columns_info = {}
-
-        qualified_table = f"{catalog_schema}.{table_name}"
-
-        for col_info in columns:
-            col_name = col_info['column_name']
+        columns_by_table: Dict[str, Dict[str, Any]] = {}
+        for col_info in cursor.fetchall():
+            col_info = {**col_info, 'data_type': _format_type(col_info)}
             is_nullable = 'YES' if col_info['is_nullable'] else 'NO'
             key_type = col_info['column_key']
-
-            columns_info[col_name] = {
+            columns_by_table.setdefault(col_info['table_name'], {})[col_info['column_name']] = {
                 'type': col_info['data_type'],
                 'null': is_nullable,
                 'key': key_type,
                 'description': _build_column_description(col_info, key_type, is_nullable),
                 'default': col_info['column_default'],
                 # Stored separately, not folded into the description.
-                'sample_values': SQLServerLoader.extract_sample_values_for_column(
-                    cursor, qualified_table, col_name
-                ),
+                'sample_values': [],
             }
+        return columns_by_table
 
-        return columns_info
+    @classmethod
+    def _sample_columns(
+        cls, cursor, targets: List[Tuple[str, str, Dict[str, Any]]], deadline: float | None
+    ) -> None:
+        """Fill in sample values in place, within the introspection budget.
+
+        Sampling is the open-ended part of introspection: one ``DISTINCT`` scan
+        per column, each bounded only by the per-statement timeout. Without a
+        budget for the whole run, a wide schema over large tables could hold an
+        introspection worker for hours. Once *deadline* passes, or the
+        connection dies (a timed-out statement can leave FreeTDS unusable), the
+        remaining columns load without samples instead of failing one by one.
+
+        Args:
+            cursor: Database cursor
+            targets: ``(schema, table, columns_info)`` per table.
+            deadline: ``time.monotonic()`` value after which sampling stops.
+        """
+        pending = sum(len(columns) for _, _, columns in targets)
+        for schema, table_name, columns in tqdm.tqdm(targets, desc="Sampling column values"):
+            for col_name, col in columns.items():
+                if deadline is not None and time.monotonic() >= deadline:
+                    logging.warning(
+                        "Schema introspection reached DB_SCHEMA_TIMEOUT; %d columns "
+                        "load without sample values", pending,
+                    )
+                    return
+                pending -= 1
+                try:
+                    col['sample_values'] = cls.sample_column(cursor, schema, table_name, col_name)
+                except (ValueError, pymssql.Error) as exc:
+                    # %r so a control character in a catalog name cannot forge a log line.
+                    logging.warning(
+                        "Skipping sample values for %r.%r: %s", table_name, col_name, exc
+                    )
+                    if isinstance(exc, pymssql.Error) and not cls._connection_alive(cursor):
+                        logging.warning(
+                            "SQL Server connection lost while sampling; %d columns "
+                            "load without sample values", pending,
+                        )
+                        return
+
+    @staticmethod
+    def _connection_alive(cursor) -> bool:
+        """Whether *cursor* can still run a statement.
+
+        pymssql raises the same exception class for a column that cannot be
+        sampled (``DISTINCT`` on ``xml``) as for a timeout that killed the
+        connection, so a trivial round trip is what tells them apart.
+        """
+        try:
+            cursor.execute("SELECT 1 AS alive")
+            cursor.fetchall()
+            return True
+        except pymssql.Error:
+            return False
 
     @staticmethod
     def extract_foreign_keys(
@@ -661,10 +695,10 @@ class SQLServerLoader(BaseLoader):
         Extract every foreign key in a schema, in a single query.
 
         Both the parent and the referenced table must live in *schema*, so a key
-        never names a table that was not loaded. The per-entity view and the
-        relationship map are both derived from these rows — see
-        :meth:`group_foreign_keys` and :meth:`build_relationships` — rather than
-        from a second query per table.
+        never names a table that was not loaded. Table names are given as
+        :func:`entity_name` renders them, matching the entity keys. The
+        per-entity view and the relationship map are both derived from these
+        rows — see :meth:`group_foreign_keys` and :meth:`build_relationships`.
 
         Args:
             cursor: Database cursor
@@ -675,6 +709,7 @@ class SQLServerLoader(BaseLoader):
         """
         cursor.execute("""
             SELECT
+                ps.name AS schema_name,
                 pt.name AS table_name,
                 fk.name AS constraint_name,
                 cp.name AS column_name,
@@ -696,14 +731,17 @@ class SQLServerLoader(BaseLoader):
                 ON fkc.referenced_object_id = cr.object_id
                 AND fkc.referenced_column_id = cr.column_id
             WHERE ps.name = %s AND rs.name = %s
-            ORDER BY pt.name, fk.name;
+            ORDER BY pt.name, fk.name, fkc.constraint_column_id;
         """, (schema, schema))
 
         return [{
-            'table': fk_info['table_name'],
+            'table': entity_name(fk_info['schema_name'], fk_info['table_name']),
             'constraint_name': fk_info['constraint_name'],
             'column': fk_info['column_name'],
-            'referenced_table': fk_info['referenced_table_name'],
+            # Both sides are in the same schema, per the WHERE clause.
+            'referenced_table': entity_name(
+                fk_info['schema_name'], fk_info['referenced_table_name']
+            ),
             'referenced_column': fk_info['referenced_column_name'],
         } for fk_info in cursor.fetchall()]
 
@@ -763,14 +801,9 @@ class SQLServerLoader(BaseLoader):
         if re.match(r'^(EXEC(UTE)?\s+)?(\[?(DBO|SYS)\]?\.)?\[?SP_RENAME\b', normalized_query):
             return True, "RENAME"
 
+        # Any statement led by a DDL keyword counts, whatever object it
+        # targets (table, index, view, procedure, trigger, ...).
         if first_word in SQLServerLoader.SCHEMA_MODIFYING_OPERATIONS:
-            # Additional pattern matching for more precise detection
-            for pattern in SQLServerLoader.SCHEMA_PATTERNS:
-                if re.match(pattern, normalized_query, re.IGNORECASE):
-                    return True, first_word
-
-            # If it's a known DDL operation but doesn't match specific patterns,
-            # still consider it schema-modifying (better safe than sorry)
             return True, first_word
 
         return False, ""
@@ -793,30 +826,33 @@ class SQLServerLoader(BaseLoader):
 
             from api.core.db_resolver import resolve_db  # pylint: disable=import-outside-toplevel
 
-            # ``load`` names the graph f"{prefix}_{db_name}", so strip that exact
-            # suffix — splitting on "_" mistakes a database name that contains one
-            # for the prefix boundary. Parsed before the delete so a bad URL cannot
-            # drop the graph without reloading it.
-            db_name = SQLServerLoader._parse_sqlserver_url(db_url)['database']
-            suffix = f"_{db_name}"
-            prefix = graph_id[:-len(suffix)] if graph_id.endswith(suffix) else graph_id
+            conn_params = SQLServerLoader._parse_sqlserver_url(db_url)
+            schema = SQLServerLoader.parse_schema_from_url(db_url)
+            db_name = conn_params['database']
 
-            # Clear existing graph data
-            # Drop current graph before reloading
+            # ``load`` names the graph f"{prefix}_{db_name}". A graph that does
+            # not end that way was not loaded from this URL, and reloading it
+            # would replace it with a graph under a different name.
+            suffix = f"_{db_name}"
+            if not graph_id.endswith(suffix) or graph_id == suffix:
+                logging.error("Refusing to refresh a graph not named after its database")
+                return False, "Failed to reload schema"
+
+            # Introspect before touching the graph: a network blip, login
+            # throttling or a timeout here must leave the existing schema
+            # usable rather than delete it and fail the reload.
+            entities, relationships = await run_introspection(
+                SQLServerLoader._introspect_schema, conn_params, schema
+            )
+
             graph = resolve_db(db).select_graph(graph_id)
             await graph.delete()
+            await load_to_graph(graph_id, entities, relationships,
+                                db_name=db_name, db_url=db_url, db=db)
 
-            # Reuse the existing load method to reload the schema
-            success, message = False, ""
-            async for progress in SQLServerLoader.load(prefix, db_url, db=db):
-                success, message = progress
-
-            if success:
-                logging.info("Graph schema refreshed successfully.")
-                return True, message
-
-            logging.error("Schema refresh failed")
-            return False, "Failed to reload schema"
+            logging.info("Graph schema refreshed successfully.")
+            return True, (f"SQL Server schema loaded successfully. "
+                          f"Found {len(entities)} tables.")
 
         except Exception as e:  # pylint: disable=broad-exception-caught
             # Log the error and return failure
@@ -851,7 +887,10 @@ class SQLServerLoader(BaseLoader):
             conn = pymssql.connect(  # pylint: disable=no-member
                 **SQLServerLoader._with_timeouts(conn_params)
             )
-            cursor = conn.cursor(as_dict=True)
+            # A plain tuple cursor: ``as_dict=True`` raises
+            # ColumnsWithoutNamesError on an unaliased ``COUNT(*)`` and lets
+            # duplicate names (``o.id, c.id``) overwrite each other.
+            cursor = conn.cursor()
 
             # Execute the SQL query
             cursor.execute(sql_query)
@@ -859,15 +898,14 @@ class SQLServerLoader(BaseLoader):
             # Check if the query returns results (SELECT queries)
             if cursor.description is not None:
                 # This is a SELECT query or similar that returns rows
-                results = cursor.fetchall()
-                result_list = []
-                for row in results:
-                    # Serialize each value to ensure JSON compatibility
-                    serialized_row = {
-                        key: SQLServerLoader._serialize_value(value)
-                        for key, value in row.items()
+                names = SQLServerLoader._result_column_names(cursor.description)
+                result_list = [
+                    {
+                        name: SQLServerLoader._serialize_value(value)
+                        for name, value in zip(names, row)
                     }
-                    result_list.append(serialized_row)
+                    for row in cursor.fetchall()
+                ]
             else:
                 # This is an INSERT, UPDATE, DELETE, or other non-SELECT query
                 # Return information about the operation
@@ -902,6 +940,26 @@ class SQLServerLoader(BaseLoader):
             raise SQLServerQueryError(f"Error executing SQL query: {str(e)}") from e
         finally:
             SQLServerLoader._close_quietly(cursor, conn)
+
+    @staticmethod
+    def _result_column_names(description) -> List[str]:
+        """One distinct key per result column, in order.
+
+        An unnamed column (``COUNT(*)``, an unaliased expression) is called
+        ``column_<n>`` by position, and a repeated name gets a ``_2``, ``_3``
+        suffix, so no value is dropped from the row.
+        """
+        names: List[str] = []
+        seen: set = set()
+        for position, column in enumerate(description, start=1):
+            base = column[0] or f"column_{position}"
+            name, n = base, 1
+            while name in seen:
+                n += 1
+                name = f"{base}_{n}"
+            seen.add(name)
+            names.append(name)
+        return names
 
     @staticmethod
     def _rollback_quietly(conn) -> None:

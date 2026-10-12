@@ -30,9 +30,9 @@ from api.loaders.sqlserver_loader import (  # noqa: E402  pylint: disable=wrong-
     SQLServerLoader,
     SQLServerQueryError,
     _build_column_description,
+    entity_name,
     quote_ident,
     validate_catalog_ident,
-    validate_ident,
 )
 
 pytestmark = pytest.mark.unit
@@ -118,63 +118,12 @@ class TestQuoteIdent:
         assert quoted[1:-1].replace("]]", "") .count("]") == 0
 
 
-class TestValidateIdent:
-    """Allow-list validation applied to the schema taken from the connection URL."""
-
-    @pytest.mark.parametrize("name", [
-        "Orders", "my-table name", "col_1", "tbl$", "#temp", "a.b", "x@y",
-    ])
-    def test_accepts_legitimate_names(self, name):
-        """Characters that can legally appear in an object name pass through."""
-        assert validate_ident(name) == name
-
-    @pytest.mark.parametrize("name", [
-        "x] FROM sys.tables; DROP TABLE users --",
-        "my]table",
-        "tbl'; DROP TABLE t --",
-        'tbl"',
-        "tbl;",
-        "tbl\\x",
-        "tbl\nDROP",
-    ])
-    def test_rejects_breakout_attempts(self, name):
-        """Anything able to escape a bracket delimiter is refused."""
-        with pytest.raises(ValueError):
-            validate_ident(name)
-
-    def test_rejects_empty(self):
-        """An empty identifier is not a valid object name."""
-        with pytest.raises(ValueError):
-            validate_ident("")
-
-    def test_rejects_over_long(self):
-        """SQL Server object names cap at 128 characters."""
-        with pytest.raises(ValueError):
-            validate_ident("a" * 129)
-
-    def test_error_names_the_identifier_type(self):
-        """The message says which kind of identifier was rejected."""
-        with pytest.raises(ValueError, match="schema name"):
-            validate_ident("bad;name", "schema name")
-
-    def test_dot_can_be_disallowed(self):
-        """Callers that split a dotted string opt out of accepting dots."""
-        assert validate_ident("a.b") == "a.b"
-        with pytest.raises(ValueError, match="table name"):
-            validate_ident("a.b", "table name", allow_dot=False)
-
-    def test_message_drops_dot_when_it_is_disallowed(self):
-        """The allow-list in the message matches the one actually applied."""
-        with pytest.raises(ValueError) as excinfo:
-            validate_ident("a.b", allow_dot=False)
-        assert "dot" not in str(excinfo.value)
-
-
 class TestValidateCatalogIdent:
-    """Catalog names get a laxer check than user-supplied ones."""
+    """The one rule for any name bracket-quoted into a statement."""
 
     @pytest.mark.parametrize("name", [
-        "Kunden_Ä", "לקוחות", "顧客", "my]table", "tbl'; DROP TABLE t --",
+        "Kunden_Ä", "לקוחות", "顧客", "Verkäufe", "销售", "my]table",
+        "tbl'; DROP TABLE t --", "a.b", "sales-data",
     ])
     def test_accepts_names_the_server_accepts(self, name):
         """Non-ASCII names are ordinary; bracket-quoting is what makes them safe."""
@@ -187,35 +136,46 @@ class TestValidateCatalogIdent:
             validate_catalog_ident(name)
 
     def test_rejects_empty_and_over_long(self):
-        """The same length bounds as the strict check."""
+        """SQL Server object names are 1-128 characters."""
         with pytest.raises(ValueError):
             validate_catalog_ident("")
         with pytest.raises(ValueError):
             validate_catalog_ident("a" * 129)
 
-    def test_dot_can_be_disallowed(self):
-        """Callers that split a dotted string opt out of accepting dots."""
-        assert validate_catalog_ident("a.b") == "a.b"
-        with pytest.raises(ValueError, match="table name"):
-            validate_catalog_ident("a.b", "table name", allow_dot=False)
+    def test_error_names_the_identifier_type(self):
+        """The message says which kind of identifier was rejected."""
+        with pytest.raises(ValueError, match="schema name"):
+            validate_catalog_ident("bad\nname", "schema name")
+
+
+class TestEntityName:
+    """How a table is named in the graph."""
+
+    @pytest.mark.parametrize("schema", ["dbo", "DBO"])
+    def test_dbo_tables_keep_their_bare_name(self, schema):
+        assert entity_name(schema, "Orders") == "Orders"
+
+    def test_other_schemas_are_qualified(self):
+        """Unqualified SQL would resolve against the login's default schema."""
+        assert entity_name("sales", "Orders") == "sales.Orders"
 
 
 class TestSampleQueryValidation:
     """The sample query contains hostile identifiers rather than trusting them."""
 
-    @pytest.mark.parametrize("table,column,quoted", [
-        ("dbo.x] FROM t --", "c", "[dbo].[x]] FROM t --]"),
-        ("dbo.T", "c] FROM sys.tables --", "[c]] FROM sys.tables --]"),
-        ("bad;schema.T", "c", "[bad;schema].[T]"),
+    @pytest.mark.parametrize("schema,table,column,quoted", [
+        ("dbo", "x] FROM t --", "c", "[dbo].[x]] FROM t --]"),
+        ("dbo", "T", "c] FROM sys.tables --", "[c]] FROM sys.tables --]"),
+        ("bad;schema", "T", "c", "[bad;schema].[T]"),
     ])
-    def test_hostile_identifier_stays_quoted(self, table, column, quoted):
+    def test_hostile_identifier_stays_quoted(self, schema, table, column, quoted):
         """A catalog name is bracket-quoted with ``]`` doubled, never rejected.
 
         SQL Server permits these names, so refusing them would fail the whole
         schema load; quoting is what keeps them inert.
         """
         cursor = FakeCursor([[]])
-        SQLServerLoader._execute_sample_query(cursor, table, column)
+        SQLServerLoader._execute_sample_query(cursor, table, column, schema=schema)
         query, _ = cursor.executed[0]
         assert quoted in query
 
@@ -224,21 +184,18 @@ class TestSampleQueryValidation:
         """``sample_size`` must be a positive integer."""
         cursor = FakeCursor([[]])
         with pytest.raises(ValueError):
-            SQLServerLoader._execute_sample_query(cursor, "dbo.T", "c", sample_size=size)
+            SQLServerLoader._execute_sample_query(cursor, "T", "c", sample_size=size)
         assert cursor.executed == []
 
-    @pytest.mark.parametrize("table", ["dbo.my.table", "my.table.T"])
-    def test_ambiguous_dotted_name_is_refused(self, table):
-        """A dot is legal in a bracket-quoted name but not recoverable here.
-
-        ``rpartition`` has to guess which dot separates the schema from the
-        table, so ``dbo.my.table`` would otherwise be sampled as ``[dbo.my]``
-        dot ``[table]`` -- a different object, silently.
-        """
+    @pytest.mark.parametrize("schema,table,expected", [
+        ("sales.eu", "Orders", "FROM [sales.eu].[Orders]"),
+        ("dbo", "weird.name", "FROM [dbo].[weird.name]"),
+    ])
+    def test_a_dot_in_either_name_is_sampled_not_refused(self, schema, table, expected):
+        """Schema and table arrive separately, so no dot has to be split on."""
         cursor = FakeCursor([[]])
-        with pytest.raises(ValueError):
-            SQLServerLoader._execute_sample_query(cursor, table, "c")
-        assert cursor.executed == []
+        SQLServerLoader._execute_sample_query(cursor, table, "c", schema=schema)
+        assert expected in cursor.executed[0][0]
 
 
 class TestParseUrl:
@@ -313,11 +270,22 @@ class TestParseUrl:
         assert SQLServerLoader.parse_schema_from_url(
             "sqlserver://sa:pw@localhost/testdb?schema=sales") == "sales"
 
-    def test_double_encoded_schema_is_rejected(self):
-        """The parameter is decoded once, so ``%2520`` stays a literal ``%20``."""
+    def test_schema_is_decoded_once(self):
+        """``%2520`` is a literal ``%20``, not a space decoded twice."""
+        assert SQLServerLoader.parse_schema_from_url(
+            "sqlserver://sa:pw@localhost/testdb?schema=sa%2520les") == "sa%20les"
+
+    @pytest.mark.parametrize("schema", ["Verk%C3%A4ufe", "%E9%94%80%E5%94%AE"])
+    def test_non_ascii_schema_is_accepted(self, schema):
+        """The URL schema is only ever bound, so non-ASCII names are fine."""
+        parsed = SQLServerLoader.parse_schema_from_url(
+            f"sqlserver://sa:pw@localhost/testdb?schema={schema}")
+        assert parsed in ("Verkäufe", "销售")
+
+    def test_control_character_in_schema_is_rejected(self):
         with pytest.raises(ValueError):
             SQLServerLoader.parse_schema_from_url(
-                "sqlserver://sa:pw@localhost/testdb?schema=sa%2520les")
+                "sqlserver://sa:pw@localhost/testdb?schema=a%0Ab")
 
 
 class TestSampleQuery:
@@ -330,19 +298,19 @@ class TestSampleQuery:
         keys, so ``row[0]`` raised KeyError for every non-empty column.
         """
         cursor = FakeCursor([[{"status": "active"}, {"status": "closed"}]])
-        values = SQLServerLoader._execute_sample_query(cursor, "dbo.Orders", "status")
+        values = SQLServerLoader._execute_sample_query(cursor, "Orders", "status")
         assert values == ["active", "closed"]
 
     def test_nulls_filtered_out(self):
         """NULL samples are dropped."""
         cursor = FakeCursor([[{"status": "active"}, {"status": None}]])
         assert SQLServerLoader._execute_sample_query(
-            cursor, "dbo.Orders", "status") == ["active"]
+            cursor, "Orders", "status") == ["active"]
 
     def test_query_is_schema_qualified_and_quoted(self):
         """Both schema and table are bracket-quoted separately."""
         cursor = FakeCursor([[]])
-        SQLServerLoader._execute_sample_query(cursor, "sales.Orders", "status")
+        SQLServerLoader._execute_sample_query(cursor, "Orders", "status", schema="sales")
         query, _ = cursor.executed[0]
         assert "FROM [sales].[Orders]" in query
 
@@ -354,7 +322,7 @@ class TestSampleQuery:
         the first table with a column.
         """
         cursor = FakeCursor([[]])
-        SQLServerLoader._execute_sample_query(cursor, "dbo.Orders", "status")
+        SQLServerLoader._execute_sample_query(cursor, "Orders", "status")
         query, _ = cursor.executed[0]
         assert re.search(r"SELECT\s+DISTINCT\s+TOP", query) is None
         assert ") AS sampled" in query
@@ -371,7 +339,7 @@ class TestSampleQuery:
     def test_sample_size_is_coerced_to_int(self):
         """``sample_size`` cannot smuggle SQL into the TOP clause."""
         cursor = FakeCursor([[]])
-        SQLServerLoader._execute_sample_query(cursor, "dbo.T", "c", sample_size=5)
+        SQLServerLoader._execute_sample_query(cursor, "T", "c", sample_size=5)
         query, _ = cursor.executed[0]
         assert "TOP 5" in query
 
@@ -379,7 +347,7 @@ class TestSampleQuery:
         """The public wrapper converts values to strings."""
         cursor = FakeCursor([[{"n": 1}, {"n": 2}]])
         assert SQLServerLoader.extract_sample_values_for_column(
-            cursor, "dbo.T", "n") == ["1", "2"]
+            cursor, "T", "n") == ["1", "2"]
 
     def test_driver_objects_are_serialized_before_the_base_filter(self):
         """The base wrapper keeps a sample only if it is a str/int/float.
@@ -393,7 +361,7 @@ class TestSampleQuery:
             {"v": uuid.UUID("3f2504e0-4f89-11d3-9a0c-0305e82c3301")},
         ]])
         assert SQLServerLoader.extract_sample_values_for_column(
-            cursor, "dbo.T", "v") == ["3f2504e0-4f89-11d3-9a0c-0305e82c3301"]
+            cursor, "T", "v") == ["3f2504e0-4f89-11d3-9a0c-0305e82c3301"]
 
     @pytest.mark.parametrize("error", [
         pymssql.Error("DISTINCT is not defined for xml"),
@@ -404,7 +372,25 @@ class TestSampleQuery:
         cursor = FakeCursor([[]])
         cursor.execute = MagicMock(side_effect=error)
         assert SQLServerLoader.extract_sample_values_for_column(
-            cursor, "dbo.T", "payload") == []
+            cursor, "T", "payload") == []
+
+
+def _column_row(table="Orders", name="id", key="PRIMARY KEY", **overrides):
+    """One row of the schema-wide column catalog query."""
+    row = {
+        "table_name": table,
+        "column_name": name,
+        "data_type": "int",
+        "max_length": 4,
+        "precision": 10,
+        "scale": 0,
+        "is_nullable": False,
+        "column_default": None,
+        "column_key": key,
+        "column_comment": "",
+    }
+    row.update(overrides)
+    return row
 
 
 class TestIntrospection:
@@ -419,57 +405,55 @@ class TestIntrospection:
         assert "s.name = %s" in query
         assert "JOIN sys.schemas s" in query
 
-    def test_columns_query_binds_schema_and_table(self):
-        """Column introspection is scoped by schema *and* table."""
-        cursor = FakeCursor([[]])
-        SQLServerLoader.extract_columns_info(cursor, "sales", "Orders", "Sales")
-        query, params = cursor.executed[0]
-        assert params == ("sales", "Orders")
-        assert "s.name = %s AND t.name = %s" in query
-
-    def test_columns_info_mapping(self):
-        """Catalog rows map onto the loader's column dict."""
+    def test_columns_are_fetched_once_for_the_whole_schema(self):
+        """One column query per schema, not one per table."""
         cursor = FakeCursor([
-            [{
-                "column_name": "id",
-                "data_type": "int",
-                "is_nullable": False,
-                "column_default": None,
-                "column_key": "PRIMARY KEY",
-                "column_comment": "",
-            }],
-            [{"id": 1}],  # sample values query
-        ])
-        info = SQLServerLoader.extract_columns_info(cursor, "dbo", "Orders", "dbo")
-        assert info["id"]["type"] == "int"
-        assert info["id"]["null"] == "NO"
-        assert info["id"]["key"] == "PRIMARY KEY"
-        assert info["id"]["sample_values"] == ["1"]
-        assert "(NOT NULL)" in info["id"]["description"]
-
-    def test_columns_sample_query_is_schema_qualified(self):
-        """Sample values are fetched from the correct schema."""
-        cursor = FakeCursor([
-            [{
-                "column_name": "id",
-                "data_type": "int",
-                "is_nullable": True,
-                "column_default": None,
-                "column_key": "NONE",
-                "column_comment": "",
-            }],
+            [{"table_name": t, "schema_name": "dbo", "table_comment": ""}
+             for t in ("A", "B", "C")],
             [],
         ])
-        SQLServerLoader.extract_columns_info(cursor, "sales", "Orders", "Sales")
-        # The column query binds the URL schema; the sample query interpolates
-        # the catalog-returned one.
-        assert cursor.executed[0][1] == ("sales", "Orders")
-        sample_query, _ = cursor.executed[1]
-        assert "FROM [Sales].[Orders]" in sample_query
+        SQLServerLoader.extract_tables_info(cursor, "dbo")
+        column_queries = [q for q, _ in cursor.executed if "FROM sys.columns c" in q]
+        assert len(column_queries) == 1
+        assert cursor.executed[1][1] == ("dbo",)
+
+    def test_columns_info_mapping(self):
+        """Catalog rows map onto the loader's column dict, grouped by table."""
+        cursor = FakeCursor([[_column_row(), _column_row(table="Lines", name="qty", key="NONE")]])
+        info = SQLServerLoader.extract_columns_info(cursor, "dbo")
+        assert list(info) == ["Orders", "Lines"]
+        assert info["Orders"]["id"]["type"] == "int"
+        assert info["Orders"]["id"]["null"] == "NO"
+        assert info["Orders"]["id"]["key"] == "PRIMARY KEY"
+        assert info["Orders"]["id"]["sample_values"] == []
+        assert "(NOT NULL)" in info["Orders"]["id"]["description"]
+
+    @pytest.mark.parametrize("overrides,expected", [
+        ({"data_type": "nvarchar", "max_length": 100}, "nvarchar(50)"),
+        ({"data_type": "nvarchar", "max_length": -1}, "nvarchar(max)"),
+        ({"data_type": "varchar", "max_length": 25}, "varchar(25)"),
+        ({"data_type": "decimal", "precision": 19, "scale": 4}, "decimal(19,4)"),
+        ({"data_type": "datetime2", "scale": 7}, "datetime2(7)"),
+        ({"data_type": "bit", "max_length": 1}, "bit"),
+    ])
+    def test_types_are_rendered_as_declared(self, overrides, expected):
+        """Length, precision and scale are part of the type the LLM sees."""
+        cursor = FakeCursor([[_column_row(**overrides)]])
+        info = SQLServerLoader.extract_columns_info(cursor, "dbo")
+        assert info["Orders"]["id"]["type"] == expected
+
+    def test_alias_types_resolve_to_their_base_type(self):
+        """``dbo.Name`` is reported as nvarchar, not as ``Name``."""
+        cursor = FakeCursor([[]])
+        SQLServerLoader.extract_columns_info(cursor, "dbo")
+        query = cursor.executed[0][0]
+        assert "tp.is_user_defined = 1 AND tp.is_assembly_type = 0" in query
+        assert "bt.user_type_id = tp.system_type_id" in query
 
     def test_foreign_keys_mapping(self):
         """Foreign key rows map onto the loader's FK dicts."""
         cursor = FakeCursor([[{
+            "schema_name": "dbo",
             "table_name": "Orders",
             "constraint_name": "FK_Orders_Customers",
             "column_name": "customer_id",
@@ -483,6 +467,19 @@ class TestIntrospection:
             "referenced_table": "Customers",
             "referenced_column": "id",
         }]}
+
+    def test_foreign_keys_outside_dbo_use_qualified_names(self):
+        """Both sides of a key match the qualified entity names."""
+        cursor = FakeCursor([[{
+            "schema_name": "sales",
+            "table_name": "Orders",
+            "constraint_name": "FK",
+            "column_name": "customer_id",
+            "referenced_table_name": "Customers",
+            "referenced_column_name": "id",
+        }]])
+        fk = SQLServerLoader.extract_foreign_keys(cursor, "sales")[0]
+        assert (fk["table"], fk["referenced_table"]) == ("sales.Orders", "sales.Customers")
 
     def test_foreign_keys_are_fetched_once_for_the_whole_schema(self):
         """One query for every key, with both sides pinned to the loaded schema."""
@@ -539,21 +536,26 @@ class TestIntrospection:
         """A full table walk produces the expected entity structure."""
         cursor = FakeCursor([
             [{"table_name": "Orders", "schema_name": "dbo", "table_comment": "All orders"}],
-            [{
-                "column_name": "id",
-                "data_type": "int",
-                "is_nullable": False,
-                "column_default": None,
-                "column_key": "PRIMARY KEY",
-                "column_comment": "",
-            }],
+            [_column_row()],
             [{"id": 7}],
         ])
         entities = SQLServerLoader.extract_tables_info(cursor, "dbo")
         assert list(entities) == ["Orders"]
         assert entities["Orders"]["description"] == "All orders"
         assert list(entities["Orders"]["columns"]) == ["id"]
+        assert entities["Orders"]["columns"]["id"]["sample_values"] == ["7"]
         assert entities["Orders"]["foreign_keys"] == []
+
+    def test_tables_outside_dbo_are_keyed_by_qualified_name(self):
+        """So generated SQL names ``sales.Orders``, not whatever the login defaults to."""
+        cursor = FakeCursor([
+            [{"table_name": "Orders", "schema_name": "sales", "table_comment": ""}],
+            [_column_row()],
+            [],
+        ])
+        entities = SQLServerLoader.extract_tables_info(cursor, "sales")
+        assert list(entities) == ["sales.Orders"]
+        assert entities["sales.Orders"]["description"] == "Table: sales.Orders"
 
     def test_sample_query_uses_catalog_schema_not_url_schema(self):
         """Sample queries qualify with the schema echoed back by ``sys.schemas``.
@@ -563,19 +565,91 @@ class TestIntrospection:
         """
         cursor = FakeCursor([
             [{"table_name": "Orders", "schema_name": "Sales", "table_comment": ""}],
-            [{
-                "column_name": "id",
-                "data_type": "int",
-                "is_nullable": False,
-                "column_default": None,
-                "column_key": "PRIMARY KEY",
-                "column_comment": "",
-            }],
+            [_column_row()],
             [{"id": 7}],
         ])
         SQLServerLoader.extract_tables_info(cursor, "sales")
         sample_query = cursor.executed[2][0]
         assert "FROM [Sales].[Orders]" in sample_query
+
+    def test_every_catalog_query_runs_before_any_sample(self):
+        """Sampling cannot leave a catalog query to a connection it killed."""
+        cursor = FakeCursor([
+            [{"table_name": t, "schema_name": "dbo", "table_comment": ""} for t in ("A", "B")],
+            [_column_row(table="A"), _column_row(table="B")],
+            [], [],
+        ])
+        SQLServerLoader.extract_tables_info(cursor, "dbo")
+        kinds = ["sample" if "NEWID()" in q else "catalog" for q, _ in cursor.executed]
+        assert kinds == ["catalog", "catalog", "sample", "sample"]
+
+
+class TestSamplingBudget:
+    """Sampling is bounded as a whole, and stops on a dead connection."""
+
+    @staticmethod
+    def _cursor(tables=("A", "B")):
+        return FakeCursor([
+            [{"table_name": t, "schema_name": "dbo", "table_comment": ""} for t in tables],
+            [_column_row(table=t) for t in tables],
+        ])
+
+    def test_a_passed_deadline_skips_the_remaining_samples(self):
+        """The schema still loads; only the samples are dropped."""
+        cursor = self._cursor()
+        entities = SQLServerLoader.extract_tables_info(cursor, "dbo", deadline=0.0)
+        assert not any("NEWID()" in q for q, _ in cursor.executed)
+        assert set(entities) == {"A", "B"}
+
+    def test_sampling_stops_mid_schema_when_the_deadline_passes(self):
+        cursor = self._cursor()
+        with patch("api.loaders.sqlserver_loader.time.monotonic", side_effect=[0.0, 99.0]):
+            SQLServerLoader.extract_tables_info(cursor, "dbo", deadline=10.0)
+        assert sum("NEWID()" in q for q, _ in cursor.executed) == 1
+
+    def test_load_gives_introspection_a_wall_clock_deadline(self):
+        """``_introspect_schema`` bounds the run by DB_SCHEMA_TIMEOUT."""
+        cursor = FakeCursor([[], [], []])
+        with patch("pymssql.connect", return_value=FakeConnection(cursor)), \
+                patch.object(SQLServerLoader, "extract_tables_info",
+                             wraps=SQLServerLoader.extract_tables_info) as tables, \
+                patch("api.loaders.sqlserver_loader.time.monotonic", return_value=100.0):
+            SQLServerLoader._introspect_schema(
+                SQLServerLoader._parse_sqlserver_url("sqlserver://sa:pw@h/db"), "dbo")
+        assert tables.call_args.kwargs["deadline"] == 100.0 + Config.DB_SCHEMA_TIMEOUT
+
+    def test_a_dead_connection_stops_sampling(self):
+        """A failed sample followed by a failed probe means the connection is gone."""
+        cursor = self._cursor()
+        real_execute = cursor.execute
+
+        def execute(query, params=None):
+            if "NEWID()" in query or "alive" in query:
+                cursor.executed.append((query, params))
+                raise pymssql.OperationalError("connection timed out")
+            return real_execute(query, params)
+
+        cursor.execute = execute
+        entities = SQLServerLoader.extract_tables_info(cursor, "dbo")
+        assert sum("NEWID()" in q for q, _ in cursor.executed) == 1
+        assert set(entities) == {"A", "B"}
+
+    def test_a_column_error_on_a_live_connection_costs_only_that_column(self):
+        """``DISTINCT`` on xml fails, the probe succeeds, and sampling carries on."""
+        cursor = self._cursor()
+        real_execute = cursor.execute
+        samples = []
+
+        def execute(query, params=None):
+            if "NEWID()" in query:
+                samples.append(query)
+                if len(samples) == 1:
+                    raise pymssql.OperationalError("DISTINCT is not defined for xml")
+            return real_execute(query, params)
+
+        cursor.execute = execute
+        SQLServerLoader.extract_tables_info(cursor, "dbo")
+        assert len(samples) == 2
 
 
 class TestSerialization:
@@ -655,13 +729,40 @@ class TestExecuteSqlQuery:
 
     def test_select_returns_serialized_rows(self):
         """SELECT results are serialized for JSON transport."""
-        cursor = FakeCursor([[{"id": 1, "when": datetime.date(2024, 1, 2)}]])
+        cursor = FakeCursor([[(1, datetime.date(2024, 1, 2))]])
+        cursor.description = [("id",), ("when",)]
         conn = FakeConnection(cursor)
         with patch("pymssql.connect", return_value=conn):
             rows = SQLServerLoader.execute_sql_query(
                 "SELECT 1", "sqlserver://sa:pw@localhost/testdb")
         assert rows == [{"id": 1, "when": "2024-01-02"}]
         assert conn.closed and cursor.closed
+
+    def test_unnamed_columns_get_positional_names(self):
+        """``SELECT COUNT(*)`` has no column name; as_dict=True used to raise on it."""
+        cursor = FakeCursor([[(42, 7)]])
+        cursor.description = [("",), (None,)]
+        with patch("pymssql.connect", return_value=FakeConnection(cursor)):
+            rows = SQLServerLoader.execute_sql_query(
+                "SELECT COUNT(*), MAX(id) FROM orders", "sqlserver://sa:pw@localhost/testdb")
+        assert rows == [{"column_1": 42, "column_2": 7}]
+
+    def test_duplicate_column_names_keep_every_value(self):
+        """``SELECT o.id, c.id`` must not collapse into one key."""
+        cursor = FakeCursor([[(1, 2, 3)]])
+        cursor.description = [("id",), ("id",), ("id",)]
+        with patch("pymssql.connect", return_value=FakeConnection(cursor)):
+            rows = SQLServerLoader.execute_sql_query(
+                "SELECT o.id, c.id, x.id", "sqlserver://sa:pw@localhost/testdb")
+        assert rows == [{"id": 1, "id_2": 2, "id_3": 3}]
+
+    def test_queries_use_a_tuple_cursor(self):
+        """``as_dict=True`` is what raises ColumnsWithoutNamesError."""
+        conn = FakeConnection(FakeCursor([[]]))
+        conn.cursor = MagicMock(return_value=conn._cursor)
+        with patch("pymssql.connect", return_value=conn):
+            SQLServerLoader.execute_sql_query("SELECT 1", "sqlserver://sa:pw@localhost/testdb")
+        assert conn.cursor.call_args.kwargs.get("as_dict", False) is False
 
     def test_non_select_reports_affected_rows(self):
         """Write statements report the affected row count."""
@@ -777,10 +878,10 @@ class TestLoad:
 
         kwargs = mock_connect.call_args.kwargs
         assert kwargs["login_timeout"] == Config.DB_CONNECT_TIMEOUT
-        assert kwargs["timeout"] == max(Config.DB_SCHEMA_TIMEOUT, Config.DB_STATEMENT_TIMEOUT)
+        assert kwargs["timeout"] == Config.DB_STATEMENT_TIMEOUT
 
     def test_execute_query_bounds_connect_and_query_time(self):
-        """Query execution uses the same budget: pymssql timeouts are process-wide."""
+        """Every connection gets the statement budget: pymssql timeouts are process-wide."""
         cursor = FakeCursor([[]])
         conn = FakeConnection(cursor)
         with patch("pymssql.connect", return_value=conn) as mock_connect:
@@ -789,7 +890,7 @@ class TestLoad:
 
         kwargs = mock_connect.call_args.kwargs
         assert kwargs["login_timeout"] == Config.DB_CONNECT_TIMEOUT
-        assert kwargs["timeout"] == max(Config.DB_SCHEMA_TIMEOUT, Config.DB_STATEMENT_TIMEOUT)
+        assert kwargs["timeout"] == Config.DB_STATEMENT_TIMEOUT
 
 
 class TestLoaderRouting:
@@ -800,15 +901,30 @@ class TestLoaderRouting:
             "sqlserver://sa:pw@localhost/testdb")
         assert (db_type, loader) == ("sqlserver", SQLServerLoader)
 
-    def test_sdk_only_install_is_told_which_extra_to_add(self):
-        # A clean error beats a deferred ImportError on pymssql.
-        with pytest.raises(InvalidArgumentError, match=r"\[server\] extra"):
-            get_database_type_and_loader(
-                "sqlserver://sa:pw@localhost/testdb", sdk_only=True)
+    def test_sdk_uses_the_loader_when_the_extra_is_installed(self):
+        """With pymssql installed the SDK gets the loader, not an error."""
+        db_type, loader = get_database_type_and_loader(
+            "sqlserver://sa:pw@localhost/testdb", sdk_only=True)
+        assert (db_type, loader) == ("sqlserver", SQLServerLoader)
+
+    def test_sdk_without_the_extra_is_told_which_extra_to_add(self):
+        """A clean error beats an ImportError on pymssql."""
+        with patch.dict("sys.modules", {"api.loaders.sqlserver_loader": None}):
+            with pytest.raises(InvalidArgumentError, match=r"\[server\] extra"):
+                get_database_type_and_loader(
+                    "sqlserver://sa:pw@localhost/testdb", sdk_only=True)
+
+    def test_server_path_without_the_driver_keeps_the_import_error(self):
+        """A server install missing pymssql is a broken deployment, not bad input."""
+        with patch.dict("sys.modules", {"api.loaders.sqlserver_loader": None}):
+            with pytest.raises(ImportError):
+                get_database_type_and_loader("sqlserver://sa:pw@localhost/testdb")
 
 
 class TestRefreshGraphSchema:
     """Reloading the graph after a DDL statement."""
+
+    URL = "sqlserver://sa:pw@localhost/testdb"
 
     @staticmethod
     def _graph_and_db():
@@ -818,92 +934,88 @@ class TestRefreshGraphSchema:
         db.select_graph.return_value = graph
         return graph, db
 
-    @pytest.mark.asyncio
-    async def test_reload_drops_the_graph_and_reports_success(self):
+    @staticmethod
+    def _patched(introspection=None, db=None):
+        """Patch introspection, graph loading and the FalkorDB handle."""
+        if introspection is None:
+            introspection = AsyncMock(return_value=({"Orders": {}}, {}))
+        load = AsyncMock()
+        patches = [
+            patch("api.loaders.sqlserver_loader.run_introspection", introspection),
+            patch("api.loaders.sqlserver_loader.load_to_graph", load),
+            patch("api.core.db_resolver.resolve_db", return_value=db),
+        ]
+        return patches, load
+
+    async def _refresh(self, graph_id, url=URL, introspection=None):
         graph, db = self._graph_and_db()
+        patches, load = self._patched(introspection, db)
+        with patches[0], patches[1], patches[2]:
+            result = await SQLServerLoader.refresh_graph_schema(graph_id, url, db=db)
+        return result, graph, load
 
-        async def _load(prefix, _url, db=None):  # pylint: disable=unused-argument
-            assert prefix == "user1"
-            yield True, "reloaded"
-
-        with patch("api.core.db_resolver.resolve_db", return_value=db), \
-             patch.object(SQLServerLoader, "load", _load):
-            ok, message = await SQLServerLoader.refresh_graph_schema(
-                "user1_testdb", "sqlserver://sa:pw@localhost/testdb", db=db)
-
+    @pytest.mark.asyncio
+    async def test_reload_replaces_the_graph_and_reports_success(self):
+        (ok, message), graph, load = await self._refresh("user1_testdb")
         graph.delete.assert_awaited_once()
-        assert (ok, message) == (True, "reloaded")
+        assert load.await_args.args[0] == "user1_testdb"
+        assert ok is True
+        assert "Found 1 tables" in message
 
     @pytest.mark.asyncio
-    async def test_a_failed_reload_is_reported(self):
-        _graph, db = self._graph_and_db()
+    async def test_a_failed_introspection_leaves_the_graph_alone(self):
+        """A network blip or login throttling must not cost the user their schema."""
+        failing = AsyncMock(side_effect=pymssql.OperationalError("login timeout"))
+        (ok, message), graph, load = await self._refresh("user1_testdb", introspection=failing)
+        assert (ok, message) == (False, "Error refreshing graph schema")
+        graph.delete.assert_not_awaited()
+        load.assert_not_awaited()
 
-        async def _load(_prefix, _url, db=None):  # pylint: disable=unused-argument
-            yield False, "nope"
+    @pytest.mark.asyncio
+    async def test_introspection_runs_before_the_delete(self):
+        order = []
+        graph, db = self._graph_and_db()
+        graph.delete = AsyncMock(side_effect=lambda: order.append("delete"))
 
-        with patch("api.core.db_resolver.resolve_db", return_value=db), \
-             patch.object(SQLServerLoader, "load", _load):
-            ok, message = await SQLServerLoader.refresh_graph_schema(
-                "user1_testdb", "sqlserver://sa:pw@localhost/testdb", db=db)
+        async def introspect(*_args):
+            order.append("introspect")
+            return {}, {}
 
+        patches, _load = self._patched(introspect, db)
+        with patches[0], patches[1], patches[2]:
+            await SQLServerLoader.refresh_graph_schema("user1_testdb", self.URL, db=db)
+        assert order == ["introspect", "delete"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("graph_id", ["testdb", "user1_otherdb", "_testdb"])
+    async def test_a_graph_not_named_after_its_database_is_refused(self, graph_id):
+        """Reloading it would replace the graph with one under a different name."""
+        (ok, _message), graph, load = await self._refresh(graph_id)
         assert ok is False
-        assert message == "Failed to reload schema"
+        graph.delete.assert_not_awaited()
+        load.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_a_graph_id_without_a_prefix_is_used_whole(self):
-        _graph, db = self._graph_and_db()
-        seen = {}
-
-        async def _load(prefix, _url, db=None):  # pylint: disable=unused-argument
-            seen["prefix"] = prefix
-            yield True, "reloaded"
-
-        with patch("api.core.db_resolver.resolve_db", return_value=db), \
-             patch.object(SQLServerLoader, "load", _load):
-            await SQLServerLoader.refresh_graph_schema(
-                "testdb", "sqlserver://sa:pw@localhost/testdb", db=db)
-
-        assert seen["prefix"] == "testdb"
-
-    @pytest.mark.asyncio
-    async def test_an_underscored_database_name_keeps_the_whole_prefix(self):
-        """``load`` names the graph ``f"{prefix}_{db_name}"``.
-
-        Regression test: splitting the graph id on ``_`` cut ``user1_my_db`` down
-        to prefix ``user1_my``, so the reload wrote to ``user1_my_my_db`` after
-        deleting the graph the user was actually looking at.
-        """
-        _graph, db = self._graph_and_db()
-        seen = {}
-
-        async def _load(prefix, _url, db=None):  # pylint: disable=unused-argument
-            seen["prefix"] = prefix
-            yield True, "reloaded"
-
-        with patch("api.core.db_resolver.resolve_db", return_value=db), \
-             patch.object(SQLServerLoader, "load", _load):
-            await SQLServerLoader.refresh_graph_schema(
-                "user1_my_db", "sqlserver://sa:pw@localhost/my_db", db=db)
-
-        assert seen["prefix"] == "user1"
+    async def test_an_underscored_database_name_keeps_the_whole_graph_id(self):
+        """Regression test: splitting on ``_`` wrote ``user1_my_db`` to ``user1_my_my_db``."""
+        (ok, _message), _graph, load = await self._refresh(
+            "user1_my_db", url="sqlserver://sa:pw@localhost/my_db")
+        assert ok is True
+        assert load.await_args.args[0] == "user1_my_db"
 
     @pytest.mark.asyncio
     async def test_a_malformed_url_leaves_the_graph_alone(self):
-        """The database name is needed before the delete, not after it."""
-        graph, db = self._graph_and_db()
-
-        with patch("api.core.db_resolver.resolve_db", return_value=db):
-            ok, _message = await SQLServerLoader.refresh_graph_schema(
-                "user1_testdb", "postgresql://sa:pw@localhost/testdb", db=db)
-
+        (ok, _message), graph, _load = await self._refresh(
+            "user1_testdb", url="postgresql://sa:pw@localhost/testdb")
         assert ok is False
         graph.delete.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_an_unreachable_graph_is_reported_not_raised(self):
-        with patch("api.core.db_resolver.resolve_db", side_effect=ConnectionError("down")):
-            ok, message = await SQLServerLoader.refresh_graph_schema(
-                "user1_testdb", "sqlserver://sa:pw@localhost/testdb")
+        introspection = AsyncMock(return_value=({}, {}))
+        with patch("api.loaders.sqlserver_loader.run_introspection", introspection), \
+                patch("api.core.db_resolver.resolve_db", side_effect=ConnectionError("down")):
+            ok, message = await SQLServerLoader.refresh_graph_schema("user1_testdb", self.URL)
 
         assert (ok, message) == (False, "Error refreshing graph schema")
 

@@ -104,6 +104,13 @@ def is_general_graph(graph_id: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _server_extra_error(vendor: str) -> InvalidArgumentError:
+    """The SDK-facing error for a vendor whose optional driver is missing."""
+    return InvalidArgumentError(
+        f"{vendor} requires the [server] extra: pip install queryweaver[server]"
+    )
+
+
 def get_database_type_and_loader(
     db_url: str,
     *,
@@ -114,10 +121,10 @@ def get_database_type_and_loader(
     Performs null/empty check, case-insensitive matching and defaults to
     PostgreSQL for backward compatibility on the server path.
 
-    When ``sdk_only`` is True, raises ``InvalidArgumentError`` for vendors
-    that need the ``[server]`` extra (snowflake, sqlserver) or for unknown URL
-    schemes, so SDK callers get a clean error instead of a deferred
-    ``ImportError``.
+    When ``sdk_only`` is True, raises ``InvalidArgumentError`` for unknown URL
+    schemes, and for vendors that need the ``[server]`` extra (snowflake,
+    sqlserver) when that extra is not installed, so SDK callers get a clean
+    error instead of an ``ImportError``.
     """
     if not db_url or db_url == "No URL available for this database.":
         return None, None
@@ -129,31 +136,36 @@ def get_database_type_and_loader(
     if db_url_lower.startswith('mysql://'):
         return 'mysql', MySQLLoader
     if db_url_lower.startswith('snowflake://'):
-        if sdk_only:
-            raise InvalidArgumentError(
-                "Snowflake requires the [server] extra: "
-                "pip install queryweaver[server]"
-            )
         # Lazy-import: snowflake-connector-python is in the [server] extra,
         # not in the core SDK install.
         # pylint: disable=import-outside-toplevel
-        from api.loaders.snowflake_loader import SnowflakeLoader
+        try:
+            from api.loaders.snowflake_loader import SnowflakeLoader
+        except ImportError as exc:
+            # A server install always has the extra; only the SDK gets the
+            # friendly error, a broken deployment keeps the real ImportError.
+            if sdk_only:
+                raise _server_extra_error("Snowflake") from exc
+            raise
         return 'snowflake', SnowflakeLoader
     if db_url_lower.startswith('sqlserver://'):
-        if sdk_only:
-            raise InvalidArgumentError(
-                "SQL Server requires the [server] extra: "
-                "pip install queryweaver[server]"
-            )
         # Lazy-import: pymssql is in the [server] extra, not in the core SDK
         # install.
         # pylint: disable=import-outside-toplevel
-        from api.loaders.sqlserver_loader import SQLServerLoader
+        try:
+            from api.loaders.sqlserver_loader import SQLServerLoader
+        except ImportError as exc:
+            # A server install always has the extra; only the SDK gets the
+            # friendly error, a broken deployment keeps the real ImportError.
+            if sdk_only:
+                raise _server_extra_error("SQL Server") from exc
+            raise
         return 'sqlserver', SQLServerLoader
 
     if sdk_only:
         raise InvalidArgumentError(
-            "Invalid database URL format. Must be PostgreSQL or MySQL."
+            "Invalid database URL format. Must be PostgreSQL, MySQL, "
+            "SQL Server or Snowflake."
         )
     # Server path keeps the historical default-to-PostgreSQL fallback.
     return 'postgresql', PostgresLoader

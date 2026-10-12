@@ -325,3 +325,79 @@ class TestSQLServerQuoting:
         """``[a]] ; SELECT 1]`` is the escaped name ``a] ; SELECT 1``, not a breakout."""
         assert SQLIdentifierQuoter._is_already_quoted('[a]] ; SELECT 1]', '[') is True
         assert SQLIdentifierQuoter.quote_identifier('[a]] ; SELECT 1]', '[') == '[a]] ; SELECT 1]'
+
+
+class TestAlreadyDelimitedOccurrences:
+    """Occurrences already delimited for the dialect must not be re-quoted.
+
+    Regression tests: the replacement used to match the table name *inside*
+    an existing delimiter pair, so ``[user-accounts].id`` became
+    ``[[user-accounts]].id``, which every dialect rejects.
+    """
+
+    @pytest.mark.parametrize(
+        "quote_char, open_char, close_char",
+        [('[', '[', ']'), ('"', '"', '"'), ('`', '`', '`')],
+    )
+    def test_qualified_delimited_occurrence_is_left_alone(
+        self, quote_char, open_char, close_char
+    ):
+        """``[t].col`` stays as is while the bare ``FROM t`` gets quoted."""
+        quoted = f'{open_char}user-accounts{close_char}'
+        result, modified = SQLIdentifierQuoter.auto_quote_identifiers(
+            f'SELECT {quoted}.id FROM user-accounts', {'user-accounts'}, quote_char
+        )
+        assert modified is True
+        assert result == f'SELECT {quoted}.id FROM {quoted}'
+
+    @pytest.mark.parametrize(
+        "quote_char, open_char, close_char",
+        [('[', '[', ']'), ('"', '"', '"'), ('`', '`', '`')],
+    )
+    def test_bare_delimited_occurrence_is_left_alone(
+        self, quote_char, open_char, close_char
+    ):
+        """``FROM [t]`` stays as is while the unquoted ``t.col`` gets quoted."""
+        quoted = f'{open_char}user-accounts{close_char}'
+        result, modified = SQLIdentifierQuoter.auto_quote_identifiers(
+            f'SELECT user-accounts.id FROM {quoted} JOIN user-accounts ON 1 = 1',
+            {'user-accounts'},
+            quote_char,
+        )
+        assert modified is True
+        assert result == f'SELECT {quoted}.id FROM {quoted} JOIN {quoted} ON 1 = 1'
+
+    @pytest.mark.parametrize(
+        "quote_char, open_char, close_char",
+        [('[', '[', ']'), ('"', '"', '"'), ('`', '`', '`')],
+    )
+    def test_longer_delimited_name_containing_the_table_is_left_alone(
+        self, quote_char, open_char, close_char
+    ):
+        """A delimited name that merely contains the table name is not touched."""
+        longer = f'{open_char}old-user-accounts{close_char}'
+        quoted = f'{open_char}user-accounts{close_char}'
+        result, modified = SQLIdentifierQuoter.auto_quote_identifiers(
+            f'SELECT {longer}.id FROM user-accounts JOIN {longer} ON 1 = 1',
+            {'user-accounts'},
+            quote_char,
+        )
+        assert modified is True
+        assert result == f'SELECT {longer}.id FROM {quoted} JOIN {longer} ON 1 = 1'
+
+    def test_escaped_closing_delimiter_does_not_end_the_identifier(self):
+        """``]]`` inside a bracket pair is an escape, not the closing bracket."""
+        result, _ = SQLIdentifierQuoter.auto_quote_identifiers(
+            'SELECT [a]] user-accounts].id FROM user-accounts',
+            {'user-accounts'},
+            '[',
+        )
+        assert result == 'SELECT [a]] user-accounts].id FROM [user-accounts]'
+
+    def test_other_dialect_delimiters_are_not_skipped(self):
+        """Brackets are data on PostgreSQL, so the name inside is still quoted."""
+        result, modified = SQLIdentifierQuoter.auto_quote_identifiers(
+            'SELECT [user-accounts].id FROM user-accounts', {'user-accounts'}, '"'
+        )
+        assert modified is True
+        assert result == 'SELECT ["user-accounts"].id FROM "user-accounts"'

@@ -136,6 +136,38 @@ class SQLIdentifierQuoter:
 
         return table_names
 
+    @staticmethod
+    def _sub_outside_delimited(
+        pattern: str, replacement: str, sql_query: str, quote_char: str
+    ) -> str:
+        """Apply a case-insensitive substitution only outside delimited identifiers.
+
+        Without this a table name is also matched *inside* an occurrence that is
+        already delimited, so ``[user-accounts].id`` turns into
+        ``[[user-accounts]].id``. Each delimited identifier of the active dialect
+        is matched first and emitted unchanged; only the remaining text is
+        eligible for *pattern*. Doubled closing delimiters are escapes and do not
+        end the identifier. String literals are not recognised.
+
+        Args:
+            pattern: Regex matching the text to replace.
+            replacement: Literal replacement text.
+            sql_query: The SQL query to process.
+            quote_char: Opening delimiter of the active dialect.
+
+        Returns:
+            The query with *pattern* replaced outside delimited identifiers.
+        """
+        close_char = ']' if quote_char == '[' else quote_char
+        open_esc, close_esc = re.escape(quote_char), re.escape(close_char)
+        delimited = rf'{open_esc}(?:[^{close_esc}]|{close_esc}{close_esc})*{close_esc}'
+        combined = re.compile(rf'(?P<delimited>{delimited})|(?:{pattern})', re.IGNORECASE)
+
+        def _replace(match: re.Match) -> str:
+            return match.group('delimited') or replacement
+
+        return combined.sub(_replace, sql_query)
+
     @classmethod
     def auto_quote_identifiers(
         cls,
@@ -176,7 +208,9 @@ class SQLIdentifierQuoter:
                 ]
 
                 for pattern, replacement in patterns_to_replace:
-                    new_query = re.sub(pattern, replacement, result_query, flags=re.IGNORECASE)
+                    new_query = cls._sub_outside_delimited(
+                        pattern, replacement, result_query, quote_char
+                    )
                     if new_query != result_query:
                         modified = True
                         result_query = new_query
