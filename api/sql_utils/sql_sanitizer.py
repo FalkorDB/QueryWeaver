@@ -150,8 +150,14 @@ class SQLIdentifierQuoter:
         to be absent from some position on, later openers of the same kind skip
         the search, which keeps the pass linear: retrying the search at every
         unmatched ``[`` made long inputs quadratic.
+
+        MySQL (the backtick dialect) also escapes with a backslash inside
+        literals, so ``'it\\'s'`` does not end at ``\\'``. Under its
+        ``NO_BACKSLASH_ESCAPES`` mode that over-extends a literal, which can only
+        leave a name unquoted, never rewrite a value.
         """
         closers = {"'": "'", quote_char: ']' if quote_char == '[' else quote_char}
+        backslash_escapes = quote_char == '`'
         absent_from: Dict[str, int] = {}
         spans: List[Tuple[int, int]] = []
         i, n = 0, len(sql_query)
@@ -166,6 +172,14 @@ class SQLIdentifierQuoter:
                 if k == -1:
                     absent_from[close] = j
                     break
+                if close == "'" and backslash_escapes:
+                    # An odd run of backslashes right before the quote escapes it.
+                    run = k
+                    while run > j and sql_query[run - 1] == '\\':
+                        run -= 1
+                    if (k - run) % 2 == 1:
+                        j = k + 1
+                        continue
                 if k + 1 < n and sql_query[k + 1] == close:
                     j = k + 2
                     continue

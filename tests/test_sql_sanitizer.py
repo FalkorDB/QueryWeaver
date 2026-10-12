@@ -438,3 +438,24 @@ class TestStringLiteralsAndScanCost:
         assert spans == []
         result, _ = SQLIdentifierQuoter.auto_quote_identifiers(query, {'user-accounts'}, '[')
         assert result.startswith("SELECT * FROM [user-accounts] WHERE")
+
+
+class TestMySQLBackslashEscapes:
+    """MySQL ends a literal at an unescaped quote, not at ``\\'``."""
+
+    def test_backslash_escaped_quote_does_not_end_the_literal(self):
+        query = "SELECT * FROM user-accounts WHERE n = 'it\\'s FROM user-accounts'"
+        result, _ = SQLIdentifierQuoter.auto_quote_identifiers(query, {'user-accounts'}, '`')
+        assert result == "SELECT * FROM `user-accounts` WHERE n = 'it\\'s FROM user-accounts'"
+
+    def test_an_escaped_backslash_does_not_escape_the_quote(self):
+        """``'a\\\\'`` is a literal ending in one backslash; what follows is SQL."""
+        query = "SELECT 'a\\\\' AS x FROM user-accounts"
+        result, _ = SQLIdentifierQuoter.auto_quote_identifiers(query, {'user-accounts'}, '`')
+        assert result == "SELECT 'a\\\\' AS x FROM `user-accounts`"
+
+    def test_other_dialects_do_not_treat_backslash_as_an_escape(self):
+        """Standard SQL (and T-SQL) only escape a quote by doubling it."""
+        query = "SELECT 'a\\' AS x FROM user-accounts"
+        result, _ = SQLIdentifierQuoter.auto_quote_identifiers(query, {'user-accounts'}, '[')
+        assert result == "SELECT 'a\\' AS x FROM [user-accounts]"
