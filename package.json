@@ -1,7 +1,4 @@
 {
-  "dependencies": {
-    "queryweaver-app": "file:app"
-  },
   "devDependencies": {
     "@playwright/test": "^1.56.1",
     "@types/node": "^22.10.2",
