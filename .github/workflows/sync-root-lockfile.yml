@@ -1,0 +1,73 @@
+name: Sync root lockfile
+
+# The root package.json depends on queryweaver-app via file:app, so the root
+# package-lock.json pins the app's whole dependency tree. Dependabot only
+# updates app/package-lock.json, which leaves the root `npm ci` (Playwright)
+# failing on every app bump. This regenerates the root lockfile on Dependabot
+# PRs and pushes it back to the PR branch.
+#
+# A push made with GITHUB_TOKEN does not trigger other workflows, so after
+# pushing, the PR checks are started again with workflow_dispatch (which
+# GITHUB_TOKEN is allowed to trigger) against the synced commit.
+
+on:
+  pull_request:
+    branches: [ main, staging ]
+    paths:
+      - 'app/package.json'
+      - 'app/package-lock.json'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  sync:
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # push the synced lockfile to the PR branch
+      actions: write   # re-dispatch the PR checks for the new commit
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        ref: ${{ github.event.pull_request.head.ref }}
+
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 'lts/*'
+
+    # --ignore-scripts: only the lockfile is resolved, no package code runs.
+    - name: Regenerate root lockfile
+      run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+    - name: Commit and push
+      id: push
+      run: |
+        if git diff --quiet -- package-lock.json; then
+          echo "Root lockfile already in sync."
+          exit 0
+        fi
+        git config user.name 'github-actions[bot]'
+        git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+        git commit -m "chore(deps): sync root lockfile with the app dependency bump" -- package-lock.json
+        git push origin "HEAD:${HEAD_REF}"
+        echo "pushed=true" >> "$GITHUB_OUTPUT"
+      env:
+        HEAD_REF: ${{ github.event.pull_request.head.ref }}
+
+    - name: Re-run checks on the synced commit
+      if: steps.push.outputs.pushed == 'true'
+      run: |
+        for workflow in playwright.yml tests.yml pylint.yml spellcheck.yml; do
+          gh workflow run "$workflow" --ref "$HEAD_REF"
+        done
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        HEAD_REF: ${{ github.event.pull_request.head.ref }}
