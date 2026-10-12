@@ -1,6 +1,6 @@
 name: Pylint
 
-on: [push, workflow_dispatch]
+on: [push]
 
 permissions:
   contents: read
