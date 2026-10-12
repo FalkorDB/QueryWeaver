@@ -2,7 +2,8 @@ version = 1
 revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
-    "python_full_version >= '3.14'",
+    "python_full_version >= '3.15'",
+    "python_full_version == '3.14.*'",
     "python_full_version < '3.14'",
 ]
 
@@ -266,9 +267,25 @@ wheels = [
 name = "beartype"
 version = "0.22.9"
 source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version == '3.14.*'",
+    "python_full_version < '3.14'",
+]
 sdist = { url = "https://files.pythonhosted.org/packages/c7/94/1009e248bbfbab11397abca7193bea6626806be9a327d399810d523a07cb/beartype-0.22.9.tar.gz", hash = "sha256:8f82b54aa723a2848a56008d18875f91c1db02c32ef6a62319a002e3e25a975f", size = 1608866, upload-time = "2025-12-13T06:50:30.72Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/71/cc/18245721fa7747065ab478316c7fea7c74777d07f37ae60db2e84f8172e8/beartype-0.22.9-py3-none-any.whl", hash = "sha256:d16c9bbc61ea14637596c5f6fbff2ee99cbe3573e46a716401734ef50c3060c2", size = 1333658, upload-time = "2025-12-13T06:50:28.266Z" },
+]
+
+[[package]]
+name = "beartype"
+version = "0.23.1"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.15'",
+]
+sdist = { url = "https://files.pythonhosted.org/packages/79/34/c0cfdaee9c796c8381439fed0fcab62810753b8b0adb1ec88fa7f41eaa5d/beartype-0.23.1.tar.gz", hash = "sha256:8b805f246b32931c74f2b321ea0939fe5bb2ff43c12a3eff19cc4c854b832e1d", size = 1993714, upload-time = "2026-10-11T05:36:55.251Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1c/cb/2f6aa982e2860c1156830db3da7f823b71784ed7d533ca289ea9b6c6347a/beartype-0.23.1-py3-none-any.whl", hash = "sha256:4461b4dc57e3fdd6c8a8464b22cf118002eea107c33e9fef651c69068ab3cce3", size = 1582101, upload-time = "2026-10-11T05:36:52.431Z" },
 ]
 
 [[package]]
@@ -652,19 +669,19 @@ wheels = [
 
 [[package]]
 name = "fastmcp"
-version = "4.0.8"
+version = "4.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastmcp-slim", extra = ["client", "server"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e5/5a/e485ce7194e4b2a856e5a2d9b502cd2d676d8515555a6af47e3178c3a75e/fastmcp-4.0.8.tar.gz", hash = "sha256:770cdd36a0a7f2bcdfcaa7021f19a92c3b1c9d68eb0a9af7eca909e80d60402c", size = 42411135, upload-time = "2026-09-23T23:02:55.229Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c3/c4/fe4e24af2cb03f4701f45634873d87557c2b5d283d287412345345ad0ede/fastmcp-4.1.0.tar.gz", hash = "sha256:7a8bf4e58cc6c2f3a8552b5a7a17ba1e4682b6fd4cafb7f461920a66dbd2499f", size = 42686511, upload-time = "2026-10-08T22:57:05.652Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4d/28/0f98de5596c73baf53661d0ea1c5a34cb95751fe509982ef668212049349/fastmcp-4.0.8-py3-none-any.whl", hash = "sha256:672c7f2a483551f84e1b965c19003ff3d8e87ff681612374ad40bb4e860c726e", size = 8089, upload-time = "2026-09-23T23:02:52.772Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/81/77610de5d79187455ec4a4eafdc17942365f1bc4e5850633e50159e9afdc/fastmcp-4.1.0-py3-none-any.whl", hash = "sha256:cf19fd603315b48ef1829c8579431e77793feafdcbed51f0dc5607af10a24e9b", size = 8154, upload-time = "2026-10-08T22:57:02.531Z" },
 ]
 
 [[package]]
 name = "fastmcp-slim"
-version = "4.0.8"
+version = "4.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "mcp-types" },
@@ -675,14 +692,15 @@ dependencies = [
     { name = "rich" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3f/f9/96c47c0d28ca58e1ce2bc90cbc09051e10318ca5356d2e6ca2decfae0421/fastmcp_slim-4.0.8.tar.gz", hash = "sha256:839cfd4dd8d529be1b48739f5766588657256c20c365bb1ba1ed1d827ce497cb", size = 701066, upload-time = "2026-09-23T23:02:28.756Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b8/88/85aafec43ec9940a360d75f2d8e9517eda01ac38b8b1610b0e9e125d61d3/fastmcp_slim-4.1.0.tar.gz", hash = "sha256:390b2b430195e0cdd0327aff80fe5dceb862b2421baf71de6d4eec92f80f99f8", size = 734647, upload-time = "2026-10-08T22:56:40.642Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/9d/0d02a91cc908e70c18d210ab7cb6ddd213506cb97b1a17ceb55d8e2ad16b/fastmcp_slim-4.0.8-py3-none-any.whl", hash = "sha256:1411cec585b2024309d5e01780c91a16ff4e2e070a5c0a8ede653af90d3ac3fb", size = 875447, upload-time = "2026-09-23T23:02:27.279Z" },
+    { url = "https://files.pythonhosted.org/packages/54/6a/d61e1541f4c65872146a576c1379f6f32013fd8c636bcaf0f8e70a04e533/fastmcp_slim-4.1.0-py3-none-any.whl", hash = "sha256:6edb48a78e508ef5ac691bf2a68f3e5000403773655d859eceea1068b894df4a", size = 911585, upload-time = "2026-10-08T22:56:39.136Z" },
 ]
 
 [package.optional-dependencies]
 client = [
     { name = "authlib" },
+    { name = "beartype", version = "0.23.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.15'" },
     { name = "exceptiongroup" },
     { name = "httpx2" },
     { name = "mcp" },
@@ -692,6 +710,7 @@ client = [
 ]
 server = [
     { name = "authlib" },
+    { name = "beartype", version = "0.23.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.15'" },
     { name = "cyclopts" },
     { name = "exceptiongroup" },
     { name = "griffelib" },
@@ -1984,7 +2003,8 @@ name = "py-key-value-aio"
 version = "0.4.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "beartype" },
+    { name = "beartype", version = "0.22.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.15'" },
+    { name = "beartype", version = "0.23.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.15'" },
     { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/04/3c/0397c072a38d4bc580994b42e0c90c5f44f679303489e4376289534735e5/py_key_value_aio-0.4.4.tar.gz", hash = "sha256:e3012e6243ed7cc09bb05457bd4d03b1ba5c2b1ca8700096b3927db79ffbbe55", size = 92300, upload-time = "2026-02-16T21:21:43.245Z" }
