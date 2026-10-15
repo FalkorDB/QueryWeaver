@@ -13,6 +13,49 @@ from typing import Dict, Callable, Any
 from .utils import parse_response, run_completion
 
 
+# (matcher, hints) pairs for common SQL Server (T-SQL) execution errors.
+# Each matcher receives the lower-cased error message.
+_SQLSERVER_ERROR_HINTS = (
+    (lambda e: "near 'limit'" in e or ("limit" in e and "syntax" in e), [
+        "⚠️  LIMIT is NOT valid T-SQL - use SELECT TOP n ... ORDER BY ...",
+        "   Or for paging: ORDER BY col OFFSET k ROWS FETCH NEXT n ROWS ONLY",
+    ]),
+    (lambda e: "invalid object name" in e, [
+        "⚠️  Table doesn't exist or needs schema qualification",
+        "   Use schema.table (e.g. dbo.orders) and [brackets] for special names: [dbo].[Order Details]",
+    ]),
+    (lambda e: "invalid column name" in e, [
+        "⚠️  Column name doesn't exist - check spelling and the table it belongs to",
+        "   Quote names with spaces/special characters/reserved words using [brackets]: [Column Name]",
+    ]),
+    (lambda e: "ambiguous column name" in e, [
+        "⚠️  Ambiguous column - qualify it with the table alias: alias.column",
+    ]),
+    (lambda e: "ilike" in e, [
+        "⚠️  ILIKE is not supported in T-SQL - use LIKE (the collation decides case sensitivity)",
+    ]),
+    (lambda e: "extract" in e, [
+        "⚠️  EXTRACT() is not supported in T-SQL - use YEAR(col)/MONTH(col)/DAY(col) or DATEPART(year, col)",
+    ]),
+    (lambda e: "order by clause is invalid" in e, [
+        "⚠️  ORDER BY in a view/derived table/subquery/CTE requires TOP or OFFSET ... FETCH",
+        "   Move the ORDER BY to the outer query, or add TOP n / OFFSET 0 ROWS",
+    ]),
+    (lambda e: "'||'" in e or "near '|'" in e, [
+        "⚠️  || is not a string operator in T-SQL - concatenate with + or CONCAT()",
+    ]),
+)
+
+
+def _sqlserver_error_hints(error_lower: str) -> list:
+    """Return targeted hints for a lower-cased SQL Server error message."""
+    hints = []
+    for matches, error_hints in _SQLSERVER_ERROR_HINTS:
+        if matches(error_lower):
+            hints.extend(error_hints)
+    return hints
+
+
 class HealerAgent:
     """Agent specialized in fixing SQL syntax errors."""
     
@@ -144,6 +187,19 @@ CRITICAL RULES FOR {database_type.upper()}:
 - PostgreSQL is case-sensitive - use double quotes for mixed-case identifiers
 - EXTRACT() is supported: EXTRACT(YEAR FROM date_col)
 - Column references must match exact case when quoted
+"""
+        elif database_type == "sqlserver":
+            prompt += """
+- SQL Server (T-SQL) does NOT support LIMIT - use SELECT TOP n ... ORDER BY ...
+  * ... ORDER BY col DESC LIMIT 5 → SELECT TOP 5 ... ORDER BY col DESC
+  * Paging: ORDER BY col OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY (requires ORDER BY)
+- Quote identifiers with spaces/special characters/reserved words using [brackets]: [Order Details]
+- Qualify tables with their schema when needed: dbo.table or [schema].[table]
+- No ILIKE - use LIKE (case sensitivity is decided by the column collation)
+- No EXTRACT() - use YEAR(col), MONTH(col), DAY(col) or DATEPART(year, col)
+- String concatenation uses + or CONCAT(), not ||
+- ORDER BY is not allowed in subqueries/derived tables/CTEs/views unless TOP or OFFSET ... FETCH is also used
+- Booleans are BIT (1/0), not TRUE/FALSE literals
 """
         
         prompt += """
@@ -315,6 +371,10 @@ Please fix this error."""
             
             if "relation" in error_lower and "does not exist" in error_lower:
                 hints.append("⚠️  Table doesn't exist or case mismatch")
+        
+        # SQL Server (T-SQL) errors
+        elif database_type == "sqlserver":
+            hints.extend(_sqlserver_error_hints(error_lower))
         
         # Generic hints if no specific patterns matched
         if not hints:
