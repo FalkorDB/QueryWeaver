@@ -15,6 +15,8 @@ from api.core.db_resolver import resolve_db
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 # pylint: disable=broad-exception-caught
 
+_GRAPH_QUERY_BATCH_SIZE = 16
+
 class TableDescription(BaseModel):
     """Table Description"""
 
@@ -102,6 +104,22 @@ async def _query_graph(
     result = await graph.query(query, params or {}, timeout=timeout)
     return result.result_set
 
+async def _query_graph_batches(
+    graph,
+    query: str,
+    parameters: List[Dict[str, Any]],
+) -> List[Any]:
+    """Run at most 16 queries per batch and preserve parameter order."""
+    rows = []
+    for start in range(0, len(parameters), _GRAPH_QUERY_BATCH_SIZE):
+        results = await asyncio.gather(*[
+            _query_graph(graph, query, params)
+            for params in parameters[start:start + _GRAPH_QUERY_BATCH_SIZE]
+        ])
+        rows.extend(row for result in results for row in result)
+    return rows
+
+
 async def _find_tables(
     graph,
     embeddings: List[List[float]]
@@ -129,13 +147,9 @@ async def _find_tables(
         })
     """
 
-    tasks = [
-        _query_graph(graph, query, {"embedding": embedding})
-        for embedding in embeddings
-    ]
-
-    results = await asyncio.gather(*tasks)
-    return [row for rows in results for row in rows]
+    return await _query_graph_batches(
+        graph, query, [{"embedding": embedding} for embedding in embeddings]
+    )
 
 
 async def _find_tables_by_columns(
@@ -169,13 +183,9 @@ async def _find_tables_by_columns(
             })
     """
 
-    tasks = [
-        _query_graph(graph, query, {"embedding": embedding})
-        for embedding in embeddings
-    ]
-
-    results = await asyncio.gather(*tasks)
-    return [row for rows in results for row in rows]
+    return await _query_graph_batches(
+        graph, query, [{"embedding": embedding} for embedding in embeddings]
+    )
 
 
 async def _find_tables_sphere(
@@ -207,13 +217,12 @@ async def _find_tables_sphere(
                })
     """
     try:
-        tasks = [_query_graph(graph, query, {"name": name}) for name in tables]
-        results = await asyncio.gather(*tasks)
+        return await _query_graph_batches(
+            graph, query, [{"name": name} for name in tables]
+        )
     except Exception as e:
         logging.error("Error finding tables in sphere: %s", e)
-        results = []
-
-    return [row for rows in results for row in rows]
+        return []
 
 
 async def _find_connecting_tables(
