@@ -551,6 +551,8 @@ EMBEDDING_MODEL=gemini/gemini-embedding-001
 
 Both must match your API key's provider.
 
+To change only one provider's defaults, set `<PROVIDER>_MODEL` / `<PROVIDER>_EMBEDDING_MODEL` to a bare model name (e.g. `AZURE_MODEL=my-gpt-deployment`). `COMPLETION_MODEL` / `EMBEDDING_MODEL` take precedence over these. Anthropic has no `ANTHROPIC_EMBEDDING_MODEL`; its embeddings come from `VOYAGE_API_KEY` (fixed `voyage/voyage-3`) or `EMBEDDING_MODEL`.
+
 #### Docker examples with AI configuration
 
 Using OpenAI:

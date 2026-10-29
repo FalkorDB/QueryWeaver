@@ -769,8 +769,9 @@ class AzureOpenAIConfig:
     """Configuration for Azure OpenAI integration."""
     
     def __init__(self):
-        # Set the model name as requested
-        os.environ["MODEL_NAME"] = "gpt-4.1"
+        # The Azure deployment Text2SQL uses, without the provider prefix
+        self.model_choice = extract_embedding_model_name(Config.COMPLETION_MODEL)
+        os.environ["MODEL_NAME"] = self.model_choice
         
         self.api_key = os.getenv('AZURE_API_KEY')
         self.endpoint = os.getenv('AZURE_API_BASE') 
@@ -778,7 +779,6 @@ class AzureOpenAIConfig:
         # api-version 2025-03-01-preview or later. Older values make every
         # episode write fail with HTTP 400 (incident 2026-07-29).
         self.api_version = os.getenv('AZURE_API_VERSION', '2025-03-01-preview')
-        self.model_choice = "gpt-4.1"  # Use the model name directly
         
         # Extract just the model name without provider prefix for Graphiti
         self.embedding_model = extract_embedding_model_name(Config.EMBEDDING_MODEL_NAME)
