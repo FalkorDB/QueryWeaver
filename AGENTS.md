@@ -29,7 +29,7 @@ api/              Python backend (FastAPI)
   auth/           OAuth handlers, user management
   core/           Core text2sql logic, schema loading, errors
   entities/       Data models / DTOs
-  loaders/        Database loaders (PostgreSQL, MySQL)
+  loaders/        Database loaders (PostgreSQL, MySQL, Snowflake, Oracle)
   memory/         Conversation memory management
   routes/         API endpoints (auth, graphs, database, tokens, settings)
   sql_utils/      SQL sanitization

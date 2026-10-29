@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { useDatabase } from "@/contexts/DatabaseContext";
 import { useToast } from "@/components/ui/use-toast";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
@@ -31,6 +32,7 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
   const [password, setPassword] = useState("");
   const [schema, setSchema] = useState("");
   const [schemaError, setSchemaError] = useState("");
+  const [oracleTls, setOracleTls] = useState(false);
   // Snowflake-specific fields
   const [account, setAccount] = useState("");
   const [snowflakeSchema, setSnowflakeSchema] = useState("PUBLIC");
@@ -134,17 +136,27 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
           builtUrl.searchParams.set('warehouse', warehouse);
           dbUrl = builtUrl.toString();
         } else {
-          const protocol = selectedDatabase === 'mysql' ? 'mysql' : 'postgresql';
+          const protocol = selectedDatabase === 'mysql' ? 'mysql'
+            : selectedDatabase === 'oracle' ? 'oracle'
+            : 'postgresql';
           const builtUrl = new URL(`${protocol}://${host}:${port}/${database}`);
           builtUrl.username = username;
           builtUrl.password = password;
 
-          // Append schema option for PostgreSQL if provided
+          // Append schema option for PostgreSQL/Oracle if provided
           if (selectedDatabase === 'postgresql' && schema.trim()) {
             if (/[^a-zA-Z0-9_]/.test(schema.trim())) {
               throw new Error('Schema name can only contain letters, digits, and underscores');
             }
             builtUrl.searchParams.set('options', `-csearch_path=${schema.trim()}`);
+          } else if (selectedDatabase === 'oracle' && schema.trim()) {
+            if (/[^a-zA-Z0-9_$#]/.test(schema.trim())) {
+              throw new Error('Schema name can only contain letters, digits, underscores, $ and #');
+            }
+            builtUrl.searchParams.set('schema', schema.trim());
+          }
+          if (selectedDatabase === 'oracle' && oracleTls) {
+            builtUrl.searchParams.set('ssl', 'true');
           }
 
           dbUrl = builtUrl.toString();
@@ -233,6 +245,7 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
               setPassword("");
               setSchema("");
               setSchemaError("");
+              setOracleTls(false);
               setAccount("");
               setSnowflakeSchema("PUBLIC");
               setWarehouse("COMPUTE_WH");
@@ -301,7 +314,7 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
             Connect to Database
           </DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">
-            Connect to PostgreSQL, MySQL, or Snowflake database using a connection URL or manual entry.{" "}
+            Connect to PostgreSQL, MySQL, Snowflake, or Oracle database using a connection URL or manual entry.{" "}
             <a
               href="https://www.falkordb.com/privacy-policy/"
               target="_blank"
@@ -342,6 +355,12 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
                   <div className="flex items-center">
                     <div className="w-4 h-4 bg-cyan-500 rounded-sm mr-2"></div>
                     Snowflake
+                  </div>
+                </SelectItem>
+                <SelectItem value="oracle" className="focus:bg-purple-500/20 focus:text-foreground" data-testid="oracle-option">
+                  <div className="flex items-center">
+                    <div className="w-4 h-4 bg-red-600 rounded-sm mr-2"></div>
+                    Oracle
                   </div>
                 </SelectItem>
               </SelectContent>
@@ -385,6 +404,8 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
                     ? 'postgresql://username:password@host:5432/database'
                     : selectedDatabase === 'mysql'
                     ? 'mysql://username:password@host:3306/database'
+                    : selectedDatabase === 'oracle'
+                    ? 'oracle://username:password@host:1521/service_name'
                     : 'snowflake://username:password@account/database/schema?warehouse=warehouse_name'
                 }
                 value={connectionUrl}
@@ -394,6 +415,8 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
               <p className="text-xs text-muted-foreground">
                 {selectedDatabase === 'snowflake'
                   ? 'Enter your Snowflake connection string (schema defaults to PUBLIC, warehouse to COMPUTE_WH)'
+                  : selectedDatabase === 'oracle'
+                  ? 'Enter your Oracle connection string (schema defaults to your username; override with ?schema=NAME; add ?ssl=true for TLS, required by Autonomous Database)'
                   : 'Enter your database connection string'}
               </p>
             </div>
@@ -551,7 +574,11 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
                     <Label htmlFor="port" className="text-sm font-medium">Port</Label>
                     <Input
                       id="port"
-                      placeholder={selectedDatabase === "postgresql" ? "5432" : "3306"}
+                      placeholder={
+                        selectedDatabase === "postgresql" ? "5432"
+                          : selectedDatabase === "oracle" ? "1521"
+                          : "3306"
+                      }
                       value={port}
                       onChange={(e) => setPort(e.target.value)}
                       className="bg-muted border-border focus-visible:ring-purple-500"
@@ -559,10 +586,12 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="database" className="text-sm font-medium">Database Name</Label>
+                    <Label htmlFor="database" className="text-sm font-medium">
+                      {selectedDatabase === 'oracle' ? 'Service Name' : 'Database Name'}
+                    </Label>
                     <Input
                       id="database"
-                      placeholder="my_database"
+                      placeholder={selectedDatabase === 'oracle' ? 'ORCLPDB1' : 'my_database'}
                       value={database}
                       onChange={(e) => setDatabase(e.target.value)}
                       className="bg-muted border-border focus-visible:ring-purple-500"
@@ -592,8 +621,8 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
                     />
                   </div>
 
-                  {/* Schema field - PostgreSQL only */}
-                  {selectedDatabase === 'postgresql' && (
+                  {/* Schema field - PostgreSQL and Oracle only */}
+                  {(selectedDatabase === 'postgresql' || selectedDatabase === 'oracle') && (
                     <div className="space-y-2">
                       <Label htmlFor="schema" className="text-sm font-medium">
                         Schema <span className="text-muted-foreground font-normal">(optional)</span>
@@ -601,13 +630,20 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
                       <Input
                         id="schema"
                         data-testid="schema-input"
-                        placeholder="public"
+                        placeholder={selectedDatabase === 'oracle' ? username || 'HR' : 'public'}
                         value={schema}
                         onChange={(e) => {
                           const val = e.target.value;
                           setSchema(val);
-                          if (val && /[^a-zA-Z0-9_]/.test(val)) {
-                            setSchemaError('Schema name can only contain letters, digits, and underscores');
+                          const invalidCharsPattern = selectedDatabase === 'oracle'
+                            ? /[^a-zA-Z0-9_$#]/
+                            : /[^a-zA-Z0-9_]/;
+                          if (val && invalidCharsPattern.test(val)) {
+                            setSchemaError(
+                              selectedDatabase === 'oracle'
+                                ? 'Schema name can only contain letters, digits, underscores, $ and #'
+                                : 'Schema name can only contain letters, digits, and underscores'
+                            );
                           } else {
                             setSchemaError('');
                           }
@@ -618,9 +654,29 @@ const DatabaseModal = ({ open, onOpenChange }: DatabaseModalProps) => {
                         <p className="text-xs text-red-500">{schemaError}</p>
                       ) : (
                         <p className="text-xs text-muted-foreground">
-                          Leave empty to use the default &apos;public&apos; schema
+                          {selectedDatabase === 'oracle'
+                            ? 'Leave empty to use your username as the schema'
+                            : "Leave empty to use the default 'public' schema"}
                         </p>
                       )}
+                    </div>
+                  )}
+
+                  {selectedDatabase === 'oracle' && (
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="oracle-tls" className="text-sm font-medium">Use TLS (TCPS)</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Required for Oracle Autonomous Database
+                        </p>
+                      </div>
+                      <Switch
+                        id="oracle-tls"
+                        data-testid="oracle-tls-switch"
+                        checked={oracleTls}
+                        onCheckedChange={setOracleTls}
+                        className="data-[state=checked]:bg-purple-600"
+                      />
                     </div>
                   )}
                 </>
