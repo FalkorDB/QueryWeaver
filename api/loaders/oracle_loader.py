@@ -601,14 +601,17 @@ class OracleLoader(BaseLoader):
 
             from api.core.db_resolver import resolve_db  # pylint: disable=import-outside-toplevel
 
+            # load() names the graph f"{prefix}_{schema.lower()}". Schema names
+            # often contain '_', so the prefix is recovered by stripping that
+            # exact suffix rather than splitting on '_'.
+            suffix = f"_{OracleLoader._parse_oracle_url(db_url)['schema'].lower()}"
+            if not graph_id.endswith(suffix) or len(graph_id) == len(suffix):
+                logging.error("Graph id does not match the schema in the database URL")
+                return False, "Error refreshing graph schema"
+            prefix = graph_id[:-len(suffix)]
+
             graph = resolve_db(db).select_graph(graph_id)
             await graph.delete()
-
-            parts = graph_id.split('_')
-            if len(parts) >= 2:
-                prefix = '_'.join(parts[:-1])
-            else:
-                prefix = graph_id
 
             success = False
             message = ""

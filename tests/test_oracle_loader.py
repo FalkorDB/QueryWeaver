@@ -4,7 +4,7 @@
 import asyncio
 import datetime
 import decimal
-from unittest.mock import patch, MagicMock
+from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
 
@@ -181,6 +181,42 @@ class TestOracleLoader:
         assert OracleLoader.is_schema_modifying_query("DELETE FROM test WHERE id = 1")[0] is False
 
         assert OracleLoader.is_schema_modifying_query("")[0] is False
+
+    @staticmethod
+    def _refresh(graph_id, db_url):
+        """Run refresh_graph_schema with the graph store and load() stubbed out."""
+        graph = MagicMock()
+        graph.delete = AsyncMock()
+        store = MagicMock()
+        store.select_graph.return_value = graph
+        prefixes = []
+
+        async def fake_load(prefix, _url, db=None):  # pylint: disable=unused-argument
+            prefixes.append(prefix)
+            yield True, "loaded"
+
+        with patch('api.core.db_resolver.resolve_db', return_value=store), \
+                patch.object(OracleLoader, 'load', side_effect=fake_load):
+            result = asyncio.run(OracleLoader.refresh_graph_schema(graph_id, db_url))
+        return result, prefixes, graph
+
+    def test_refresh_keeps_graph_id_for_schema_with_underscore(self):
+        """Splitting the graph id on '_' would reload HR_DATA under a different graph."""
+        result, prefixes, graph = self._refresh(
+            "user1_hr_data", "oracle://scott:tiger@dbhost:1521/svc?schema=HR_DATA"
+        )
+        assert result[0] is True
+        assert prefixes == ["user1"]
+        graph.delete.assert_awaited_once()
+
+    def test_refresh_refuses_graph_that_does_not_match_url(self):
+        """A graph id that is not '<prefix>_<schema>' is left untouched."""
+        result, prefixes, graph = self._refresh(
+            "user1_sales", "oracle://scott:tiger@dbhost:1521/svc?schema=HR_DATA"
+        )
+        assert result[0] is False
+        assert not prefixes
+        graph.delete.assert_not_awaited()
 
     @patch('oracledb.connect')
     def test_connection_error(self, mock_connect):
