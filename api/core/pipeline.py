@@ -138,6 +138,17 @@ def get_database_type_and_loader(
         # pylint: disable=import-outside-toplevel
         from api.loaders.snowflake_loader import SnowflakeLoader
         return 'snowflake', SnowflakeLoader
+    if db_url_lower.startswith('oracle://'):
+        if sdk_only:
+            raise InvalidArgumentError(
+                "Oracle requires the [server] extra: "
+                "pip install queryweaver[server]"
+            )
+        # Lazy-import: oracledb is in the [server] extra, not in the core
+        # SDK install.
+        # pylint: disable=import-outside-toplevel
+        from api.loaders.oracle_loader import OracleLoader
+        return 'oracle', OracleLoader
 
     if sdk_only:
         raise InvalidArgumentError(
@@ -205,6 +216,7 @@ _DIALECT_BY_DB_TYPE = {
     "postgres": "postgres",
     "mysql": "mysql",
     "snowflake": "snowflake",
+    "oracle": "oracle",
 }
 
 # sqlglot expression class names that represent a write, DDL, privilege change,
