@@ -2,13 +2,15 @@
 
 import datetime
 import decimal
+import hashlib
 import logging
 import re
 import time
 import uuid
 from typing import AsyncGenerator, Dict, Any, List, Tuple
-from urllib.parse import urlparse, parse_qs, unquote
+from urllib.parse import urlparse, parse_qs, quote, unquote
 
+import sqlglot
 import tqdm
 import pymssql
 
@@ -80,21 +82,15 @@ def quote_ident(identifier: str) -> str:
 def entity_name(schema: str, table: str) -> str:
     """The name a table is stored under in the graph.
 
-    SQL Server has no per-session default schema: an unqualified name resolves
-    against the *login's* default schema, which is ``dbo`` almost everywhere.
-    Generated SQL uses the names stored in the graph, so a table outside
-    ``dbo`` is stored as ``schema.table``; otherwise ``SELECT * FROM orders``
-    would miss ``sales.orders``, or quietly read ``dbo.orders`` instead.
-
-    A part containing a dot is bracket-quoted, since T-SQL would otherwise read
-    ``sales.eu.Orders`` as database ``sales``, schema ``eu``, table ``Orders``.
+    Every name is schema-qualified because SQL Server resolves an unqualified
+    name against the login's default schema before falling back to ``dbo``.
+    Both parts are bracket-quoted so special characters and reserved words are
+    valid in generated SQL without relying on auto-quoting.
     """
-    def part(name: str) -> str:
-        return quote_ident(name) if '.' in name else name
-
-    if schema.lower() == DEFAULT_SCHEMA:
-        return part(table)
-    return f"{part(schema)}.{part(table)}"
+    return (
+        f"{quote_ident(validate_catalog_ident(schema, 'schema name'))}."
+        f"{quote_ident(validate_catalog_ident(table, 'table name'))}"
+    )
 
 
 def _format_type(row: Dict[str, Any]) -> str:
@@ -219,9 +215,9 @@ class SQLServerLoader(BaseLoader):
         return []
 
     @classmethod
-    def extract_sample_values_for_column(  # pylint: disable=arguments-differ
+    def extract_sample_values_for_column(  # pylint: disable=arguments-differ,too-many-arguments
         cls, cursor, table_name: str, col_name: str, sample_size: int = 3,
-        schema: str | None = None,
+        schema: str | None = None, *, raise_errors: bool = False,
     ) -> List[Any]:
         """Sample *col_name*, returning ``[]`` rather than failing the whole load.
 
@@ -239,6 +235,8 @@ class SQLServerLoader(BaseLoader):
             logging.warning(
                 "Skipping sample values for %r.%r: %s", table_name, col_name, exc
             )
+            if raise_errors:
+                raise
             return []
 
     @staticmethod
@@ -293,6 +291,20 @@ class SQLServerLoader(BaseLoader):
         # Only ever bound as a query parameter, never interpolated, so it is
         # held to the same rule as catalog names: non-ASCII names are fine.
         return validate_catalog_ident(schema, "schema name")
+
+    @staticmethod
+    def database_id_from_url(connection_url: str) -> str:
+        """Return the unprefixed graph ID suffix for a SQL Server URL."""
+        db_name = SQLServerLoader._parse_sqlserver_url(connection_url)['database']
+        schema = SQLServerLoader.parse_schema_from_url(connection_url)
+        if schema.lower() == DEFAULT_SCHEMA:
+            return db_name
+        schema_suffix = f"__schema_{quote(schema, safe='')}"
+        if len(db_name) + len(schema_suffix) > 200:
+            schema_suffix = (
+                f"__schema_{hashlib.sha256(schema.encode('utf-8')).hexdigest()[:32]}"
+            )
+        return f"{db_name}{schema_suffix}"
 
     @staticmethod
     def _parse_sqlserver_url(connection_url: str) -> Dict[str, Any]:
@@ -441,6 +453,7 @@ class SQLServerLoader(BaseLoader):
             conn_params = SQLServerLoader._parse_sqlserver_url(connection_url)
             schema = SQLServerLoader.parse_schema_from_url(connection_url)
             db_name = conn_params['database']
+            database_id = SQLServerLoader.database_id_from_url(connection_url)
 
             # pymssql is a blocking driver, so every connect/execute/fetch would
             # stall the event loop — and with it every other request and the
@@ -453,7 +466,7 @@ class SQLServerLoader(BaseLoader):
 
             # Load data into graph
             yield True, "Loading data into graph..."
-            await load_to_graph(f"{prefix}_{db_name}", entities, relationships,
+            await load_to_graph(f"{prefix}_{database_id}", entities, relationships,
                                 db_name=db_name, db_url=connection_url, db=db)
 
             yield True, (f"SQL Server schema loaded successfully. "
@@ -665,12 +678,10 @@ class SQLServerLoader(BaseLoader):
                     return
                 pending -= 1
                 try:
-                    col['sample_values'] = cls.sample_column(cursor, schema, table_name, col_name)
-                except (ValueError, pymssql.Error) as exc:
-                    # %r so a control character in a catalog name cannot forge a log line.
-                    logging.warning(
-                        "Skipping sample values for %r.%r: %s", table_name, col_name, exc
+                    col['sample_values'] = cls.extract_sample_values_for_column(
+                        cursor, table_name, col_name, schema=schema, raise_errors=True
                     )
+                except (ValueError, pymssql.Error) as exc:
                     if isinstance(exc, pymssql.Error) and not cls._connection_alive(cursor):
                         logging.warning(
                             "SQL Server connection lost while sampling; %d columns "
@@ -800,9 +811,20 @@ class SQLServerLoader(BaseLoader):
 
         # Clean and normalize the query
         normalized_query = sql_query.strip().upper()
+        normalized_query = re.sub(
+            r"/\*.*?\*/|--[^\r\n]*", " ", normalized_query, flags=re.DOTALL
+        )
 
         # Check for basic DDL operations
         first_word = normalized_query.split()[0] if normalized_query.split() else ""
+        if first_word in ("SELECT", "WITH"):
+            for statement in sqlglot.parse(sql_query, read="tsql"):
+                if any(
+                    not into.args.get('temporary')
+                    for into in statement.find_all(sqlglot.exp.Into)
+                ):
+                    return True, "SELECT INTO"
+
         # Renames in T-SQL go through a stored procedure, not a DDL keyword.
         if re.match(r'^(EXEC(UTE)?\s+)?(\[?(DBO|SYS)\]?\.)?\[?SP_RENAME\b', normalized_query):
             return True, "RENAME"
@@ -836,10 +858,9 @@ class SQLServerLoader(BaseLoader):
             schema = SQLServerLoader.parse_schema_from_url(db_url)
             db_name = conn_params['database']
 
-            # ``load`` names the graph f"{prefix}_{db_name}". A graph that does
-            # not end that way was not loaded from this URL, and reloading it
-            # would replace it with a graph under a different name.
-            suffix = f"_{db_name}"
+            # The selected schema is part of non-dbo graph IDs, so refresh
+            # targets the same graph rather than replacing another schema's.
+            suffix = f"_{SQLServerLoader.database_id_from_url(db_url)}"
             if not graph_id.endswith(suffix) or graph_id == suffix:
                 logging.error("Refusing to refresh a graph not named after its database")
                 return False, "Failed to reload schema"

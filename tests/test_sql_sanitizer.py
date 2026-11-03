@@ -459,3 +459,42 @@ class TestMySQLBackslashEscapes:
         query = "SELECT 'a\\' AS x FROM user-accounts"
         result, _ = SQLIdentifierQuoter.auto_quote_identifiers(query, {'user-accounts'}, '[')
         assert result == "SELECT 'a\\' AS x FROM [user-accounts]"
+
+
+class TestCommentsAndDoubleQuotedSpans:
+    """Comments and double-quoted SQL spans are never rewritten as table names."""
+
+    def test_tsql_double_quoted_identifier_is_protected(self):
+        query = 'SELECT "user-accounts".id FROM user-accounts'
+        result, modified = SQLIdentifierQuoter.auto_quote_identifiers(
+            query, {'user-accounts'}, '['
+        )
+        assert modified is True
+        assert result == 'SELECT "user-accounts".id FROM [user-accounts]'
+
+    def test_mysql_double_quoted_string_is_protected(self):
+        query = 'SELECT * FROM user-accounts WHERE note = "my-table"'
+        result, modified = SQLIdentifierQuoter.auto_quote_identifiers(
+            query, {'user-accounts', 'my-table'}, '`'
+        )
+        assert modified is True
+        assert result == 'SELECT * FROM `user-accounts` WHERE note = "my-table"'
+
+    def test_apostrophe_in_line_comment_does_not_swallow_next_literal(self):
+        query = "-- an apostrophe: ' \nSELECT * FROM user-accounts WHERE note = 'user-accounts'"
+        result, modified = SQLIdentifierQuoter.auto_quote_identifiers(
+            query, {'user-accounts'}, '['
+        )
+        assert modified is True
+        assert result == (
+            "-- an apostrophe: ' \nSELECT * FROM [user-accounts] "
+            "WHERE note = 'user-accounts'"
+        )
+
+    def test_table_name_in_block_comment_is_not_rewritten(self):
+        query = "SELECT * FROM user-accounts /* JOIN user-accounts */"
+        result, modified = SQLIdentifierQuoter.auto_quote_identifiers(
+            query, {'user-accounts'}, '['
+        )
+        assert modified is True
+        assert result == "SELECT * FROM [user-accounts] /* JOIN user-accounts */"

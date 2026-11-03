@@ -266,7 +266,7 @@ def _entities(introspection, schema):
     ``schema.table``; the assertions below only care about the table part.
     """
     entities, _relationships = introspection
-    prefix = f"{schema}."
+    prefix = f"{_q(schema)}."
     assert all(name.startswith(prefix) for name in entities)
     return {name[len(prefix):]: entity for name, entity in entities.items()}
 
@@ -364,7 +364,7 @@ class TestDottedNonAsciiSchema:
 
         entities, _relationships = SQLServerLoader._introspect_schema(
             SQLServerLoader._parse_sqlserver_url(url), dotted)
-        name = f"{_q(dotted)}.Orders"
+        name = f"{_q(dotted)}.[Orders]"
         assert list(entities) == [name]
         assert entities[name]['columns']['id']['sample_values'] == ["7"]
 

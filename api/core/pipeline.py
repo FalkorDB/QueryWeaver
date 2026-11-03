@@ -141,10 +141,10 @@ def get_database_type_and_loader(
         # pylint: disable=import-outside-toplevel
         try:
             from api.loaders.snowflake_loader import SnowflakeLoader
-        except ImportError as exc:
+        except ModuleNotFoundError as exc:
             # A server install always has the extra; only the SDK gets the
             # friendly error, a broken deployment keeps the real ImportError.
-            if sdk_only:
+            if sdk_only and exc.name == "snowflake":
                 raise _server_extra_error("Snowflake") from exc
             raise
         return 'snowflake', SnowflakeLoader
@@ -154,10 +154,10 @@ def get_database_type_and_loader(
         # pylint: disable=import-outside-toplevel
         try:
             from api.loaders.sqlserver_loader import SQLServerLoader
-        except ImportError as exc:
+        except ModuleNotFoundError as exc:
             # A server install always has the extra; only the SDK gets the
             # friendly error, a broken deployment keeps the real ImportError.
-            if sdk_only:
+            if sdk_only and exc.name == "pymssql":
                 raise _server_extra_error("SQL Server") from exc
             raise
         return 'sqlserver', SQLServerLoader

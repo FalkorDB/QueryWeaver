@@ -138,54 +138,69 @@ class SQLIdentifierQuoter:
         return table_names
 
     @staticmethod
-    def _protected_spans(sql_query: str, quote_char: str) -> List[Tuple[int, int]]:
-        """``(start, end)`` of every string literal and delimited identifier.
+    def _protected_spans(  # pylint: disable=too-many-branches
+        sql_query: str, quote_char: str
+    ) -> List[Tuple[int, int]]:
+        """``(start, end)`` spans to leave unchanged during identifier rewrites.
 
-        One left-to-right pass. ``'...'`` literals and identifiers delimited by
-        the active dialect's *quote_char* are both protected; a doubled closing
-        character is an escape, not the end. Whichever opens first wins, so a
-        ``[`` inside ``'a [note'`` cannot pair with a later ``]``.
-
-        An opener with no closer after it is plain text. Once a closer is known
-        to be absent from some position on, later openers of the same kind skip
-        the search, which keeps the pass linear: retrying the search at every
-        unmatched ``[`` made long inputs quadratic.
-
-        MySQL (the backtick dialect) also escapes with a backslash inside
-        literals, so ``'it\\'s'`` does not end at ``\\'``. Under its
-        ``NO_BACKSLASH_ESCAPES`` mode that over-extends a literal, which can only
-        leave a name unquoted, never rewrite a value.
+        Single- and double-quoted spans, dialect-delimited identifiers, and SQL
+        comments are protected in one linear pass. Double quotes are protected
+        for every dialect because they are identifiers in T-SQL and may be
+        string literals in MySQL. Doubled closing delimiters are escapes.
         """
-        closers = {"'": "'", quote_char: ']' if quote_char == '[' else quote_char}
-        backslash_escapes = quote_char == '`'
-        absent_from: Dict[str, int] = {}
+        closers = {
+            "'": "'",
+            '"': '"',
+            quote_char: ']' if quote_char == '[' else quote_char,
+        }
+        mysql_backslash_escapes = quote_char == '`'
+        unmatched_from: Dict[str, int] = {}
         spans: List[Tuple[int, int]] = []
         i, n = 0, len(sql_query)
         while i < n:
+            if sql_query.startswith('--', i):
+                end = sql_query.find('\n', i + 2)
+                end = n if end == -1 else end
+                spans.append((i, end))
+                i = end
+                continue
+            if sql_query.startswith('/*', i):
+                start = i
+                depth = 1
+                i += 2
+                while i < n and depth:
+                    if sql_query.startswith('/*', i):
+                        depth += 1
+                        i += 2
+                    elif sql_query.startswith('*/', i):
+                        depth -= 1
+                        i += 2
+                    else:
+                        i += 1
+                spans.append((start, i))
+                continue
+
             close = closers.get(sql_query[i])
-            if close is None or i + 1 >= absent_from.get(close, n + 1):
+            if close is None or i + 1 >= unmatched_from.get(close, n + 1):
                 i += 1
                 continue
-            j = i + 1
-            while True:
-                k = sql_query.find(close, j)
-                if k == -1:
-                    absent_from[close] = j
-                    break
-                if close == "'" and backslash_escapes:
-                    # An odd run of backslashes right before the quote escapes it.
-                    run = k
-                    while run > j and sql_query[run - 1] == '\\':
-                        run -= 1
-                    if (k - run) % 2 == 1:
-                        j = k + 1
-                        continue
-                if k + 1 < n and sql_query[k + 1] == close:
-                    j = k + 2
+            start = i
+            i += 1
+            while i < n:
+                if mysql_backslash_escapes and close in ("'", '"') and sql_query[i] == '\\':
+                    i += 2
                     continue
-                spans.append((i, k + 1))
-                break
-            i = spans[-1][1] if spans and spans[-1][0] == i else i + 1
+                if sql_query[i] == close:
+                    if i + 1 < n and sql_query[i + 1] == close:
+                        i += 2
+                        continue
+                    i += 1
+                    spans.append((start, i))
+                    break
+                i += 1
+            else:
+                unmatched_from[close] = start + 1
+                i = start + 1
         return spans
 
     @classmethod

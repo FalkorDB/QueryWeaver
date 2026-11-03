@@ -15,7 +15,13 @@ import pytest
 
 from api.config import Config
 from api.core.pipeline import MySQLLoader, PostgresLoader
-from api.loaders.sqlserver_loader import SQLServerLoader
+
+try:
+    from api.loaders.sqlserver_loader import SQLServerLoader
+except ModuleNotFoundError as exc:
+    if exc.name != "pymssql":
+        raise
+    SQLServerLoader = None
 
 STALL = 0.3
 TICK = 0.02
@@ -105,6 +111,7 @@ async def test_mysql_load_does_not_block_the_loop(mock_connect, mock_load_to_gra
 @patch("api.loaders.sqlserver_loader.SQLServerLoader.extract_foreign_keys", _slow)
 @patch("api.loaders.sqlserver_loader.SQLServerLoader.extract_tables_info", _slow)
 @patch("api.loaders.sqlserver_loader.pymssql.connect")
+@pytest.mark.skipif(SQLServerLoader is None, reason="pymssql is an optional server extra")
 async def test_sqlserver_load_does_not_block_the_loop(mock_connect, mock_load_to_graph):
     def slow_connect(*_args, **_kwargs):
         time.sleep(STALL)

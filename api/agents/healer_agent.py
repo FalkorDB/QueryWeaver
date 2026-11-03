@@ -34,7 +34,8 @@ _SQLSERVER_ERROR_HINTS = (
     (lambda e: "ilike" in e, [
         "⚠️  ILIKE is not supported in T-SQL - use LIKE (the collation decides case sensitivity)",
     ]),
-    (lambda e: "extract" in e, [
+    (lambda e: re.search(r"\bextract\s*\(", e) is not None
+     or "'extract' is not a recognized built-in function name" in e, [
         "⚠️  EXTRACT() is not supported in T-SQL - use YEAR(col)/MONTH(col)/DAY(col) or DATEPART(year, col)",
     ]),
     (lambda e: "order by clause is invalid" in e, [

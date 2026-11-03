@@ -12,9 +12,11 @@ import importlib
 import re
 import uuid
 from unittest.mock import AsyncMock, patch, MagicMock
+from urllib.parse import quote
 
-import pymssql
 import pytest
+
+pymssql = pytest.importorskip("pymssql")
 
 # ``api.core`` must be initialised before any loader module is imported.
 # ``api.core.__init__`` eagerly pulls in the pipeline, which imports the
@@ -26,6 +28,7 @@ importlib.import_module("api.core")
 from api.config import Config  # noqa: E402  pylint: disable=wrong-import-position
 from api.core.errors import InvalidArgumentError  # noqa: E402  pylint: disable=wrong-import-position
 from api.core.pipeline import get_database_type_and_loader  # noqa: E402  pylint: disable=wrong-import-position
+from api.core.schema_loader import load_database_sync  # noqa: E402  pylint: disable=wrong-import-position
 from api.loaders.sqlserver_loader import (  # noqa: E402  pylint: disable=wrong-import-position
     SQLServerLoader,
     SQLServerQueryError,
@@ -152,22 +155,53 @@ class TestEntityName:
     """How a table is named in the graph."""
 
     @pytest.mark.parametrize("schema", ["dbo", "DBO"])
-    def test_dbo_tables_keep_their_bare_name(self, schema):
-        assert entity_name(schema, "Orders") == "Orders"
+    def test_dbo_tables_are_qualified(self, schema):
+        assert entity_name(schema, "Orders") == f"[{schema}].[Orders]"
 
     def test_other_schemas_are_qualified(self):
-        """Unqualified SQL would resolve against the login's default schema."""
-        assert entity_name("sales", "Orders") == "sales.Orders"
+        """Names always include the schema to avoid login-default resolution."""
+        assert entity_name("sales", "Orders") == "[sales].[Orders]"
 
     @pytest.mark.parametrize("schema,table,expected", [
-        ("sales.eu", "Orders", "[sales.eu].Orders"),
-        ("sales", "weird.name", "sales.[weird.name]"),
-        ("dbo", "weird.name", "[weird.name]"),
-        ("a]b.c", "T", "[a]]b.c].T"),
+        ("sales.eu", "Orders", "[sales.eu].[Orders]"),
+        ("sales", "weird.name", "[sales].[weird.name]"),
+        ("dbo", "weird.name", "[dbo].[weird.name]"),
+        ("a]b.c", "T", "[a]]b.c].[T]"),
+        ("sales-data", "Order Details", "[sales-data].[Order Details]"),
+        ("dbo", "Order", "[dbo].[Order]"),
     ])
-    def test_a_dotted_part_is_bracketed(self, schema, table, expected):
-        """``sales.eu.Orders`` would be read as database.schema.table."""
+    def test_non_regular_parts_are_bracketed(self, schema, table, expected):
+        """Special characters and reserved words need delimited identifiers."""
         assert entity_name(schema, table) == expected
+
+
+class TestDatabaseId:
+    """Graph IDs distinguish non-default schemas and decode URL components."""
+
+    def test_non_default_schema_is_part_of_the_database_id(self):
+        assert SQLServerLoader.database_id_from_url(
+            "sqlserver://user:pass@localhost/testdb?schema=sales"
+        ) == "testdb__schema_sales"
+
+    def test_schema_id_is_url_encoded_and_default_schema_is_unchanged(self):
+        assert SQLServerLoader.database_id_from_url(
+            "sqlserver://user:pass@localhost/Sales%20DB?schema=sales%20eu"
+        ) == "Sales DB__schema_sales%20eu"
+        assert SQLServerLoader.database_id_from_url(
+            "sqlserver://user:pass@localhost/Sales%20DB?schema=dbo"
+        ) == "Sales DB"
+
+    def test_long_schema_id_stays_within_the_sdk_graph_id_limit(self):
+        long_schema = "名" * 40
+        url = (
+            "sqlserver://user:pass@localhost/"
+            + "d" * 128
+            + "?schema="
+            + quote(long_schema, safe="")
+        )
+        database_id = SQLServerLoader.database_id_from_url(url)
+        assert len(database_id) <= 200
+        assert database_id.startswith(f"{'d' * 128}__schema_")
 
 
 class TestSampleQueryValidation:
@@ -473,10 +507,10 @@ class TestIntrospection:
             "referenced_column_name": "id",
         }]])
         fks = SQLServerLoader.extract_foreign_keys(cursor, "dbo")
-        assert SQLServerLoader.group_foreign_keys(fks) == {"Orders": [{
+        assert SQLServerLoader.group_foreign_keys(fks) == {"[dbo].[Orders]": [{
             "constraint_name": "FK_Orders_Customers",
             "column": "customer_id",
-            "referenced_table": "Customers",
+            "referenced_table": "[dbo].[Customers]",
             "referenced_column": "id",
         }]}
 
@@ -491,7 +525,9 @@ class TestIntrospection:
             "referenced_column_name": "id",
         }]])
         fk = SQLServerLoader.extract_foreign_keys(cursor, "sales")[0]
-        assert (fk["table"], fk["referenced_table"]) == ("sales.Orders", "sales.Customers")
+        assert (fk["table"], fk["referenced_table"]) == (
+            "[sales].[Orders]", "[sales].[Customers]"
+        )
 
     def test_foreign_keys_are_fetched_once_for_the_whole_schema(self):
         """One query for every key, with both sides pinned to the loaded schema."""
@@ -528,10 +564,10 @@ class TestIntrospection:
     def test_entities_and_relationships_share_one_fk_query(self):
         """The per-table list and the relationship map come from the same rows."""
         fks = [{
-            "table": "Orders",
+            "table": "[dbo].[Orders]",
             "constraint_name": "FK_A",
             "column": "customer_id",
-            "referenced_table": "Customers",
+            "referenced_table": "[dbo].[Customers]",
             "referenced_column": "id",
         }]
         cursor = FakeCursor([
@@ -541,7 +577,9 @@ class TestIntrospection:
         entities = SQLServerLoader.extract_tables_info(
             cursor, "dbo", SQLServerLoader.group_foreign_keys(fks)
         )
-        assert entities["Orders"]["foreign_keys"][0]["referenced_table"] == "Customers"
+        assert entities["[dbo].[Orders]"]["foreign_keys"][0]["referenced_table"] == (
+            "[dbo].[Customers]"
+        )
         assert list(SQLServerLoader.build_relationships(fks)) == ["FK_A"]
 
     def test_tables_info_builds_entities(self):
@@ -552,22 +590,22 @@ class TestIntrospection:
             [{"id": 7}],
         ])
         entities = SQLServerLoader.extract_tables_info(cursor, "dbo")
-        assert list(entities) == ["Orders"]
-        assert entities["Orders"]["description"] == "All orders"
-        assert list(entities["Orders"]["columns"]) == ["id"]
-        assert entities["Orders"]["columns"]["id"]["sample_values"] == ["7"]
-        assert entities["Orders"]["foreign_keys"] == []
+        assert list(entities) == ["[dbo].[Orders]"]
+        assert entities["[dbo].[Orders]"]["description"] == "All orders"
+        assert list(entities["[dbo].[Orders]"]["columns"]) == ["id"]
+        assert entities["[dbo].[Orders]"]["columns"]["id"]["sample_values"] == ["7"]
+        assert entities["[dbo].[Orders]"]["foreign_keys"] == []
 
     def test_tables_outside_dbo_are_keyed_by_qualified_name(self):
-        """So generated SQL names ``sales.Orders``, not whatever the login defaults to."""
+        """Generated SQL names the selected schema explicitly."""
         cursor = FakeCursor([
             [{"table_name": "Orders", "schema_name": "sales", "table_comment": ""}],
             [_column_row()],
             [],
         ])
         entities = SQLServerLoader.extract_tables_info(cursor, "sales")
-        assert list(entities) == ["sales.Orders"]
-        assert entities["sales.Orders"]["description"] == "Table: sales.Orders"
+        assert list(entities) == ["[sales].[Orders]"]
+        assert entities["[sales].[Orders]"]["description"] == "Table: [sales].[Orders]"
 
     def test_sample_query_uses_catalog_schema_not_url_schema(self):
         """Sample queries qualify with the schema echoed back by ``sys.schemas``.
@@ -611,7 +649,7 @@ class TestSamplingBudget:
         cursor = self._cursor()
         entities = SQLServerLoader.extract_tables_info(cursor, "dbo", deadline=0.0)
         assert not any("NEWID()" in q for q, _ in cursor.executed)
-        assert set(entities) == {"A", "B"}
+        assert set(entities) == {"[dbo].[A]", "[dbo].[B]"}
 
     def test_sampling_stops_mid_schema_when_the_deadline_passes(self):
         cursor = self._cursor()
@@ -644,7 +682,7 @@ class TestSamplingBudget:
         cursor.execute = execute
         entities = SQLServerLoader.extract_tables_info(cursor, "dbo")
         assert sum("NEWID()" in q for q, _ in cursor.executed) == 1
-        assert set(entities) == {"A", "B"}
+        assert set(entities) == {"[dbo].[A]", "[dbo].[B]"}
 
     def test_a_column_error_on_a_live_connection_costs_only_that_column(self):
         """``DISTINCT`` on xml fails, the probe succeeds, and sampling carries on."""
@@ -715,6 +753,8 @@ class TestSchemaModifyingQuery:
         ("execute sys.sp_rename 't.c', 'c2', 'COLUMN'", "RENAME"),
         ("sp_rename 't', 't2'", "RENAME"),
         ("EXEC [dbo].[sp_rename] 't', 't2'", "RENAME"),
+        ("SELECT * INTO customers_copy FROM customers", "SELECT INTO"),
+        ("WITH c AS (SELECT id FROM t) SELECT * INTO copy_t FROM c", "SELECT INTO"),
     ])
     def test_detects_ddl(self, query, expected_op):
         """DDL statements are reported as schema-modifying."""
@@ -726,6 +766,12 @@ class TestSchemaModifyingQuery:
         "EXEC sp_renamed_report",
         "EXEC sp_help 't'",
         "SELECT * FROM t",
+        "SELECT * INTO #customers_copy FROM customers",
+        "SELECT * INTO [#customers_copy] FROM customers",
+        "SELECT * FROM [INTO customers_copy]",
+        "SELECT 'INTO customers_copy' AS note FROM customers",
+        "SELECT * FROM customers -- INTO customers_copy",
+        "-- comment\nSELECT * INTO #customers_copy FROM customers",
         "INSERT INTO t VALUES (1)",
         "",
         "   ",
@@ -836,6 +882,23 @@ class TestLoad:
         assert mock_load.call_args[0][0] == "user1_testdb"
 
     @pytest.mark.asyncio
+    async def test_load_separates_non_default_schema_graphs(self):
+        cursor = FakeCursor([
+            [],   # foreign keys
+            [{"table_name": "Orders", "schema_name": "sales", "table_comment": ""}],
+            [],   # columns
+        ])
+        conn = FakeConnection(cursor)
+        with patch("pymssql.connect", return_value=conn), \
+             patch("api.loaders.sqlserver_loader.load_to_graph") as mock_load:
+            mock_load.side_effect = AsyncMock()
+            async for _success, _message in SQLServerLoader.load(
+                    "user1", "sqlserver://user:pass@localhost/testdb?schema=sales"):
+                pass
+
+        assert mock_load.call_args.args[0] == "user1_testdb__schema_sales"
+
+    @pytest.mark.asyncio
     async def test_load_uses_schema_from_url(self):
         """The schema parameter reaches the catalog queries."""
         cursor = FakeCursor([[], []])
@@ -921,16 +984,68 @@ class TestLoaderRouting:
 
     def test_sdk_without_the_extra_is_told_which_extra_to_add(self):
         """A clean error beats an ImportError on pymssql."""
-        with patch.dict("sys.modules", {"api.loaders.sqlserver_loader": None}):
+        real_import = __import__
+
+        def missing_pymssql(name, *args, **kwargs):
+            if name == "api.loaders.sqlserver_loader":
+                raise ModuleNotFoundError("No module named 'pymssql'", name="pymssql")
+            return real_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=missing_pymssql):
             with pytest.raises(InvalidArgumentError, match=r"\[server\] extra"):
                 get_database_type_and_loader(
                     "sqlserver://sa:pw@localhost/testdb", sdk_only=True)
 
     def test_server_path_without_the_driver_keeps_the_import_error(self):
         """A server install missing pymssql is a broken deployment, not bad input."""
-        with patch.dict("sys.modules", {"api.loaders.sqlserver_loader": None}):
+        real_import = __import__
+
+        def missing_pymssql(name, *args, **kwargs):
+            if name == "api.loaders.sqlserver_loader":
+                raise ModuleNotFoundError("No module named 'pymssql'", name="pymssql")
+            return real_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=missing_pymssql):
             with pytest.raises(ImportError):
                 get_database_type_and_loader("sqlserver://sa:pw@localhost/testdb")
+
+
+    def test_sdk_does_not_hide_unrelated_import_failures(self):
+        real_import = __import__
+
+        def missing_native_library(name, *args, **kwargs):
+            if name == "api.loaders.sqlserver_loader":
+                raise ModuleNotFoundError("No module named 'libssl'", name="libssl")
+            return real_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=missing_native_library):
+            with pytest.raises(ModuleNotFoundError, match="libssl"):
+                get_database_type_and_loader(
+                    "sqlserver://user:pass@localhost/testdb", sdk_only=True)
+
+    def test_sdk_snowflake_does_not_hide_unrelated_import_failures(self):
+        real_import = __import__
+
+        def missing_native_library(name, *args, **kwargs):
+            if name == "api.loaders.snowflake_loader":
+                raise ModuleNotFoundError("No module named 'libssl'", name="libssl")
+            return real_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=missing_native_library):
+            with pytest.raises(ModuleNotFoundError, match="libssl"):
+                get_database_type_and_loader(
+                    "snowflake://user:pass@account/db/schema", sdk_only=True)
+
+    @pytest.mark.asyncio
+    async def test_sdk_returns_the_same_schema_specific_id_as_the_graph(self):
+        async def successful_load(*_args, **_kwargs):
+            yield True, "loaded"
+
+        url = "sqlserver://user:pass@localhost/testdb?schema=sales"
+        with patch.object(SQLServerLoader, "load", side_effect=successful_load):
+            result = await load_database_sync(url, "user1")
+
+        assert result.database_id == "testdb__schema_sales"
 
 
 class TestRefreshGraphSchema:
@@ -1014,6 +1129,25 @@ class TestRefreshGraphSchema:
             "user1_my_db", url="sqlserver://sa:pw@localhost/my_db")
         assert ok is True
         assert load.await_args.args[0] == "user1_my_db"
+
+    @pytest.mark.asyncio
+    async def test_refresh_uses_the_selected_schema_graph_id(self):
+        url = "sqlserver://user:pass@localhost/testdb?schema=sales"
+        (ok, _message), _graph, load = await self._refresh(
+            "user1_testdb__schema_sales", url=url
+        )
+        assert ok is True
+        assert load.await_args.args[0] == "user1_testdb__schema_sales"
+
+    @pytest.mark.asyncio
+    async def test_refresh_refuses_another_schema_graph(self):
+        url = "sqlserver://user:pass@localhost/testdb?schema=sales"
+        (ok, _message), graph, load = await self._refresh(
+            "user1_testdb__schema_hr", url=url
+        )
+        assert ok is False
+        graph.delete.assert_not_awaited()
+        load.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_a_malformed_url_leaves_the_graph_alone(self):

@@ -134,6 +134,14 @@ class TestHealerSqlServer:
         hints = HealerAgent()._analyze_error("Incorrect syntax near 'LIMIT'.", "postgresql")
         assert "TOP" not in hints
 
+    def test_extract_column_name_does_not_trigger_extract_function_hint(self):
+        # pylint: disable=protected-access
+        hints = HealerAgent()._analyze_error(
+            "Invalid column name 'extract_date'.", "sqlserver"
+        )
+        assert "EXTRACT()" not in hints
+        assert "Column name doesn't exist" in hints
+
     def test_healing_prompt_sqlserver_critical_rules(self):
         """The CRITICAL RULES section has a T-SQL branch."""
         # pylint: disable=protected-access

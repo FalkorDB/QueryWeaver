@@ -64,13 +64,18 @@ loaded into the graph, not what the login may access: generated queries run with
 login's own permissions, so grant it access to the selected schema only if that is
 the boundary you want.
 
-Tables are stored in the graph under bare names for `dbo` and as `schema.table` for
-any other schema. SQL Server has no per-session default schema: an unqualified name
-resolves against the login's default schema, so `SELECT * FROM orders` would miss
-`sales.orders`, or quietly read `dbo.orders` instead. Storing the qualified name
-means the generated SQL names the right table. A name part containing a dot is
-stored bracketed (`[sales.eu].Orders`, `[weird.name]`), since T-SQL would otherwise
-read `sales.eu.Orders` as database, schema and table.
+Tables are stored in the graph with both schema and table names bracket-quoted,
+for example `[dbo].[Orders]` or `[sales].[Orders]`. SQL Server has no per-session
+default schema: an unqualified name resolves against the login's default schema
+first, which could silently read a same-named table in the wrong schema. Explicit
+qualification ensures generated SQL names the table that was introspected.
+Bracket-quoting every part also handles spaces, punctuation, reserved words,
+closing brackets and dots without relying on a query-rewrite pass.
+
+Non-default schemas have distinct graph IDs (for example, `reporting` with
+`schema=sales` is exposed as `reporting__schema_sales`), so loading another schema
+does not merge it into the first schema's graph. The default `dbo` graph ID remains
+the database name for compatibility.
 
 The table, column and foreign-key catalogs are each read in one schema-wide query
 before any sampling starts.
@@ -231,7 +236,8 @@ SQLSERVER_TEST_URL='sqlserver://sa:Str0ng!Passw0rd@localhost:1433/master' \
 
 ## Limitations
 
-- One schema per connection (defaults to `dbo`); connect again to load another
+- One schema per connection (defaults to `dbo`); each selected schema is stored in
+  its own graph
 - Requires permission to read the `sys.*` catalog views
 - Windows/Azure AD integrated authentication is not supported; use SQL logins
 - The `encrypt` option does not verify the server certificate; see [Parameters](#parameters)

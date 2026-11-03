@@ -196,7 +196,7 @@ async def load_database_sync(url: str, user_id: str, db=None):
     # Determine database type and loader. ``sdk_only=True`` rejects unknown
     # schemes, and snowflake/sqlserver when the [server] extra isn't installed,
     # with a clean InvalidArgumentError instead of an ImportError.
-    _, loader = get_database_type_and_loader(url, sdk_only=True)
+    db_type, loader = get_database_type_and_loader(url, sdk_only=True)
     if loader is None:
         raise InvalidArgumentError(
             "Invalid database URL format. Must be PostgreSQL, MySQL, SQL Server or Snowflake."
@@ -215,9 +215,15 @@ async def load_database_sync(url: str, user_id: str, db=None):
             # (e.g. ``/mydb/``), and the query string is already stripped from .path
             # by urlparse — but a malformed URL may yield an empty .path, so we fall
             # back to splitting the raw URL.
-            db_name = urlparse(url).path.strip("/").split("/")[0]
-            if not db_name:
-                db_name = url.rsplit("/", 1)[-1].split("?")[0].split("#")[0]
+            if db_type == "sqlserver":
+                # The loader includes a non-default schema in the graph suffix.
+                from api.loaders.sqlserver_loader import SQLServerLoader  # pylint: disable=import-outside-toplevel
+
+                db_name = SQLServerLoader.database_id_from_url(url)
+            else:
+                db_name = urlparse(url).path.strip("/").split("/")[0]
+                if not db_name:
+                    db_name = url.rsplit("/", 1)[-1].split("?")[0].split("#")[0]
 
             return DatabaseConnection(
                 database_id=db_name,
