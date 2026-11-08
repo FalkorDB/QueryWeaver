@@ -681,6 +681,10 @@ class TestSamplingBudget:
             [_column_row(table=t) for t in tables],
         ])
 
+    def test_sampling_does_not_emit_cli_progress(self, capsys):
+        SQLServerLoader.extract_tables_info(self._cursor())
+        assert capsys.readouterr().err == ""
+
     def test_a_passed_deadline_skips_the_remaining_samples(self):
         """The schema still loads; only the samples are dropped."""
         cursor = self._cursor()

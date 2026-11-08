@@ -439,6 +439,11 @@ class TestStringLiteralsAndScanCost:
         result, _ = SQLIdentifierQuoter.auto_quote_identifiers(query, {'user-accounts'}, '[')
         assert result.startswith("SELECT * FROM [user-accounts] WHERE")
 
+    def test_unmatched_bracket_does_not_disable_later_string_protection(self):
+        query = "SELECT [ unfinished FROM user-accounts WHERE note = 'user-accounts'"
+        result, _ = SQLIdentifierQuoter.auto_quote_identifiers(query, {'user-accounts'}, '[')
+        assert result == "SELECT [ unfinished FROM [user-accounts] WHERE note = 'user-accounts'"
+
 
 class TestMySQLBackslashEscapes:
     """MySQL ends a literal at an unescaped quote, not at ``\\'``."""

@@ -18,9 +18,22 @@ import pytest
 # makes the snowflake import below work.
 from api.core.pipeline import MySQLLoader, PostgresLoader
 from api.loaders.snowflake_loader import SnowflakeLoader
-from api.loaders.sqlserver_loader import SQLServerLoader
 
-LOADERS = [PostgresLoader, MySQLLoader, SnowflakeLoader, SQLServerLoader]
+try:
+    from api.loaders.sqlserver_loader import SQLServerLoader
+except ModuleNotFoundError as exc:
+    if exc.name != "pymssql":
+        raise
+    SQLServerLoader = None
+
+LOADERS = [
+    PostgresLoader, MySQLLoader, SnowflakeLoader,
+    pytest.param(
+        SQLServerLoader,
+        marks=pytest.mark.skipif(SQLServerLoader is None, reason="pymssql is an optional server extra"),
+        id="SQLServerLoader",
+    ),
+]
 
 
 @pytest.mark.unit

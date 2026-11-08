@@ -11,7 +11,6 @@ from typing import AsyncGenerator, Dict, Any, List, Tuple
 from urllib.parse import urlparse, parse_qs, quote, unquote
 
 import sqlglot
-import tqdm
 import pymssql
 
 from api.config import Config
@@ -667,7 +666,7 @@ class SQLServerLoader(BaseLoader):
             deadline: ``time.monotonic()`` value after which sampling stops.
         """
         pending = sum(len(columns) for _, _, columns in targets)
-        for schema, table_name, columns in tqdm.tqdm(targets, desc="Sampling column values"):
+        for schema, table_name, columns in targets:
             for col_name, col in columns.items():
                 if deadline is not None and time.monotonic() >= deadline:
                     logging.warning(
