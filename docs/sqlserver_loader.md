@@ -74,12 +74,12 @@ closing brackets and dots without relying on a query-rewrite pass.
 
 Non-default schemas have distinct graph IDs (for example, `reporting` with
 `schema=sales` is exposed as `reporting__schema_sales`), so loading another schema
-does not merge it into the first schema's graph. Ordinary default `dbo` graph IDs
+does not merge it into the graph for the first schema. Ordinary default `dbo` graph IDs
 remain the database name for compatibility. Database names escape literal `%` and
 the reserved `__schema_` delimiter; schema suffixes percent-encode underscores as
 well as punctuation. IDs longer than 200 characters use a separate
 `__schema_hash_` namespace with a SHA-256 digest of both database and schema.
-These namespaces prevent a database name from impersonating another database's
+These separate ID formats prevent a database name from impersonating another database's
 selected schema. Reload connections created with the earlier, ambiguous ID format
 and use the ID returned by the SDK.
 
