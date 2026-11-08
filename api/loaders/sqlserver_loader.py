@@ -146,11 +146,6 @@ class SQLServerLoader(BaseLoader):
     Loader for SQL Server databases that connects and extracts schema information.
     """
 
-    # DDL operations that modify database schema  # pylint: disable=duplicate-code
-    SCHEMA_MODIFYING_OPERATIONS = {
-        'CREATE', 'ALTER', 'DROP', 'TRUNCATE'
-    }
-
     @staticmethod
     def _execute_sample_query(
         cursor, table_name: str, col_name: str, sample_size: int = 3,
@@ -297,14 +292,18 @@ class SQLServerLoader(BaseLoader):
         """Return the unprefixed graph ID suffix for a SQL Server URL."""
         db_name = SQLServerLoader._parse_sqlserver_url(connection_url)['database']
         schema = SQLServerLoader.parse_schema_from_url(connection_url)
+        # Reserve the schema delimiter without changing ordinary database IDs.
+        encoded_db = db_name.replace('%', '%25').replace('__schema_', '%5F%5Fschema_')
         if schema.lower() == DEFAULT_SCHEMA:
-            return db_name
-        schema_suffix = f"__schema_{quote(schema, safe='')}"
-        if len(db_name) + len(schema_suffix) > 200:
-            schema_suffix = (
-                f"__schema_{hashlib.sha256(schema.encode('utf-8')).hexdigest()[:32]}"
-            )
-        return f"{db_name}{schema_suffix}"
+            schema = DEFAULT_SCHEMA
+            database_id = encoded_db
+        else:
+            encoded_schema = quote(schema, safe='').replace('_', '%5F')
+            database_id = f"{encoded_db}__schema_{encoded_schema}"
+        if len(database_id) <= 200:
+            return database_id
+        identity = f"{len(db_name)}:{db_name}{schema}".encode('utf-8')
+        return f"__schema_hash_{hashlib.sha256(identity).hexdigest()}"
 
     @staticmethod
     def _parse_sqlserver_url(connection_url: str) -> Dict[str, Any]:
@@ -815,24 +814,26 @@ class SQLServerLoader(BaseLoader):
             r"/\*.*?\*/|--[^\r\n]*", " ", normalized_query, flags=re.DOTALL
         )
 
-        # Check for basic DDL operations
-        first_word = normalized_query.split()[0] if normalized_query.split() else ""
-        if first_word in ("SELECT", "WITH"):
-            for statement in sqlglot.parse(sql_query, read="tsql"):
-                if any(
-                    not into.args.get('temporary')
-                    for into in statement.find_all(sqlglot.exp.Into)
-                ):
-                    return True, "SELECT INTO"
-
-        # Renames in T-SQL go through a stored procedure, not a DDL keyword.
+        # A bare procedure call is valid T-SQL but not parsed by sqlglot.
         if re.match(r'^(EXEC(UTE)?\s+)?(\[?(DBO|SYS)\]?\.)?\[?SP_RENAME\b', normalized_query):
             return True, "RENAME"
 
-        # Any statement led by a DDL keyword counts, whatever object it
-        # targets (table, index, view, procedure, trigger, ...).
-        if first_word in SQLServerLoader.SCHEMA_MODIFYING_OPERATIONS:
-            return True, first_word
+        ddl_operations = {
+            "create": "CREATE", "alter": "ALTER", "drop": "DROP", "truncatetable": "TRUNCATE",
+        }
+        for statement in sqlglot.parse(sql_query, read="tsql"):
+            if statement is None:
+                continue
+            for node in statement.walk():
+                if node.key in ddl_operations:
+                    return True, ddl_operations[node.key]
+                if isinstance(node, sqlglot.exp.Into):
+                    target = node.this
+                    if not node.args.get('temporary') and not target.this.args.get('global_'):
+                        return True, "SELECT INTO"
+                if isinstance(node, sqlglot.exp.Execute) and isinstance(node.this, sqlglot.exp.Table):
+                    if node.this.name.lower() == "sp_rename" and node.this.db.lower() in ("", "dbo", "sys"):
+                        return True, "RENAME"
 
         return False, ""
 

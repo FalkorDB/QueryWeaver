@@ -473,12 +473,36 @@ class TestCommentsAndDoubleQuotedSpans:
         assert result == 'SELECT "user-accounts".id FROM [user-accounts]'
 
     def test_mysql_double_quoted_string_is_protected(self):
-        query = 'SELECT * FROM user-accounts WHERE note = "my-table"'
+        query = 'SELECT * FROM my-table WHERE note = "my-table"'
         result, modified = SQLIdentifierQuoter.auto_quote_identifiers(
-            query, {'user-accounts', 'my-table'}, '`'
+            query, {'my-table'}, '`'
         )
         assert modified is True
-        assert result == 'SELECT * FROM `user-accounts` WHERE note = "my-table"'
+        assert result == 'SELECT * FROM `my-table` WHERE note = "my-table"'
+
+    def test_mysql_hash_comment_does_not_swallow_executable_identifiers(self):
+        query = "# apostrophe: ' FROM my-table\nSELECT * FROM my-table WHERE note = 'my-table'"
+        result, modified = SQLIdentifierQuoter.auto_quote_identifiers(query, {'my-table'}, '`')
+        assert modified is True
+        assert result == (
+            "# apostrophe: ' FROM my-table\nSELECT * FROM `my-table` WHERE note = 'my-table'"
+        )
+
+    @pytest.mark.parametrize("quote_char", ['[', '"'])
+    def test_hash_is_not_a_comment_in_other_dialects(self, quote_char):
+        result, modified = SQLIdentifierQuoter.auto_quote_identifiers(
+            "SELECT #n FROM my-table", {'my-table'}, quote_char
+        )
+        assert modified is True
+        assert result == f"SELECT #n FROM {SQLIdentifierQuoter.quote_identifier('my-table', quote_char)}"
+
+    @pytest.mark.parametrize("quote_char,nested", [('`', False), ('[', True), ('"', True)])
+    def test_block_comment_nesting_follows_the_dialect(self, quote_char, nested):
+        query = "/* outer /* inner */ SELECT * FROM my-table /* rest */"
+        result, modified = SQLIdentifierQuoter.auto_quote_identifiers(query, {'my-table'}, quote_char)
+        expected = query if nested else "/* outer /* inner */ SELECT * FROM `my-table` /* rest */"
+        assert result == expected
+        assert modified is not nested
 
     def test_apostrophe_in_line_comment_does_not_swallow_next_literal(self):
         query = "-- an apostrophe: ' \nSELECT * FROM user-accounts WHERE note = 'user-accounts'"
@@ -491,10 +515,12 @@ class TestCommentsAndDoubleQuotedSpans:
             "WHERE note = 'user-accounts'"
         )
 
-    def test_table_name_in_block_comment_is_not_rewritten(self):
+    @pytest.mark.parametrize("quote_char", ['[', '`', '"'])
+    def test_table_name_in_block_comment_is_not_rewritten(self, quote_char):
         query = "SELECT * FROM user-accounts /* JOIN user-accounts */"
         result, modified = SQLIdentifierQuoter.auto_quote_identifiers(
-            query, {'user-accounts'}, '['
+            query, {'user-accounts'}, quote_char
         )
         assert modified is True
-        assert result == "SELECT * FROM [user-accounts] /* JOIN user-accounts */"
+        quoted = SQLIdentifierQuoter.quote_identifier('user-accounts', quote_char)
+        assert result == f"SELECT * FROM {quoted} /* JOIN user-accounts */"

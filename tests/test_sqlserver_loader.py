@@ -201,7 +201,44 @@ class TestDatabaseId:
         )
         database_id = SQLServerLoader.database_id_from_url(url)
         assert len(database_id) <= 200
-        assert database_id.startswith(f"{'d' * 128}__schema_")
+        assert database_id.startswith("__schema_hash_")
+
+    @pytest.mark.parametrize("database,schema,other_database,other_schema", [
+        ("reporting", "sales", "reporting__schema_sales", "dbo"),
+        ("reporting__schema_sales", "hr", "reporting", "sales__schema_hr"),
+        ("reporting%5F%5Fschema_sales", "dbo", "reporting__schema_sales", "dbo"),
+        ("reporting", "hash_" + "a" * 64, "reporting", "名" * 40),
+    ])
+    def test_database_and_schema_boundaries_cannot_collide(
+        self, database, schema, other_database, other_schema
+    ):
+        def database_id(name, selected_schema):
+            return SQLServerLoader.database_id_from_url(
+                f"sqlserver://sa:pw@localhost/{quote(name, safe='')}?"
+                f"schema={quote(selected_schema, safe='')}"
+            )
+
+        assert database_id(database, schema) != database_id(other_database, other_schema)
+
+    def test_long_ids_hash_both_database_and_schema(self):
+        def database_id(database):
+            return SQLServerLoader.database_id_from_url(
+                f"sqlserver://sa:pw@localhost/{database}?schema={quote('名' * 40)}"
+            )
+
+        assert database_id("a" * 128) != database_id("b" * 128)
+
+    def test_ordinary_default_schema_ids_remain_compatible(self):
+        assert SQLServerLoader.database_id_from_url(
+            "sqlserver://sa:pw@localhost/my_db?schema=DBO"
+        ) == "my_db"
+
+
+    def test_literal_schema_cannot_impersonate_a_compressed_schema_id(self):
+        url = "sqlserver://sa:pw@localhost/reporting?schema="
+        compressed_id = SQLServerLoader.database_id_from_url(url + quote("名" * 40))
+        literal_schema = compressed_id.removeprefix("reporting__schema_")
+        assert SQLServerLoader.database_id_from_url(url + quote(literal_schema)) != compressed_id
 
 
 class TestSampleQueryValidation:
@@ -755,6 +792,14 @@ class TestSchemaModifyingQuery:
         ("EXEC [dbo].[sp_rename] 't', 't2'", "RENAME"),
         ("SELECT * INTO customers_copy FROM customers", "SELECT INTO"),
         ("WITH c AS (SELECT id FROM t) SELECT * INTO copy_t FROM c", "SELECT INTO"),
+        ("SET NOCOUNT ON; SELECT * INTO copy_t FROM t", "SELECT INTO"),
+        ("DECLARE @n INT; SELECT * INTO copy_t FROM t", "SELECT INTO"),
+        ("SELECT 1; DROP TABLE users", "DROP"),
+        ("SELECT 1; CREATE VIEW v AS SELECT 1 AS n", "CREATE"),
+        ("SET NOCOUNT ON; ALTER TABLE t ADD c INT", "ALTER"),
+        ("DECLARE @n INT; TRUNCATE TABLE t", "TRUNCATE"),
+        ("SELECT 1; EXEC sys.sp_rename 't', 't2'", "RENAME"),
+        ("SELECT '; DROP TABLE t' AS note; DROP TABLE t", "DROP"),
     ])
     def test_detects_ddl(self, query, expected_op):
         """DDL statements are reported as schema-modifying."""
@@ -768,6 +813,10 @@ class TestSchemaModifyingQuery:
         "SELECT * FROM t",
         "SELECT * INTO #customers_copy FROM customers",
         "SELECT * INTO [#customers_copy] FROM customers",
+        "SELECT * INTO ##customers_copy FROM customers",
+        "SET NOCOUNT ON; SELECT * INTO #customers_copy FROM customers",
+        "; -- comment\nSELECT * FROM t",
+        "SELECT 'DROP TABLE t; SELECT * INTO copy_t FROM t' AS note",
         "SELECT * FROM [INTO customers_copy]",
         "SELECT 'INTO customers_copy' AS note FROM customers",
         "SELECT * FROM customers -- INTO customers_copy",
@@ -1138,6 +1187,18 @@ class TestRefreshGraphSchema:
         )
         assert ok is True
         assert load.await_args.args[0] == "user1_testdb__schema_sales"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("url", [
+        "sqlserver://sa:pw@localhost/reporting__schema_sales",
+        "sqlserver://sa:pw@localhost/reporting?schema=sales_hr",
+        "sqlserver://sa:pw@localhost/reporting?schema=" + quote("名" * 40),
+    ])
+    async def test_refresh_uses_the_collision_safe_database_id(self, url):
+        graph_id = f"user1_{SQLServerLoader.database_id_from_url(url)}"
+        (ok, _message), _graph, load = await self._refresh(graph_id, url=url)
+        assert ok is True
+        assert load.await_args.args[0] == graph_id
 
     @pytest.mark.asyncio
     async def test_refresh_refuses_another_schema_graph(self):

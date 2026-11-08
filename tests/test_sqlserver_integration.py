@@ -263,12 +263,25 @@ def _entities(introspection, schema):
     """The introspected entities keyed by bare table name.
 
     The fixture schema is not ``dbo``, so the loader stores every table as
-    ``schema.table``; the assertions below only care about the table part.
+    ``[schema].[table]``; the assertions below only care about the bare table part.
     """
     entities, _relationships = introspection
     prefix = f"{_q(schema)}."
-    assert all(name.startswith(prefix) for name in entities)
-    return {name[len(prefix):]: entity for name, entity in entities.items()}
+    assert all(name.startswith(prefix + "[") and name.endswith("]") for name in entities)
+    return {
+        name[len(prefix) + 1:-1].replace("]]", "]"): entity
+        for name, entity in entities.items()
+    }
+
+
+@pytest.mark.unit
+def test_entity_fixture_decodes_bracketed_table_names():
+    schema = "a].b"
+    names = [GERMAN, HEBREW, CJK, BRACKETED, DOTTED, "Region", "Coupon"]
+    entities = {f"{_q(schema)}.{_q(name)}": {"name": name} for name in names}
+    assert _entities.__wrapped__((entities, {}), schema) == {
+        name: {"name": name} for name in names
+    }
 
 
 class TestIntrospectionAgainstRealServer:
@@ -282,7 +295,7 @@ class TestIntrospectionAgainstRealServer:
         the first table took the whole load down.
         """
         assert set(entities) == {
-            GERMAN, HEBREW, CJK, BRACKETED, _q(DOTTED), "Region", "Store", "CrossRef",
+            GERMAN, HEBREW, CJK, BRACKETED, DOTTED, "Region", "Store", "CrossRef",
             "Coupon", "Person",
         }
 
@@ -299,7 +312,7 @@ class TestIntrospectionAgainstRealServer:
         The entity is stored bracketed (``[weird.name]``) so SQL that uses the
         name as written cannot read the dot as a schema separator.
         """
-        assert entities[_q(DOTTED)]['columns']['id']['sample_values'] == ["1"]
+        assert entities[DOTTED]['columns']['id']['sample_values'] == ["1"]
 
     def test_a_bracketed_table_name_still_samples(self, entities):
         """``]`` is doubled by the quoter, so it needs no special handling."""
@@ -395,5 +408,5 @@ class TestQueryExecutionAgainstRealServer:
     def test_a_stored_entity_name_is_valid_sql_as_written(self, introspection):
         """Generated SQL uses the graph's names, so ``schema.table`` must resolve."""
         entities, _relationships = introspection
-        name = next(n for n in entities if n.endswith(".Coupon"))
+        name = next(n for n in entities if n.endswith(".[Coupon]"))
         assert self._run(f"SELECT COUNT(*) AS n FROM {name}") == [{"n": 0}]

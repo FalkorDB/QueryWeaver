@@ -74,8 +74,14 @@ closing brackets and dots without relying on a query-rewrite pass.
 
 Non-default schemas have distinct graph IDs (for example, `reporting` with
 `schema=sales` is exposed as `reporting__schema_sales`), so loading another schema
-does not merge it into the first schema's graph. The default `dbo` graph ID remains
-the database name for compatibility.
+does not merge it into the first schema's graph. Ordinary default `dbo` graph IDs
+remain the database name for compatibility. Database names escape literal `%` and
+the reserved `__schema_` delimiter; schema suffixes percent-encode underscores as
+well as punctuation. IDs longer than 200 characters use a separate
+`__schema_hash_` namespace with a SHA-256 digest of both database and schema.
+These namespaces prevent a database name from impersonating another database's
+selected schema. Reload connections created with the earlier, ambiguous ID format
+and use the ID returned by the SDK.
 
 The table, column and foreign-key catalogs are each read in one schema-wide query
 before any sampling starts.
@@ -109,6 +115,9 @@ timed-out statement can leave the FreeTDS connection unusable).
   identifiers and `FOR JSON PATH` parse correctly and are not misclassified by the
   destructive-operation guard
 - Rolls back and closes the connection on failure
+- Checks every statement in a confirmed batch for schema changes, including
+  `SELECT INTO` after `SET` or `DECLARE`, and refreshes the graph after persistent
+  DDL or `sp_rename`. Temporary `SELECT INTO` targets do not trigger a refresh.
 
 ## Identifier Quoting
 

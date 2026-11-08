@@ -158,8 +158,8 @@ class SQLIdentifierQuoter:
         spans: List[Tuple[int, int]] = []
         i, n = 0, len(sql_query)
         while i < n:
-            if sql_query.startswith('--', i):
-                end = sql_query.find('\n', i + 2)
+            if (mysql_backslash_escapes and sql_query[i] == '#') or sql_query.startswith('--', i):
+                end = sql_query.find('\n', i + 1)
                 end = n if end == -1 else end
                 spans.append((i, end))
                 i = end
@@ -169,7 +169,7 @@ class SQLIdentifierQuoter:
                 depth = 1
                 i += 2
                 while i < n and depth:
-                    if sql_query.startswith('/*', i):
+                    if not mysql_backslash_escapes and sql_query.startswith('/*', i):
                         depth += 1
                         i += 2
                     elif sql_query.startswith('*/', i):
