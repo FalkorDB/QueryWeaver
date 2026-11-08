@@ -213,6 +213,10 @@ class SnowflakeLoader(BaseLoader):
             'warehouse': warehouse,
             'login_timeout': 30,
             'network_timeout': 60,
+            # Connector 5.0 dropped OCSP and defaults crl_check_mode to DISABLED, which
+            # would silently stop checking certificate revocation. ADVISORY keeps the
+            # fail-open behaviour 4.x had: revoked certs are logged, outages don't block.
+            'crl_check_mode': 'ADVISORY',
         }
 
         # Check for key-pair authentication

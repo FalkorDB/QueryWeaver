@@ -38,6 +38,7 @@ class TestSnowflakeLoader:
             'warehouse': 'COMPUTE_WH',
             'login_timeout': 30,
             'network_timeout': 60,
+            'crl_check_mode': 'ADVISORY',
         }
         assert result == expected
 
@@ -241,7 +242,9 @@ class TestSnowflakeLoader:
 
         # Verify failure
         assert success is False
-        assert "Snowflake error: Connection failed" in message
+        # Connector 5.x prefixes the message ("Snowflake error: ------: Connection failed")
+        assert message.startswith("Snowflake error:")
+        assert "Connection failed" in message
 
     @patch('api.loaders.snowflake_loader.snowflake.connector.connect')
     def test_execute_sql_query_select(self, mock_connect):
