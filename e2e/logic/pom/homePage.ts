@@ -623,7 +623,7 @@ export class HomePage extends BasePage {
   }
 
   // Database Connection Modal Functions
-  async selectDatabaseType(type: "postgresql" | "mysql"): Promise<void> {
+  async selectDatabaseType(type: "postgresql" | "mysql" | "sqlserver"): Promise<void> {
     const element = await this.interactWithDatabaseTypeSelect();
     await element.click();
     // Select by test-id
@@ -666,6 +666,12 @@ export class HomePage extends BasePage {
 
     const passwordElement = await this.interactWithPasswordInput();
     await passwordElement.fill(password);
+  }
+
+  async enterSchema(schema: string): Promise<void> {
+    const element = this.page.getByTestId("schema-input");
+    await waitForElementToBeVisible(element);
+    await element.fill(schema);
   }
 
   async clickOnDatabaseModalConnect(): Promise<void> {
