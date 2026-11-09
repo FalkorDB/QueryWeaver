@@ -1,9 +1,11 @@
 """Dependabot majors held back for a reason must be released once the reason goes.
 
-Two majors are pinned down in ``.github/dependabot.yml``:
+Two majors have been held in ``.github/dependabot.yml``:
 
-* ``openai`` 3, because litellm requires ``openai<3.0.0`` and the only litellm
-  that permits openai 3 is 1.83.0, which carries two critical advisories.
+* ``openai`` 3, while litellm required ``openai<3.0.0`` and the only litellm
+  that permitted openai 3 was 1.83.0, which carries two critical advisories.
+  litellm 1.108 allows ``openai<4.0.0``, so that hold is gone; the test stays
+  so that restoring it fails while litellm still permits openai 3.
 * ``typescript`` 7, because typescript-eslint's peer range stops below 6.1 and
   the app tsconfigs still set ``baseUrl``, which TS 7 removed. Either one alone
   keeps the hold alive.

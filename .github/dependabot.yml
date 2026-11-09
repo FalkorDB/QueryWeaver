@@ -15,20 +15,6 @@ updates:
     target-branch: "staging"
     schedule:
       interval: "weekly"
-    ignore:
-      # openai 3 cannot be adopted while litellm caps it: every litellm from
-      # 1.96.2 onward requires "openai>=2.20.0,<3.0.0". The only release whose
-      # constraint admits openai 3 is litellm 1.83.0, which is also the floor in
-      # pyproject.toml, so resolving openai 3 silently drags litellm down to
-      # 1.83.0 - a version carrying 11 advisories, 2 of them critical (SQL
-      # injection in proxy API key verification, authentication bypass via host
-      # header injection). That downgrade, not openai itself, is what fails
-      # dependency-review. 2.x updates still come through.
-      # Remove this block when litellm allows openai 3 -
-      # tests/test_dependency_holds.py fails for as long as the hold and
-      # litellm's own metadata disagree.
-      - dependency-name: "openai"
-        update-types: ["version-update:semver-major"]
   - package-ecosystem: "npm"
     directory: "/app"
     target-branch: "staging"
