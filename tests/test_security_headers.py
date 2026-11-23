@@ -215,6 +215,7 @@ class TestSecurityHeaders:
             "/static/..%2fetc%2fpasswd",
             "/static/assets%2f..%2f..%2fetc",
             "/static/..\\windows",
+            "/static/..%5cwindows",
         ],
     )
     def test_traversal_is_blocked_over_http(self, client, path):
