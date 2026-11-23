@@ -116,7 +116,10 @@ class SecurityMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
-        path = request.url.path
+        # The decoded scope path is what routing and StaticFiles resolve, so
+        # the checks must see it too. request.url.path re-encodes characters
+        # such as a backslash (Starlette >= 1.10), hiding "..\\" segments.
+        path = request.scope["path"]
 
         # Block directory access in static files
         if path.startswith(self.STATIC_PREFIX):
