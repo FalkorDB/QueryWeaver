@@ -2,7 +2,11 @@
 FROM python:3.12-trixie AS python-base
 
 # Main stage: Use FalkorDB base and copy Python 3.12
-FROM falkordb/falkordb:latest
+# Pinned to the -redis variant: since FalkorDB 6.2.0 the bare and `latest` tags
+# are the Valkey build on Ubuntu 26.04, which no longer matches the Debian trixie
+# Python copied in above and made this image's apt steps run past the deploy
+# build deadline. Bump the version deliberately, keeping the -redis suffix.
+FROM falkordb/falkordb:6.2.0-redis
 
 ENV PYTHONUNBUFFERED=1 \
     FALKORDB_HOST=localhost \
