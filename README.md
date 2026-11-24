@@ -29,6 +29,11 @@ docker run -p 5000:5000 -it falkordb/queryweaver
 
 Launch: http://localhost:5000
 
+The image bundles FalkorDB. It is started inside the container, listening on
+`127.0.0.1` only, when `FALKORDB_URL` is unset or points at `localhost`. Set
+`FALKORDB_URL` to another host to use an external FalkorDB; the bundled one is
+then not started.
+
 ---
 
 ### Use an .env file (Recommended)

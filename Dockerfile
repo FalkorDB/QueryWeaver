@@ -92,7 +92,8 @@ RUN chmod +x /start.sh
 # Add MCP label
 LABEL io.modelcontextprotocol.server.name="com.falkordb/QueryWeaver"
 
-EXPOSE 5000 6379 3000
+# No 6379: the bundled FalkorDB listens on the container's loopback only (start.sh).
+EXPOSE 5000 3000
 
 # Use start.sh as entrypoint
 ENTRYPOINT ["/start.sh"]
