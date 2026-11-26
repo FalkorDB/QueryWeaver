@@ -334,8 +334,23 @@ def parse_response(response: str) -> Dict[str, Any]:
         json_blocks = []
         depth = 0
         start_idx = None
+        in_string = False
+        escaped = False
 
         for i, char in enumerate(response):
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif char == '\\':
+                    escaped = True
+                elif char == '"':
+                    in_string = False
+                continue
+
+            if depth > 0 and char == '"':
+                in_string = True
+                continue
+
             if char == '{':
                 if depth == 0:
                     start_idx = i
