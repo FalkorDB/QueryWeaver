@@ -31,7 +31,7 @@ def test_provider_priority(env, provider):
     ({"GEMINI_API_KEY": "k"}, ("gemini", "gemini/gemini-3-pro-preview", "gemini/gemini-embedding-001")),
     ({"GEMINI_API_KEY": "k", "GEMINI_MODEL": "m", "GEMINI_EMBEDDING_MODEL": "e"}, ("gemini", "gemini/m", "gemini/e")),
     ({"ANTHROPIC_API_KEY": "k", "VOYAGE_API_KEY": "k"},
-     ("anthropic", "anthropic/claude-sonnet-4-5-20250929", "voyage/voyage-3")),
+     ("anthropic", "anthropic/claude-sonnet-5-5", "voyage/voyage-3")),
     ({"ANTHROPIC_API_KEY": "k", "VOYAGE_API_KEY": "k", "ANTHROPIC_MODEL": "m"},
      ("anthropic", "anthropic/m", "voyage/voyage-3")),
     ({"COHERE_API_KEY": "k"}, ("cohere", "cohere/command-a-03-2025", "cohere/embed-v4.0")),

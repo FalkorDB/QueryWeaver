@@ -149,6 +149,23 @@ def _attempt(base_args: Dict[str, Any], remaining: float, overrides: Dict[str, A
     })
 
 
+def _provider_args(model: str) -> Dict[str, Any]:
+    """Request settings that depend on the provider behind *model*.
+
+    Anthropic rejects ``top_p`` next to ``temperature``, and newer Claude models
+    reject non-default sampling settings altogether, so ``top_p`` is left out
+    and LiteLLM is told to drop whatever the model does not accept.
+    """
+    if not model.startswith("anthropic/"):
+        return {}
+    args: Dict[str, Any] = {"drop_params": True}
+    if model.startswith("anthropic/claude-sonnet-5-5"):
+        # Thinks by default, and thinking counts against max_tokens, which
+        # several callers keep small.
+        args["thinking"] = {"type": "between_tools"}
+    return args
+
+
 def run_completion(messages: List[Dict[str, str]], custom_model: str | None = None,
                    custom_api_key: str | None = None, *, label: str = "llm",
                    **kwargs) -> str:
@@ -169,8 +186,8 @@ def run_completion(messages: List[Dict[str, str]], custom_model: str | None = No
     base_args = {
         "model": custom_model if custom_model else Config.COMPLETION_MODEL,
         "messages": messages,
-        "top_p": 1,
     }
+    base_args.update(_provider_args(base_args["model"]) or {"top_p": 1})
     if custom_api_key:
         base_args["api_key"] = custom_api_key
 
@@ -256,6 +273,7 @@ def run_batch_completion(messages_list: List[List[Dict[str, str]]], *,
     Returns a list aligned with *messages_list*; an item that never succeeded
     holds its final exception, which is the contract callers already handle.
     """
+    base_args = {**_provider_args(base_args.get("model") or ""), **base_args}
     results: List[Any] = [None] * len(messages_list)
     pending = list(range(len(messages_list)))
     attempts = Config.llm_attempts()

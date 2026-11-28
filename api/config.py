@@ -123,7 +123,7 @@ _PROVIDERS = (
     _Provider("ollama", "OLLAMA_MODEL", None, "nomic-embed-text"),
     _Provider("openai", "OPENAI_API_KEY", "gpt-4.1", "text-embedding-ada-002"),
     _Provider("gemini", "GEMINI_API_KEY", "gemini-3-pro-preview", "gemini-embedding-001"),
-    _Provider("anthropic", "ANTHROPIC_API_KEY", "claude-sonnet-4-5-20250929", None),
+    _Provider("anthropic", "ANTHROPIC_API_KEY", "claude-sonnet-5-5", None),
     _Provider("cohere", "COHERE_API_KEY", "command-a-03-2025", "embed-v4.0"),
 )
 # Used when none of the above is configured.

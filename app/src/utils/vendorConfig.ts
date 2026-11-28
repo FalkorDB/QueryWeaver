@@ -10,7 +10,7 @@ export interface VendorConfig {
 export const AI_VENDORS: VendorConfig[] = [
   { value: 'openai', label: 'OpenAI', keyPrefix: 'sk-', exampleModel: 'gpt-4.1' },
   { value: 'google', label: 'Google', keyPrefix: '', exampleModel: 'gemini-3-pro-preview' },
-  { value: 'anthropic', label: 'Anthropic', keyPrefix: 'sk-ant-', exampleModel: 'claude-sonnet-4-5-20250929' },
+  { value: 'anthropic', label: 'Anthropic', keyPrefix: 'sk-ant-', exampleModel: 'claude-sonnet-5-5' },
 ];
 
 export const DEFAULT_MODEL = 'gpt-4.1';
